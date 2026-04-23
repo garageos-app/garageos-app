@@ -1,0 +1,862 @@
+# Appendice G — Error Codes Catalog
+
+> **Documento correlato:** questo è un'appendice del documento principale `GarageOS-Specifiche.md`. Cataloga tutti gli error code restituiti dalle API di GarageOS.
+>
+> **Versione:** v1.0 — allineata a `GarageOS-Specifiche.md` v1.3
+> **Ultimo aggiornamento:** 22 aprile 2026
+
+---
+
+## Scopo di questo documento
+
+Questa appendice fornisce il **catalogo unificato degli errori** ritornati dalle API. Obiettivi:
+
+1. **Coerenza**: stessi codici per stesse situazioni in tutto il sistema
+2. **Localizzazione**: messaggi pronti per italiano (v1), predisposti per EN/DE (v2+)
+3. **Debugging**: ogni error code è ricercabile nei log con codice univoco
+4. **DX**: i client (web + mobile) possono gestire errori in modo affidabile tramite codice (non stringa)
+5. **Audit**: errori critici vengono loggati in audit_logs
+
+---
+
+## Indice
+
+1. [Convenzioni](#1-convenzioni)
+2. [Struttura del payload errore](#2-struttura-del-payload-errore)
+3. [Catalogo per categoria](#3-catalogo-per-categoria)
+4. [Mapping a classi eccezione backend](#4-mapping-a-classi-eccezione-backend)
+5. [Localizzazione](#5-localizzazione)
+6. [Pattern per aggiungere nuovi error code](#6-pattern-per-aggiungere-nuovi-error-code)
+
+---
+
+## 1. Convenzioni
+
+### 1.1 Struttura del codice
+
+Ogni error code segue il pattern: `<area>.<sub_area>.<specifico>`
+
+Esempi:
+- `auth.login.invalid_credentials`
+- `vehicle.creation.duplicate_vin`
+- `intervention.modification.locked`
+- `transfer.acceptance.expired`
+
+**Regole di naming:**
+- Solo lettere minuscole, underscore, punti
+- Nomi descrittivi ma sintetici
+- Gerarchia a 2-3 livelli (max)
+- Niente numeri negli ID degli error code (vengono dati dallo HTTP status)
+
+### 1.2 Status HTTP associato
+
+Ogni error code ha uno status HTTP standardizzato:
+
+| Range | Significato | Quando |
+|---|---|---|
+| `400` | Bad Request | Input malformato, validazione fallita |
+| `401` | Unauthorized | Token mancante o scaduto |
+| `403` | Forbidden | Autenticato ma non autorizzato |
+| `404` | Not Found | Risorsa inesistente |
+| `409` | Conflict | Conflitto stato (duplicato, stato incompatibile) |
+| `410` | Gone | Risorsa espirata (es. invitation token scaduto) |
+| `422` | Unprocessable Entity | Business rule violation |
+| `429` | Too Many Requests | Rate limit |
+| `500` | Internal Server Error | Errore inatteso backend |
+| `502` | Bad Gateway | Servizio esterno fallito (SES, Expo Push) |
+| `503` | Service Unavailable | Manutenzione o sovraccarico |
+
+### 1.3 Severity
+
+Ogni error code ha una severity per alerting interno:
+
+- **`info`**: comportamento normale, non richiede intervento (es. credenziali sbagliate)
+- **`warning`**: condizione anomala ma gestita (es. duplicate detection con conferma)
+- **`error`**: errore applicativo da investigare (es. invariant violation)
+- **`critical`**: errore infrastrutturale o sicurezza (es. data corruption, bypass tentato)
+
+Gli errori `critical` generano alert Sentry + PagerDuty (v1.1+).
+
+---
+
+## 2. Struttura del payload errore
+
+Tutti gli errori seguono **RFC 7807 Problem Details** con estensioni custom:
+
+```json
+{
+  "type": "https://api.garageos.it/errors/vehicle.creation.duplicate_vin",
+  "title": "Veicolo duplicato",
+  "status": 409,
+  "code": "vehicle.creation.duplicate_vin",
+  "detail": "Esiste già un veicolo con VIN ZFA16900000512345",
+  "instance": "/v1/vehicles",
+  "request_id": "req_01HKXM9A...",
+  "timestamp": "2026-04-22T15:32:05.123Z",
+  "errors": [
+    {
+      "field": "vehicle.vin",
+      "code": "duplicate",
+      "message": "VIN già presente nel sistema"
+    }
+  ],
+  "metadata": {
+    "existing_vehicle_id": "01HKXN5..."
+  }
+}
+```
+
+### 2.1 Campi
+
+| Campo | Obbligatorio | Descrizione |
+|---|---|---|
+| `type` | Sì | URL del tipo di errore (umano-leggibile su browser) |
+| `title` | Sì | Titolo localizzato per l'utente |
+| `status` | Sì | Status HTTP |
+| `code` | Sì | **Error code univoco** (chiave per i client) |
+| `detail` | Sì | Descrizione localizzata dettagliata |
+| `instance` | Sì | URL della richiesta fallita |
+| `request_id` | Sì | ID univoco richiesta per debug |
+| `timestamp` | Sì | Momento dell'errore (ISO 8601 UTC) |
+| `errors[]` | No | Lista errori di validazione multipli |
+| `metadata` | No | Dati contestuali specifici dell'errore |
+
+### 2.2 Quando usare `errors[]`
+
+Solo per errori di validazione con più campi non validi:
+
+```json
+{
+  "code": "validation.failed",
+  "status": 400,
+  "errors": [
+    { "field": "vehicle.vin", "code": "invalid_format", "message": "VIN deve avere 17 caratteri" },
+    { "field": "vehicle.year", "code": "out_of_range", "message": "Anno deve essere tra 1900 e 2027" },
+    { "field": "customer.email", "code": "invalid_format", "message": "Email non valida" }
+  ]
+}
+```
+
+Per errori singoli business (es. duplicato) si usa `detail` + `metadata` senza `errors[]`.
+
+### 2.3 Quando usare `metadata`
+
+Per fornire dati utili al client per gestire l'errore:
+
+- `existing_vehicle_id` quando si rileva duplicato
+- `retry_after_seconds` quando si ha rate limit
+- `transfer_id` quando si tenta di creare un transfer ma ne esiste già uno
+- `expires_at` quando si tenta di usare un token valido ma scaduto
+
+**Non includere mai** in metadata:
+- Dati sensibili (password, token)
+- PII di altri utenti
+- Stack trace o dettagli interni
+
+---
+
+## 3. Catalogo per categoria
+
+### 3.1 Errori generici
+
+| Code | HTTP | Severity | Titolo | Quando |
+|---|---|---|---|---|
+| `generic.internal_error` | 500 | error | Errore interno | Errore non gestito |
+| `generic.service_unavailable` | 503 | critical | Servizio non disponibile | Manutenzione o overload |
+| `generic.rate_limit_exceeded` | 429 | warning | Troppe richieste | Rate limit hit |
+| `generic.not_found` | 404 | info | Risorsa non trovata | Fallback quando non c'è code specifico |
+| `validation.failed` | 400 | info | Dati non validi | Validazione Zod fallita |
+| `validation.schema_mismatch` | 400 | warning | Schema richiesta non valido | JSON malformato |
+
+### 3.2 Autenticazione & sessione
+
+| Code | HTTP | Severity | Titolo | Quando |
+|---|---|---|---|---|
+| `auth.login.invalid_credentials` | 401 | info | Credenziali errate | Email/password sbagliati |
+| `auth.login.account_locked` | 403 | warning | Account bloccato | Troppi tentativi falliti |
+| `auth.login.account_inactive` | 403 | info | Account non attivo | User/customer `status=inactive` |
+| `auth.login.email_not_verified` | 403 | info | Email non verificata | Account creato ma email non confermata |
+| `auth.token.missing` | 401 | info | Token mancante | Header Authorization assente |
+| `auth.token.invalid` | 401 | warning | Token non valido | JWT malformato o firma errata |
+| `auth.token.expired` | 401 | info | Token scaduto | JWT con `exp` passato |
+| `auth.token.revoked` | 401 | warning | Token revocato | Token in denylist (logout, security) |
+| `auth.password_reset.invalid_token` | 400 | warning | Link non valido | Token reset scaduto o già usato |
+| `auth.password.too_weak` | 400 | info | Password troppo debole | Policy password fallita |
+| `auth.signup.email_already_registered` | 409 | info | Email già registrata | Email duplicata in signup |
+| `auth.signup.email_domain_blocked` | 403 | warning | Dominio email non consentito | Email blacklist |
+| `auth.2fa.required` | 401 | info | 2FA richiesta | Account con 2FA attiva |
+| `auth.2fa.invalid_code` | 401 | info | Codice 2FA errato | TOTP sbagliato |
+| `auth.permission.denied` | 403 | warning | Permesso negato | Ruolo insufficiente |
+| `auth.tenant.suspended` | 403 | warning | Tenant sospeso | Tenant `status=suspended` |
+
+### 3.3 Tenant & organizzazione
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `tenant.not_found` | 404 | info | Tenant non trovato | ID inesistente | |
+| `tenant.vat_number_duplicate` | 409 | info | P.IVA già registrata | VAT duplicata in creazione | |
+| `tenant.vat_number_invalid` | 400 | info | P.IVA non valida | Checksum P.IVA IT fallito | |
+| `tenant.billing.past_due` | 402 | warning | Pagamento in sospeso | Solo v1.1+ | |
+| `location.not_found` | 404 | info | Location non trovata | | |
+| `location.not_in_tenant` | 422 | warning | Location non appartiene al tenant | Tentativo cross-tenant | |
+| `location.cannot_remove_primary` | 422 | warning | Non puoi rimuovere la sede principale | Senza designarne un'altra | BR-201 |
+| `location.cannot_disable_last` | 422 | warning | Impossibile disattivare l'ultima sede attiva | | |
+| `user.not_found` | 404 | info | Utente non trovato | | |
+| `user.cannot_remove_last_super_admin` | 422 | error | Impossibile rimuovere l'ultimo amministratore | | BR-203 |
+| `user.role_change_would_orphan_tenant` | 422 | error | Cambio ruolo lascerebbe il tenant senza admin | | BR-203 |
+| `user.invitation.expired` | 410 | info | Invito scaduto | Token invitation > 7 giorni | |
+| `user.invitation.already_accepted` | 409 | info | Invito già accettato | Invitation già usata | |
+| `user.invitation.email_mismatch` | 403 | warning | Email non corrisponde all'invito | Sign-up con email diversa | |
+
+### 3.4 Customer
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `customer.not_found` | 404 | info | Cliente non trovato | | |
+| `customer.email_duplicate` | 409 | info | Cliente con questa email già esistente | | BR-220 |
+| `customer.tax_code_invalid` | 400 | info | Codice fiscale non valido | Checksum CF fallito | |
+| `customer.business_data_missing` | 400 | info | Dati azienda richiesti | is_business=true ma business_name/vat_number assenti | BR-223 |
+| `customer.pii_not_accessible` | 403 | info | Dati personali non accessibili | Tenant senza customer_tenant_relation | BR-151 |
+| `customer.deletion.active_transfers` | 422 | warning | Impossibile cancellare: transfer attivi | Account delete con transfer pending | |
+
+### 3.5 Veicoli
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `vehicle.not_found` | 404 | info | Veicolo non trovato | | |
+| `vehicle.garage_code.not_found` | 404 | info | Codice GarageOS non trovato | Claim con codice inesistente | |
+| `vehicle.garage_code.invalid_format` | 400 | info | Formato codice non valido | Fallisce regex | BR-020 |
+| `vehicle.creation.duplicate_vin` | 409 | warning | VIN già presente | VIN esistente certified | BR-001 |
+| `vehicle.creation.duplicate_plate_warning` | 409 | warning | Targa identica su altro veicolo | Conferma richiesta con force | BR-002 |
+| `vehicle.creation.vin_invalid_format` | 400 | info | VIN formato non valido | 17 caratteri mancanti | BR-001 |
+| `vehicle.creation.vin_invalid_checksum` | 400 | warning | VIN checksum non valido | Può essere forzato con force_nonstandard_vin | BR-001 |
+| `vehicle.creation.plate_invalid_format` | 400 | info | Formato targa non valido | | |
+| `vehicle.creation.year_out_of_range` | 400 | info | Anno fuori range | <1900 o >current+1 | BR-007 |
+| `vehicle.modification.vin_immutable` | 422 | error | VIN non modificabile | Tentativo di modifica su certified | BR-005 |
+| `vehicle.modification.certified_required` | 422 | warning | Operazione richiede veicolo certificato | | |
+| `vehicle.modification.archived` | 422 | info | Veicolo archiviato, non modificabile | | BR-008 |
+| `vehicle.certification.not_pending` | 422 | warning | Veicolo non in stato pending | Certify su veicolo già certified | BR-004 |
+| `vehicle.certification.libretto_required` | 422 | info | Dichiarazione visione libretto richiesta | Checkbox non selezionata | BR-004 |
+| `vehicle.pending.duplicate_vin_certified` | 409 | warning | VIN già certificato | Pre-registrazione utente con VIN esistente | BR-001 |
+| `vehicle.claim.already_owned_by_you` | 200 | info | Già proprietario (idempotente, OK) | Claim idempotente | BR-042 |
+| `vehicle.claim.already_owned_by_other` | 409 | warning | Veicolo già assegnato ad altro utente | Claim con ownership attiva altrui | BR-042 |
+| `vehicle.claim.pending_not_claimable` | 422 | info | Veicolo non certificato | Claim di pending | BR-042 |
+| `vehicle.claim.archived` | 422 | info | Veicolo archiviato | | BR-042 |
+| `vehicle.access.forbidden` | 403 | warning | Accesso al veicolo non consentito | Customer non proprietario | |
+
+### 3.6 Interventi
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `intervention.not_found` | 404 | info | Intervento non trovato | | |
+| `intervention.creation.immutable_field` | 422 | error | Campo non modificabile | Tentativo modifica campo immutabile | BR-061 |
+| `intervention.creation.date_future` | 400 | info | Data intervento futura | | BR-069 |
+| `intervention.creation.date_before_registration` | 400 | warning | Data precedente immatricolazione | | BR-070 |
+| `intervention.creation.odometer_decrease_warning` | 409 | warning | Km inferiori ad intervento precedente | Richiede force_km_decrease | BR-068 |
+| `intervention.creation.parts_invalid` | 400 | info | Lista pezzi non valida | Struttura parts_replaced malformata | BR-071 |
+| `intervention.creation.type_not_found` | 404 | info | Tipo intervento non trovato | | |
+| `intervention.modification.locked` | 422 | info | Intervento non più modificabile liberamente | Wiki locked | BR-062 |
+| `intervention.modification.revision_reason_required` | 400 | info | Motivazione modifica obbligatoria | Modifica post-lock senza reason | BR-064 |
+| `intervention.cancellation.already_cancelled` | 409 | info | Intervento già annullato | | BR-066 |
+| `intervention.cancellation.reason_too_short` | 400 | info | Motivazione troppo breve | <20 caratteri | BR-066 |
+| `intervention.cancellation.permission_denied` | 403 | warning | Solo super_admin può annullare | | BR-066 |
+| `intervention.dispute.already_exists` | 409 | info | Contestazione già aperta | Una per customer per intervention | BR-122 |
+| `intervention.dispute.not_owner` | 403 | warning | Solo il proprietario può contestare | | BR-120 |
+| `intervention.dispute.description_too_short` | 400 | info | Descrizione contestazione troppo breve | <20 caratteri | BR-124 |
+| `intervention.dispute.response.not_your_intervention` | 403 | warning | Contestazione di altro tenant | | |
+| `intervention.dispute.response.description_too_short` | 400 | info | Risposta troppo breve | <20 caratteri | BR-129 |
+
+### 3.7 Interventi privati
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `private_intervention.not_found` | 404 | info | Intervento privato non trovato | | |
+| `private_intervention.not_owner` | 403 | warning | Non sei il proprietario | | BR-080 |
+| `private_intervention.rate_limit` | 429 | warning | Limite interventi privati superato | >50/giorno | BR-085 |
+| `private_intervention.vehicle_not_owned` | 422 | warning | Veicolo non nella tua lista | | |
+
+### 3.8 Trasferimenti di proprietà
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `transfer.not_found` | 404 | info | Trasferimento non trovato | | |
+| `transfer.creation.not_current_owner` | 403 | warning | Non sei il proprietario attuale | | |
+| `transfer.creation.already_pending` | 409 | warning | Transfer già attivo per questo veicolo | | BR-047 |
+| `transfer.creation.vehicle_not_certified` | 422 | info | Impossibile trasferire veicolo pending | | BR-046 |
+| `transfer.acceptance.expired` | 410 | info | Trasferimento scaduto | expires_at passato | |
+| `transfer.acceptance.already_completed` | 409 | info | Trasferimento già completato | | |
+| `transfer.acceptance.not_pending_recipient` | 422 | warning | Stato non valido per accettazione | | |
+| `transfer.acceptance.invited_email_mismatch` | 403 | warning | Email non corrisponde all'invito | | |
+| `transfer.confirmation.not_pending_seller` | 422 | warning | Stato non valido per conferma cedente | | |
+| `transfer.confirmation.not_from_customer` | 403 | warning | Non sei il cedente di questo transfer | | |
+| `transfer.claim_without_seller.libretto_required` | 400 | info | Libretto di circolazione obbligatorio | | BR-044 |
+| `transfer.claim_without_seller.ocr_mismatch` | 422 | warning | Dati libretto non corrispondono | Review manuale | BR-044 |
+| `transfer.rejection.not_permitted` | 403 | warning | Non puoi rifiutare questo transfer | | |
+
+### 3.9 Scadenze
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `deadline.not_found` | 404 | info | Scadenza non trovata | | |
+| `deadline.creation.missing_criterion` | 400 | info | Almeno un criterio richiesto | Né data né km | BR-100 |
+| `deadline.creation.duplicate_warning` | 409 | warning | Scadenza dello stesso tipo già aperta | Richiede force_duplicate | BR-109 |
+| `deadline.completion.already_completed` | 409 | info | Scadenza già completata | | |
+| `deadline.completion.intervention_mismatch` | 422 | warning | Intervento non corrisponde al tipo scadenza | | BR-067 |
+| `deadline.modification.permission_denied` | 403 | warning | Solo chi l'ha creata può modificarla | | |
+| `deadline.recurring.config_invalid` | 400 | info | Config ricorrenza incompleta | is_recurring=true senza months o km | |
+
+### 3.10 Allegati
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `attachment.not_found` | 404 | info | Allegato non trovato | | |
+| `attachment.upload.too_large` | 400 | info | File troppo grande | >10 MB | BR-180 |
+| `attachment.upload.mime_not_allowed` | 400 | info | Formato non consentito | Formato non in whitelist | BR-180 |
+| `attachment.upload.too_many` | 409 | info | Limite allegati raggiunto | >10 per intervention | BR-180 |
+| `attachment.upload.url_expired` | 410 | info | URL di upload scaduto | Presigned URL >15min | |
+| `attachment.upload.confirmation_mismatch` | 422 | warning | Conferma upload non corrisponde | Size/hash mismatch | |
+| `attachment.download.permission_denied` | 403 | warning | Non autorizzato a scaricare | | BR-184 |
+| `attachment.deletion.locked` | 422 | info | Allegato bloccato, intervento fuori finestra wiki | | BR-183 |
+
+### 3.11 Notifiche & push
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `notification.push_token.invalid` | 400 | info | Push token non valido | Token Expo non riconosciuto | |
+| `notification.push_token.already_registered` | 409 | info | Token già registrato (idempotente) | | BR-254 |
+| `notification.rate_limit` | 429 | warning | Troppe notifiche per customer | >5 email/giorno | BR-251 |
+
+### 3.12 Contestazioni
+
+*Già coperte in §3.6 (intervention.dispute.*).*
+
+### 3.13 Admin & sistema
+
+| Code | HTTP | Severity | Titolo | Quando |
+|---|---|---|---|---|
+| `admin.permission.denied` | 403 | critical | Azione riservata ad admin | |
+| `admin.impersonation.target_not_found` | 404 | info | Tenant da impersonare non trovato | |
+| `admin.impersonation.not_allowed` | 403 | critical | Impersonation non consentita | Target è admin |
+| `system.database.connection_failed` | 503 | critical | Database non raggiungibile | |
+| `system.email.send_failed` | 502 | error | Invio email fallito | SES error |
+| `system.push.send_failed` | 502 | error | Invio push fallito | Expo Push error |
+| `system.s3.upload_failed` | 502 | error | Upload S3 fallito | |
+| `system.scheduler.schedule_failed` | 502 | error | Creazione schedule EventBridge fallita | |
+
+### 3.14 GDPR & privacy
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `gdpr.deletion.active_data` | 422 | warning | Dati attivi impediscono cancellazione | Transfer pending, dispute open | BR-158 |
+| `gdpr.export.in_progress` | 409 | info | Export già in corso | |
+| `gdpr.export.not_ready` | 404 | info | Export non ancora pronto | Job async in elaborazione |
+
+---
+
+## 4. Mapping a classi eccezione backend
+
+### 4.1 Gerarchia eccezioni
+
+Nel codice backend, gli errori vengono lanciati come eccezioni TypeScript. La gerarchia:
+
+```typescript
+// packages/api/src/errors/index.ts
+
+export abstract class ApiError extends Error {
+  abstract readonly code: string;
+  abstract readonly httpStatus: number;
+  readonly severity: 'info' | 'warning' | 'error' | 'critical' = 'info';
+  readonly metadata?: Record<string, unknown>;
+
+  constructor(message: string, metadata?: Record<string, unknown>) {
+    super(message);
+    this.name = this.constructor.name;
+    this.metadata = metadata;
+  }
+}
+
+// Subclassi base per HTTP status
+export class ValidationError extends ApiError {
+  readonly httpStatus = 400;
+  readonly code = 'validation.failed';
+  readonly errors: FieldError[];
+
+  constructor(errors: FieldError[]) {
+    super('Validation failed');
+    this.errors = errors;
+  }
+}
+
+export class AuthenticationError extends ApiError {
+  readonly httpStatus = 401;
+  readonly code: string = 'auth.token.invalid';
+}
+
+export class AuthorizationError extends ApiError {
+  readonly httpStatus = 403;
+  readonly code: string = 'auth.permission.denied';
+  readonly severity = 'warning' as const;
+}
+
+export class NotFoundError extends ApiError {
+  readonly httpStatus = 404;
+  readonly code: string;
+
+  constructor(resourceType: string, id?: string) {
+    super(`${resourceType} not found${id ? `: ${id}` : ''}`);
+    this.code = `${resourceType}.not_found`;
+  }
+}
+
+export class ConflictError extends ApiError {
+  readonly httpStatus = 409;
+  readonly code: string;
+
+  constructor(code: string, message: string, metadata?: Record<string, unknown>) {
+    super(message, metadata);
+    this.code = code;
+  }
+}
+
+export class BusinessError extends ApiError {
+  readonly httpStatus = 422;
+  readonly code: string;
+  readonly severity: 'info' | 'warning' | 'error' = 'warning';
+
+  constructor(code: string, message: string, metadata?: Record<string, unknown>, severity?: 'info' | 'warning' | 'error') {
+    super(message, metadata);
+    this.code = code;
+    if (severity) this.severity = severity;
+  }
+}
+
+export class RateLimitError extends ApiError {
+  readonly httpStatus = 429;
+  readonly code: string;
+  readonly severity = 'warning' as const;
+
+  constructor(code: string, retryAfterSeconds: number) {
+    super('Rate limit exceeded', { retry_after_seconds: retryAfterSeconds });
+    this.code = code;
+  }
+}
+```
+
+### 4.2 Subclassi specifiche per business rules critiche
+
+Per le BR più usate, conviene avere classi dedicate per migliorare la leggibilità del codice:
+
+```typescript
+// packages/api/src/errors/vehicle.ts
+
+export class DuplicateVinError extends ConflictError {
+  constructor(vin: string, existingVehicleId: string) {
+    super(
+      'vehicle.creation.duplicate_vin',
+      `Veicolo con VIN ${vin} già esistente`,
+      { existing_vehicle_id: existingVehicleId, vin }
+    );
+  }
+}
+
+export class VehicleAlreadyOwnedError extends ConflictError {
+  constructor(vehicleId: string) {
+    super(
+      'vehicle.claim.already_owned_by_other',
+      'Veicolo già assegnato ad altro proprietario',
+      { vehicle_id: vehicleId }
+    );
+  }
+}
+
+export class VinImmutableError extends BusinessError {
+  constructor(vehicleId: string) {
+    super(
+      'vehicle.modification.vin_immutable',
+      'VIN non modificabile su veicolo certificato',
+      { vehicle_id: vehicleId },
+      'error'
+    );
+  }
+}
+
+export class OdometerDecreaseWarning extends ConflictError {
+  constructor(lastKm: number, newKm: number) {
+    super(
+      'intervention.creation.odometer_decrease_warning',
+      `Km (${newKm}) inferiori all'ultimo intervento (${lastKm}). Conferma richiesta.`,
+      { last_km: lastKm, new_km: newKm, force_param: 'forceKmDecrease' }
+    );
+  }
+}
+```
+
+### 4.3 Error handler Fastify globale
+
+```typescript
+// packages/api/src/plugins/error-handler.ts
+import { FastifyPluginAsync } from 'fastify';
+import { ApiError } from '../errors';
+import { ZodError } from 'zod';
+
+const errorHandler: FastifyPluginAsync = async (app) => {
+  app.setErrorHandler(async (error, request, reply) => {
+    const requestId = request.id;
+    const instance = request.url;
+    const timestamp = new Date().toISOString();
+
+    // Zod validation errors
+    if (error instanceof ZodError) {
+      const apiError = new ValidationError(
+        error.errors.map((e) => ({
+          field: e.path.join('.'),
+          code: e.code,
+          message: e.message,
+        }))
+      );
+      return sendApiError(reply, apiError, { request_id: requestId, instance, timestamp });
+    }
+
+    // Our custom ApiError
+    if (error instanceof ApiError) {
+      // Log based on severity
+      if (error.severity === 'critical') {
+        request.log.error({ err: error, metadata: error.metadata }, 'Critical API error');
+        // Report to Sentry
+      } else if (error.severity === 'error') {
+        request.log.error({ err: error }, 'API error');
+      } else {
+        request.log.info({ code: error.code }, 'Handled API error');
+      }
+
+      return sendApiError(reply, error, { request_id: requestId, instance, timestamp });
+    }
+
+    // Prisma errors (specifici)
+    if (error.code === 'P2002') {
+      // Unique constraint violation
+      const apiError = new ConflictError(
+        'generic.duplicate',
+        'Record duplicato',
+        { target: (error as any).meta?.target }
+      );
+      return sendApiError(reply, apiError, { request_id: requestId, instance, timestamp });
+    }
+
+    // Errore non gestito → 500
+    request.log.error({ err: error }, 'Unhandled error');
+    const internalError = new InternalServerError();
+    return sendApiError(reply, internalError, { request_id: requestId, instance, timestamp });
+  });
+};
+
+function sendApiError(reply: FastifyReply, error: ApiError, ctx: { request_id: string; instance: string; timestamp: string }) {
+  const payload = {
+    type: `https://api.garageos.it/errors/${error.code}`,
+    title: getTitle(error.code),
+    status: error.httpStatus,
+    code: error.code,
+    detail: error.message,
+    instance: ctx.instance,
+    request_id: ctx.request_id,
+    timestamp: ctx.timestamp,
+    ...(error instanceof ValidationError && { errors: error.errors }),
+    ...(error.metadata && { metadata: error.metadata }),
+  };
+
+  return reply.status(error.httpStatus).send(payload);
+}
+```
+
+---
+
+## 5. Localizzazione
+
+### 5.1 Strategia
+
+I messaggi di errore hanno **due livelli**:
+
+1. **`detail` server-side**: italiano in v1, serve come fallback e per log
+2. **Messaggio client-side**: il frontend usa `code` per lookup in un file di traduzioni locale (permette miglior UX: personalizzazione per contesto, formattazione ricca)
+
+### 5.2 File traduzioni client
+
+```typescript
+// packages/shared/src/i18n/error-messages.it.ts
+
+export const errorMessagesIT = {
+  // Generic
+  'generic.internal_error': {
+    title: 'Qualcosa è andato storto',
+    message: 'Si è verificato un errore inatteso. Riprova tra qualche istante.',
+  },
+  'generic.rate_limit_exceeded': {
+    title: 'Troppe richieste',
+    message: 'Hai fatto troppe operazioni in poco tempo. Attendi qualche minuto.',
+  },
+
+  // Auth
+  'auth.login.invalid_credentials': {
+    title: 'Credenziali errate',
+    message: 'Email o password non corretti.',
+  },
+  'auth.login.account_locked': {
+    title: 'Account bloccato',
+    message: 'Troppi tentativi falliti. Riprova tra 15 minuti o recupera la password.',
+  },
+
+  // Vehicle
+  'vehicle.creation.duplicate_vin': {
+    title: 'Veicolo già presente',
+    message: 'Un veicolo con questo VIN è già registrato nel sistema.',
+    actionSuggestion: 'Cerca il veicolo esistente o verifica il VIN inserito.',
+  },
+  'vehicle.claim.already_owned_by_other': {
+    title: 'Veicolo già reclamato',
+    message: 'Questo veicolo è già associato a un altro proprietario.',
+    actionSuggestion: 'Contatta il venditore per il passaggio di proprietà o usa la procedura di claim autonomo.',
+  },
+  'vehicle.modification.vin_immutable': {
+    title: 'VIN non modificabile',
+    message: 'Il numero di telaio di un veicolo certificato non può essere cambiato.',
+    actionSuggestion: 'Se il VIN è sbagliato, contatta il supporto.',
+  },
+
+  // Intervention
+  'intervention.modification.locked': {
+    title: 'Intervento bloccato',
+    message: "La finestra di modifica libera è scaduta. Puoi ancora modificare l'intervento, ma la modifica sarà visibile al cliente.",
+  },
+  'intervention.creation.odometer_decrease_warning': {
+    title: 'Km sospetti',
+    message: 'I chilometri inseriti sono inferiori a quelli dell\'ultimo intervento. Vuoi procedere comunque?',
+  },
+
+  // ... altre traduzioni
+};
+```
+
+### 5.3 Convenzione `actionSuggestion`
+
+Quando possibile, includere un suggerimento di azione:
+
+- Non solo "errore XYZ" ma "errore XYZ + cosa fare"
+- Esempio: "Email già registrata" + "Vuoi fare login o recuperare la password?"
+
+Questa è UX, non normativo — ma encouraged.
+
+### 5.4 Roadmap internationalization
+
+**v1**: solo italiano, file IT unico.
+**v2**: setup i18n completo con fallback EN. Ogni modulo frontend espone `t(code)` helper.
+
+---
+
+## 6. Pattern per aggiungere nuovi error code
+
+### 6.1 Checklist quando si aggiunge un nuovo error code
+
+1. [ ] **Scegli un codice seguendo la convenzione** `area.sub_area.specifico`
+2. [ ] **Verifica che non esista già** (grep nel codebase)
+3. [ ] **Aggiungilo nel catalogo** di questa appendice
+4. [ ] **Scegli lo status HTTP** appropriato
+5. [ ] **Scegli la severity**
+6. [ ] **Se è legato a una BR**, cita `BR-XXX` nel catalogo
+7. [ ] **Crea o estendi la classe eccezione** in `packages/api/src/errors/`
+8. [ ] **Aggiungi traduzione IT** in `errorMessagesIT`
+9. [ ] **Scrivi un test** che verifica che l'endpoint ritorna il codice corretto
+10. [ ] **Documenta nell'Appendice A** (se nuovo endpoint) o come errore possibile di uno esistente
+
+### 6.2 Template per nuova eccezione
+
+```typescript
+// packages/api/src/errors/<module>.ts
+
+export class MyNewError extends BusinessError {
+  constructor(contextValue: string) {
+    super(
+      'module.sub_module.specific_error',        // code
+      `Descrizione dettagliata con ${contextValue}`,  // message
+      { context_value: contextValue },           // metadata
+      'warning'                                   // severity
+    );
+  }
+}
+```
+
+### 6.3 Template per test
+
+```typescript
+describe('POST /vehicles — duplicate VIN handling', () => {
+  it('should return 409 with vehicle.creation.duplicate_vin code', async () => {
+    await VehicleFactory.create({ vin: 'EXISTING_VIN_HERE' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { /* ... */ vin: 'EXISTING_VIN_HERE' /* ... */ },
+    });
+
+    expect(response.statusCode).toBe(409);
+    const body = response.json();
+    expect(body.code).toBe('vehicle.creation.duplicate_vin');
+    expect(body.type).toBe('https://api.garageos.it/errors/vehicle.creation.duplicate_vin');
+    expect(body.metadata).toHaveProperty('existing_vehicle_id');
+    expect(body.request_id).toBeTruthy();
+  });
+});
+```
+
+### 6.4 Quando NON creare un nuovo error code
+
+Evitare proliferazione inutile di codici:
+
+- ❌ **Un codice per ogni campo mal validato**: usa `validation.failed` con `errors[]`
+- ❌ **Un codice per ogni condizione di errore minore**: se non richiede handling specifico dal client, usa un codice generico
+- ❌ **Due codici per la stessa situazione**: se "duplicato" può capitare in contesti diversi, lo stesso codice va bene (il path URL aiuta a distinguere)
+
+✅ **Crea un codice nuovo quando:**
+- Il client deve fare qualcosa di specifico in quella situazione
+- C'è una BR precisa da far rispettare
+- Il codice verrà usato in messaggi di aiuto contestuali
+
+---
+
+## 7. Indice alfabetico rapido
+
+Elenco di tutti gli error code v1.0 in ordine alfabetico, per ricerca rapida:
+
+```
+admin.impersonation.not_allowed
+admin.impersonation.target_not_found
+admin.permission.denied
+attachment.deletion.locked
+attachment.download.permission_denied
+attachment.not_found
+attachment.upload.confirmation_mismatch
+attachment.upload.mime_not_allowed
+attachment.upload.too_large
+attachment.upload.too_many
+attachment.upload.url_expired
+auth.2fa.invalid_code
+auth.2fa.required
+auth.login.account_inactive
+auth.login.account_locked
+auth.login.email_not_verified
+auth.login.invalid_credentials
+auth.password.too_weak
+auth.password_reset.invalid_token
+auth.permission.denied
+auth.signup.email_already_registered
+auth.signup.email_domain_blocked
+auth.tenant.suspended
+auth.token.expired
+auth.token.invalid
+auth.token.missing
+auth.token.revoked
+customer.business_data_missing
+customer.deletion.active_transfers
+customer.email_duplicate
+customer.not_found
+customer.pii_not_accessible
+customer.tax_code_invalid
+deadline.completion.already_completed
+deadline.completion.intervention_mismatch
+deadline.creation.duplicate_warning
+deadline.creation.missing_criterion
+deadline.modification.permission_denied
+deadline.not_found
+deadline.recurring.config_invalid
+gdpr.deletion.active_data
+gdpr.export.in_progress
+gdpr.export.not_ready
+generic.internal_error
+generic.not_found
+generic.rate_limit_exceeded
+generic.service_unavailable
+intervention.cancellation.already_cancelled
+intervention.cancellation.permission_denied
+intervention.cancellation.reason_too_short
+intervention.creation.date_before_registration
+intervention.creation.date_future
+intervention.creation.immutable_field
+intervention.creation.odometer_decrease_warning
+intervention.creation.parts_invalid
+intervention.creation.type_not_found
+intervention.dispute.already_exists
+intervention.dispute.description_too_short
+intervention.dispute.not_owner
+intervention.dispute.response.description_too_short
+intervention.dispute.response.not_your_intervention
+intervention.modification.locked
+intervention.modification.revision_reason_required
+intervention.not_found
+location.cannot_disable_last
+location.cannot_remove_primary
+location.not_found
+location.not_in_tenant
+notification.push_token.already_registered
+notification.push_token.invalid
+notification.rate_limit
+private_intervention.not_found
+private_intervention.not_owner
+private_intervention.rate_limit
+private_intervention.vehicle_not_owned
+system.database.connection_failed
+system.email.send_failed
+system.push.send_failed
+system.s3.upload_failed
+system.scheduler.schedule_failed
+tenant.billing.past_due
+tenant.not_found
+tenant.vat_number_duplicate
+tenant.vat_number_invalid
+transfer.acceptance.already_completed
+transfer.acceptance.expired
+transfer.acceptance.invited_email_mismatch
+transfer.acceptance.not_pending_recipient
+transfer.claim_without_seller.libretto_required
+transfer.claim_without_seller.ocr_mismatch
+transfer.confirmation.not_from_customer
+transfer.confirmation.not_pending_seller
+transfer.creation.already_pending
+transfer.creation.not_current_owner
+transfer.creation.vehicle_not_certified
+transfer.not_found
+transfer.rejection.not_permitted
+user.cannot_remove_last_super_admin
+user.invitation.already_accepted
+user.invitation.email_mismatch
+user.invitation.expired
+user.not_found
+user.role_change_would_orphan_tenant
+validation.failed
+validation.schema_mismatch
+vehicle.access.forbidden
+vehicle.certification.libretto_required
+vehicle.certification.not_pending
+vehicle.claim.already_owned_by_other
+vehicle.claim.already_owned_by_you
+vehicle.claim.archived
+vehicle.claim.pending_not_claimable
+vehicle.creation.duplicate_plate_warning
+vehicle.creation.duplicate_vin
+vehicle.creation.plate_invalid_format
+vehicle.creation.vin_invalid_checksum
+vehicle.creation.vin_invalid_format
+vehicle.creation.year_out_of_range
+vehicle.garage_code.invalid_format
+vehicle.garage_code.not_found
+vehicle.modification.archived
+vehicle.modification.certified_required
+vehicle.modification.vin_immutable
+vehicle.not_found
+vehicle.pending.duplicate_vin_certified
+```
+
+**Totale: ~120 error code documentati in v1.0.**
+
+---
+
+*Fine Appendice G — Error Codes Catalog*
