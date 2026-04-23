@@ -2,8 +2,8 @@
 
 > **Documento correlato:** questo è un'appendice del documento principale `GarageOS-Specifiche.md`. Definisce l'infrastruttura AWS via CDK, il setup GitHub, le procedure di deployment e gestione ambienti.
 >
-> **Versione:** v1.0 — allineata a `GarageOS-Specifiche.md` v1.5
-> **Ultimo aggiornamento:** 22 aprile 2026
+> **Versione:** v1.1 — allineata a `GarageOS-Specifiche.md` v1.6
+> **Ultimo aggiornamento:** 23 aprile 2026
 
 ---
 
@@ -54,24 +54,32 @@ Dalla Sezione 5 del documento master:
 
 | Servizio | Scopo | Stack |
 |---|---|---|
-| **App Runner** | Backend Fastify | Main stack |
+| **Lambda Functions** | Backend Fastify (via Lambda Web Adapter) | Main stack |
+| **API Gateway (HTTP API v2)** | Ingress HTTPS verso Lambda | Main stack |
 | **Cognito** | Two User Pool (officine, clienti) | Main stack |
 | **S3** | Allegati + Tag PDF | Main stack |
 | **CloudFront** | CDN asset web app | Main stack |
 | **Route 53** | DNS + registrar dominio | Main stack |
 | **Certificate Manager** | SSL certs | Main stack |
 | **WAF** | Protezione API | Main stack |
-| **EventBridge Scheduler** | Promemoria scadenze | Main stack |
+| **EventBridge Scheduler** | Promemoria scadenze + warming Lambda | Main stack |
 | **SES** | Email transazionali | Main stack |
 | **Secrets Manager** | Secrets applicativi | Main stack |
 | **CloudWatch** | Logs + metrics + alarms | Main stack |
+| **X-Ray** | Distributed tracing API Gateway + Lambda | Main stack |
 | **IAM** | Ruoli e policy | Main stack |
-| **ECR** | Container registry per App Runner | Main stack |
 
 **Servizi esterni ad AWS** (non gestiti via CDK):
 - **Supabase** — PostgreSQL managed (gestito via dashboard Supabase)
 - **Expo Push Service** — gestito via Expo dashboard
 - **Sentry** — gestito via Sentry dashboard
+
+### 1.3 Changelog
+
+| Versione | Data | Modifiche principali |
+|---|---|---|
+| **v1.1** | 2026-04-23 | Runtime backend aggiornato da App Runner a **Lambda + API Gateway HTTP API v2 + Lambda Web Adapter**. Motivazione: App Runner chiuso alle nuove iscrizioni dal 2026-04-30 (AWS announcement). Lambda offre costi 10-30× inferiori al volume pilota (<1M req/mese resta in free tier), scale-to-zero nativo, future-proof AWS. Refactoring packaging backend: bundling esbuild via `aws-cdk-lib/aws-lambda-nodejs` invece di container Docker ECR. Rimosse §10.3 (custom domain manuale): ora gestito da CDK via `aws-cdk-lib/aws-apigatewayv2` `DomainName` + `ApiMapping`. Nuova §11.4 con tabella stime costi backend runtime. |
+| v1.0 | 2026-04-22 | Versione iniziale, allineata a `GarageOS-Specifiche.md` v1.5. |
 
 ---
 
@@ -319,7 +327,8 @@ infrastructure/
 │   │   ├── main-stack.ts        # Stack principale (tutti i servizi)
 │   │   └── oidc-stack.ts        # GitHub OIDC trust (una tantum)
 │   ├── constructs/
-│   │   ├── app-runner.ts        # Construct custom per App Runner
+│   │   ├── lambda-api.ts        # Construct Lambda backend (Fastify via LWA)
+│   │   ├── api-gateway.ts       # Construct API Gateway HTTP API v2
 │   │   ├── cognito-pools.ts     # Construct per i due User Pool
 │   │   ├── storage.ts           # S3 buckets
 │   │   ├── waf.ts               # WAF + rules
@@ -420,11 +429,16 @@ export interface EnvironmentConfig {
   appSubdomain: string;
   emailFromDomain: string;
   emailFromAddress: string;
-  appRunner: {
-    cpu: '1 vCPU' | '2 vCPU';
-    memory: '2 GB' | '4 GB';
-    autoScalingMaxConcurrency: number;
-    autoScalingMaxSize: number;
+  lambda: {
+    memoryMb: number;
+    architecture: 'x86_64' | 'arm64';
+    timeoutSec: number;
+    reservedConcurrency: number;
+    runtime: 'nodejs22.x';
+  };
+  apiGateway: {
+    throttleBurst: number;
+    throttleRate: number;
   };
   logRetentionDays: number;
   wafEnabled: boolean;
@@ -437,11 +451,16 @@ export const productionConfig: EnvironmentConfig = {
   appSubdomain: 'app',
   emailFromDomain: 'garageos.it',
   emailFromAddress: 'noreply@garageos.it',
-  appRunner: {
-    cpu: '1 vCPU',
-    memory: '2 GB',
-    autoScalingMaxConcurrency: 100,
-    autoScalingMaxSize: 5,
+  lambda: {
+    memoryMb: 1024,
+    architecture: 'arm64',
+    timeoutSec: 30,
+    reservedConcurrency: 100,
+    runtime: 'nodejs22.x',
+  },
+  apiGateway: {
+    throttleBurst: 200,
+    throttleRate: 100,
   },
   logRetentionDays: 30,
   wafEnabled: true,
@@ -459,7 +478,8 @@ import { StorageConstruct } from '../constructs/storage';
 import { CognitoConstruct } from '../constructs/cognito-pools';
 import { SecretsConstruct } from '../constructs/secrets';
 import { WafConstruct } from '../constructs/waf';
-import { AppRunnerConstruct } from '../constructs/app-runner';
+import { LambdaApiConstruct } from '../constructs/lambda-api';
+import { ApiGatewayConstruct } from '../constructs/api-gateway';
 import { SchedulerConstruct } from '../constructs/scheduler';
 import { SesConstruct } from '../constructs/ses';
 import { MonitoringConstruct } from '../constructs/monitoring';
@@ -506,26 +526,33 @@ export class MainStack extends cdk.Stack {
       ? new WafConstruct(this, 'Waf', { scope: 'REGIONAL' })
       : null;
 
-    // 7. App Runner (backend API)
-    const apiService = new AppRunnerConstruct(this, 'ApiService', {
+    // 7. Lambda backend (Fastify via Lambda Web Adapter)
+    const lambdaApi = new LambdaApiConstruct(this, 'LambdaApi', {
       config,
       attachmentsBucket: storage.attachmentsBucket,
       cognitoPoolOfficine: cognito.officineUserPool,
       cognitoPoolClienti: cognito.clientiUserPool,
       secrets: secrets.appSecrets,
+    });
+
+    // 8. API Gateway HTTP API v2 (ingress HTTPS → Lambda)
+    const apiGateway = new ApiGatewayConstruct(this, 'ApiGateway', {
+      config,
+      lambdaFunction: lambdaApi.function,
       hostedZone: dns.hostedZone,
       certificate: dns.apiCertificate,
     });
 
-    // 8. EventBridge Scheduler
+    // 9. EventBridge Scheduler (deadline reminders + Lambda warming)
     const scheduler = new SchedulerConstruct(this, 'Scheduler', {
-      appRunnerServiceUrl: apiService.serviceUrl,
+      lambdaFunction: lambdaApi.function,
       hmacSecret: secrets.eventbridgeHmacSecret,
     });
 
-    // 9. Monitoring (CloudWatch alarms)
+    // 10. Monitoring (CloudWatch alarms)
     new MonitoringConstruct(this, 'Monitoring', {
-      apiService: apiService.service,
+      lambdaFunction: lambdaApi.function,
+      httpApi: apiGateway.httpApi,
       attachmentsBucket: storage.attachmentsBucket,
       logRetentionDays: config.logRetentionDays,
     });
@@ -536,6 +563,12 @@ export class MainStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, 'AppUrl', {
       value: `https://${config.appSubdomain}.${config.domainName}`,
+    });
+    new cdk.CfnOutput(this, 'LambdaFunctionArn', {
+      value: lambdaApi.function.functionArn,
+    });
+    new cdk.CfnOutput(this, 'HttpApiEndpoint', {
+      value: apiGateway.httpApi.apiEndpoint,
     });
     new cdk.CfnOutput(this, 'CognitoOfficineUserPoolId', {
       value: cognito.officineUserPool.userPoolId,
@@ -779,7 +812,7 @@ export class SecretsConstruct extends Construct {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // HMAC secret per auth endpoints interni (EventBridge → App Runner)
+    // HMAC secret per auth endpoints interni (EventBridge Scheduler → Lambda)
     this.eventbridgeHmacSecret = new secretsmanager.Secret(this, 'EventBridgeHmac', {
       secretName: `garageos/${props.environment}/eventbridge-hmac`,
       description: 'HMAC secret for EventBridge Scheduler callbacks',
@@ -907,60 +940,72 @@ export class WafConstruct extends Construct {
 }
 ```
 
-### 5.9 Construct: App Runner
+### 5.9 Construct: Lambda API (Fastify via Lambda Web Adapter)
+
+Il backend Fastify gira su AWS Lambda grazie al [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter): un layer che traduce eventi Lambda in richieste HTTP verso l'app Node.js in ascolto su `127.0.0.1:8080`. Il codice applicativo resta una Fastify app standard — nessuna modifica agli handler.
+
+**Scelte chiave:**
+- **arm64 (Graviton)**: ~20% risparmio costo, piena compatibilità Node.js 22
+- **1024 MB memory**: adeguato per Fastify + Prisma con pool ~10-20 connessioni
+- **30s timeout**: margine per query DB complesse (default 3s insufficiente)
+- **Reserved concurrency = 100**: cap di protezione contro runaway invocations
+- **No VPC**: accesso Supabase via internet pubblico (evita cold start penalty ENI ~1-2s)
+- **Bundling esbuild**: `NodejsFunction` L2 fa tree-shaking e minify automaticamente
+- **Log retention 7 giorni**: ottimizzazione costi CloudWatch (principale voce al pilota)
+
+> ⚠️ **Versioni al momento della stesura (2026-04-23) — verificare prima del deploy:**
+> - `aws-cdk-lib` 2.250.0
+> - Lambda Web Adapter layer `arn:aws:lambda:${region}:753240598075:layer:LambdaAdapterLayerArm64:27`
+> - Lambda runtime `Runtime.NODEJS_22_X` (LTS fino aprile 2027)
+>
+> Se le versioni sono cambiate, aggiornare prima del primo `cdk deploy`.
 
 ```typescript
-// lib/constructs/app-runner.ts
+// lib/constructs/lambda-api.ts
 import { Construct } from 'constructs';
-import * as apprunner from 'aws-cdk-lib/aws-apprunner';
-import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import * as route53 from 'aws-cdk-lib/aws-route53';
-import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cdk from 'aws-cdk-lib';
 import { EnvironmentConfig } from '../config/production';
+import * as path from 'node:path';
 
-interface AppRunnerProps {
+interface LambdaApiProps {
   config: EnvironmentConfig;
   attachmentsBucket: s3.IBucket;
   cognitoPoolOfficine: cognito.IUserPool;
   cognitoPoolClienti: cognito.IUserPool;
   secrets: secretsmanager.ISecret;
-  hostedZone: route53.IHostedZone;
-  certificate: acm.ICertificate;
 }
 
-export class AppRunnerConstruct extends Construct {
-  public readonly service: apprunner.CfnService;
-  public readonly serviceUrl: string;
-  public readonly ecrRepo: ecr.Repository;
+export class LambdaApiConstruct extends Construct {
+  public readonly function: lambda.IFunction;
+  public readonly logGroup: logs.LogGroup;
 
-  constructor(scope: Construct, id: string, props: AppRunnerProps) {
+  constructor(scope: Construct, id: string, props: LambdaApiProps) {
     super(scope, id);
 
-    // ECR repo per l'immagine Docker del backend
-    this.ecrRepo = new ecr.Repository(this, 'ApiRepo', {
-      repositoryName: 'garageos-api',
-      imageScanOnPush: true,
-      lifecycleRules: [
-        { maxImageCount: 10 },
+    const { config } = props;
+
+    // IAM role per la Lambda (esegue il codice Fastify)
+    const executionRole = new iam.Role(this, 'ExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          'service-role/AWSLambdaBasicExecutionRole',
+        ),
       ],
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // IAM role for App Runner tasks
-    const taskRole = new iam.Role(this, 'TaskRole', {
-      assumedBy: new iam.ServicePrincipal('tasks.apprunner.amazonaws.com'),
-    });
+    // Permessi: S3 allegati, Cognito admin, Secrets, EventBridge Scheduler, SES
+    props.attachmentsBucket.grantReadWrite(executionRole);
+    props.secrets.grantRead(executionRole);
 
-    // Permissions: read S3, access Cognito, read secrets, publish EventBridge schedules
-    props.attachmentsBucket.grantReadWrite(taskRole);
-    props.secrets.grantRead(taskRole);
-
-    taskRole.addToPolicy(new iam.PolicyStatement({
+    executionRole.addToPolicy(new iam.PolicyStatement({
       actions: [
         'cognito-idp:AdminGetUser',
         'cognito-idp:AdminCreateUser',
@@ -973,7 +1018,7 @@ export class AppRunnerConstruct extends Construct {
       ],
     }));
 
-    taskRole.addToPolicy(new iam.PolicyStatement({
+    executionRole.addToPolicy(new iam.PolicyStatement({
       actions: [
         'scheduler:CreateSchedule',
         'scheduler:DeleteSchedule',
@@ -983,69 +1028,202 @@ export class AppRunnerConstruct extends Construct {
       resources: ['*'],
     }));
 
-    taskRole.addToPolicy(new iam.PolicyStatement({
+    executionRole.addToPolicy(new iam.PolicyStatement({
       actions: ['ses:SendEmail', 'ses:SendRawEmail'],
       resources: ['*'],
     }));
 
-    // Access role per App Runner (pull da ECR)
-    const accessRole = new iam.Role(this, 'AccessRole', {
-      assumedBy: new iam.ServicePrincipal('build.apprunner.amazonaws.com'),
-    });
-    this.ecrRepo.grantPull(accessRole);
-
-    // App Runner service
-    this.service = new apprunner.CfnService(this, 'Service', {
-      serviceName: 'garageos-api',
-      sourceConfiguration: {
-        autoDeploymentsEnabled: true,
-        authenticationConfiguration: {
-          accessRoleArn: accessRole.roleArn,
-        },
-        imageRepository: {
-          imageIdentifier: `${this.ecrRepo.repositoryUri}:latest`,
-          imageRepositoryType: 'ECR',
-          imageConfiguration: {
-            port: '3000',
-            runtimeEnvironmentVariables: [
-              { name: 'NODE_ENV', value: 'production' },
-              { name: 'AWS_REGION', value: 'eu-central-1' },
-              { name: 'ATTACHMENTS_BUCKET', value: props.attachmentsBucket.bucketName },
-              { name: 'COGNITO_OFFICINE_POOL_ID', value: props.cognitoPoolOfficine.userPoolId },
-              { name: 'COGNITO_CLIENTI_POOL_ID', value: props.cognitoPoolClienti.userPoolId },
-              { name: 'APP_SECRETS_ARN', value: props.secrets.secretArn },
-            ],
-          },
-        },
-      },
-      instanceConfiguration: {
-        cpu: props.config.appRunner.cpu,
-        memory: props.config.appRunner.memory,
-        instanceRoleArn: taskRole.roleArn,
-      },
-      healthCheckConfiguration: {
-        protocol: 'HTTP',
-        path: '/health',
-        interval: 10,
-        timeout: 5,
-        healthyThreshold: 1,
-        unhealthyThreshold: 3,
-      },
-      autoScalingConfigurationArn: new apprunner.CfnAutoScalingConfiguration(this, 'AutoScaling', {
-        autoScalingConfigurationName: 'garageos-api-autoscaling',
-        maxConcurrency: props.config.appRunner.autoScalingMaxConcurrency,
-        maxSize: props.config.appRunner.autoScalingMaxSize,
-        minSize: 1,
-      }).attrAutoScalingConfigurationArn,
+    // Log group con retention esplicita (ottimizzazione costi CloudWatch)
+    this.logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
+      logGroupName: '/aws/lambda/garageos-api',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    this.serviceUrl = `https://${this.service.attrServiceUrl}`;
+    // Lambda Web Adapter layer (public ECR, published by AWS Labs)
+    // Account 753240598075, versione 27 al 2026-04-23 — verificare
+    const lwaLayer = lambda.LayerVersion.fromLayerVersionArn(
+      this,
+      'LwaLayer',
+      `arn:aws:lambda:${cdk.Stack.of(this).region}:753240598075:layer:LambdaAdapterLayerArm64:27`,
+    );
 
-    // Custom domain association (api.garageos.it → App Runner)
-    new apprunner.CfnService.ServiceProperty; // placeholder
-    // Note: CDK L1 per custom domain association è limitato,
-    // va configurato post-deploy via AWS CLI oppure Custom Resource.
-    // Vedi §10.3 per procedura.
+    // Lambda function — bundling esbuild automatico via NodejsFunction L2
+    const fn = new lambdaNodejs.NodejsFunction(this, 'ApiFunction', {
+      functionName: 'garageos-api',
+      entry: path.join(__dirname, '../../../packages/api/src/server.ts'),
+      handler: 'handler', // Fastify app exports { handler: fastifyApp } (no-op, LWA intercepts)
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      memorySize: config.lambda.memoryMb,
+      timeout: cdk.Duration.seconds(config.lambda.timeoutSec),
+      reservedConcurrentExecutions: config.lambda.reservedConcurrency,
+      role: executionRole,
+      logGroup: this.logGroup,
+      layers: [lwaLayer],
+      tracing: lambda.Tracing.ACTIVE, // X-Ray
+      environment: {
+        NODE_ENV: 'production',
+        // Lambda Web Adapter config — tells LWA which local port Fastify listens on
+        AWS_LWA_PORT: '8080',
+        AWS_LWA_READINESS_CHECK_PATH: '/health',
+        AWS_LWA_ASYNC_INIT: 'true',
+        // App config
+        ATTACHMENTS_BUCKET: props.attachmentsBucket.bucketName,
+        COGNITO_OFFICINE_POOL_ID: props.cognitoPoolOfficine.userPoolId,
+        COGNITO_CLIENTI_POOL_ID: props.cognitoPoolClienti.userPoolId,
+        APP_SECRETS_ARN: props.secrets.secretArn,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node22',
+        format: lambdaNodejs.OutputFormat.ESM,
+        // Escludere SDK AWS v3 (già presente nel runtime Lambda) e Prisma client
+        // (copiato via nodeModules per includere i binari nativi)
+        externalModules: ['@aws-sdk/*'],
+        nodeModules: ['@prisma/client', 'prisma'],
+      },
+    });
+
+    this.function = fn;
+  }
+}
+```
+
+### 5.9.1 Construct: API Gateway HTTP API v2
+
+Ingress HTTPS pubblico verso la Lambda. Usiamo **HTTP API v2** invece di REST API v1: ~70% più economica ($1.00 vs $3.50 per milione di richieste) e sufficiente per il nostro caso d'uso (niente usage plans, niente API keys complesse).
+
+```typescript
+// lib/constructs/api-gateway.ts
+import { Construct } from 'constructs';
+import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
+import * as apigwIntegrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as cdk from 'aws-cdk-lib';
+import { EnvironmentConfig } from '../config/production';
+
+interface ApiGatewayProps {
+  config: EnvironmentConfig;
+  lambdaFunction: lambda.IFunction;
+  hostedZone: route53.IHostedZone;
+  certificate: acm.ICertificate;
+}
+
+export class ApiGatewayConstruct extends Construct {
+  public readonly httpApi: apigw.HttpApi;
+  public readonly domainName: apigw.DomainName;
+  public readonly accessLogGroup: logs.LogGroup;
+
+  constructor(scope: Construct, id: string, props: ApiGatewayProps) {
+    super(scope, id);
+
+    const { config } = props;
+    const fqdn = `${config.apiSubdomain}.${config.domainName}`;
+
+    // Access logs: JSON strutturato a CloudWatch
+    this.accessLogGroup = new logs.LogGroup(this, 'AccessLogs', {
+      logGroupName: '/aws/apigateway/garageos-api-access',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Custom domain (gestito da CDK nativamente — niente step manuale post-deploy)
+    this.domainName = new apigw.DomainName(this, 'DomainName', {
+      domainName: fqdn,
+      certificate: props.certificate,
+      endpointType: apigw.EndpointType.REGIONAL,
+      securityPolicy: apigw.SecurityPolicy.TLS_1_2,
+    });
+
+    // HTTP API v2
+    this.httpApi = new apigw.HttpApi(this, 'HttpApi', {
+      apiName: 'garageos-api',
+      description: 'GarageOS backend (Fastify on Lambda)',
+      corsPreflight: {
+        allowOrigins: [
+          'https://app.garageos.it',
+          'https://garageos.it',
+          // Expo dev client + EAS production builds (deep links)
+          'exp://',
+          'garageos://',
+        ],
+        allowMethods: [
+          apigw.CorsHttpMethod.GET,
+          apigw.CorsHttpMethod.POST,
+          apigw.CorsHttpMethod.PUT,
+          apigw.CorsHttpMethod.PATCH,
+          apigw.CorsHttpMethod.DELETE,
+          apigw.CorsHttpMethod.OPTIONS,
+        ],
+        allowHeaders: ['Authorization', 'Content-Type', 'X-Tenant-Id', 'X-Idempotency-Key'],
+        exposeHeaders: ['X-Request-Id'],
+        maxAge: cdk.Duration.hours(1),
+        allowCredentials: false,
+      },
+      defaultDomainMapping: {
+        domainName: this.domainName,
+      },
+      disableExecuteApiEndpoint: false, // utile per smoke test pre-DNS cutover
+    });
+
+    // Throttle di default (burst + rate per stage)
+    const defaultStage = this.httpApi.defaultStage?.node.defaultChild as apigw.CfnStage;
+    if (defaultStage) {
+      defaultStage.defaultRouteSettings = {
+        throttlingBurstLimit: config.apiGateway.throttleBurst,
+        throttlingRateLimit: config.apiGateway.throttleRate,
+        detailedMetricsEnabled: true,
+      };
+      // Access logs in formato JSON
+      defaultStage.accessLogSettings = {
+        destinationArn: this.accessLogGroup.logGroupArn,
+        format: JSON.stringify({
+          requestId: '$context.requestId',
+          ip: '$context.identity.sourceIp',
+          requestTime: '$context.requestTime',
+          httpMethod: '$context.httpMethod',
+          routeKey: '$context.routeKey',
+          status: '$context.status',
+          protocol: '$context.protocol',
+          responseLength: '$context.responseLength',
+          integrationLatency: '$context.integrationLatency',
+          userAgent: '$context.identity.userAgent',
+        }),
+      };
+    }
+
+    // Integrazione Lambda proxy (catch-all)
+    const integration = new apigwIntegrations.HttpLambdaIntegration(
+      'LambdaIntegration',
+      props.lambdaFunction,
+      {
+        payloadFormatVersion: apigw.PayloadFormatVersion.VERSION_2_0,
+      },
+    );
+
+    this.httpApi.addRoutes({
+      path: '/{proxy+}',
+      methods: [apigw.HttpMethod.ANY],
+      integration,
+    });
+
+    // Route 53 A record alias verso API Gateway regional endpoint
+    new route53.ARecord(this, 'ApiAliasRecord', {
+      zone: props.hostedZone,
+      recordName: config.apiSubdomain,
+      target: route53.RecordTarget.fromAlias(
+        new route53Targets.ApiGatewayv2DomainProperties(
+          this.domainName.regionalDomainName,
+          this.domainName.regionalHostedZoneId,
+        ),
+      ),
+    });
   }
 }
 ```
@@ -1057,26 +1235,28 @@ export class AppRunnerConstruct extends Construct {
 import { Construct } from 'constructs';
 import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 
 interface SchedulerProps {
-  appRunnerServiceUrl: string;
+  lambdaFunction: lambda.IFunction;
   hmacSecret: secretsmanager.ISecret;
 }
 
 export class SchedulerConstruct extends Construct {
   public readonly schedulerRole: iam.Role;
   public readonly scheduleGroup: scheduler.CfnScheduleGroup;
+  public readonly warmingSchedule: scheduler.CfnSchedule;
 
   constructor(scope: Construct, id: string, props: SchedulerProps) {
     super(scope, id);
 
-    // Schedule group dedicato per le scadenze
+    // Schedule group dedicato per le scadenze (deadline reminders)
     this.scheduleGroup = new scheduler.CfnScheduleGroup(this, 'DeadlineGroup', {
       name: 'garageos-deadlines',
     });
 
-    // Role usato da EventBridge per invocare l'endpoint HTTP
+    // Role usato da EventBridge per invocare endpoint HTTP (scadenze) e Lambda (warming)
     this.schedulerRole = new iam.Role(this, 'SchedulerRole', {
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
       inlinePolicies: {
@@ -1092,30 +1272,78 @@ export class SchedulerConstruct extends Construct {
             }),
           ],
         }),
+        InvokeLambda: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              actions: ['lambda:InvokeFunction'],
+              resources: [props.lambdaFunction.functionArn],
+            }),
+          ],
+        }),
       },
     });
 
-    // Individual schedules sono creati runtime dall'applicazione
-    // tramite SchedulerClient SDK. Qui si prepara solo l'infrastruttura.
+    // Warming schedule: invoca la Lambda ogni 5 minuti dal lunedì al sabato
+    // 08:00-20:00 Europe/Rome. L'handler Fastify deve rispondere rapidamente
+    // a `{ source: 'warming' }` senza toccare DB. Costo trascurabile
+    // (~3500 invocazioni/mese, dentro free tier Lambda).
+    this.warmingSchedule = new scheduler.CfnSchedule(this, 'WarmingSchedule', {
+      name: 'garageos-api-warming',
+      groupName: 'default',
+      description: 'Keep Lambda warm during business hours (reduces p99 cold-start tail)',
+      state: 'ENABLED',
+      scheduleExpression: 'cron(*/5 8-20 ? * MON-SAT *)',
+      scheduleExpressionTimezone: 'Europe/Rome',
+      flexibleTimeWindow: { mode: 'OFF' },
+      target: {
+        arn: props.lambdaFunction.functionArn,
+        roleArn: this.schedulerRole.roleArn,
+        input: JSON.stringify({ source: 'warming' }),
+        retryPolicy: {
+          maximumRetryAttempts: 0,
+        },
+      },
+    });
+
+    // Individual deadline schedules sono creati runtime dall'applicazione
+    // tramite SchedulerClient SDK. Qui si prepara solo l'infrastruttura base.
   }
 }
 ```
 
 ### 5.11 Construct: Monitoring
 
+**Metriche osservate:**
+
+| Fonte | Metriche |
+|---|---|
+| `AWS/Lambda` (dimensione `FunctionName=garageos-api`) | `Duration` (p50/p95/p99), `Errors`, `Throttles`, `ConcurrentExecutions`, `Invocations` |
+| `AWS/ApiGateway` (dimensione `ApiId`) | `4xx`, `5xx`, `Latency`, `IntegrationLatency`, `Count` |
+
+**Cold start**: non esiste una metrica CloudWatch nativa. Si deriva con una query **CloudWatch Logs Insights** su `REPORT` records della Lambda:
+
+```
+filter @type = "REPORT"
+| stats count(*) as invocations, count(@initDuration) as coldStarts,
+        (count(@initDuration) * 100 / count(*)) as coldStartPct by bin(5m)
+```
+
+In alternativa, la service map **X-Ray** mostra p99 di `Initialization` segment. X-Ray è abilitato sia sull'HTTP API che sulla Lambda (`Tracing.ACTIVE`).
+
 ```typescript
 // lib/constructs/monitoring.ts
 import { Construct } from 'constructs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
-import * as logs from 'aws-cdk-lib/aws-logs';
-import * as apprunner from 'aws-cdk-lib/aws-apprunner';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as cw_actions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as cdk from 'aws-cdk-lib';
 
 interface MonitoringProps {
-  apiService: apprunner.CfnService;
+  lambdaFunction: lambda.IFunction;
+  httpApi: apigw.HttpApi;
   attachmentsBucket: s3.IBucket;
   logRetentionDays: number;
 }
@@ -1126,48 +1354,91 @@ export class MonitoringConstruct extends Construct {
   constructor(scope: Construct, id: string, props: MonitoringProps) {
     super(scope, id);
 
-    // SNS topic per alert
+    // SNS topic per alert (email subscription aggiunta post-deploy via console o CLI)
     this.alertTopic = new sns.Topic(this, 'AlertTopic', {
       displayName: 'GarageOS Production Alerts',
     });
 
-    // Add email subscription post-deploy (via console o CLI)
+    const lambdaDims = { FunctionName: props.lambdaFunction.functionName };
+    const apiDims = { ApiId: props.httpApi.apiId };
 
-    // Log group retention
-    const appRunnerLogGroup = new logs.LogGroup(this, 'ApiLogGroup', {
-      logGroupName: `/aws/apprunner/garageos-api/application`,
-      retention: props.logRetentionDays,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    // Alarm: Lambda error rate > 5% su finestra 5 min
+    new cloudwatch.Alarm(this, 'LambdaHighErrorRate', {
+      alarmName: 'garageos-api-lambda-errors',
+      alarmDescription: 'Lambda error rate > 5% over 5 minutes',
+      metric: new cloudwatch.MathExpression({
+        expression: '(errors / invocations) * 100',
+        usingMetrics: {
+          errors: new cloudwatch.Metric({
+            namespace: 'AWS/Lambda',
+            metricName: 'Errors',
+            dimensionsMap: lambdaDims,
+            statistic: 'Sum',
+            period: cdk.Duration.minutes(5),
+          }),
+          invocations: new cloudwatch.Metric({
+            namespace: 'AWS/Lambda',
+            metricName: 'Invocations',
+            dimensionsMap: lambdaDims,
+            statistic: 'Sum',
+            period: cdk.Duration.minutes(5),
+          }),
+        },
+      }),
+      threshold: 5,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(new cw_actions.SnsAction(this.alertTopic));
 
-    // Alarm: 5xx error rate > 1% for 5 min
-    new cloudwatch.Alarm(this, 'HighErrorRate', {
-      alarmName: 'garageos-api-high-error-rate',
+    // Alarm: Lambda duration p95 > 3s
+    new cloudwatch.Alarm(this, 'LambdaHighDuration', {
+      alarmName: 'garageos-api-lambda-duration',
+      alarmDescription: 'Lambda p95 duration > 3s over 5 minutes',
       metric: new cloudwatch.Metric({
-        namespace: 'AWS/AppRunner',
-        metricName: '5xxStatusResponses',
-        dimensionsMap: { ServiceName: 'garageos-api' },
+        namespace: 'AWS/Lambda',
+        metricName: 'Duration',
+        dimensionsMap: lambdaDims,
+        statistic: 'p95',
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 3000, // ms
+      evaluationPeriods: 2,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+    }).addAlarmAction(new cw_actions.SnsAction(this.alertTopic));
+
+    // Alarm: Throttles > 10 in 5 min (segnala saturazione reserved concurrency)
+    new cloudwatch.Alarm(this, 'LambdaThrottles', {
+      alarmName: 'garageos-api-lambda-throttles',
+      alarmDescription: 'Lambda throttling events (reserved concurrency saturation)',
+      metric: new cloudwatch.Metric({
+        namespace: 'AWS/Lambda',
+        metricName: 'Throttles',
+        dimensionsMap: lambdaDims,
         statistic: 'Sum',
         period: cdk.Duration.minutes(5),
       }),
       threshold: 10,
       evaluationPeriods: 1,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     }).addAlarmAction(new cw_actions.SnsAction(this.alertTopic));
 
-    // Alarm: latency p99 > 2s
-    new cloudwatch.Alarm(this, 'HighLatency', {
-      alarmName: 'garageos-api-high-latency',
+    // Alarm: API Gateway 5xx > 10 in 5 min
+    new cloudwatch.Alarm(this, 'ApiGateway5xx', {
+      alarmName: 'garageos-api-apigw-5xx',
+      alarmDescription: 'API Gateway 5xx responses (backend failures)',
       metric: new cloudwatch.Metric({
-        namespace: 'AWS/AppRunner',
-        metricName: 'RequestLatency',
-        dimensionsMap: { ServiceName: 'garageos-api' },
-        statistic: 'p99',
-        period: cdk.Duration.minutes(10),
+        namespace: 'AWS/ApiGateway',
+        metricName: '5xx',
+        dimensionsMap: apiDims,
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5),
       }),
-      threshold: 2000, // ms
-      evaluationPeriods: 2,
+      threshold: 10,
+      evaluationPeriods: 1,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     }).addAlarmAction(new cw_actions.SnsAction(this.alertTopic));
 
     // Dashboard
@@ -1177,51 +1448,79 @@ export class MonitoringConstruct extends Construct {
 
     dashboard.addWidgets(
       new cloudwatch.GraphWidget({
-        title: 'API Requests',
+        title: 'API Requests (Invocations)',
         left: [
           new cloudwatch.Metric({
-            namespace: 'AWS/AppRunner',
-            metricName: 'RequestCount',
-            dimensionsMap: { ServiceName: 'garageos-api' },
+            namespace: 'AWS/Lambda',
+            metricName: 'Invocations',
+            dimensionsMap: lambdaDims,
             statistic: 'Sum',
           }),
         ],
       }),
       new cloudwatch.GraphWidget({
-        title: 'API Latency',
+        title: 'Lambda Duration',
         left: [
           new cloudwatch.Metric({
-            namespace: 'AWS/AppRunner',
-            metricName: 'RequestLatency',
-            dimensionsMap: { ServiceName: 'garageos-api' },
+            namespace: 'AWS/Lambda',
+            metricName: 'Duration',
+            dimensionsMap: lambdaDims,
             statistic: 'p50',
             label: 'p50',
           }),
           new cloudwatch.Metric({
-            namespace: 'AWS/AppRunner',
-            metricName: 'RequestLatency',
-            dimensionsMap: { ServiceName: 'garageos-api' },
+            namespace: 'AWS/Lambda',
+            metricName: 'Duration',
+            dimensionsMap: lambdaDims,
+            statistic: 'p95',
+            label: 'p95',
+          }),
+          new cloudwatch.Metric({
+            namespace: 'AWS/Lambda',
+            metricName: 'Duration',
+            dimensionsMap: lambdaDims,
             statistic: 'p99',
             label: 'p99',
           }),
         ],
       }),
       new cloudwatch.GraphWidget({
-        title: 'API Errors',
+        title: 'API Gateway Errors',
         left: [
           new cloudwatch.Metric({
-            namespace: 'AWS/AppRunner',
-            metricName: '4xxStatusResponses',
-            dimensionsMap: { ServiceName: 'garageos-api' },
+            namespace: 'AWS/ApiGateway',
+            metricName: '4xx',
+            dimensionsMap: apiDims,
             statistic: 'Sum',
             label: '4xx',
           }),
           new cloudwatch.Metric({
-            namespace: 'AWS/AppRunner',
-            metricName: '5xxStatusResponses',
-            dimensionsMap: { ServiceName: 'garageos-api' },
+            namespace: 'AWS/ApiGateway',
+            metricName: '5xx',
+            dimensionsMap: apiDims,
             statistic: 'Sum',
             label: '5xx',
+          }),
+        ],
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Lambda Concurrency & Throttles',
+        left: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/Lambda',
+            metricName: 'ConcurrentExecutions',
+            dimensionsMap: lambdaDims,
+            statistic: 'Maximum',
+            label: 'Concurrent (max)',
+          }),
+        ],
+        right: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/Lambda',
+            metricName: 'Throttles',
+            dimensionsMap: lambdaDims,
+            statistic: 'Sum',
+            label: 'Throttles',
           }),
         ],
       }),
@@ -1286,7 +1585,7 @@ export class OidcStack extends cdk.Stack {
 
 ### 6.1 Principio
 
-Supabase è **gestito fuori da CDK** perché non è un servizio AWS. Lo si configura manualmente via dashboard Supabase, e le sue credenziali vengono fornite all'App Runner tramite Secrets Manager.
+Supabase è **gestito fuori da CDK** perché non è un servizio AWS. Lo si configura manualmente via dashboard Supabase, e le sue credenziali vengono fornite alla Lambda backend tramite Secrets Manager.
 
 ### 6.2 Setup Supabase (una tantum)
 
@@ -1327,17 +1626,17 @@ aws secretsmanager update-secret \
     }'
 ```
 
-L'App Runner leggerà il secret al momento dell'avvio.
+La Lambda leggerà il secret all'avvio (cold start) una volta sola per invocazione container — vedi §8.3 per il caching applicativo.
 
 ### 6.5 Network isolation Supabase
 
-Supabase supporta **IP allowlist** per restringere chi può connettersi al DB. **Limitazione attuale**: App Runner non ha IP statico (scala orizzontalmente su IP diversi), quindi in v1 si lascia **allow-all** e ci si affida a:
+Supabase supporta **IP allowlist** per restringere chi può connettersi al DB. **Limitazione attuale**: la Lambda gira **fuori da VPC** (scelta esplicita per evitare cold start ENI di ~1-2s), quindi esce su internet con IP dinamici del pool AWS, senza IP statico. In v1 si lascia **allow-all** e ci si affida a:
 
 - TLS obbligatorio
 - Password DB forte ruotabile
 - Autenticazione role-level (il backend usa solo ruolo applicativo, non il superuser)
 
-**Roadmap v1.1**: valutare NAT Gateway con IP statico + allowlist Supabase (~32€/mese in più, maggiore sicurezza).
+**Roadmap v1.1**: valutare Lambda dentro VPC privata + NAT Gateway con IP statico (Elastic IP) + allowlist Supabase (~32€/mese NAT + penalty cold start iniziale). Da attivare solo se emergono requisiti di conformità aggiuntivi.
 
 ### 6.6 Applicare schema Prisma e RLS su Supabase
 
@@ -1381,23 +1680,17 @@ api.garageos.it          → backend API
 mail.garageos.it         → mail-from SES (record DKIM)
 ```
 
-### 7.3 Associazione custom domain ad App Runner
+### 7.3 Associazione custom domain ad API Gateway
 
-App Runner custom domain **non è gestibile via CDK L2** (solo L1). Configurazione post-deploy:
+Il custom domain `api.garageos.it` è gestito **interamente da CDK** via `aws-cdk-lib/aws-apigatewayv2`:
 
-```bash
-# 1. Associate custom domain
-aws apprunner associate-custom-domain \
-    --service-arn <app-runner-service-arn> \
-    --domain-name api.garageos.it \
-    --enable-www-subdomain false
+- `apigw.DomainName` crea il domain name regionale con il certificato ACM (vedi §5.9.1)
+- `apigw.HttpApi.defaultDomainMapping` lega il domain al default stage
+- `route53.ARecord` + `route53Targets.ApiGatewayv2DomainProperties` crea l'A record alias
 
-# 2. AWS restituisce DNS records da creare in Route 53
-# (CDK o manualmente)
+Nessuno step manuale post-deploy. Al primo `cdk deploy`, il certificato ACM viene validato via DNS record auto-creati dal `DnsConstruct`; tempi tipici: 5-10 minuti.
 
-# 3. Verificare con:
-aws apprunner describe-custom-domains --service-arn <arn>
-```
+> **Nota storica:** in v1.0 (runtime App Runner) il custom domain richiedeva una procedura `aws apprunner associate-custom-domain` post-deploy. Rimossa in v1.1 — CDK gestisce tutto il ciclo.
 
 ### 7.4 SPF, DKIM, DMARC per SES
 
@@ -1497,7 +1790,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: 9 }
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
 
       - uses: aws-actions/configure-aws-credentials@v4
@@ -1505,40 +1798,12 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-central-1
 
-      - name: Deploy CDK
+      # `cdk deploy` esegue il bundling esbuild del backend e aggiorna
+      # la Lambda in-place. Nessun step separato docker/ECR: l'artifact
+      # di deploy è uno zip CDK (tree-shaken, minified, ~5-15 MB).
+      # Build time atteso: 30-60s vs 3-5 min del vecchio docker build.
+      - name: Deploy CDK (infrastructure + Lambda code)
         run: pnpm --filter infrastructure cdk deploy --require-approval never --all
-
-  build-and-push-api:
-    needs: deploy-infrastructure
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: eu-central-1
-
-      - name: Login to ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push Docker image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build \
-            -f packages/api/Dockerfile \
-            -t $ECR_REGISTRY/garageos-api:$IMAGE_TAG \
-            -t $ECR_REGISTRY/garageos-api:latest \
-            .
-          docker push $ECR_REGISTRY/garageos-api:$IMAGE_TAG
-          docker push $ECR_REGISTRY/garageos-api:latest
-
-      - name: Trigger App Runner deployment
-        run: |
-          aws apprunner start-deployment \
-            --service-arn ${{ secrets.APP_RUNNER_SERVICE_ARN }}
 
   run-migrations:
     needs: deploy-infrastructure
@@ -1548,7 +1813,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: 9 }
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
 
       - uses: aws-actions/configure-aws-credentials@v4
@@ -1567,14 +1832,14 @@ jobs:
         run: pnpm --filter @garageos/database db:migrate:deploy
 
   deploy-web-app:
-    needs: [build-and-push-api, run-migrations]
+    needs: [deploy-infrastructure, run-migrations]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with: { version: 9 }
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
 
       - name: Build web app
@@ -1605,7 +1870,7 @@ jobs:
             --paths "/*"
 
   smoke-test:
-    needs: [deploy-web-app, build-and-push-api]
+    needs: [deploy-web-app, deploy-infrastructure]
     runs-on: ubuntu-latest
     steps:
       - name: Test API health
@@ -1652,7 +1917,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: 9 }
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
 
       - uses: expo/expo-github-action@v8
@@ -1702,15 +1967,14 @@ jobs:
     pnpm --filter @garageos/database db:triggers:apply
     pnpm --filter @garageos/database db:seed
     ```
-11. Build + push prima immagine Docker:
+11. Rilanciare `cdk deploy` dopo aver popolato i secret (CDK farà un update della Lambda con il codice applicativo aggiornato):
     ```bash
-    ./scripts/build-push-api.sh
-    aws apprunner start-deployment --service-arn <arn>
+    pnpm --filter infrastructure cdk deploy GarageosMainStack
     ```
+    Il custom domain `api.garageos.it` è già attivo — CDK lo ha creato in §7.3.
 12. Richiedere SES production access
-13. Associare custom domain ad App Runner (§7.3)
-14. Test: `curl https://api.garageos.it/health` → 200
-15. Smoke test UI: aprire `https://app.garageos.it`
+13. Test: `curl https://api.garageos.it/health` → 200
+14. Smoke test UI: aprire `https://app.garageos.it`
 
 ### 10.2 Deploy incrementale
 
@@ -1719,41 +1983,14 @@ Post setup iniziale, il flusso standard è:
 1. Developer merge PR su `main`
 2. GitHub Actions triggera `deploy.yml`
 3. CI: lint + test + typecheck (da Appendice E)
-4. CDK deploy (se ci sono cambi infrastrutturali)
-5. Build Docker + push ECR
-6. App Runner start-deployment (blue/green automatico)
-7. Run migrations (se ci sono)
-8. Deploy web app su S3 + invalidate CloudFront
-9. Smoke test
+4. `cdk deploy` aggiorna contemporaneamente infrastruttura e **codice Lambda** (bundling esbuild tramite `NodejsFunction` L2 — zip minified ~5-15 MB)
+5. Run migrations (se ci sono)
+6. Deploy web app su S3 + invalidate CloudFront
+7. Smoke test
 
-Tempo totale: ~10-15 min.
+Tempo totale: ~5-10 min (30-60s il bundling esbuild vs 3-5 min del vecchio docker build).
 
-### 10.3 Custom domain association (procedura dettagliata)
-
-Dopo il primo deploy App Runner, associare `api.garageos.it`:
-
-```bash
-# 1. Associate
-aws apprunner associate-custom-domain \
-    --service-arn $(aws apprunner list-services --query 'ServiceSummaryList[0].ServiceArn' --output text) \
-    --domain-name api.garageos.it \
-    --enable-www-subdomain false
-
-# 2. Ottenere i record DNS da creare
-aws apprunner describe-custom-domains \
-    --service-arn <arn> \
-    --query 'CustomDomains[0].CertificateValidationRecords'
-
-# 3. Creare record CNAME in Route 53 (manuale o via CDK L1)
-# Esempio:
-aws route53 change-resource-record-sets \
-    --hosted-zone-id <zone-id> \
-    --change-batch file://dns-records.json
-
-# 4. Verificare
-aws apprunner describe-custom-domains --service-arn <arn>
-# Stato: pending_certificate_dns_validation → active (dopo ~5-30 min)
-```
+**Nota aggiornamenti solo-codice applicativo**: se è cambiato solo il contenuto di `packages/api/src/` senza modifiche infrastrutturali, CDK rileva il diff e aggiorna **solo la Lambda** (~10-20s). La blue/green deployment non serve: Lambda usa versions + aliases per rollback istantaneo.
 
 ---
 
@@ -1819,6 +2056,30 @@ Ogni primo del mese:
 3. Confrontare con baseline (vedi §5.13 del master)
 4. Se deviazione >20%, investigare
 
+### 11.4 Stime costi backend runtime (Lambda + API Gateway)
+
+Stime aggiornate al 2026-04-23, region `eu-central-1`, architecture `arm64`, memory 1024 MB, durata media invocazione ~150 ms. Tasso di conversione USD→EUR ~0.92 (stabile).
+
+| Scenario | Req/mese | Lambda | API Gateway HTTP | CloudWatch | Data Transfer | **Totale** |
+|---|---|---|---|---|---|---|
+| Pilota basso | ~100k | 0,00 € | 0,09 € | 0,23 € | 0,17 € | **~0,45 € (~$0,50)** |
+| Pilota medio | ~300k | 0,00 € | 0,28 € | 0,70 € | 0,50 € | **~1,50 € (~$1,60)** |
+| Pilota alto | ~800k | 0,00 € | 0,74 € | 1,84 € | 1,24 € | **~3,85 € (~$4,15)** |
+| Oltre pilota | ~3M | 0,98 € | 2,76 € | 6,90 € | 4,97 € | **~15,70 € (~$17,00)** |
+
+**Osservazioni:**
+
+- **Lambda compute resta dentro free tier** fino a ~2M req/mese con config 1 GB / 150 ms: Lambda vero inizia a costare solo oltre il pilota.
+- Al pilota la voce dominante è **CloudWatch Logs**. Già ottimizzata con log retention 7 giorni (`logs.RetentionDays.ONE_WEEK` sul Lambda log group e sull'APIGW access log). Ulteriore riduzione possibile alzando il log level a `INFO` (oggi `DEBUG` in sviluppo, `INFO` in produzione).
+- **API Gateway HTTP API v2** costa $1.00 per milione di richieste vs $3.50 del REST API v1 (~70% in meno a parità di funzionalità per il nostro caso d'uso).
+- **Data transfer out**: stimato 2 KB/response media × volume × $0.09/GB.
+- **Non sono inclusi**: Supabase Pro ($25/mese), S3 (~1-5€/mese), Route 53 (~0,50€/zone/mese + queries), CloudFront (~1-10€/mese), Cognito (free tier fino 10k MAU), SES production (~0,10€/1000 email). Questi valori restano invariati rispetto alla v1.0 del documento.
+
+**Confronto con runtime App Runner v1.0** (pilota medio ~300k req):
+- App Runner 1 vCPU / 2 GB in always-on: ~30-45 €/mese
+- Lambda + APIGW HTTP: ~1,50 €/mese
+- **Risparmio: 20-30× al pilota**, decrescente all'aumentare del volume (si pareggia intorno a ~10M req/mese).
+
 ---
 
 ## 12. Rollback strategy
@@ -1827,24 +2088,36 @@ Ogni primo del mese:
 
 **Scenario:** nuova versione ha bug critico in produzione.
 
-App Runner mantiene lo storico delle deployment. Per rollback:
+Lambda mantiene lo storico delle versioni immutabili (ogni `cdk deploy` crea una nuova version se usiamo `currentVersion`). Due strategie, dalla più veloce alla più "pulita":
+
+**Opzione A — Rollback immediato via alias (tempo: ~10 secondi)**
+
+Se la Lambda è dietro un alias `live` che punta a una version specifica, basta ripuntare l'alias alla version precedente:
 
 ```bash
-# 1. Identificare la deployment precedente
-aws apprunner list-operations --service-arn <arn>
+# 1. Identificare la version precedente
+aws lambda list-versions-by-function --function-name garageos-api
 
-# 2. Rollback tramite redeploy dell'immagine precedente
-# Tag immagine ECR con versioni (github.sha) permette di puntare a versione specifica
-aws apprunner update-service \
-    --service-arn <arn> \
-    --source-configuration '{
-      "ImageRepository": {
-        "ImageIdentifier": "'<ECR>/garageos-api:<commit-precedente>'"
-      }
-    }'
+# 2. Ripuntare l'alias `live` alla version precedente
+aws lambda update-alias \
+    --function-name garageos-api \
+    --name live \
+    --function-version <N-1>
 ```
 
-**Tempo di rollback:** ~3-5 minuti (tempo deployment App Runner).
+API Gateway → Lambda alias = traffic cutover istantaneo.
+
+**Opzione B — Rollback via CDK deploy (tempo: ~3-5 minuti)**
+
+```bash
+# Checkout del commit precedente + redeploy CDK
+git checkout <commit-precedente>
+pnpm --filter infrastructure cdk deploy GarageosMainStack
+```
+
+CDK ribundleaIl codice del commit vecchio e aggiorna la Lambda. Più lento dell'opzione A ma coerente con lo stato CDK (evita drift).
+
+> **Roadmap v1.1**: abilitare Lambda alias `live` + routing weighted per canary deploy (es. 10% traffico sulla nuova version, promotion dopo 10 min se alarms verdi).
 
 ### 12.2 Rollback web app
 
@@ -1868,7 +2141,7 @@ Se una migration corrompe i dati:
 2. Selezionare timestamp PRE-migration
 3. "Restore in place" OPPURE "Create new project from this point"
 4. Se nuovo progetto: aggiornare `DATABASE_URL` in Secrets Manager
-5. Rilanciare App Runner deployment
+5. Rilanciare `cdk deploy` (o `aws lambda update-function-configuration` per forzare cold start e rilettura dei secret)
 
 **Tempo restore:** ~5-30 min (dipende dalla dimensione DB).
 
@@ -1898,7 +2171,8 @@ Prima del lancio pilota:
 - [ ] Certificate SSL attivi (api, app)
 - [ ] Supabase project in EU region, password forte in Secrets Manager
 - [ ] Schema DB applicato, RLS policies attive, seed eseguito
-- [ ] App Runner service running, custom domain associato
+- [ ] Lambda `garageos-api` running, API Gateway HTTP API v2 configurato, custom domain `api.garageos.it` attivo (gestito via CDK)
+- [ ] Warming schedule EventBridge attivo (`cron(*/5 8-20 ? * MON-SAT *)` Europe/Rome)
 - [ ] Cognito user pools creati, configurati in frontend
 - [ ] S3 bucket allegati configurato con CORS, lifecycle
 - [ ] WAF attivo e monitorato
