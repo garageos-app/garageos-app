@@ -10,6 +10,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Forces JavaScript GitHub Actions (e.g. actions/checkout, setup-node) to run
+# on Node 24 instead of the deprecated Node 20 runtime. Scope is limited to
+# the action runtime — the Node version used by our own code is still
+# controlled by setup-node + .nvmrc (Node 22 LTS).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   lint:
     name: Lint
