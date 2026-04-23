@@ -1,0 +1,19 @@
+node_modules/
+dist/
+build/
+out/
+.next/
+coverage/
+.turbo/
+cdk.out/
+.expo/
+.husky/_/
+pnpm-lock.yaml
+docs/design/*.jsx
+
+# Hand-curated markdown: formatting is manual, not Prettier-driven.
+# Future package-level README.md files (packages/**/README.md) remain formatted.
+CLAUDE.md
+CONTRIBUTING.md
+README.md
+docs/**/*.md
