@@ -1,0 +1,53 @@
+{
+  "name": "garageos",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GarageOS monorepo — vehicle maintenance logbook SaaS for Italian mechanical workshops",
+  "type": "module",
+  "packageManager": "pnpm@10.33.1",
+  "engines": {
+    "node": ">=22.22.0 <23",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm -r test:unit",
+    "test:integration": "pnpm -r test:integration",
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@eslint/js": "^10.0.1",
+    "@secretlint/secretlint-rule-preset-recommend": "^12.2.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.3",
+    "secretlint": "^12.2.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ],
+    "*": [
+      "secretlint"
+    ]
+  }
+}
