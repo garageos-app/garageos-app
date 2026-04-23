@@ -1,0 +1,77 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.cache/
+.turbo/
+
+# CDK
+cdk.out/
+cdk.context.json
+
+# Expo / React Native
+.expo/
+.expo-shared/
+*.orig.*
+
+# Testing
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment variables (NEVER commit)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# IDE / Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# TypeScript
+*.tsbuildinfo
+
+# Prisma
+prisma/.env
+
+# Temporary
+tmp/
+temp/
+
+# Database
+*.sqlite
+*.db
+
+# Secrets
+*.pem
+*.key
+!*.pub
