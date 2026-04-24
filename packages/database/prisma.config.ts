@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { defineConfig, env } from 'prisma/config';
+import { defineConfig } from 'prisma/config';
 
 // Prisma 7 CLI configuration.
 //
@@ -22,6 +22,10 @@ export default defineConfig({
     seed: 'tsx prisma/seed.ts',
   },
   datasource: {
-    url: env('DIRECT_URL'),
+    // Prisma generate (schema-only operation) does not need a real connection,
+    // so we fall back to a placeholder when DIRECT_URL is not set.
+    // Real migrations (db:migrate:dev, db:migrate:deploy) require DIRECT_URL
+    // set via .env locally or via GitHub Actions secrets in CI.
+    url: process.env.DIRECT_URL ?? 'postgresql://placeholder:placeholder@localhost:5432/postgres',
   },
 });
