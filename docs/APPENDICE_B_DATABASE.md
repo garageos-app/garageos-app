@@ -2,7 +2,7 @@
 
 > **Documento correlato:** questo è un'appendice del documento principale `GarageOS-Specifiche.md`. Formalizza lo schema Prisma, le migration, i seed, i validator Zod e la configurazione RLS.
 >
-> **Versione:** v1.1 — allineata a `GarageOS-Specifiche.md` v1.1 e `APPENDICE_F_BUSINESS_LOGIC.md` v1.0
+> **Versione:** v1.2 — allineata a `GarageOS-Specifiche.md` v1.1 e `APPENDICE_F_BUSINESS_LOGIC.md` v1.0
 > **Ultimo aggiornamento:** 24 aprile 2026
 >
 > **Nota Prisma 7.** I frammenti di codice in §1.3 e §2.1 sono il riferimento originale per Prisma 5/6. La codebase effettiva usa Prisma 7 con alcuni adattamenti:
@@ -1286,11 +1286,18 @@ USING (
 -- =====================================================
 
 -- Generazione garage_code con alfabeti ridotti (BR-020, BR-021)
+--
+-- Alfabeto: 8 cifre (2-9, escluse 0 e 1) + 21 lettere (escluse I, O, Q, S, U).
+-- Esclusioni scelte per ambiguità visiva in pattern human-readable
+-- (I↔1, O↔0, Q↔O, S↔5, U↔V), allineato a stile RFC 4648.
+-- Combinazioni totali pattern GO-NNN-AAAA: 8^3 · 21^4 = 99.606.528.
+-- NOTA: alfabeto e regex CHECK in §3.2 (`[A-HJ-NPRTV-Z]{4}`) DEVONO
+-- restare allineati — un mismatch farebbe fallire il constraint al primo INSERT.
 CREATE OR REPLACE FUNCTION generate_garage_code()
 RETURNS VARCHAR(12) AS $$
 DECLARE
     digits TEXT := '23456789';
-    letters TEXT := 'ABCDEFGHJKLMNPRSTVWXYZ';  -- Escluse I, O, Q, U
+    letters TEXT := 'ABCDEFGHJKLMNPRTVWXYZ';  -- 21 lettere, escluse I, O, Q, S, U
     code TEXT;
     i INT;
 BEGIN
@@ -1582,6 +1589,13 @@ async function seedDevData() {
 
 ## 5. Validator Zod
 
+> **Nota Zod 4.** v1 adotta Zod 4.x. Tutti gli schemi usano la top-level API di
+> Zod 4 (`z.email()`, `z.uuid()`, `z.url()`, `z.ipv4()`/`z.ipv6()`, ecc.) al
+> posto della chain-syntax di Zod 3 (`z.string().email()`, ecc.). Per oggetti
+> con modalità "loose" o "strict" usa `z.looseObject({...})` e
+> `z.strictObject({...})` anziché `.passthrough()` / `.strict()`.
+> Migration guide: https://zod.dev/v4/changelog
+
 ### 5.1 File `src/validators/common.ts`
 
 ```typescript
@@ -1612,7 +1626,7 @@ export const ItalianPlateSchema = z
   });
 
 // Email con validazione standard
-export const EmailSchema = z.string().email({ message: 'Email non valida' });
+export const EmailSchema = z.email({ message: 'Email non valida' });
 
 // Codice fiscale italiano persona (16 char) o azienda (11 char numerici)
 export const TaxCodeSchema = z.string().regex(
@@ -1629,10 +1643,10 @@ export const VatNumberSchema = z
 export const PhoneSchema = z.string().min(6).max(30);
 
 // UUID
-export const UuidSchema = z.string().uuid();
+export const UuidSchema = z.uuid();
 
 // Timestamps
-export const IsoTimestampSchema = z.string().datetime();
+export const IsoTimestampSchema = z.iso.datetime();
 export const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 // Pagination
@@ -1673,13 +1687,13 @@ export const CreateVehicleSchema = z.object({
   customer: z.discriminatedUnion('mode', [
     z.object({
       mode: z.literal('existing'),
-      customerId: z.string().uuid(),
+      customerId: z.uuid(),
     }),
     z.object({
       mode: z.literal('create_new'),
       firstName: z.string().min(1).max(100),
       lastName: z.string().min(1).max(100),
-      email: z.string().email(),
+      email: z.email(),
       phone: z.string().max(30).optional(),
       taxCode: z.string().max(20).optional(),
       isBusiness: z.boolean().default(false),
@@ -1690,7 +1704,7 @@ export const CreateVehicleSchema = z.object({
       { message: 'businessName e vatNumber obbligatori per clienti aziendali' }
     ),
   ]),
-  locationId: z.string().uuid(),
+  locationId: z.uuid(),
   sendInvitationEmail: z.boolean().default(true),
   forceNonstandardVin: z.boolean().default(false), // BR-001 eccezione
 });
@@ -1716,7 +1730,7 @@ export const PartReplacedSchema = z.object({
 });
 
 export const CreateInterventionSchema = z.object({
-  interventionTypeId: z.string().uuid(),
+  interventionTypeId: z.uuid(),
   interventionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   odometerKm: z.number().int().min(0),
   title: z.string().max(200).optional(),
@@ -1734,7 +1748,7 @@ export const CreateInterventionSchema = z.object({
 export const CreateDisputeSchema = z.object({
   reasonCategory: z.enum(['not_performed', 'wrong_data', 'not_authorized', 'other']),
   description: z.string().min(20).max(2000),
-  attachmentIds: z.array(z.string().uuid()).max(10).optional(),
+  attachmentIds: z.array(z.uuid()).max(10).optional(),
 });
 
 export type CreateInterventionInput = z.infer<typeof CreateInterventionSchema>;
@@ -2294,6 +2308,10 @@ Prima di iniziare lo sviluppo, verificare:
 
 ## 11. Changelog
 
+- **v1.2 (2026-04-24)** — Allineamento post PR 4c/4d:
+  - §3.3 BR-020: corretto alfabeto `letters` nella funzione `generate_garage_code()` da 22 lettere (`ABCDEFGHJKLMNPRSTVWXYZ`, commento "Escluse I, O, Q, U") a 21 lettere (`ABCDEFGHJKLMNPRTVWXYZ`, commento "Escluse I, O, Q, S, U") per coerenza con il CHECK constraint `^GO-[2-9]{3}-[A-HJ-NPRTV-Z]{4}$` (§3.2). Regex e comportamento runtime della produzione invariati. Aggiunta nota esplicativa sulle esclusioni per ambiguità visiva (stile RFC 4648).
+  - §5 Zod: aggiornata sintassi da Zod 3 legacy (chain `z.string().email()`, `z.string().uuid()`) a Zod 4 top-level API (`z.email()`, `z.uuid()`) per coerenza con l'implementazione di PR 4c. Aggiunta nota Zod 4 in testa alla sezione. Nessun cambio semantico.
+  - §5 Zod iso.datetime: migrato `z.string().datetime()` → `z.iso.datetime()` (Zod 4 ISO namespace).
 - **v1.1 (2026-04-24)** — PR 4b: adeguamento a Prisma 7 (generator `prisma-client`, output obbligatorio, adapter `@prisma/adapter-pg` runtime, datasource URL in `prisma.config.ts`). Consolidamento di `sql/triggers.sql` + `sql/rls-policies.sql` + `sql/functions.sql` in una singola migration Prisma versioned (`20260424100000_rls_triggers_checks`). Seed reale con 12 `intervention_types` di sistema (`prisma/seed.ts`). Setup Vitest + Testcontainers (postgres:15-alpine) + 3 smoke suite (RLS tenant isolation, trigger `updated_at` + BR-282 audit immutability, CHECK constraints BR-020/007/100/180 + partial unique index BR-040). I validator Zod manuali (§5) restano la scelta canonica del progetto: `prisma-zod-generator` non è stato adottato perché non documentato come compatibile col nuovo generator `prisma-client` di Prisma 7.
 - **v1.0 (2026-04-22)** — baseline originale allineata a `GarageOS-Specifiche.md` v1.1 e `APPENDICE_F_BUSINESS_LOGIC.md` v1.0.
 
