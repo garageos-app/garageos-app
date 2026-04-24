@@ -14,3 +14,15 @@ export {
   cancelledIntervention,
   disputedIntervention,
 } from './intervention.factory.js';
+export { VehicleOwnershipFactory, endedOwnership } from './vehicle-ownership.factory.js';
+export {
+  VehicleTransferFactory,
+  pendingRecipientTransfer,
+  pendingSellerConfirmationTransfer,
+  pendingValidationTransfer,
+  completedTransfer,
+  rejectedTransfer,
+  expiredTransfer,
+} from './vehicle-transfer.factory.js';
+export { CustomerTenantRelationFactory } from './customer-tenant-relation.factory.js';
+export { AuditLogFactory } from './audit-log.factory.js';
