@@ -6,22 +6,23 @@ This package is the single source of truth for the database layer: every
 other workspace (API, web, mobile) imports `PrismaClient` from here and
 runs against the same schema.
 
-## What's in this PR
+## Package contents
 
-This is the **scaffold** — schema + generated client + initial
-migration only. The following land in a follow-up PR:
-
-- Zod validators (`src/validators/**`)
-- RLS policies, triggers, and custom PostgreSQL functions
-  (`sql/rls-policies.sql`, `sql/triggers.sql`, `sql/functions.sql`)
-- Seed script with the 12 system `intervention_types`
-  (`prisma/seed.ts`)
-- Test factories and integration test suite
-
-The schema (`prisma/schema.prisma`) is copied verbatim from
-[`docs/APPENDICE_B_DATABASE.md`](../../docs/APPENDICE_B_DATABASE.md) §2.1.
-Only the `generator` and `datasource` blocks differ to accommodate
-Prisma 7 (see _Prisma 7 notes_ below).
+- **`prisma/schema.prisma`** — schema copied verbatim from
+  [`docs/APPENDICE_B_DATABASE.md`](../../docs/APPENDICE_B_DATABASE.md) §2.1,
+  with `generator` / `datasource` adapted for Prisma 7
+  (see _Prisma 7 notes_ below).
+- **`prisma/migrations/`** — ordered migrations: init, RLS policies, triggers,
+  check constraints.
+- **`prisma/seed.ts`** — seeds the 12 system `intervention_types` used across
+  tenants.
+- **`src/client.ts`** — `PrismaClient` singleton with `PrismaPg` adapter plus
+  the `withContext()` helper for RLS-scoped transactions.
+- **`src/validators/**`** — Zod schemas (see _Validators_ below).
+- **`src/factories/**`** — Fishery factories for tests (see _Factories_ below).
+- **`tests/unit/**`** — pure-TS unit tests for validators and factories.
+- **`tests/integration/**`** — Testcontainers-backed tests for RLS, triggers,
+  and CHECK constraints.
 
 ## Local setup
 
@@ -127,6 +128,85 @@ APPENDICE_B — which predate Prisma 7 — are:
   explicitly rejected by the Prisma preinstall script.
 
 A small follow-up PR will update APPENDICE_B with these differences.
+
+## Validators
+
+Zod schemas live under `src/validators/` and mirror
+[`docs/APPENDICE_B_DATABASE.md`](../../docs/APPENDICE_B_DATABASE.md) §5.
+They use **Zod 4 top-level syntax** (`z.email()`, `z.uuid()`, `z.iso.datetime()`);
+APPENDICE_B §5 shows the equivalent Zod 3 forms. A follow-up PR will sync
+the doc with the adopted syntax.
+
+```ts
+import {
+  CreateVehicleSchema,
+  GarageCodeSchema,
+  VinSchema,
+} from '@garageos/database';
+
+// Parse throws ZodError with localized Italian messages.
+const parsed = CreateVehicleSchema.parse(requestBody);
+
+// Inferred TypeScript types follow the schema verbatim.
+import type { CreateVehicleInput } from '@garageos/database';
+```
+
+Business rules enforced at validator-level (format and range only; dynamic
+rules like BR-068 km monotonicity are service-layer):
+
+| BR | Schema | What it checks |
+|---|---|---|
+| BR-001 | `VinSchema` | 17 chars, no I/O/Q |
+| BR-007 | `CreateVehicleSchema.vehicle.year` | 1900 ≤ year ≤ current + 1 |
+| BR-020 | `GarageCodeSchema` | `GO-NNN-AAAA` regex |
+| BR-024 | `ClaimVehicleSchema` | lowercase input normalized to uppercase |
+| BR-071 | `PartReplacedSchema` | parts_replaced array shape |
+| BR-123 | `CreateDisputeSchema.reasonCategory` | 4-value enum |
+| BR-124 | `CreateDisputeSchema.description` | 20..2000 chars |
+
+## Factories
+
+Fishery factories live under `src/factories/` and follow
+[`docs/APPENDICE_E_TESTING.md`](../../docs/APPENDICE_E_TESTING.md) §10.
+Each factory returns a `Prisma.<Model>UncheckedCreateInput` shape (plain
+scalar IDs for FKs, no `{ connect: ... }` nesting).
+
+```ts
+import { TenantFactory, VehicleFactory, mechanicUser } from '@garageos/database';
+
+// Pure-TS build, no DB contact — safe in unit tests.
+const tenantData = TenantFactory.build();
+
+// With overrides.
+const panda = VehicleFactory.build({ make: 'Fiat', model: 'Panda', year: 2022 });
+
+// Trait helpers for common variants.
+const mech = mechanicUser.build({ tenantId, locationId });
+
+// DB-backed create (requires a real DATABASE_URL).
+await TenantFactory.create();
+```
+
+Sequences guarantee unique `email`, `vatNumber`, `vin`, and `plate` values
+across calls in the same test run. Traits currently shipped: `suspendedTenant`,
+`secondaryLocation`, `mechanicUser`, `invitedUser`, `businessCustomer`,
+`activeCustomer`, `certifiedVehicle`, `motorcycle`, `cancelledIntervention`,
+`disputedIntervention`. The helper `buildGarageCode(seq)` mints a
+deterministic BR-020-compliant code from a sequence number.
+
+## Testing
+
+```bash
+# Fast: validators + factories (pure TS, <1s).
+pnpm --filter @garageos/database test:unit
+
+# Slow: real Postgres via Testcontainers, requires Docker.
+pnpm --filter @garageos/database test:integration
+```
+
+`pnpm -r test:unit` runs all workspace unit suites — hooked into the
+`pre-push` check and into the CI `integration-tests` job (the unit step
+fails fast before the Docker-backed step spins up a container).
 
 ## Reference
 

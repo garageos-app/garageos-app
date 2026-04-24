@@ -91,6 +91,10 @@ jobs:
       # setup file that imports src/client.ts). A live DB is not
       # required for this step — generation works schema-only.
       - run: pnpm db:generate
+      # Unit tests (validators + factories) run first: pure TypeScript,
+      # no container needed, fail fast before the Docker-backed step
+      # below. `-r` runs any package that defines `test:unit`.
+      - run: pnpm -r test:unit
       # Testcontainers uses the runner's Docker daemon to spin up
       # postgres:15-alpine, apply all migrations (including 0002
       # RLS + triggers), seed system intervention types, then run
