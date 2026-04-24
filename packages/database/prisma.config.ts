@@ -1,4 +1,11 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+// Load .env.local first (takes precedence, Vite/Next convention for
+// developer-local overrides), then .env as fallback. dotenv does not
+// overwrite variables already set, so ordering here is load-order-sensitive.
+dotenv.config({ path: '.env.local' });
+dotenv.config({ path: '.env' });
+
 import { defineConfig } from 'prisma/config';
 
 // Prisma 7 CLI configuration.

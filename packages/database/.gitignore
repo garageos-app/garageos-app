@@ -7,3 +7,6 @@ prisma/generated/
 
 # Build output
 dist/
+
+# Vitest coverage reports
+coverage/

@@ -2,8 +2,16 @@
 
 > **Documento correlato:** questo è un'appendice del documento principale `GarageOS-Specifiche.md`. Formalizza lo schema Prisma, le migration, i seed, i validator Zod e la configurazione RLS.
 >
-> **Versione:** v1.0 — allineata a `GarageOS-Specifiche.md` v1.1 e `APPENDICE_F_BUSINESS_LOGIC.md` v1.0
-> **Ultimo aggiornamento:** 22 aprile 2026
+> **Versione:** v1.1 — allineata a `GarageOS-Specifiche.md` v1.1 e `APPENDICE_F_BUSINESS_LOGIC.md` v1.0
+> **Ultimo aggiornamento:** 24 aprile 2026
+>
+> **Nota Prisma 7.** I frammenti di codice in §1.3 e §2.1 sono il riferimento originale per Prisma 5/6. La codebase effettiva usa Prisma 7 con alcuni adattamenti:
+> - `generator.provider = "prisma-client"` (nuovo ESM-native generator, sostituisce `prisma-client-js`)
+> - `generator.output` obbligatorio (no default directory)
+> - `datasource.url` / `directUrl` non vivono più in `schema.prisma`: sono in `prisma.config.ts`
+> - `@prisma/adapter-pg` (`PrismaPg`) obbligatorio a runtime — niente più driver nativo built-in
+>
+> Le differenze sono documentate nel `README.md` di `packages/database` e nel codice di `src/client.ts` / `prisma.config.ts`.
 
 ---
 
@@ -893,6 +901,14 @@ model PushToken {
 ---
 
 ## 3. Migration SQL aggiuntive (RLS, trigger)
+
+> **Nota di implementazione (PR 4b, 2026-04-24).** I tre file `sql/triggers.sql`, `sql/rls-policies.sql` e `sql/functions.sql` descritti qui di seguito sono stati **consolidati in un'unica migration Prisma** (`prisma/migrations/20260424100000_rls_triggers_checks/migration.sql`). Motivazione:
+>
+> - deployments versionati e reversibili (parte dello stream di migration Prisma)
+> - i container di test ottengono lo stato DB completo da un semplice `prisma migrate deploy`, senza dipendere da `psql` installato
+> - niente più script custom `db:rls:apply` / `db:triggers:apply` — il comando `pnpm db:migrate:deploy` applica tutto
+>
+> I contenuti SQL sono quelli mostrati nelle sottosezioni qui sotto, più i CHECK constraint e i partial unique index. Usa il file di migration come fonte autorevole per la forma esatta applicata in produzione.
 
 ### 3.1 File `sql/triggers.sql`
 
@@ -2273,6 +2289,13 @@ Prima di iniziare lo sviluppo, verificare:
 - [ ] Client singleton (`src/client.ts`) implementato
 - [ ] Validatori Zod base copiati
 - [ ] Test di query base funzionanti (es. `prisma.interventionType.findMany()` restituisce i 12 tipi di sistema)
+
+---
+
+## 11. Changelog
+
+- **v1.1 (2026-04-24)** — PR 4b: adeguamento a Prisma 7 (generator `prisma-client`, output obbligatorio, adapter `@prisma/adapter-pg` runtime, datasource URL in `prisma.config.ts`). Consolidamento di `sql/triggers.sql` + `sql/rls-policies.sql` + `sql/functions.sql` in una singola migration Prisma versioned (`20260424100000_rls_triggers_checks`). Seed reale con 12 `intervention_types` di sistema (`prisma/seed.ts`). Setup Vitest + Testcontainers (postgres:15-alpine) + 3 smoke suite (RLS tenant isolation, trigger `updated_at` + BR-282 audit immutability, CHECK constraints BR-020/007/100/180 + partial unique index BR-040). I validator Zod manuali (§5) restano la scelta canonica del progetto: `prisma-zod-generator` non è stato adottato perché non documentato come compatibile col nuovo generator `prisma-client` di Prisma 7.
+- **v1.0 (2026-04-22)** — baseline originale allineata a `GarageOS-Specifiche.md` v1.1 e `APPENDICE_F_BUSINESS_LOGIC.md` v1.0.
 
 ---
 
