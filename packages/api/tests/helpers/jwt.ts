@@ -1,0 +1,125 @@
+// Test-only JWT helpers. Generate RS256 key pairs (one per simulated
+// Cognito pool) and sign tokens with the claim shape the real Cognito
+// issuer produces. Two consumers:
+//
+//   - Unit tests: feed the public JWK directly into the auth plugin's
+//     in-memory verifier path (no HTTP involved).
+//   - Integration tests: publish the public JWK through a local HTTP
+//     mock server (tests/helpers/jwks-server.ts) so the real
+//     aws-jwt-verify hydrate step can fetch it.
+//
+// jose is a devDependency precisely to sign tokens here —
+// aws-jwt-verify only verifies, not signs.
+
+import { exportJWK, generateKeyPair, SignJWT, type CryptoKey, type JWK } from 'jose';
+
+export type TestPool = 'officine' | 'clienti';
+
+export interface TestKeyPair {
+  privateKey: CryptoKey;
+  publicJwk: JWK;
+  kid: string;
+}
+
+let officineKey: TestKeyPair | null = null;
+let clientiKey: TestKeyPair | null = null;
+
+// Defaults used by helpers when an option is omitted. They match the
+// placeholders in tests/unit/setup.ts / tests/integration/globalSetup.ts
+// so `signTestToken({ pool: 'officine' })` produces a token the default
+// verifier config accepts without ceremony.
+const DEFAULT_REGION = 'eu-central-1';
+const DEFAULT_POOL_IDS: Record<TestPool, string> = {
+  officine: 'eu-central-1_TESTOFFICINE',
+  clienti: 'eu-central-1_TESTCLIENTI',
+};
+const DEFAULT_CLIENT_IDS: Record<TestPool, string> = {
+  officine: 'test-officine-client',
+  clienti: 'test-clienti-client',
+};
+
+async function buildPair(kid: string): Promise<TestKeyPair> {
+  const { publicKey, privateKey } = await generateKeyPair('RS256', { extractable: true });
+  const publicJwk = await exportJWK(publicKey);
+  return {
+    privateKey,
+    publicJwk: { ...publicJwk, kid, use: 'sig', alg: 'RS256' },
+    kid,
+  };
+}
+
+// Idempotent: subsequent calls reuse the first-run pairs so one keypair
+// exists per worker process. Must be awaited before any sign/verify call.
+export async function initKeys(): Promise<void> {
+  if (officineKey && clientiKey) return;
+  const [o, c] = await Promise.all([buildPair('officine-kid-1'), buildPair('clienti-kid-1')]);
+  officineKey = o;
+  clientiKey = c;
+}
+
+export function getTestKey(pool: TestPool): TestKeyPair {
+  const key = pool === 'officine' ? officineKey : clientiKey;
+  if (!key) {
+    throw new Error('initKeys() must be awaited before using getTestKey/signTestToken');
+  }
+  return key;
+}
+
+// Issuer layout matches Cognito: https://cognito-idp.<region>.amazonaws.com/<pool>
+export function buildIssuer(poolId: string, region: string = DEFAULT_REGION): string {
+  return `https://cognito-idp.${region}.amazonaws.com/${poolId}`;
+}
+
+export interface SignOpts {
+  pool: TestPool;
+  // Claim overrides
+  sub?: string;
+  email?: string;
+  tenantId?: string; // officine only; default random UUID
+  role?: 'super_admin' | 'mechanic'; // officine only; default 'mechanic'
+  locationId?: string; // officine only; default omitted (BR-204 super_admin)
+  customerId?: string; // clienti only; default random UUID
+  // Token frame overrides
+  region?: string;
+  poolId?: string;
+  audience?: string;
+  expSecondsFromNow?: number;
+  tokenUse?: 'id' | 'access';
+  // Misc
+  extraClaims?: Record<string, unknown>;
+  // Sign with a different key's private material (simulates rogue issuer)
+  signingKey?: TestKeyPair;
+}
+
+export async function signTestToken(opts: SignOpts): Promise<string> {
+  const region = opts.region ?? DEFAULT_REGION;
+  const poolId = opts.poolId ?? DEFAULT_POOL_IDS[opts.pool];
+  const aud = opts.audience ?? DEFAULT_CLIENT_IDS[opts.pool];
+  const key = opts.signingKey ?? getTestKey(opts.pool);
+
+  const claims: Record<string, unknown> = {
+    sub: opts.sub ?? crypto.randomUUID(),
+    aud,
+    email: opts.email ?? 'user@test.garageos.it',
+    token_use: opts.tokenUse ?? 'id',
+  };
+
+  if (opts.pool === 'officine') {
+    claims['custom:tenant_id'] = opts.tenantId ?? crypto.randomUUID();
+    claims['custom:role'] = opts.role ?? 'mechanic';
+    if (opts.locationId !== undefined) {
+      claims['custom:location_id'] = opts.locationId;
+    }
+  } else {
+    claims['custom:customer_id'] = opts.customerId ?? crypto.randomUUID();
+  }
+
+  Object.assign(claims, opts.extraClaims ?? {});
+
+  return await new SignJWT(claims)
+    .setProtectedHeader({ alg: 'RS256', kid: key.kid })
+    .setIssuer(buildIssuer(poolId, region))
+    .setIssuedAt()
+    .setExpirationTime(`${opts.expSecondsFromNow ?? 3600}s`)
+    .sign(key.privateKey);
+}

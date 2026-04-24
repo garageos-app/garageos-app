@@ -18,3 +18,11 @@ process.env.COGNITO_OFFICINE_POOL_ID ??= 'eu-central-1_TESTOFFICINE';
 process.env.COGNITO_OFFICINE_CLIENT_ID ??= 'test-officine-client';
 process.env.COGNITO_CLIENTI_POOL_ID ??= 'eu-central-1_TESTCLIENTI';
 process.env.COGNITO_CLIENTI_CLIENT_ID ??= 'test-clienti-client';
+
+// Generate the RS256 key pairs used to sign test JWTs (see
+// tests/helpers/jwt.ts). Top-level await keeps the rest of the suite
+// from running before keys are ready — signTestToken / getTestKey
+// throw if called before initKeys resolves.
+import { initKeys } from '../helpers/jwt.js';
+
+await initKeys();
