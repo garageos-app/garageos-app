@@ -118,6 +118,21 @@ export async function createCustomer(params: {
   return { customerId: rows[0]!.id, email };
 }
 
+// BR-020 garage_code alphabet: digits 2-9 (no 0/1/1), letters minus
+// I/O/Q/U. Mirrors the regex in chk_garage_code_format.
+const GARAGE_CODE_DIGITS = '23456789';
+const GARAGE_CODE_LETTERS = 'ABCDEFGHJKLMNPRTVWXYZ';
+
+function pickChar(alphabet: string): string {
+  return alphabet[Math.floor(Math.random() * alphabet.length)]!;
+}
+
+function generateGarageCode(): string {
+  const digits = Array.from({ length: 3 }, () => pickChar(GARAGE_CODE_DIGITS)).join('');
+  const letters = Array.from({ length: 4 }, () => pickChar(GARAGE_CODE_LETTERS)).join('');
+  return `GO-${digits}-${letters}`;
+}
+
 // Vehicle fixture. created_by_tenant_id defaults to the certifying
 // tenant so the vehicles_insert RLS policy is satisfied even when we
 // later re-seed via a non-superuser session (not used by these tests
@@ -132,7 +147,7 @@ export async function createVehicle(params: {
   model?: string;
   year?: number;
   status?: 'pending' | 'certified' | 'archived';
-}): Promise<{ vehicleId: string; vin: string; plate: string; garageCode: string }> {
+}): Promise<{ vehicleId: string; vin: string; plate: string; garageCode: string | null }> {
   const {
     createdByTenantId,
     certifiedByTenantId = createdByTenantId,
@@ -142,14 +157,14 @@ export async function createVehicle(params: {
     plate = `AB${Math.floor(Math.random() * 1e5)
       .toString()
       .padStart(5, '0')}`,
-    garageCode = `GO-${Math.floor(Math.random() * 1e3)
-      .toString()
-      .padStart(3, '0')}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     make = 'Fiat',
     model = 'Panda',
     year = 2021,
     status = 'certified',
   } = params;
+  // BR-003 chk_pending_consistency: pending vehicles MUST have
+  // garage_code NULL. Override only when caller passes one explicitly.
+  const garageCode = params.garageCode ?? (status === 'pending' ? null : generateGarageCode());
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO vehicles (id, garage_code, vin, plate, plate_country, make, model, year,
        vehicle_type, fuel_type, status, created_by_tenant_id, certified_by_tenant_id,
