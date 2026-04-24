@@ -1,0 +1,30 @@
+# Exclude absolutely everything by default, then whitelist the files
+# needed to install and build @garageos/api inside the container.
+*
+
+# Workspace skeleton
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!package.json
+!tsconfig.base.json
+
+# Workspace members' manifests (pnpm --frozen-lockfile requires the
+# full graph to match the lockfile, so database's package.json has to
+# be present even though we only build api).
+!packages/api/package.json
+!packages/database/package.json
+
+# api source + configs
+!packages/api/src
+!packages/api/tsconfig.json
+!packages/api/tsconfig.build.json
+
+# Re-exclude anything pulled in by the whitelist that we never want
+# inside the image (belt-and-braces — the catch-all above already
+# drops these, but being explicit prevents surprises if the whitelist
+# grows).
+**/node_modules
+**/dist
+**/*.log
+**/.env
+**/.env.local
