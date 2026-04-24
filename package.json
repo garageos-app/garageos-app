@@ -20,6 +20,11 @@
     "dev": "pnpm -r --parallel dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @garageos/database db:generate",
+    "db:migrate:dev": "pnpm --filter @garageos/database db:migrate:dev",
+    "db:migrate:deploy": "pnpm --filter @garageos/database db:migrate:deploy",
+    "db:migrate:status": "pnpm --filter @garageos/database db:migrate:status",
+    "db:studio": "pnpm --filter @garageos/database db:studio",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -48,6 +53,14 @@
     ],
     "*": [
       "secretlint"
+    ]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
     ]
   }
 }

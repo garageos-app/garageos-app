@@ -42,6 +42,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Prisma Client is generated code that TypeScript resolves at
+      # compile time — typecheck fails without it. Generation does not
+      # need a live database, only the schema, so this step runs with
+      # no DATABASE_URL secret required.
+      - run: pnpm db:generate
       - run: pnpm typecheck
 
   format-check:

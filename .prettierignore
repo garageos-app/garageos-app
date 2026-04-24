@@ -11,6 +11,11 @@ cdk.out/
 pnpm-lock.yaml
 docs/design/*.jsx
 
+# Prisma 7 generates TypeScript source into the package. The output
+# is already gitignored and regenerated on demand — formatting it
+# would fight the generator on every `pnpm db:generate`.
+packages/**/prisma/generated/
+
 # Hand-curated markdown: formatting is manual, not Prettier-driven.
 # Future package-level README.md files (packages/**/README.md) remain formatted.
 CLAUDE.md
