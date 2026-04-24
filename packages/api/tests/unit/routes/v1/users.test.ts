@@ -200,5 +200,26 @@ describe('GET /v1/users/me', () => {
     );
   });
 
-  it.todo('maps Prisma P2025 (user not found) to 404 NOT_FOUND — added in Task 11');
+  it('maps Prisma P2025 (user not found) to 404 NOT_FOUND', async () => {
+    const { Prisma } = await import('@garageos/database');
+    const notFoundError = new Prisma.PrismaClientKnownRequestError('Record not found', {
+      code: 'P2025',
+      clientVersion: 'test',
+    });
+    const findUniqueOrThrow = vi.fn().mockRejectedValue(notFoundError);
+    app = await buildApp({ findUniqueOrThrow });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/users/me',
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/NOT_FOUND',
+      title: 'Resource not found',
+      status: 404,
+    });
+  });
 });
