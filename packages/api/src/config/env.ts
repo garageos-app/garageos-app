@@ -9,6 +9,14 @@ import { z } from 'zod';
 // other local services). In Lambda, LWA layer sets AWS_LWA_PORT=8080
 // and the Dockerfile exports PORT=8080 — see packages/api/Dockerfile
 // and APPENDICE_C §5.9.
+//
+// PR 7 adds Cognito auth configuration. AWS_REGION was optional in
+// PR 6 (Lambda runtime provides it automatically); it is now required
+// because src/plugins/auth.ts derives the JWKS URI and issuer from it
+// together with the pool IDs. The *_JWKS_URL_OVERRIDE vars are test-
+// only hooks used by integration tests (tests/helpers/jwks-server.ts)
+// to redirect the verifier at a local mock — production leaves them
+// unset and the verifier uses the real Cognito JWKS endpoint.
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(3100),
@@ -16,8 +24,15 @@ const envSchema = z.object({
   // Surfaced by GET /health. Set by the deploy pipeline (git SHA or
   // semver tag) — unknown locally is fine.
   APP_VERSION: z.string().default('unknown'),
-  // Provided by Lambda runtime, unused locally.
-  AWS_REGION: z.string().optional(),
+  // Required as of PR 7: the auth plugin derives the Cognito issuer
+  // and JWKS URI from this plus the pool IDs. Lambda runtime supplies
+  // it automatically; local dev must set it in .env.
+  AWS_REGION: z
+    .string()
+    .regex(
+      /^[a-z]{2}-[a-z]+-\d$/,
+      'AWS_REGION must match `<region>-<name>-<n>` (e.g. eu-central-1)',
+    ),
   // Supabase transaction pooler URL (port 6543) consumed by the Prisma
   // Client at runtime. The database plugin fails fast at boot if this
   // is missing — see APPENDICE_C §6.3 and packages/database/.env.example.
@@ -31,8 +46,37 @@ const envSchema = z.object({
   // migrations. The runtime server never opens this; keep optional so
   // Lambda containers that only run the HTTP service don't need it.
   DIRECT_URL: z.string().optional(),
+
+  // --- Cognito (PR 7) ---
+  COGNITO_OFFICINE_POOL_ID: z
+    .string()
+    .regex(
+      /^[a-z]{2}-[a-z]+-\d_[A-Za-z0-9]+$/,
+      'COGNITO_OFFICINE_POOL_ID must match `<region>_<id>` (e.g. eu-central-1_ABC123)',
+    ),
+  COGNITO_OFFICINE_CLIENT_ID: z.string().min(1),
+  COGNITO_CLIENTI_POOL_ID: z
+    .string()
+    .regex(
+      /^[a-z]{2}-[a-z]+-\d_[A-Za-z0-9]+$/,
+      'COGNITO_CLIENTI_POOL_ID must match `<region>_<id>` (e.g. eu-central-1_XYZ789)',
+    ),
+  COGNITO_CLIENTI_CLIENT_ID: z.string().min(1),
+  // Test-only overrides. Production path derives the JWKS URI from the
+  // pool ID: `https://cognito-idp.<region>.amazonaws.com/<pool>/.well-known/jwks.json`.
+  // Integration tests set these to a local mock server URL so the
+  // aws-jwt-verify hydrate step hits the mock instead of AWS.
+  COGNITO_OFFICINE_JWKS_URL_OVERRIDE: z.string().url().optional(),
+  COGNITO_CLIENTI_JWKS_URL_OVERRIDE: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
 
-export const env: Env = envSchema.parse(process.env);
+// Factory used by tests to validate arbitrary env snapshots without
+// going through a dynamic import cache-bust dance. Production / normal
+// consumers import `env` (parsed once at module load).
+export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  return envSchema.parse(source);
+}
+
+export const env: Env = parseEnv();

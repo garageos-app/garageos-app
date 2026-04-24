@@ -1,4 +1,6 @@
+import { Prisma } from '@garageos/database';
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+
 import { ERROR_TYPE_BASE_URL, PROBLEM_JSON_CONTENT_TYPE } from '../config/constants.js';
 
 // Error handler that serialises every failure as RFC 7807 Problem
@@ -81,6 +83,21 @@ export function registerErrorHandler(app: FastifyInstance): void {
           message: v.message ?? 'Invalid value',
         })),
       };
+      return sendProblem(reply, problem);
+    }
+
+    // Prisma findUniqueOrThrow / findFirstOrThrow / update-on-missing
+    // raise P2025. Surface it as a clean 404 so clients don't see a
+    // generic 500 when a row legitimately does not exist (either
+    // soft-deleted or hidden by the RLS policies active in the tx).
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      const problem = buildProblem(
+        request,
+        'NOT_FOUND',
+        'Resource not found',
+        404,
+        'The requested resource does not exist or is not accessible.',
+      );
       return sendProblem(reply, problem);
     }
 

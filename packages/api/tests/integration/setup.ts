@@ -1,5 +1,14 @@
 import pg from 'pg';
 
+import { initKeys } from '../helpers/jwt.js';
+
+// Hydrate the JWT test keys from the env handoff that globalSetup
+// published. The worker-side initKeys() is a no-op for unit tests
+// (unit/setup.ts generates fresh keys) but here it rebuilds the pairs
+// from TEST_JWT_*_KEY_BUNDLE so workers sign with the same keys the
+// JWKS mock server is publishing.
+await initKeys();
+
 // globalSetup.ts sets DATABASE_URL / ADMIN_DATABASE_URL on the main
 // process before the worker pool is forked; workers inherit both.
 // The Prisma singleton imported transitively via src/plugins/database.ts

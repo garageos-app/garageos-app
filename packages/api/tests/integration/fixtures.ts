@@ -1,25 +1,28 @@
 import type { FastifyInstance } from 'fastify';
 
 import { buildServer } from '../../src/server.js';
-import { tenantContext } from '../../src/middleware/tenant-context.js';
+import { getTestKey, initKeys } from '../helpers/jwt.js';
 
-// Build a Fastify app against the real Testcontainers Postgres, wired
-// with the default @garageos/database singleton (no overrides). A
-// test-only route `/test/locations` reads back the caller's tenant
-// locations through `withContext` — that verifies the full chain:
-//   header → tenantContext → request.tenantId → withContext(...) → RLS.
-// The route lives here, not in src/, so PR 6 ships no prod-routable
-// endpoints other than the existing /health.
-
+// Integration test entry point. PR 6 shipped a test-only route
+// `/test/locations` here to exercise the header→tenantContext→RLS
+// chain; PR 7 replaces that with real /v1/users/me + /v1/tenants/me
+// endpoints, which cover the same chain plus the JWT auth layer end-
+// to-end. See tests/integration/users-me.test.ts and tenants-me.test.ts.
+//
+// buildTestServer pre-seeds the auth plugin's JWKS cache with the test
+// key pairs so it never needs to reach out over HTTPS. aws-jwt-verify
+// 5.x accepts only https:// URLs through its built-in fetcher, which
+// is why we do not run a local HTTP JWKS mock server.
 export async function buildTestServer(): Promise<FastifyInstance> {
-  const app = await buildServer();
+  // Idempotent; integration/setup.ts already awaits it but calling
+  // again here guarantees keys exist even if this fixture is imported
+  // in isolation.
+  await initKeys();
 
-  app.get('/test/locations', { preHandler: tenantContext }, async (request) => {
-    const rows = await app.withContext({ tenantId: request.tenantId! }, (tx) =>
-      tx.location.findMany({ select: { id: true, tenantId: true, name: true } }),
-    );
-    return { locations: rows };
+  return buildServer({
+    auth: {
+      officineJwks: [getTestKey('officine').publicJwk],
+      clientiJwks: [getTestKey('clienti').publicJwk],
+    },
   });
-
-  return app;
 }
