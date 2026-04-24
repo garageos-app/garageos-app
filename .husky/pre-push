@@ -1,1 +1,2 @@
 pnpm -r typecheck
+pnpm -r test:unit
