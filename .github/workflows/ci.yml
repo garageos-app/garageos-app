@@ -100,3 +100,9 @@ jobs:
       # RLS + triggers), seed system intervention types, then run
       # the integration suite inside a single fork that shares state.
       - run: pnpm --filter @garageos/database test:integration
+      # @garageos/api integration suite: spins up its own Postgres
+      # container (see packages/api/tests/integration/globalSetup.ts),
+      # reuses the sibling database package's migrations and seed, and
+      # exercises the full HTTP → tenantContext → withContext → RLS
+      # chain end-to-end.
+      - run: pnpm --filter @garageos/api test:integration
