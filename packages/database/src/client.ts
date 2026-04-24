@@ -68,17 +68,22 @@ export async function withContext<T>(
   fn: (tx: PrismaClient) => Promise<T>,
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {
+    // `SELECT set_config(...)` is a SELECT statement, so route it
+    // through $queryRawUnsafe (which returns rows) rather than
+    // $executeRawUnsafe (which expects row-affecting DML). Either
+    // works in simple cases but $queryRawUnsafe is the documented
+    // path for SELECTs.
     if (ctx.tenantId) {
-      await tx.$executeRawUnsafe(`SELECT set_config('app.current_tenant', $1, true)`, ctx.tenantId);
+      await tx.$queryRawUnsafe(`SELECT set_config('app.current_tenant', $1, true)`, ctx.tenantId);
     }
     if (ctx.customerId) {
-      await tx.$executeRawUnsafe(
+      await tx.$queryRawUnsafe(
         `SELECT set_config('app.current_customer', $1, true)`,
         ctx.customerId,
       );
     }
     if (ctx.role === 'admin') {
-      await tx.$executeRawUnsafe(`SELECT set_config('app.current_role', 'admin', true)`);
+      await tx.$queryRawUnsafe(`SELECT set_config('app.current_role', 'admin', true)`);
     }
     return fn(tx as unknown as PrismaClient);
   });
