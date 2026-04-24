@@ -67,6 +67,31 @@ const vehicleSearchSelect = {
   ownerships: vehicleOwnershipSelect,
 } as const;
 
+// Detail shape: all public tech fields + certifiedAt/createdAt. Kept
+// in sync by comment only with BR-153 "VISIBILE" — missing fields
+// like version/color/displacement are added here explicitly.
+const vehicleDetailSelect = {
+  id: true,
+  garageCode: true,
+  vin: true,
+  plate: true,
+  plateCountry: true,
+  make: true,
+  model: true,
+  version: true,
+  year: true,
+  registrationDate: true,
+  vehicleType: true,
+  fuelType: true,
+  engineDisplacement: true,
+  powerKw: true,
+  color: true,
+  status: true,
+  certifiedAt: true,
+  createdAt: true,
+  ownerships: vehicleOwnershipSelect,
+} as const;
+
 function encodeCursor(id: string): string {
   return Buffer.from(JSON.stringify({ id }), 'utf8').toString('base64url');
 }
@@ -183,10 +208,50 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
     {
       preHandler: [requireAuth, requireOfficinaPool, tenantContext],
     },
-    async (request, reply) => {
-      const params = idParamSchema.parse(request.params);
-      void params;
-      return reply.code(501).send({ detail: 'not implemented' });
+    async (request) => {
+      const { id } = idParamSchema.parse(request.params);
+      const tenantId = request.tenantId!;
+      const cognitoSub = request.userId!;
+
+      return app.withContext({ tenantId }, async (tx) => {
+        const user = await tx.user.findUniqueOrThrow({
+          where: { cognitoSub },
+          select: { id: true, locationId: true },
+        });
+
+        const vehicle = await tx.vehicle.findUniqueOrThrow({
+          where: { id },
+          select: vehicleDetailSelect,
+        });
+
+        const active = vehicle.ownerships[0] ?? null;
+        const customerIds = active ? [active.customerId] : [];
+        const visibleSet = await resolvePiiVisibility({ tx, tenantId, customerIds });
+
+        await recordVehicleAccess({
+          tx,
+          vehicleId: vehicle.id,
+          tenantId,
+          userId: user.id,
+          ...(user.locationId ? { locationId: user.locationId } : {}),
+          action: 'view',
+          ipAddress: request.ip,
+          log: request.log,
+        });
+
+        const { ownerships: _drop, ...vehicleFields } = vehicle;
+        void _drop;
+        return {
+          vehicle: vehicleFields,
+          currentOwnership: active
+            ? {
+                id: active.id,
+                startedAt: active.startedAt,
+                customer: maskCustomer(active.customer, visibleSet.has(active.customerId)),
+              }
+            : null,
+        };
+      });
     },
   );
 };

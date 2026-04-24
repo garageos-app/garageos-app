@@ -320,6 +320,141 @@ describe('GET /v1/vehicles/search — data path', () => {
   });
 });
 
+describe('GET /v1/vehicles/:id — data path', () => {
+  let app: FastifyInstance | undefined;
+  let prisma: FakePrisma;
+  beforeEach(() => {
+    app = undefined;
+    prisma = buildFakePrisma();
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  const vehicleRow = () => ({
+    id: VEHICLE_ID,
+    garageCode: 'GO-482-KXRT',
+    vin: 'ZFA16900000512345',
+    plate: 'AB123CD',
+    plateCountry: 'IT',
+    make: 'Fiat',
+    model: 'Panda',
+    version: '1.2 Lounge',
+    year: 2021,
+    registrationDate: new Date('2021-03-15'),
+    vehicleType: 'car' as const,
+    fuelType: 'petrol' as const,
+    engineDisplacement: 1242,
+    powerKw: 51,
+    color: 'Bianco Gelato',
+    status: 'certified' as const,
+    certifiedAt: new Date('2026-01-01T00:00:00Z'),
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    ownerships: [
+      {
+        id: 'o1',
+        customerId: CUSTOMER_ID,
+        startedAt: new Date('2026-01-01T00:00:00Z'),
+        customer: {
+          id: CUSTOMER_ID,
+          firstName: 'Mario',
+          lastName: 'Rossi',
+          email: 'mario@example.com',
+          phone: '+39 333 1234567',
+          isBusiness: false,
+          businessName: null,
+          vatNumber: null,
+        },
+      },
+    ],
+  });
+
+  it('returns vehicle + currentOwnership with full PII when related', async () => {
+    prisma.vehicle.findUniqueOrThrow.mockResolvedValue(vehicleRow());
+    prisma.customerTenantRelation.findMany.mockResolvedValue([{ customerId: CUSTOMER_ID }]);
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}`,
+      headers: { authorization: 'Bearer x' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      vehicle: { id: string; make: string };
+      currentOwnership: { customer: { redacted: boolean; firstName?: string } };
+    };
+    expect(body.vehicle.id).toBe(VEHICLE_ID);
+    expect(body.vehicle.make).toBe('Fiat');
+    expect(body.currentOwnership.customer.redacted).toBe(false);
+    expect(body.currentOwnership.customer.firstName).toBe('Mario');
+  });
+
+  it('redacts customer PII when the tenant has no relation', async () => {
+    prisma.vehicle.findUniqueOrThrow.mockResolvedValue(vehicleRow());
+    prisma.customerTenantRelation.findMany.mockResolvedValue([]);
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}`,
+      headers: { authorization: 'Bearer x' },
+    });
+    const body = res.json() as {
+      currentOwnership: { customer: Record<string, unknown> };
+    };
+    expect(body.currentOwnership.customer).toEqual({
+      id: CUSTOMER_ID,
+      redacted: true,
+      displayName: 'Proprietario non in anagrafica',
+    });
+  });
+
+  it('returns 404 when Prisma throws P2025', async () => {
+    const { Prisma } = await import('@garageos/database');
+    prisma.vehicle.findUniqueOrThrow.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('not found', {
+        code: 'P2025',
+        clientVersion: 'test',
+      }),
+    );
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}`,
+      headers: { authorization: 'Bearer x' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('writes exactly one access_log entry with action=view', async () => {
+    prisma.vehicle.findUniqueOrThrow.mockResolvedValue(vehicleRow());
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}`,
+      headers: { authorization: 'Bearer x' },
+    });
+    expect(prisma.accessLog.create).toHaveBeenCalledTimes(1);
+    expect(prisma.accessLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'view' }) }),
+    );
+  });
+
+  it('does not include createdByTenantId, pendingMetadata, or internal timestamps', async () => {
+    prisma.vehicle.findUniqueOrThrow.mockResolvedValue(vehicleRow());
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}`,
+      headers: { authorization: 'Bearer x' },
+    });
+    const body = res.json() as { vehicle: Record<string, unknown> };
+    expect(body.vehicle).not.toHaveProperty('createdByTenantId');
+    expect(body.vehicle).not.toHaveProperty('pendingMetadata');
+    expect(body.vehicle).not.toHaveProperty('updatedAt');
+    expect(body.vehicle).not.toHaveProperty('archivedAt');
+  });
+});
+
 // Exposed for Task 8 data-path tests to reuse the same fixtures.
 export {
   buildApp,
