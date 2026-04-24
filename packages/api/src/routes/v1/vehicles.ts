@@ -296,9 +296,37 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
         );
       }
 
-      // Data path lands in Task 5-9.
-      reply.code(501);
-      return { message: 'Not implemented yet' };
+      const tenantId = request.tenantId!;
+      const cognitoSub = request.userId!;
+
+      return app.withContext({ tenantId }, async (tx) => {
+        const user = await tx.user.findUniqueOrThrow({
+          where: { cognitoSub },
+          select: { id: true, locationId: true },
+        });
+
+        // Location must belong to the requesting tenant. Done outside the
+        // duplicate-VIN / plate checks because it is a precondition of the
+        // whole flow — failing here is more informative than a 404 on the
+        // ownership insert later.
+        const location = await tx.location.findUnique({
+          where: { id: body.locationId },
+          select: { tenantId: true },
+        });
+        if (!location || location.tenantId !== tenantId) {
+          throw businessError(
+            'vehicle.creation.location_not_in_tenant',
+            422,
+            'La location indicata non appartiene al tenant corrente.',
+          );
+        }
+
+        void user; // data-path tasks use user.id / user.locationId.
+
+        // Remaining logic lands in Tasks 6-9.
+        reply.code(501);
+        return { message: 'Not implemented yet' };
+      });
     },
   );
 };

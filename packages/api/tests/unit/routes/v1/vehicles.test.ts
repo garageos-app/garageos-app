@@ -16,9 +16,29 @@ const LOCATION_ID = '66666666-6666-4666-8666-666666666666';
 
 interface FakePrisma {
   user: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
-  vehicle: { findMany: ReturnType<typeof vi.fn>; findUniqueOrThrow: ReturnType<typeof vi.fn> };
-  customerTenantRelation: { findMany: ReturnType<typeof vi.fn> };
+  location: { findUnique: ReturnType<typeof vi.fn> };
+  vehicle: {
+    findMany: ReturnType<typeof vi.fn>;
+    findUniqueOrThrow: ReturnType<typeof vi.fn>;
+    findFirst: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+  };
+  customer: {
+    findUnique: ReturnType<typeof vi.fn>;
+    findUniqueOrThrow: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+  };
+  customerTenantRelation: {
+    findMany: ReturnType<typeof vi.fn>;
+    findUnique: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+  };
+  vehicleOwnership: { create: ReturnType<typeof vi.fn> };
+  invitation: { create: ReturnType<typeof vi.fn> };
   accessLog: { findFirst: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
+  // Tagged-template variants (garage-code.ts uses these after Task 3 fix).
+  $queryRaw: ReturnType<typeof vi.fn>;
+  $executeRaw: ReturnType<typeof vi.fn>;
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
@@ -26,15 +46,51 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     user: {
       findUniqueOrThrow: vi.fn().mockResolvedValue({ id: USER_ID, locationId: LOCATION_ID }),
     },
+    location: {
+      findUnique: vi.fn().mockResolvedValue({ id: LOCATION_ID, tenantId: TENANT_ID }),
+    },
     vehicle: {
       findMany: vi.fn().mockResolvedValue([]),
       findUniqueOrThrow: vi.fn(),
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: VEHICLE_ID }),
     },
-    customerTenantRelation: { findMany: vi.fn().mockResolvedValue([]) },
+    customer: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      findUniqueOrThrow: vi.fn(),
+      create: vi.fn().mockResolvedValue({ id: CUSTOMER_ID, email: 'mario.rossi@example.com' }),
+    },
+    customerTenantRelation: {
+      findMany: vi.fn().mockResolvedValue([]),
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({}),
+    },
+    vehicleOwnership: {
+      create: vi.fn().mockResolvedValue({
+        id: '77777777-7777-4777-8777-777777777777',
+        vehicleId: VEHICLE_ID,
+        customerId: CUSTOMER_ID,
+        startedAt: new Date('2026-04-24T00:00:00Z'),
+      }),
+    },
+    invitation: {
+      create: vi.fn().mockResolvedValue({
+        id: '88888888-8888-4888-8888-888888888888',
+        targetEmail: 'mario.rossi@example.com',
+        expiresAt: new Date('2026-05-24T00:00:00Z'),
+      }),
+    },
     accessLog: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({}),
     },
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
+      // generate_garage_code() returns a single-column row.
+      const sql = strings.join('');
+      if (sql.includes('generate_garage_code')) return [{ code: 'GO-234-ABCD' }];
+      return [];
+    }),
+    $executeRaw: vi.fn().mockResolvedValue(1),
     ...overrides,
   };
 }
@@ -608,6 +664,24 @@ describe('POST /v1/vehicles — validation & auth', () => {
       payload: rest,
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 422 vehicle.creation.location_not_in_tenant when location belongs to another tenant', async () => {
+    const prisma = buildFakePrisma();
+    prisma.location.findUnique = vi
+      .fn()
+      .mockResolvedValue({ id: LOCATION_ID, tenantId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({
+      code: 'vehicle.creation.location_not_in_tenant',
+    });
   });
 });
 
