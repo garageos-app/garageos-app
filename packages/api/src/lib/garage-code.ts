@@ -29,6 +29,21 @@ export class GarageCodeAssignmentError extends Error {
   }
 }
 
+// Thrown when the UPDATE targeting `id = vehicleId AND garage_code IS NULL`
+// affects 0 rows. That means the vehicle either disappeared, was already
+// certified by a concurrent writer, or never matched the pending
+// precondition. This is NOT a unique-violation and MUST NOT be retried —
+// a fresh candidate code cannot help if the row is no longer eligible.
+// The route handler translates this into a specific HTTP response
+// (typically 404 / 409) rather than the generic 500 from
+// GarageCodeAssignmentError.
+export class VehicleNotCertifiableError extends Error {
+  constructor(public readonly vehicleId: string) {
+    super(`Vehicle ${vehicleId} is not in a certifiable state (0 rows updated)`);
+    this.name = 'VehicleNotCertifiableError';
+  }
+}
+
 function isUniqueViolation(err: unknown): boolean {
   return (
     typeof err === 'object' &&
@@ -44,24 +59,26 @@ export async function certifyVehicleWithGarageCode(
   tenantId: string,
 ): Promise<string> {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const rows = (await tx.$queryRawUnsafe('SELECT generate_garage_code() AS code')) as Array<{
-      code: string;
-    }>;
-    const candidate = rows[0]!.code;
+    const rows = await tx.$queryRaw<Array<{ code: string }>>`SELECT generate_garage_code() AS code`;
+    const first = rows[0];
+    if (!first) throw new Error('generate_garage_code returned no rows');
+    const candidate = first.code;
 
     try {
-      await tx.$executeRawUnsafe(
-        `UPDATE vehicles
-         SET garage_code = $1,
-             status = 'certified',
-             certified_at = NOW(),
-             certified_by_tenant_id = $2
-         WHERE id = $3 AND garage_code IS NULL`,
-        candidate,
-        tenantId,
-        vehicleId,
-      );
-      return candidate;
+      const affected = await tx.$executeRaw`
+        UPDATE vehicles
+        SET garage_code = ${candidate},
+            status = 'certified',
+            certified_at = NOW(),
+            certified_by_tenant_id = ${tenantId}::uuid
+        WHERE id = ${vehicleId}::uuid AND garage_code IS NULL
+      `;
+      if (affected === 1) return candidate;
+      if (affected === 0) {
+        throw new VehicleNotCertifiableError(vehicleId);
+      }
+      // >1 affected rows would be impossible given the PK-equal WHERE, but guard anyway.
+      throw new Error(`certifyVehicleWithGarageCode: UPDATE affected ${affected} rows, expected 1`);
     } catch (err) {
       if (!isUniqueViolation(err)) throw err;
     }
