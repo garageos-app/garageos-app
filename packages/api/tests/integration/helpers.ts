@@ -93,3 +93,101 @@ export async function createUser(params: {
   );
   return { userId: rows[0]!.id };
 }
+
+// Customer fixture: admin-session insert bypasses RLS so we can seed a
+// row even when no customer_tenant_relation exists yet (the test file
+// controls relation presence explicitly per scenario).
+export async function createCustomer(params: {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string | null;
+}): Promise<{ customerId: string; email: string }> {
+  const {
+    email = `cust-${Math.random().toString(36).slice(2, 10)}@test.it`,
+    firstName = 'Mario',
+    lastName = 'Rossi',
+    phone = '+39 333 1234567',
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO customers (id, email, first_name, last_name, phone, status, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, 'active'::"CustomerStatus", NOW(), NOW())
+     RETURNING id`,
+    [email, firstName, lastName, phone],
+  );
+  return { customerId: rows[0]!.id, email };
+}
+
+// Vehicle fixture. created_by_tenant_id defaults to the certifying
+// tenant so the vehicles_insert RLS policy is satisfied even when we
+// later re-seed via a non-superuser session (not used by these tests
+// but keeps the fixture future-proof).
+export async function createVehicle(params: {
+  createdByTenantId: string;
+  certifiedByTenantId?: string | null;
+  vin?: string;
+  plate?: string;
+  garageCode?: string;
+  make?: string;
+  model?: string;
+  year?: number;
+  status?: 'pending' | 'certified' | 'archived';
+}): Promise<{ vehicleId: string; vin: string; plate: string; garageCode: string }> {
+  const {
+    createdByTenantId,
+    certifiedByTenantId = createdByTenantId,
+    vin = `ZFA${Math.floor(Math.random() * 1e14)
+      .toString()
+      .padStart(14, '0')}`,
+    plate = `AB${Math.floor(Math.random() * 1e5)
+      .toString()
+      .padStart(5, '0')}`,
+    garageCode = `GO-${Math.floor(Math.random() * 1e3)
+      .toString()
+      .padStart(3, '0')}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+    make = 'Fiat',
+    model = 'Panda',
+    year = 2021,
+    status = 'certified',
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO vehicles (id, garage_code, vin, plate, plate_country, make, model, year,
+       vehicle_type, fuel_type, status, created_by_tenant_id, certified_by_tenant_id,
+       certified_at, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, 'IT', $4, $5, $6,
+       'car'::"VehicleType", 'petrol'::"FuelType", $7::"VehicleStatus", $8, $9,
+       CASE WHEN $7 = 'certified' THEN NOW() ELSE NULL END, NOW(), NOW())
+     RETURNING id`,
+    [garageCode, vin, plate, make, model, year, status, createdByTenantId, certifiedByTenantId],
+  );
+  return { vehicleId: rows[0]!.id, vin, plate, garageCode };
+}
+
+export async function createOwnership(params: {
+  vehicleId: string;
+  customerId: string;
+  startedAt?: Date;
+}): Promise<{ ownershipId: string }> {
+  const { vehicleId, customerId, startedAt = new Date() } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO vehicle_ownerships (id, vehicle_id, customer_id, started_at, created_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, NOW())
+     RETURNING id`,
+    [vehicleId, customerId, startedAt],
+  );
+  return { ownershipId: rows[0]!.id };
+}
+
+export async function createCustomerTenantRelation(params: {
+  tenantId: string;
+  customerId: string;
+}): Promise<{ relationId: string }> {
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO customer_tenant_relations
+       (id, tenant_id, customer_id, intervention_count, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, 0, NOW(), NOW())
+     RETURNING id`,
+    [params.tenantId, params.customerId],
+  );
+  return { relationId: rows[0]!.id };
+}
