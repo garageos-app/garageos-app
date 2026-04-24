@@ -2,8 +2,16 @@ import { randomUUID } from 'node:crypto';
 import sensible from '@fastify/sensible';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { env } from './config/env.js';
+import databasePlugin, { type DatabasePluginOptions } from './plugins/database.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 import healthRoutes from './routes/health.js';
+
+export interface BuildServerOptions {
+  // Database plugin overrides. Integration tests pass nothing and get
+  // the @garageos/database singleton (real Postgres via PrismaPg);
+  // unit tests pass a fake Prisma client so no TCP socket opens.
+  database?: DatabasePluginOptions;
+}
 
 // Pino transport config: pretty output in development, plain JSON in
 // production (consumed by CloudWatch / log aggregators).
@@ -23,7 +31,7 @@ function buildLoggerOptions() {
 // Factory used both by the entry point and by unit tests via
 // `app.inject()`. Keep it pure: no side effects beyond instantiating
 // Fastify.
-export async function buildServer(): Promise<FastifyInstance> {
+export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(),
     // trust X-Forwarded-* headers from API Gateway / ALB / LWA.
@@ -38,6 +46,7 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   await app.register(sensible);
   registerErrorHandler(app);
+  await app.register(databasePlugin, options.database ?? {});
   await app.register(healthRoutes);
 
   // Echo the request id back so clients can correlate. Fastify sets

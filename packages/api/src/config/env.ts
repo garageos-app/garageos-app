@@ -18,6 +18,19 @@ const envSchema = z.object({
   APP_VERSION: z.string().default('unknown'),
   // Provided by Lambda runtime, unused locally.
   AWS_REGION: z.string().optional(),
+  // Supabase transaction pooler URL (port 6543) consumed by the Prisma
+  // Client at runtime. The database plugin fails fast at boot if this
+  // is missing — see APPENDICE_C §6.3 and packages/database/.env.example.
+  DATABASE_URL: z
+    .string()
+    .refine(
+      (v) => v.startsWith('postgres://') || v.startsWith('postgresql://'),
+      'DATABASE_URL must be a postgres:// or postgresql:// connection string',
+    ),
+  // Supabase direct session URL (port 5432) used by the Prisma CLI for
+  // migrations. The runtime server never opens this; keep optional so
+  // Lambda containers that only run the HTTP service don't need it.
+  DIRECT_URL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
