@@ -20,7 +20,11 @@ async function buildApp(authPool: AuthPool | undefined): Promise<FastifyInstance
     {
       preHandler: [
         async (request) => {
-          request.authPool = authPool;
+          // exactOptionalPropertyTypes: assign only when defined so the
+          // `undefined` test case exercises the "property never set" path.
+          if (authPool !== undefined) {
+            request.authPool = authPool;
+          }
         },
         requireOfficinaPool,
       ],
