@@ -3,7 +3,7 @@ import { Buffer } from 'node:buffer';
 import { JwtRsaVerifier } from 'aws-jwt-verify';
 import type { FastifyPluginAsync } from 'fastify';
 import fp from 'fastify-plugin';
-import { createLocalJWKSet, jwtVerify, type JWK, type JWTPayload } from 'jose';
+import type { JWK, JWTPayload } from 'jose';
 
 import { env } from '../config/env.js';
 
@@ -28,12 +28,15 @@ export interface JwtVerifier {
 }
 
 export interface AuthPluginOptions {
-  // Unit-test escape hatch: when either array is set, the plugin builds
-  // an in-memory verifier backed by jose's createLocalJWKSet, skipping
-  // any HTTP fetch to Cognito. Integration tests and production leave
-  // both undefined and exercise the real HTTP path via
-  // aws-jwt-verify + JWKS URL (derived from pool ID, overridable
-  // through COGNITO_*_JWKS_URL_OVERRIDE).
+  // Pre-seed the aws-jwt-verify JWKS cache with in-memory keys. When
+  // set, the verifier never makes an HTTP call — useful for unit and
+  // integration tests where the signing key pair is generated in
+  // process (see tests/helpers/jwt.ts).
+  //
+  // Production leaves both undefined: the verifier lazily fetches the
+  // real JWKS from AWS on the first request. aws-jwt-verify's HTTP
+  // client only supports https, so this option — not a local mock
+  // server — is the right escape hatch for tests.
   officineJwks?: JWK[];
   clientiJwks?: JWK[];
 }
@@ -72,60 +75,7 @@ function peekIssuer(token: string): string {
   return (payload as { iss: string }).iss;
 }
 
-// In-memory verifier (unit tests only). Uses jose because aws-jwt-verify
-// does not expose a public path to inject pre-fetched JWKS keys.
-function buildInMemoryVerifier(opts: AuthPluginOptions): JwtVerifier {
-  const officineJwks = opts.officineJwks?.length
-    ? createLocalJWKSet({ keys: opts.officineJwks })
-    : null;
-  const clientiJwks = opts.clientiJwks?.length
-    ? createLocalJWKSet({ keys: opts.clientiJwks })
-    : null;
-
-  const officineIss = cognitoIssuer(env.COGNITO_OFFICINE_POOL_ID);
-  const clientiIss = cognitoIssuer(env.COGNITO_CLIENTI_POOL_ID);
-
-  async function runVerify(
-    token: string,
-    iss: string,
-    pool: AuthPool,
-    jwks: ReturnType<typeof createLocalJWKSet>,
-    audience: string,
-  ): Promise<VerifyResult> {
-    const { payload } = await jwtVerify(token, jwks, {
-      issuer: iss,
-      audience,
-      algorithms: ['RS256'],
-    });
-
-    const tokenUse = (payload as CognitoIdTokenPayload).token_use;
-    if (tokenUse !== 'id') {
-      throw new Error(`Expected id token, got token_use=${tokenUse ?? 'undefined'}`);
-    }
-
-    return { pool, payload: payload as CognitoIdTokenPayload };
-  }
-
-  return {
-    async verify(token) {
-      const iss = peekIssuer(token);
-      if (iss === officineIss && officineJwks) {
-        return runVerify(token, iss, 'officine', officineJwks, env.COGNITO_OFFICINE_CLIENT_ID);
-      }
-      if (iss === clientiIss && clientiJwks) {
-        return runVerify(token, iss, 'clienti', clientiJwks, env.COGNITO_CLIENTI_CLIENT_ID);
-      }
-      throw new Error(`Unknown issuer: ${iss}`);
-    },
-  };
-}
-
-// HTTP verifier (integration + production). One JwtRsaVerifier per pool;
-// each performs issuer + audience + signature validation against a
-// remote JWKS (cached by aws-jwt-verify). token_use is checked in
-// customJwtCheck — Cognito-specific semantic, not covered by the
-// generic RSA verifier.
-function buildHttpVerifier(): JwtVerifier {
+function buildVerifier(opts: AuthPluginOptions): JwtVerifier {
   const makePoolVerifier = (poolId: string, clientId: string, jwksUriOverride?: string) =>
     JwtRsaVerifier.create({
       issuer: cognitoIssuer(poolId),
@@ -149,6 +99,16 @@ function buildHttpVerifier(): JwtVerifier {
     env.COGNITO_CLIENTI_JWKS_URL_OVERRIDE,
   );
 
+  // Pre-seed cache with in-memory keys (tests only). Without this the
+  // verifier tries to fetch the JWKS over HTTPS on first use and fails
+  // in-process tests where keys are generated locally.
+  if (opts.officineJwks && opts.officineJwks.length > 0) {
+    officineVerifier.cacheJwks({ keys: opts.officineJwks } as never);
+  }
+  if (opts.clientiJwks && opts.clientiJwks.length > 0) {
+    clientiVerifier.cacheJwks({ keys: opts.clientiJwks } as never);
+  }
+
   const officineIss = cognitoIssuer(env.COGNITO_OFFICINE_POOL_ID);
   const clientiIss = cognitoIssuer(env.COGNITO_CLIENTI_POOL_ID);
 
@@ -169,11 +129,7 @@ function buildHttpVerifier(): JwtVerifier {
 }
 
 const plugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
-  const hasInMemoryJwks =
-    (opts.officineJwks && opts.officineJwks.length > 0) ||
-    (opts.clientiJwks && opts.clientiJwks.length > 0);
-
-  const verifier = hasInMemoryJwks ? buildInMemoryVerifier(opts) : buildHttpVerifier();
+  const verifier = buildVerifier(opts);
   app.decorate('jwtVerifier', verifier);
 };
 

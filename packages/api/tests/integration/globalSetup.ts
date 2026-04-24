@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import pg from 'pg';
 
-import { startJwksServer, type JwksServer } from '../helpers/jwks-server.js';
 import { publishKeysToEnv } from '../helpers/jwt.js';
 
 // Start a Postgres container, apply migrations + seed from the sibling
@@ -17,11 +16,13 @@ import { publishKeysToEnv } from '../helpers/jwt.js';
 // database package's cwd (@garageos/api has no prisma.config.ts of its
 // own — by design, the schema is single-sourced in the database pkg).
 //
-// PR 7 also starts a local JWKS mock server (tests/helpers/jwks-server.ts)
-// that publishes the test key pairs used to sign JWTs in integration
-// tests. Its URLs are pushed into the env as COGNITO_*_JWKS_URL_OVERRIDE
-// so the auth plugin's HTTP verifier fetches them instead of going to
-// cognito-idp.<region>.amazonaws.com.
+// PR 7 generates RS256 key pairs for JWT signing in-process. Instead of
+// standing up a mock JWKS HTTP server, integration tests pre-seed the
+// aws-jwt-verify cache directly via the auth plugin's officineJwks /
+// clientiJwks options (see tests/integration/fixtures.ts). The
+// publishKeysToEnv() call below just forwards the generated key pairs
+// from this main process to the forked vitest workers so both sides
+// use the same keys.
 
 const POSTGRES_IMAGE = 'postgres:15-alpine';
 
@@ -33,7 +34,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATABASE_PKG = path.resolve(__dirname, '../../../database');
 
 let container: StartedPostgreSqlContainer | null = null;
-let jwksServer: JwksServer | null = null;
 
 export async function setup(): Promise<void> {
   // --- Postgres ---
@@ -71,15 +71,8 @@ export async function setup(): Promise<void> {
   process.env.DATABASE_URL = appUrl.toString();
   process.env.ADMIN_DATABASE_URL = superUrl;
 
-  // --- JWKS mock + Cognito test env ---
-  // Generate the test key pairs in THIS (main) process and hand them
-  // off to worker processes through env vars. The JWKS mock server
-  // serves our keys; worker-side signTestToken must use the same
-  // private keys or signatures will not verify.
+  // --- Cognito test env + key handoff to workers ---
   await publishKeysToEnv();
-  jwksServer = await startJwksServer();
-  process.env.COGNITO_OFFICINE_JWKS_URL_OVERRIDE = jwksServer.officineUrl;
-  process.env.COGNITO_CLIENTI_JWKS_URL_OVERRIDE = jwksServer.clientiUrl;
   process.env.AWS_REGION ??= 'eu-central-1';
   process.env.COGNITO_OFFICINE_POOL_ID ??= 'eu-central-1_TESTOFFICINE';
   process.env.COGNITO_OFFICINE_CLIENT_ID ??= 'test-officine-client';
@@ -88,8 +81,6 @@ export async function setup(): Promise<void> {
 }
 
 export async function teardown(): Promise<void> {
-  await jwksServer?.close();
-  jwksServer = null;
   await container?.stop();
   container = null;
 }

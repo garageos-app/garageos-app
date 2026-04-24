@@ -60,3 +60,36 @@ export async function createTenantWithLocation(
     return { tenantId, locationId: locationRows[0]!.id };
   });
 }
+
+// Insert a users row via pgAdmin (superuser — bypasses RLS) for
+// integration-test fixtures. The HTTP call under test goes through
+// app_test (non-superuser) so RLS still runs at query time.
+export async function createUser(params: {
+  tenantId: string;
+  cognitoSub: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  role?: 'super_admin' | 'mechanic';
+  locationId?: string | null;
+}): Promise<{ userId: string }> {
+  const {
+    tenantId,
+    cognitoSub,
+    email = `user-${cognitoSub.slice(0, 8)}@test.it`,
+    firstName = 'Test',
+    lastName = 'User',
+    role = 'mechanic',
+    locationId = null,
+  } = params;
+
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO users (id, tenant_id, location_id, cognito_sub, email, first_name,
+       last_name, role, status, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::"UserRole",
+       'active'::"UserStatus", NOW(), NOW())
+     RETURNING id`,
+    [tenantId, locationId, cognitoSub, email, firstName, lastName, role],
+  );
+  return { userId: rows[0]!.id };
+}
