@@ -1,0 +1,9 @@
+# Prisma 7 client generator output (regenerated via `pnpm db:generate`)
+prisma/generated/
+
+# Local env (use .env.example as template)
+.env
+.env.local
+
+# Build output
+dist/

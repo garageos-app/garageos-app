@@ -18,6 +18,7 @@ export default tseslint.config(
       '**/*.d.ts',
       'docs/design/*.jsx',
       'pnpm-lock.yaml',
+      'packages/**/prisma/generated/**',
     ],
   },
   eslint.configs.recommended,

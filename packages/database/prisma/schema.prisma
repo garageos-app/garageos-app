@@ -1,0 +1,729 @@
+// =====================================================
+// GarageOS Database Schema
+// Source: docs/APPENDICE_B_DATABASE.md §2.1 (models/enums verbatim)
+//
+// Prisma 7 adaptations from the APPENDICE template:
+//   - generator.provider = "prisma-client" (was "prisma-client-js")
+//   - generator.output required (Prisma 7 breaking change)
+//   - datasource.directUrl removed (now lives in prisma.config.ts)
+//   - previewFeatures removed (fullTextSearchPostgres is not used in v1)
+// =====================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------
+// ENUMS
+// ---------------------------------------------------
+
+enum TenantStatus {
+  active
+  suspended
+  pending
+  cancelled
+}
+
+enum BillingStatus {
+  manual           // v1: bonifico manuale
+  stripe_active    // v1.1+
+  stripe_past_due
+}
+
+enum LocationStatus {
+  active
+  inactive
+}
+
+enum UserRole {
+  super_admin
+  mechanic
+}
+
+enum UserStatus {
+  active
+  inactive
+  invited
+}
+
+enum CustomerStatus {
+  active
+  pending_verification
+  deleted
+}
+
+enum VehicleStatus {
+  pending
+  certified
+  archived
+}
+
+enum VehicleType {
+  car
+  motorcycle
+  van
+  truck
+  agricultural
+}
+
+enum FuelType {
+  petrol
+  diesel
+  electric
+  hybrid
+  lpg
+  methane
+  hydrogen
+  other
+}
+
+enum TransferMethod {
+  initiated_by_seller
+  claim_without_seller
+}
+
+enum TransferStatus {
+  pending_recipient
+  pending_seller_confirmation
+  pending_validation
+  completed
+  rejected
+  expired
+}
+
+enum OwnershipTransferReason {
+  purchase
+  inheritance
+  company_assignment
+  other
+}
+
+enum InterventionTypeCategory {
+  maintenance
+  repair
+  tires
+  body
+  inspection
+  other
+}
+
+enum InterventionStatus {
+  active
+  disputed
+  cancelled
+}
+
+enum DisputeReasonCategory {
+  not_performed
+  wrong_data
+  not_authorized
+  other
+}
+
+enum DisputeStatus {
+  open
+  responded
+  resolved_by_cancellation
+  escalated
+  closed_by_admin
+}
+
+enum DeadlineStatus {
+  open
+  completed
+  overdue
+  cancelled
+}
+
+enum DeadlineReminderType {
+  t_minus_30
+  t_minus_7
+  t_zero
+  km_reached
+}
+
+enum NotificationDeliveryStatus {
+  pending
+  sent
+  failed
+  cancelled
+}
+
+enum AttachmentOwnerType {
+  intervention
+  private_intervention
+}
+
+enum AccessLogAction {
+  view
+  create
+  update
+  search_match
+}
+
+enum InvitationType {
+  customer_app
+  internal_user
+}
+
+enum PushTokenPlatform {
+  ios
+  android
+}
+
+enum AuditActorType {
+  user
+  customer
+  system
+  admin
+}
+
+// ---------------------------------------------------
+// TENANT & ORGANIZATION
+// ---------------------------------------------------
+
+model Tenant {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  businessName    String         @map("business_name") @db.VarChar(200)
+  vatNumber       String         @unique @map("vat_number") @db.VarChar(20)
+  taxCode         String?        @map("tax_code") @db.VarChar(20)
+  email           String         @db.VarChar(255)
+  phone           String?        @db.VarChar(30)
+  addressLine     String?        @map("address_line") @db.VarChar(255)
+  city            String?        @db.VarChar(100)
+  province        String?        @db.VarChar(2)
+  postalCode      String?        @map("postal_code") @db.VarChar(10)
+  logoUrl         String?        @map("logo_url") @db.VarChar(500)
+  status          TenantStatus   @default(active)
+  billingStatus   BillingStatus  @default(manual) @map("billing_status")
+  plan            String         @default("starter") @db.VarChar(50)
+  settings        Json           @default("{}")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz
+
+  locations       Location[]
+  users           User[]
+  customerRelations CustomerTenantRelation[]
+  interventions   Intervention[]
+  deadlines       Deadline[]
+  invitations     Invitation[]
+  accessLogs      AccessLog[]
+  interventionTypes InterventionType[]
+  certifiedVehicles Vehicle[] @relation("CertifiedBy")
+  createdVehicles Vehicle[] @relation("CreatedByTenant")
+
+  @@index([vatNumber], map: "idx_tenants_vat_number")
+  @@index([status], map: "idx_tenants_status")
+  @@map("tenants")
+}
+
+model Location {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  name         String         @db.VarChar(150)
+  addressLine  String         @map("address_line") @db.VarChar(255)
+  city         String         @db.VarChar(100)
+  province     String         @db.VarChar(2)
+  postalCode   String         @map("postal_code") @db.VarChar(10)
+  country      String         @default("IT") @db.VarChar(2)
+  latitude     Decimal?       @db.Decimal(10, 7)
+  longitude    Decimal?       @db.Decimal(10, 7)
+  phone        String?        @db.VarChar(30)
+  email        String?        @db.VarChar(255)
+  isPrimary    Boolean        @default(false) @map("is_primary")
+  status       LocationStatus @default(active)
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime?      @map("deleted_at") @db.Timestamptz
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users         User[]
+  interventions Intervention[]
+  accessLogs    AccessLog[]
+  deadlines     Deadline[]
+
+  @@index([tenantId], map: "idx_locations_tenant_id")
+  @@map("locations")
+}
+
+model User {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  locationId   String?    @map("location_id") @db.Uuid
+  cognitoSub   String     @unique @map("cognito_sub") @db.VarChar(100)
+  email        String     @db.VarChar(255)
+  firstName    String     @map("first_name") @db.VarChar(100)
+  lastName     String     @map("last_name") @db.VarChar(100)
+  role         UserRole
+  avatarUrl    String?    @map("avatar_url") @db.VarChar(500)
+  phone        String?    @db.VarChar(30)
+  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz
+  status       UserStatus @default(active)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz
+
+  tenant              Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location            Location?      @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  interventions       Intervention[] @relation("PerformedBy")
+  cancelledInterventions Intervention[] @relation("CancelledBy")
+  revisions           InterventionRevision[]
+  disputeResponses    InterventionDispute[]
+  accessLogs          AccessLog[]
+
+  @@index([tenantId], map: "idx_users_tenant_id")
+  @@index([email], map: "idx_users_email")
+  @@map("users")
+}
+
+// ---------------------------------------------------
+// CUSTOMER (B2C)
+// ---------------------------------------------------
+
+model Customer {
+  id                     String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cognitoSub             String?        @unique @map("cognito_sub") @db.VarChar(100)
+  email                  String         @unique @db.VarChar(255)
+  firstName              String         @map("first_name") @db.VarChar(100)
+  lastName               String         @map("last_name") @db.VarChar(100)
+  phone                  String?        @db.VarChar(30)
+  taxCode                String?        @map("tax_code") @db.VarChar(20)
+  isBusiness             Boolean        @default(false) @map("is_business")
+  businessName           String?        @map("business_name") @db.VarChar(200)
+  vatNumber              String?        @map("vat_number") @db.VarChar(20)
+  addressLine            String?        @map("address_line") @db.VarChar(255)
+  city                   String?        @db.VarChar(100)
+  province               String?        @db.VarChar(2)
+  postalCode             String?        @map("postal_code") @db.VarChar(10)
+  appInstalled           Boolean        @default(false) @map("app_installed")
+  notificationPreferences Json          @default("{}") @map("notification_preferences")
+  status                 CustomerStatus @default(active)
+  createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt              DateTime?      @map("deleted_at") @db.Timestamptz
+
+  tenantRelations     CustomerTenantRelation[]
+  ownerships          VehicleOwnership[]
+  privateInterventions PrivateIntervention[]
+  pushTokens          PushToken[]
+  disputes            InterventionDispute[]
+  transfersFrom       VehicleTransfer[] @relation("TransferFrom")
+  transfersTo         VehicleTransfer[] @relation("TransferTo")
+  createdVehicles     Vehicle[] @relation("CreatedByCustomer")
+
+  @@index([cognitoSub], map: "idx_customers_cognito_sub")
+  @@index([email], map: "idx_customers_email")
+  @@index([phone], map: "idx_customers_phone")
+  @@map("customers")
+}
+
+model CustomerTenantRelation {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String    @map("tenant_id") @db.Uuid
+  customerId           String    @map("customer_id") @db.Uuid
+  firstInterventionAt  DateTime? @map("first_intervention_at") @db.Timestamptz
+  lastInterventionAt   DateTime? @map("last_intervention_at") @db.Timestamptz
+  interventionCount    Int       @default(0) @map("intervention_count")
+  tenantNotes          String?   @map("tenant_notes") @db.Text
+  customerDeleted      Boolean   @default(false) @map("customer_deleted")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId], map: "uq_customer_tenant")
+  @@index([customerId], map: "idx_customer_tenant_customer")
+  @@map("customer_tenant_relations")
+}
+
+// ---------------------------------------------------
+// VEHICLE (CROSS-TENANT CORE)
+// ---------------------------------------------------
+
+model Vehicle {
+  id                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  garageCode             String?       @unique @map("garage_code") @db.VarChar(12)
+  vin                    String        @unique @db.VarChar(17)
+  plate                  String        @db.VarChar(10)
+  plateCountry           String        @default("IT") @map("plate_country") @db.VarChar(2)
+  make                   String        @db.VarChar(50)
+  model                  String        @db.VarChar(100)
+  version                String?       @db.VarChar(150)
+  year                   Int           @db.SmallInt
+  registrationDate       DateTime?     @map("registration_date") @db.Date
+  vehicleType            VehicleType   @map("vehicle_type")
+  fuelType               FuelType      @map("fuel_type")
+  engineDisplacement     Int?          @map("engine_displacement")
+  powerKw                Int?          @map("power_kw")
+  color                  String?       @db.VarChar(50)
+  status                 VehicleStatus @default(pending)
+  certifiedByTenantId    String?       @map("certified_by_tenant_id") @db.Uuid
+  certifiedAt            DateTime?     @map("certified_at") @db.Timestamptz
+  createdByTenantId      String?       @map("created_by_tenant_id") @db.Uuid
+  createdByCustomerId    String?       @map("created_by_customer_id") @db.Uuid
+  pendingMetadata        Json?         @map("pending_metadata")
+  createdAt              DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  archivedAt             DateTime?     @map("archived_at") @db.Timestamptz
+
+  certifiedByTenant   Tenant?   @relation("CertifiedBy", fields: [certifiedByTenantId], references: [id], onDelete: SetNull)
+  createdByTenant     Tenant?   @relation("CreatedByTenant", fields: [createdByTenantId], references: [id], onDelete: SetNull)
+  createdByCustomer   Customer? @relation("CreatedByCustomer", fields: [createdByCustomerId], references: [id], onDelete: SetNull)
+  ownerships          VehicleOwnership[]
+  transfers           VehicleTransfer[]
+  interventions       Intervention[]
+  privateInterventions PrivateIntervention[]
+  deadlines           Deadline[]
+  accessLogs          AccessLog[]
+  invitations         Invitation[]
+
+  @@index([plate], map: "idx_vehicles_plate")
+  @@index([status], map: "idx_vehicles_status")
+  @@map("vehicles")
+}
+
+model VehicleOwnership {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicleId       String                    @map("vehicle_id") @db.Uuid
+  customerId      String                    @map("customer_id") @db.Uuid
+  startedAt       DateTime                  @map("started_at") @db.Timestamptz
+  endedAt         DateTime?                 @map("ended_at") @db.Timestamptz
+  transferReason  OwnershipTransferReason?  @map("transfer_reason")
+  transferNotes   String?                   @map("transfer_notes") @db.Text
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz
+
+  vehicle  Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId], map: "idx_ownership_vehicle_id")
+  @@index([customerId], map: "idx_ownership_customer_id")
+  @@map("vehicle_ownerships")
+}
+
+model VehicleTransfer {
+  id                     String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicleId              String         @map("vehicle_id") @db.Uuid
+  fromCustomerId         String?        @map("from_customer_id") @db.Uuid
+  toCustomerId           String?        @map("to_customer_id") @db.Uuid
+  transferCode           String?        @unique @map("transfer_code") @db.VarChar(20)
+  invitedEmail           String?        @map("invited_email") @db.VarChar(255)
+  method                 TransferMethod
+  status                 TransferStatus
+  documentUrl            String?        @map("document_url") @db.VarChar(500)
+  expiresAt              DateTime       @map("expires_at") @db.Timestamptz
+  completedAt            DateTime?      @map("completed_at") @db.Timestamptz
+  rejectedReason         String?        @map("rejected_reason") @db.Text
+  createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  vehicle      Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fromCustomer Customer? @relation("TransferFrom", fields: [fromCustomerId], references: [id], onDelete: SetNull)
+  toCustomer   Customer? @relation("TransferTo", fields: [toCustomerId], references: [id], onDelete: SetNull)
+
+  @@index([vehicleId], map: "idx_transfer_vehicle_id")
+  @@index([status], map: "idx_transfer_status")
+  @@map("vehicle_transfers")
+}
+
+// ---------------------------------------------------
+// INTERVENTIONS
+// ---------------------------------------------------
+
+model InterventionType {
+  id                    String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String?                  @map("tenant_id") @db.Uuid
+  code                  String                   @db.VarChar(50)
+  nameIt                String                   @map("name_it") @db.VarChar(150)
+  description           String?                  @db.Text
+  icon                  String?                  @db.VarChar(50)
+  category              InterventionTypeCategory
+  suggestsDeadline      Boolean                  @default(false) @map("suggests_deadline")
+  defaultDeadlineMonths Int?                     @map("default_deadline_months") @db.SmallInt
+  defaultDeadlineKm     Int?                     @map("default_deadline_km")
+  active                Boolean                  @default(true)
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant                    Tenant?               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  interventions             Intervention[]
+  privateInterventions      PrivateIntervention[]
+  deadlines                 Deadline[]
+
+  @@unique([tenantId, code], map: "uq_intervention_type_code_tenant")
+  @@map("intervention_types")
+}
+
+model Intervention {
+  id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String              @map("tenant_id") @db.Uuid
+  locationId              String              @map("location_id") @db.Uuid
+  userId                  String              @map("user_id") @db.Uuid
+  vehicleId               String              @map("vehicle_id") @db.Uuid
+  interventionTypeId      String              @map("intervention_type_id") @db.Uuid
+  interventionDate        DateTime            @map("intervention_date") @db.Date
+  odometerKm              Int                 @map("odometer_km")
+  title                   String?             @db.VarChar(200)
+  description             String              @db.Text
+  partsReplaced           Json                @default("[]") @map("parts_replaced")
+  internalNotes           String?             @map("internal_notes") @db.Text
+  status                  InterventionStatus  @default(active)
+  cancelledReason         String?             @map("cancelled_reason") @db.Text
+  cancelledByUserId       String?             @map("cancelled_by_user_id") @db.Uuid
+  cancelledAt             DateTime?           @map("cancelled_at") @db.Timestamptz
+  firstSeenByCustomerAt   DateTime?           @map("first_seen_by_customer_at") @db.Timestamptz
+  wikiLockedAt            DateTime?           @map("wiki_locked_at") @db.Timestamptz
+  kmAnomaly               Boolean             @default(false) @map("km_anomaly")
+  createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  location          Location               @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  user              User                   @relation("PerformedBy", fields: [userId], references: [id], onDelete: Restrict)
+  vehicle           Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  interventionType  InterventionType       @relation(fields: [interventionTypeId], references: [id], onDelete: Restrict)
+  cancelledByUser   User?                  @relation("CancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  revisions         InterventionRevision[]
+  disputes          InterventionDispute[]
+  completedDeadlines Deadline[]            @relation("CompletedByIntervention")
+  sourceDeadlines   Deadline[]             @relation("SourceIntervention")
+
+  @@index([tenantId], map: "idx_interventions_tenant_id")
+  @@index([vehicleId], map: "idx_interventions_vehicle_id")
+  @@index([vehicleId, interventionDate(sort: Desc)], map: "idx_interventions_vehicle_date")
+  @@index([status], map: "idx_interventions_status")
+  @@map("interventions")
+}
+
+model InterventionRevision {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  interventionId  String   @map("intervention_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  revisedAt       DateTime @map("revised_at") @db.Timestamptz
+  changes         Json
+  reason          String?  @db.Text
+
+  intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([interventionId], map: "idx_revisions_intervention")
+  @@map("intervention_revisions")
+}
+
+model InterventionDispute {
+  id                    String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  interventionId        String                @map("intervention_id") @db.Uuid
+  customerId            String                @map("customer_id") @db.Uuid
+  reasonCategory        DisputeReasonCategory @map("reason_category")
+  customerDescription   String                @map("customer_description") @db.Text
+  tenantResponse        String?               @map("tenant_response") @db.Text
+  tenantResponseAt      DateTime?             @map("tenant_response_at") @db.Timestamptz
+  tenantResponseUserId  String?               @map("tenant_response_user_id") @db.Uuid
+  status                DisputeStatus         @default(open)
+  resolvedAt            DateTime?             @map("resolved_at") @db.Timestamptz
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+
+  intervention       Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  customer           Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tenantResponseUser User?        @relation(fields: [tenantResponseUserId], references: [id], onDelete: SetNull)
+
+  @@index([interventionId], map: "idx_disputes_intervention")
+  @@index([customerId], map: "idx_disputes_customer")
+  @@index([status], map: "idx_disputes_status")
+  @@map("intervention_disputes")
+}
+
+model PrivateIntervention {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId         String    @map("customer_id") @db.Uuid
+  vehicleId          String    @map("vehicle_id") @db.Uuid
+  interventionTypeId String?   @map("intervention_type_id") @db.Uuid
+  customType         String?   @map("custom_type") @db.VarChar(150)
+  interventionDate   DateTime  @map("intervention_date") @db.Date
+  odometerKm         Int?      @map("odometer_km")
+  description        String    @db.Text
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
+
+  customer         Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  vehicle          Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  interventionType InterventionType? @relation(fields: [interventionTypeId], references: [id], onDelete: SetNull)
+
+  @@index([customerId, vehicleId, interventionDate(sort: Desc)], map: "idx_private_int_customer_vehicle")
+  @@map("private_interventions")
+}
+
+// ---------------------------------------------------
+// ATTACHMENTS
+// ---------------------------------------------------
+
+model Attachment {
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerType                AttachmentOwnerType @map("owner_type")
+  ownerId                  String              @map("owner_id") @db.Uuid
+  tenantId                 String?             @map("tenant_id") @db.Uuid
+  customerId               String?             @map("customer_id") @db.Uuid
+  uploadedByUserId         String?             @map("uploaded_by_user_id") @db.Uuid
+  uploadedByCustomerId     String?             @map("uploaded_by_customer_id") @db.Uuid
+  fileName                 String              @map("file_name") @db.VarChar(255)
+  mimeType                 String              @map("mime_type") @db.VarChar(100)
+  sizeBytes                Int                 @map("size_bytes")
+  s3Key                    String              @map("s3_key") @db.VarChar(500)
+  s3Bucket                 String              @map("s3_bucket") @db.VarChar(100)
+  processed                Boolean             @default(false)
+  thumbnailS3Key           String?             @map("thumbnail_s3_key") @db.VarChar(500)
+  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt                DateTime?           @map("deleted_at") @db.Timestamptz
+
+  @@index([ownerType, ownerId], map: "idx_attachments_owner")
+  @@index([tenantId], map: "idx_attachments_tenant")
+  @@map("attachments")
+}
+
+// ---------------------------------------------------
+// DEADLINES & NOTIFICATIONS
+// ---------------------------------------------------
+
+model Deadline {
+  id                         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                   String          @map("tenant_id") @db.Uuid
+  locationId                 String          @map("location_id") @db.Uuid
+  vehicleId                  String          @map("vehicle_id") @db.Uuid
+  interventionTypeId         String          @map("intervention_type_id") @db.Uuid
+  sourceInterventionId       String?         @map("source_intervention_id") @db.Uuid
+  dueDate                    DateTime?       @map("due_date") @db.Date
+  dueOdometerKm              Int?            @map("due_odometer_km")
+  description                String?         @db.Text
+  isRecurring                Boolean         @default(false) @map("is_recurring")
+  recurringMonths            Int?            @map("recurring_months") @db.SmallInt
+  recurringKm                Int?            @map("recurring_km")
+  status                     DeadlineStatus  @default(open)
+  completedByInterventionId  String?         @map("completed_by_intervention_id") @db.Uuid
+  completedAt                DateTime?       @map("completed_at") @db.Timestamptz
+  createdAt                  DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                  DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant                  Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location                Location               @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  vehicle                 Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  interventionType        InterventionType       @relation(fields: [interventionTypeId], references: [id], onDelete: Restrict)
+  sourceIntervention      Intervention?          @relation("SourceIntervention", fields: [sourceInterventionId], references: [id], onDelete: SetNull)
+  completedByIntervention Intervention?          @relation("CompletedByIntervention", fields: [completedByInterventionId], references: [id], onDelete: SetNull)
+  notifications           DeadlineNotification[]
+
+  @@index([vehicleId], map: "idx_deadlines_vehicle")
+  @@index([tenantId, status, dueDate], map: "idx_deadlines_tenant_status_date")
+  @@index([dueDate], map: "idx_deadlines_due_date_open")
+  @@map("deadlines")
+}
+
+model DeadlineNotification {
+  id                        String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deadlineId                String                     @map("deadline_id") @db.Uuid
+  scheduledFor              DateTime                   @map("scheduled_for") @db.Timestamptz
+  reminderType              DeadlineReminderType       @map("reminder_type")
+  eventbridgeScheduleArn    String?                    @map("eventbridge_schedule_arn") @db.VarChar(500)
+  sentAt                    DateTime?                  @map("sent_at") @db.Timestamptz
+  deliveryStatus            NotificationDeliveryStatus @default(pending) @map("delivery_status")
+  failureReason             String?                    @map("failure_reason") @db.Text
+  createdAt                 DateTime                   @default(now()) @map("created_at") @db.Timestamptz
+
+  deadline Deadline @relation(fields: [deadlineId], references: [id], onDelete: Cascade)
+
+  @@index([deadlineId], map: "idx_dln_deadline")
+  @@index([scheduledFor], map: "idx_dln_scheduled_pending")
+  @@map("deadline_notifications")
+}
+
+// ---------------------------------------------------
+// AUDIT & LOGGING
+// ---------------------------------------------------
+
+model AccessLog {
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicleId  String          @map("vehicle_id") @db.Uuid
+  tenantId   String          @map("tenant_id") @db.Uuid
+  locationId String?         @map("location_id") @db.Uuid
+  userId     String          @map("user_id") @db.Uuid
+  action     AccessLogAction
+  ipAddress  String?         @map("ip_address") @db.Inet
+  userAgent  String?         @map("user_agent") @db.VarChar(500)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  vehicle  Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, createdAt(sort: Desc)], map: "idx_access_log_vehicle")
+  @@index([tenantId, createdAt(sort: Desc)], map: "idx_access_log_tenant")
+  @@map("access_logs")
+}
+
+model AuditLog {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String?        @map("tenant_id") @db.Uuid
+  actorType   AuditActorType @map("actor_type")
+  actorId     String?        @map("actor_id") @db.Uuid
+  action      String         @db.VarChar(100)
+  entityType  String         @map("entity_type") @db.VarChar(100)
+  entityId    String         @map("entity_id") @db.Uuid
+  metadata    Json           @default("{}")
+  ipAddress   String?        @map("ip_address") @db.Inet
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([tenantId, createdAt(sort: Desc)], map: "idx_audit_tenant_date")
+  @@index([entityType, entityId], map: "idx_audit_entity")
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------
+// INVITATIONS & PUSH
+// ---------------------------------------------------
+
+model Invitation {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String         @map("tenant_id") @db.Uuid
+  invitationType  InvitationType @map("invitation_type")
+  targetEmail     String         @map("target_email") @db.VarChar(255)
+  targetPhone     String?        @map("target_phone") @db.VarChar(30)
+  vehicleId       String?        @map("vehicle_id") @db.Uuid
+  customerId      String?        @map("customer_id") @db.Uuid
+  role            UserRole?
+  locationId      String?        @map("location_id") @db.Uuid
+  token           String         @unique @db.VarChar(100)
+  expiresAt       DateTime       @map("expires_at") @db.Timestamptz
+  acceptedAt      DateTime?      @map("accepted_at") @db.Timestamptz
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt], map: "idx_invitation_expires")
+  @@map("invitations")
+}
+
+model PushToken {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId    String            @map("customer_id") @db.Uuid
+  expoPushToken String            @unique @map("expo_push_token") @db.VarChar(200)
+  platform      PushTokenPlatform
+  deviceName    String?           @map("device_name") @db.VarChar(100)
+  appVersion    String?           @map("app_version") @db.VarChar(20)
+  lastUsedAt    DateTime          @map("last_used_at") @db.Timestamptz
+  active        Boolean           @default(true)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId], map: "idx_push_customer_active")
+  @@map("push_tokens")
+}
