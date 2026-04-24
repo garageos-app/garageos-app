@@ -21,6 +21,7 @@ interface ProblemDetails {
   type: string;
   title: string;
   status: number;
+  code: string;
   detail: string;
   instance: string;
   request_id: string;
@@ -45,6 +46,7 @@ function buildProblem(
     type: ERROR_TYPE_BASE_URL + code,
     title,
     status,
+    code,
     detail,
     instance: request.url,
     request_id: request.id,
@@ -139,9 +141,16 @@ export function registerErrorHandler(app: FastifyInstance): void {
       return sendProblem(reply, problem);
     }
 
-    // 4xx from @fastify/sensible or route code (httpErrors.*). Reuse the
-    // error name as machine code (e.g. "Unauthorized" → "UNAUTHORIZED").
-    const code = (error.name || 'ERROR').replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+    // 4xx from @fastify/sensible or route code (httpErrors.*). Two
+    // naming styles are supported:
+    //   - HttpError classes use PascalCase (Unauthorized, Conflict).
+    //     Convert to SCREAMING_SNAKE_CASE (Unauthorized → UNAUTHORIZED).
+    //   - Domain errors throw with a dot-separated machine code already
+    //     (e.g. "vehicle.creation.duplicate_vin") — pass through as-is.
+    const rawName = error.name || 'ERROR';
+    const code = /[a-z]\.[a-z]/.test(rawName)
+      ? rawName
+      : rawName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
     const problem = buildProblem(request, code, error.name || 'Error', status, error.message);
     return sendProblem(reply, problem);
   });

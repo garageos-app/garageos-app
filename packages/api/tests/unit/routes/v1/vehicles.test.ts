@@ -455,6 +455,162 @@ describe('GET /v1/vehicles/:id — data path', () => {
   });
 });
 
+describe('POST /v1/vehicles — validation & auth', () => {
+  let app: FastifyInstance | undefined;
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  const validBody = {
+    vehicle: {
+      // ISO 3779-valid VIN (from the checksum test file).
+      vin: '1M8GDM9AXKP042788',
+      plate: 'AB123CD',
+      plateCountry: 'IT',
+      make: 'Fiat',
+      model: 'Panda',
+      year: 2021,
+      vehicleType: 'car',
+      fuelType: 'petrol',
+      odometerKm: 45000,
+    },
+    customer: {
+      mode: 'create_new',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      email: 'mario.rossi@example.com',
+    },
+    locationId: LOCATION_ID,
+  };
+
+  it('returns 401 without auth', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 403 for a clienti-pool token', async () => {
+    const clientiVerifier: JwtVerifier = {
+      verify: async (): Promise<VerifyResult> => ({
+        pool: 'clienti',
+        payload: { sub: COGNITO_SUB, token_use: 'id', 'custom:customer_id': CUSTOMER_ID },
+      }),
+    };
+    app = await buildApp({ verifier: clientiVerifier });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('rejects a body missing the vehicle key', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: { customer: validBody.customer, locationId: LOCATION_ID },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/VALIDATION_ERROR',
+      status: 400,
+    });
+  });
+
+  it('rejects a VIN that is not 17 characters', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: {
+        ...validBody,
+        vehicle: { ...validBody.vehicle, vin: 'TOOSHORT' },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a VIN that fails ISO 3779 checksum unless forceNonstandardVin=true', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: {
+        ...validBody,
+        // Same VIN with a single character flipped so the check digit fails.
+        vehicle: { ...validBody.vehicle, vin: '1M8GDM9A1KP042788' },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      code: 'vehicle.creation.invalid_vin_checksum',
+    });
+  });
+
+  it('accepts a non-standard VIN when forceNonstandardVin=true', async () => {
+    // Still hits the stub (501) or subsequent DB code, but must not
+    // short-circuit at the checksum layer. Unit test pins: status != 400.
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: {
+        ...validBody,
+        vehicle: { ...validBody.vehicle, vin: '1M8GDM9A1KP042788' },
+        forceNonstandardVin: true,
+      },
+    });
+    expect(res.statusCode).not.toBe(400);
+  });
+
+  it('rejects create_new customer with is_business but no businessName', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: {
+        ...validBody,
+        customer: {
+          mode: 'create_new',
+          firstName: 'Azienda',
+          lastName: 'S.r.l.',
+          email: 'info@azienda.it',
+          isBusiness: true,
+        },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a missing locationId', async () => {
+    app = await buildApp();
+    const { locationId: _drop, ...rest } = validBody;
+    void _drop;
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: rest,
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
 // Exposed for Task 8 data-path tests to reuse the same fixtures.
 export {
   buildApp,

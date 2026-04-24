@@ -1,8 +1,10 @@
-import type { FastifyPluginAsync } from 'fastify';
+import { CreateVehicleSchema } from '@garageos/database';
+import type { FastifyError, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
 import { maskCustomer, resolvePiiVisibility } from '../../lib/pii-filter.js';
+import { validateVinIso3779 } from '../../lib/vin-checksum.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -24,6 +26,26 @@ const searchQuerySchema = z
 const idParamSchema = z.object({
   id: z.uuid(),
 });
+
+// Reuses CreateVehicleSchema from @garageos/database verbatim (vehicle +
+// customer discriminator + locationId + sendInvitationEmail +
+// forceNonstandardVin) and layers the API-only `force` flag used to
+// override BR-002 duplicate-plate warnings.
+const CreateVehicleBodySchema = CreateVehicleSchema.extend({
+  force: z.boolean().default(false),
+});
+
+// Problem+JSON factory with a specific machine code. Used for business-
+// rule failures that the shared error handler cannot infer from the
+// exception shape (the handler maps P2025 → 404 and ZodError → 400, but
+// domain codes like vehicle.creation.duplicate_vin need an explicit
+// path).
+function businessError(code: string, status: number, detail: string): FastifyError {
+  const err = new Error(detail) as FastifyError;
+  err.name = code;
+  err.statusCode = status;
+  return err;
+}
 
 // Current ownership is the single VehicleOwnership row with
 // ended_at IS NULL, enforced by partial unique index
@@ -252,6 +274,31 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
             : null,
         };
       });
+    },
+  );
+
+  app.post(
+    '/v1/vehicles',
+    {
+      preHandler: [requireAuth, requireOfficinaPool, tenantContext],
+    },
+    async (request, reply) => {
+      const body = CreateVehicleBodySchema.parse(request.body);
+
+      // BR-001: VIN is validated for 17-char alphanumeric shape by the
+      // base schema. ISO 3779 checksum is separate and can be bypassed
+      // for pre-1981 / agricultural vehicles via forceNonstandardVin.
+      if (!body.forceNonstandardVin && !validateVinIso3779(body.vehicle.vin)) {
+        throw businessError(
+          'vehicle.creation.invalid_vin_checksum',
+          400,
+          'Il VIN non rispetta il checksum ISO 3779. Usa forceNonstandardVin=true per veicoli storici o agricoli.',
+        );
+      }
+
+      // Data path lands in Task 5-9.
+      reply.code(501);
+      return { message: 'Not implemented yet' };
     },
   );
 };
