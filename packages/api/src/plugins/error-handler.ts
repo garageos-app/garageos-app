@@ -1,5 +1,6 @@
 import { Prisma } from '@garageos/database';
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { ZodError } from 'zod';
 
 import { ERROR_TYPE_BASE_URL, PROBLEM_JSON_CONTENT_TYPE } from '../config/constants.js';
 
@@ -81,6 +82,29 @@ export function registerErrorHandler(app: FastifyInstance): void {
           field: v.instancePath?.replace(/^\//, '') ?? '',
           code: v.keyword ?? 'invalid',
           message: v.message ?? 'Invalid value',
+        })),
+      };
+      return sendProblem(reply, problem);
+    }
+
+    // Zod .parse() called inside a handler (query/params validation
+    // where a full Fastify schema is overkill) throws ZodError. Treat
+    // it exactly like a Fastify route-schema validation failure — same
+    // VALIDATION_ERROR code, 400 status, per-field errors[] — so API
+    // consumers see one consistent validation error shape.
+    if (error instanceof ZodError) {
+      const problem: ProblemDetails = {
+        ...buildProblem(
+          request,
+          'VALIDATION_ERROR',
+          'Request validation failed',
+          400,
+          error.issues[0]?.message ?? 'Invalid request',
+        ),
+        errors: error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          code: issue.code,
+          message: issue.message,
         })),
       };
       return sendProblem(reply, problem);
