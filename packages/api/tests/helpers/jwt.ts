@@ -11,7 +11,7 @@
 // jose is a devDependency precisely to sign tokens here —
 // aws-jwt-verify only verifies, not signs.
 
-import { exportJWK, generateKeyPair, SignJWT, type CryptoKey, type JWK } from 'jose';
+import { exportJWK, generateKeyPair, importJWK, SignJWT, type CryptoKey, type JWK } from 'jose';
 
 export type TestPool = 'officine' | 'clienti';
 
@@ -48,13 +48,70 @@ async function buildPair(kid: string): Promise<TestKeyPair> {
   };
 }
 
-// Idempotent: subsequent calls reuse the first-run pairs so one keypair
-// exists per worker process. Must be awaited before any sign/verify call.
+// Env var names used to hand off the generated keys from the
+// globalSetup process to the forked worker processes. vitest (pool:
+// forks + fileParallelism: false) runs tests in a worker separate from
+// the main process that ran globalSetup — the JWKS mock server lives
+// in main, so if workers generated their own keys the published JWKS
+// and the signing keys would mismatch and every signature would fail.
+const HANDOFF_ENV = {
+  officine: 'TEST_JWT_OFFICINE_KEY_BUNDLE',
+  clienti: 'TEST_JWT_CLIENTI_KEY_BUNDLE',
+} as const;
+
+interface KeyBundle {
+  privateJwk: JWK;
+  publicJwk: JWK;
+  kid: string;
+}
+
+async function hydrateFromBundle(bundle: KeyBundle): Promise<TestKeyPair> {
+  const privateKey = (await importJWK(bundle.privateJwk, 'RS256')) as CryptoKey;
+  return { privateKey, publicJwk: bundle.publicJwk, kid: bundle.kid };
+}
+
+async function exportBundle(pair: TestKeyPair): Promise<KeyBundle> {
+  const privateJwk = await exportJWK(pair.privateKey);
+  return { privateJwk, publicJwk: pair.publicJwk, kid: pair.kid };
+}
+
+// Idempotent. Preferred order:
+//   1. If module-level keys are already populated, reuse them.
+//   2. Otherwise, if HANDOFF_ENV vars are set, hydrate from them.
+//   3. Otherwise, generate fresh pairs (unit-test path).
 export async function initKeys(): Promise<void> {
   if (officineKey && clientiKey) return;
+
+  const officineBundleJson = process.env[HANDOFF_ENV.officine];
+  const clientiBundleJson = process.env[HANDOFF_ENV.clienti];
+
+  if (officineBundleJson && clientiBundleJson) {
+    const [o, c] = await Promise.all([
+      hydrateFromBundle(JSON.parse(officineBundleJson) as KeyBundle),
+      hydrateFromBundle(JSON.parse(clientiBundleJson) as KeyBundle),
+    ]);
+    officineKey = o;
+    clientiKey = c;
+    return;
+  }
+
   const [o, c] = await Promise.all([buildPair('officine-kid-1'), buildPair('clienti-kid-1')]);
   officineKey = o;
   clientiKey = c;
+}
+
+// Called by tests/integration/globalSetup.ts after initKeys() so the
+// generated key material can be inherited by worker processes through
+// the environment. Worker-side initKeys() reads these back before any
+// test signs a token.
+export async function publishKeysToEnv(): Promise<void> {
+  await initKeys();
+  const [officine, clienti] = await Promise.all([
+    exportBundle(getTestKey('officine')),
+    exportBundle(getTestKey('clienti')),
+  ]);
+  process.env[HANDOFF_ENV.officine] = JSON.stringify(officine);
+  process.env[HANDOFF_ENV.clienti] = JSON.stringify(clienti);
 }
 
 export function getTestKey(pool: TestPool): TestKeyPair {
