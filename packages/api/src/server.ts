@@ -13,6 +13,7 @@ import interventionRoutes from './routes/v1/interventions.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
 import userRoutes from './routes/v1/users.js';
 import tenantRoutes from './routes/v1/tenants.js';
+import vehicleTimelineRoutes from './routes/v1/vehicles-timeline.js';
 import vehicleRoutes from './routes/v1/vehicles.js';
 
 export interface BuildServerOptions {
@@ -77,6 +78,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(userRoutes);
   await app.register(tenantRoutes);
   await app.register(vehicleRoutes);
+  await app.register(vehicleTimelineRoutes);
   await app.register(interventionRoutes);
   await app.register(meVehicleRoutes);
 
