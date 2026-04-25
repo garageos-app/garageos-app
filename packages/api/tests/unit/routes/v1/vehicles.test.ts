@@ -32,6 +32,7 @@ interface FakePrisma {
     findMany: ReturnType<typeof vi.fn>;
     findUnique: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
+    upsert: ReturnType<typeof vi.fn>;
   };
   vehicleOwnership: { create: ReturnType<typeof vi.fn> };
   invitation: { create: ReturnType<typeof vi.fn> };
@@ -104,6 +105,7 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
       findMany: vi.fn().mockResolvedValue([]),
       findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({}),
+      upsert: vi.fn().mockResolvedValue({ id: 'rel-id' }),
     },
     vehicleOwnership: {
       create: vi.fn().mockResolvedValue({
@@ -1079,9 +1081,10 @@ describe('POST /v1/vehicles — data path', () => {
         }),
       }),
     );
-    expect(prisma.customerTenantRelation.create).toHaveBeenCalledWith(
+    expect(prisma.customerTenantRelation.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        where: { tenantId_customerId: { tenantId: TENANT_ID, customerId: CUSTOMER_ID } },
+        create: expect.objectContaining({
           tenantId: TENANT_ID,
           customerId: CUSTOMER_ID,
         }),
@@ -1089,10 +1092,7 @@ describe('POST /v1/vehicles — data path', () => {
     );
   });
 
-  it('skips customer_tenant_relation when one already exists', async () => {
-    prisma.customerTenantRelation.findUnique.mockResolvedValue({
-      id: 'rrrrrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrrr',
-    });
+  it('uses upsert with update:{} so existing relations are no-ops', async () => {
     const bodyNew = {
       vehicle: validBody.vehicle,
       customer: {
@@ -1110,6 +1110,12 @@ describe('POST /v1/vehicles — data path', () => {
       headers: { authorization: 'Bearer x' },
       payload: bodyNew,
     });
+    expect(prisma.customerTenantRelation.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {},
+      }),
+    );
+    // create is NEVER called directly — upsert handles both branches.
     expect(prisma.customerTenantRelation.create).not.toHaveBeenCalled();
   });
 
@@ -1229,7 +1235,7 @@ describe('POST /v1/vehicles — data path', () => {
     expect(res.statusCode).toBe(201);
     const body = res.json() as {
       vehicle: { id: string; garageCode: string; status: string };
-      customer: { id: string; email: string };
+      customer: { id: string; email: string; phone: string | null; status: string };
       ownership: { id: string; vehicleId: string; customerId: string };
       invitation: { id: string; targetEmail: string } | null;
       tag_download_url: string;
@@ -1238,6 +1244,8 @@ describe('POST /v1/vehicles — data path', () => {
     expect(body.vehicle.garageCode).toBe('GO-234-ABCD');
     expect(body.vehicle.status).toBe('certified');
     expect(body.customer.email).toBe('response@example.com');
+    expect(body.customer.phone).toBeNull(); // Fix #2: phone is part of the response
+    expect(body.customer.status).toBe('active'); // Fix #1: status from DB, not hardcoded
     expect(body.ownership.vehicleId).toBe(VEHICLE_ID);
     expect(body.tag_download_url).toBe(`/v1/vehicles/${VEHICLE_ID}/tag.pdf`);
   });

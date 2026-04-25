@@ -544,17 +544,15 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
         });
 
         // BR-152: ensure the current tenant has a relation to the customer.
-        // Upsert-style: findUnique by composite key, create only if missing.
-        const existingRelation = await tx.customerTenantRelation.findUnique({
+        // upsert is atomic at SQL level — eliminates the findUnique-then-create
+        // race window that would otherwise produce a 23505 → 500 under
+        // concurrent first-time-touch by the same tenant on the same customer.
+        await tx.customerTenantRelation.upsert({
           where: { tenantId_customerId: { tenantId, customerId: customer.id } },
+          update: {},
+          create: { tenantId, customerId: customer.id, interventionCount: 0 },
           select: { id: true },
         });
-        if (!existingRelation) {
-          await tx.customerTenantRelation.create({
-            data: { tenantId, customerId: customer.id, interventionCount: 0 },
-            select: { id: true },
-          });
-        }
 
         // Invitation: only when the customer is not already linked to an
         // app account (no cognito_sub) AND the caller asked for one.
@@ -614,8 +612,9 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
             firstName: customer.firstName,
             lastName: customer.lastName,
             email: customer.email,
+            phone: customer.phone,
             appInstalled: customer.appInstalled,
-            status: 'active' as const,
+            status: customer.status,
           },
           ownership,
           invitation: invitationResponse,
