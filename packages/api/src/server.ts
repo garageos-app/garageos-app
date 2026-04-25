@@ -9,6 +9,7 @@ import databasePlugin, { type DatabasePluginOptions } from './plugins/database.j
 import { registerErrorHandler } from './plugins/error-handler.js';
 import helmetPlugin from './plugins/helmet.js';
 import healthRoutes from './routes/health.js';
+import interventionRoutes from './routes/v1/interventions.js';
 import userRoutes from './routes/v1/users.js';
 import tenantRoutes from './routes/v1/tenants.js';
 import vehicleRoutes from './routes/v1/vehicles.js';
@@ -75,6 +76,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(userRoutes);
   await app.register(tenantRoutes);
   await app.register(vehicleRoutes);
+  await app.register(interventionRoutes);
 
   // Echo the request id back so clients can correlate. Fastify sets
   // this by default for 2xx responses; doing it via onSend covers
