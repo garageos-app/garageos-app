@@ -29,6 +29,22 @@ describe('CHECK constraints and partial unique indexes', () => {
         ),
       ).rejects.toThrow(/chk_garage_code_format/);
     });
+
+    // Regression for the alphabet drift fixed in migration
+    // 20260425100000_fix_generate_garage_code_alphabet. Pre-fix the
+    // function alphabet contained 'S' while the CHECK constraint
+    // forbade it; ~17% of generated codes failed the constraint at
+    // INSERT time. 200 iterations leaves the no-S probability at
+    // (21/22)^800 ≈ 1.6e-16 — for practical purposes a hard guarantee
+    // that any S-leak would surface here.
+    it('every code from generate_garage_code() satisfies the CHECK regex', async () => {
+      for (let i = 0; i < 200; i++) {
+        const { rows } = await pgAdmin.query<{ code: string }>(
+          `SELECT generate_garage_code() AS code`,
+        );
+        expect(rows[0]!.code).toMatch(/^GO-[2-9]{3}-[A-HJ-NPRTV-Z]{4}$/);
+      }
+    });
   });
 
   describe('BR-007 vehicle year range', () => {

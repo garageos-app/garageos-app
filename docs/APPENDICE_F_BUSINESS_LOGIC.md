@@ -107,9 +107,9 @@ Lo storico resta visibile per sempre, ma l'etichetta "ARCHIVIATO" è mostrata ov
 ### BR-020 — Formato del codice
 Il codice GarageOS ha formato **`GO-NNN-AAAA`** dove:
 - `NNN` = 3 cifre decimali, escluse `0` e `1` (quindi 8 cifre effettive: 2,3,4,5,6,7,8,9)
-- `AAAA` = 4 lettere maiuscole, escluse `I`, `O`, `Q`, `U` (quindi 22 lettere effettive)
+- `AAAA` = 4 lettere maiuscole, escluse `I`, `O`, `Q`, `S`, `U` (quindi 21 lettere effettive)
 
-**Combinazioni disponibili:** 8³ × 22⁴ = 512 × 234.256 = ~120 milioni di codici univoci.
+**Combinazioni disponibili:** 8³ × 21⁴ = 512 × 194.481 = ~99,6 milioni di codici univoci.
 
 **Regex validator:** `/^GO-[2-9]{3}-[A-HJ-NPRTV-Z]{4}$/`
 
