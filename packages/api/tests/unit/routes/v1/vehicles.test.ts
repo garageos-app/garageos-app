@@ -826,6 +826,70 @@ describe('POST /v1/vehicles — data path', () => {
     // only assert on behaviour introduced by this task.
     void res;
   });
+
+  it('creates a new customer when create_new is passed and email is unseen', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'new@example.com',
+        isBusiness: false,
+      },
+      locationId: LOCATION_ID,
+    };
+    prisma.customer.findUnique.mockResolvedValue(null);
+    prisma.customer.create.mockResolvedValue({
+      id: CUSTOMER_ID,
+      email: 'new@example.com',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      cognitoSub: null,
+      appInstalled: false,
+      phone: null,
+      status: 'active',
+    });
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    expect(prisma.customer.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses an existing customer by email instead of creating a duplicate', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'already@example.com',
+      },
+      locationId: LOCATION_ID,
+    };
+    prisma.customer.findUnique.mockResolvedValue({
+      id: CUSTOMER_ID,
+      email: 'already@example.com',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      cognitoSub: null,
+      appInstalled: false,
+      phone: null,
+      status: 'active',
+    });
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    expect(prisma.customer.create).not.toHaveBeenCalled();
+  });
 });
 
 // Exposed for Task 8 data-path tests to reuse the same fixtures.

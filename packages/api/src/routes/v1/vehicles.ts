@@ -123,8 +123,49 @@ async function resolveCustomer(
     });
     return { customer: row, wasCreated: false };
   }
-  // create_new branch lands in Task 8.
-  throw new Error('create_new branch not implemented yet');
+
+  // create_new: dedupe by unique email index to avoid P2002 mid-insert.
+  // Returning an existing row is intentional — BR-041 creates a relation
+  // to any pre-existing customer, re-running the endpoint should not
+  // multiply rows.
+  const existing = await tx.customer.findUnique({
+    where: { email: customer.email },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      cognitoSub: true,
+      appInstalled: true,
+      phone: true,
+      status: true,
+    },
+  });
+  if (existing) return { customer: existing, wasCreated: false };
+
+  const created = await tx.customer.create({
+    data: {
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      email: customer.email,
+      ...(customer.phone ? { phone: customer.phone } : {}),
+      ...(customer.taxCode ? { taxCode: customer.taxCode } : {}),
+      isBusiness: customer.isBusiness,
+      ...(customer.businessName ? { businessName: customer.businessName } : {}),
+      ...(customer.vatNumber ? { vatNumber: customer.vatNumber } : {}),
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      cognitoSub: true,
+      appInstalled: true,
+      phone: true,
+      status: true,
+    },
+  });
+  return { customer: created, wasCreated: true };
 }
 
 // Current ownership is the single VehicleOwnership row with
