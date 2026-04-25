@@ -96,6 +96,8 @@ interface ResolvedCustomer {
   lastName: string;
   cognitoSub: string | null;
   appInstalled: boolean;
+  phone: string | null;
+  status: 'active' | 'pending_verification' | 'deleted';
 }
 
 async function resolveCustomer(
@@ -103,6 +105,9 @@ async function resolveCustomer(
   customer: import('zod').infer<typeof CreateVehicleBodySchema>['customer'],
 ): Promise<{ customer: ResolvedCustomer; wasCreated: boolean }> {
   if (customer.mode === 'existing') {
+    // `cognitoSub` is projected even though it isn't part of the API response —
+    // Task 9's invitation logic skips sending an invite when the customer is
+    // already linked to a Cognito identity. Drop only if that branch goes away.
     const row = await tx.customer.findUniqueOrThrow({
       where: { id: customer.customerId },
       select: {
@@ -112,6 +117,8 @@ async function resolveCustomer(
         lastName: true,
         cognitoSub: true,
         appInstalled: true,
+        phone: true,
+        status: true,
       },
     });
     return { customer: row, wasCreated: false };

@@ -799,6 +799,8 @@ describe('POST /v1/vehicles — data path', () => {
       lastName: 'Bianchi',
       cognitoSub: null,
       appInstalled: false,
+      phone: null,
+      status: 'active',
     });
     app = await buildApp({ prisma });
     const res = await app.inject({
@@ -808,6 +810,18 @@ describe('POST /v1/vehicles — data path', () => {
       payload: validBody,
     });
     expect(prisma.customer.create).not.toHaveBeenCalled();
+    expect(prisma.customer.findUniqueOrThrow).toHaveBeenCalledTimes(1);
+    expect(prisma.customer.findUniqueOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: CUSTOMER_ID },
+        select: expect.objectContaining({
+          id: true,
+          email: true,
+          phone: true, // confirms the projection from Fix #1
+          status: true,
+        }),
+      }),
+    );
     // At this checkpoint the data-path is still partially stubbed, so we
     // only assert on behaviour introduced by this task.
     void res;
