@@ -206,3 +206,91 @@ export async function createCustomerTenantRelation(params: {
   );
   return { relationId: rows[0]!.id };
 }
+
+// System intervention types catalogue used by integration helpers.
+// Mirrors a subset of packages/database/src/seed-data.ts — the integration
+// tests do not import that file because globalSetup runs `pnpm db:seed`
+// against the container, but `resetDb` wipes intervention_types as a
+// CASCADE side-effect of TRUNCATE tenants (Postgres truncates the entire
+// referencing table, not just rows whose FK matches a deleted parent).
+// Re-seeding per test is the simplest fix.
+type SystemInterventionTypeSeed = {
+  code: string;
+  nameIt: string;
+  category: 'maintenance' | 'repair' | 'tires' | 'body' | 'inspection' | 'other';
+  suggestsDeadline: boolean;
+  defaultDeadlineMonths: number | null;
+  defaultDeadlineKm: number | null;
+};
+
+const SYSTEM_TYPE_FALLBACKS: Record<string, SystemInterventionTypeSeed> = {
+  TAGLIANDO: {
+    code: 'TAGLIANDO',
+    nameIt: 'Tagliando',
+    category: 'maintenance',
+    suggestsDeadline: true,
+    defaultDeadlineMonths: 12,
+    defaultDeadlineKm: 15000,
+  },
+};
+
+// Idempotent fetch: returns the seeded row if still present, otherwise
+// re-inserts it from the inline catalogue. Callers can use this safely
+// inside beforeEach without worrying whether resetDb() cascaded the row
+// away.
+export async function ensureSystemInterventionType(code: string): Promise<{
+  id: string;
+  suggestsDeadline: boolean;
+  defaultDeadlineMonths: number | null;
+  defaultDeadlineKm: number | null;
+}> {
+  const existing = await pgAdmin.query<{
+    id: string;
+    suggests_deadline: boolean;
+    default_deadline_months: number | null;
+    default_deadline_km: number | null;
+  }>(
+    `SELECT id, suggests_deadline, default_deadline_months, default_deadline_km
+       FROM intervention_types
+      WHERE code = $1 AND tenant_id IS NULL
+      LIMIT 1`,
+    [code],
+  );
+  if (existing.rows[0]) {
+    const r = existing.rows[0];
+    return {
+      id: r.id,
+      suggestsDeadline: r.suggests_deadline,
+      defaultDeadlineMonths: r.default_deadline_months,
+      defaultDeadlineKm: r.default_deadline_km,
+    };
+  }
+  const seed = SYSTEM_TYPE_FALLBACKS[code];
+  if (!seed) {
+    throw new Error(
+      `ensureSystemInterventionType: no inline fallback for code "${code}". Add it to SYSTEM_TYPE_FALLBACKS.`,
+    );
+  }
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_types
+       (id, tenant_id, code, name_it, category, suggests_deadline,
+        default_deadline_months, default_deadline_km, active, created_at, updated_at)
+     VALUES (gen_random_uuid(), NULL, $1, $2,
+        $3::"InterventionTypeCategory", $4, $5, $6, true, NOW(), NOW())
+     RETURNING id`,
+    [
+      seed.code,
+      seed.nameIt,
+      seed.category,
+      seed.suggestsDeadline,
+      seed.defaultDeadlineMonths,
+      seed.defaultDeadlineKm,
+    ],
+  );
+  return {
+    id: rows[0]!.id,
+    suggestsDeadline: seed.suggestsDeadline,
+    defaultDeadlineMonths: seed.defaultDeadlineMonths,
+    defaultDeadlineKm: seed.defaultDeadlineKm,
+  };
+}
