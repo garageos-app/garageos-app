@@ -102,18 +102,26 @@ export async function createCustomer(params: {
   firstName?: string;
   lastName?: string;
   phone?: string | null;
+  // Set when the test needs a customer that authenticates via the
+  // clienti pool. Mirrors the cognito_sub linkage flow at signup
+  // (BR-130 — customer Cognito → Customer row mapping).
+  cognitoSub?: string | null;
 }): Promise<{ customerId: string; email: string }> {
   const {
     email = `cust-${Math.random().toString(36).slice(2, 10)}@test.it`,
     firstName = 'Mario',
     lastName = 'Rossi',
     phone = '+39 333 1234567',
+    cognitoSub = null,
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
-    `INSERT INTO customers (id, email, first_name, last_name, phone, status, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, 'active'::"CustomerStatus", NOW(), NOW())
+    `INSERT INTO customers
+       (id, cognito_sub, email, first_name, last_name, phone, status,
+        created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5,
+        'active'::"CustomerStatus", NOW(), NOW())
      RETURNING id`,
-    [email, firstName, lastName, phone],
+    [cognitoSub, email, firstName, lastName, phone],
   );
   return { customerId: rows[0]!.id, email };
 }
