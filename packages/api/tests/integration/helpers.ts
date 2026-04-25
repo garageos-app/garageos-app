@@ -215,6 +215,94 @@ export async function createCustomerTenantRelation(params: {
   return { relationId: rows[0]!.id };
 }
 
+// Direct pgAdmin insert (bypasses RLS) — cross-tenant fixtures don't
+// need to drive the public POST. `partsReplaced` defaults to a 2-item
+// array so timeline `parts_replaced_count` is non-zero.
+export async function createIntervention(params: {
+  tenantId: string;
+  locationId: string;
+  userId: string;
+  vehicleId: string;
+  interventionTypeId: string;
+  interventionDate: string; // YYYY-MM-DD
+  odometerKm: number;
+  title?: string | null;
+  description?: string;
+  partsReplaced?: unknown[];
+  status?: 'active' | 'disputed' | 'cancelled';
+  internalNotes?: string | null;
+}): Promise<{ interventionId: string }> {
+  const {
+    tenantId,
+    locationId,
+    userId,
+    vehicleId,
+    interventionTypeId,
+    interventionDate,
+    odometerKm,
+    title = null,
+    description = 'Test intervention',
+    partsReplaced = [{ name: 'Olio' }, { name: 'Filtro' }],
+    status = 'active',
+    internalNotes = null,
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO interventions
+       (id, tenant_id, location_id, user_id, vehicle_id, intervention_type_id,
+        intervention_date, odometer_km, title, description, parts_replaced,
+        internal_notes, status, km_anomaly, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::date, $7, $8, $9,
+        $10::jsonb, $11, $12::"InterventionStatus", false, NOW(), NOW())
+     RETURNING id`,
+    [
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId,
+      interventionDate,
+      odometerKm,
+      title,
+      description,
+      JSON.stringify(partsReplaced),
+      internalNotes,
+      status,
+    ],
+  );
+  return { interventionId: rows[0]!.id };
+}
+
+// Private intervention seed (customer-side). `deleted_at` stays NULL
+// by default; tests that need the soft-delete branch set it.
+export async function createPrivateIntervention(params: {
+  customerId: string;
+  vehicleId: string;
+  interventionDate: string; // YYYY-MM-DD
+  odometerKm?: number | null;
+  customType?: string | null;
+  description?: string;
+  deletedAt?: Date | null;
+}): Promise<{ privateInterventionId: string }> {
+  const {
+    customerId,
+    vehicleId,
+    interventionDate,
+    odometerKm = null,
+    customType = 'Manutenzione fai-da-te',
+    description = 'Test private intervention',
+    deletedAt = null,
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO private_interventions
+       (id, customer_id, vehicle_id, intervention_date, odometer_km,
+        custom_type, description, deleted_at, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3::date, $4, $5, $6, $7, NOW(), NOW())
+     RETURNING id`,
+    [customerId, vehicleId, interventionDate, odometerKm, customType, description, deletedAt],
+  );
+  return { privateInterventionId: rows[0]!.id };
+}
+
 // System intervention types catalogue used by integration helpers.
 // Mirrors a subset of packages/database/src/seed-data.ts — the integration
 // tests do not import that file because globalSetup runs `pnpm db:seed`
