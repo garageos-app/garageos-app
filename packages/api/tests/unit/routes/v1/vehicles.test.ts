@@ -683,6 +683,64 @@ describe('POST /v1/vehicles — validation & auth', () => {
       code: 'vehicle.creation.location_not_in_tenant',
     });
   });
+
+  it('returns 409 vehicle.creation.duplicate_vin when a vehicle with that VIN already exists', async () => {
+    const prisma = buildFakePrisma();
+    prisma.vehicle.findFirst = vi
+      .fn()
+      .mockImplementation(({ where }: { where: Record<string, unknown> }) => {
+        if (where.vin === validBody.vehicle.vin) return Promise.resolve({ id: VEHICLE_ID });
+        return Promise.resolve(null);
+      });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ code: 'vehicle.creation.duplicate_vin' });
+  });
+
+  it('returns 409 vehicle.creation.duplicate_plate_warning when the plate exists on another VIN and force=false', async () => {
+    const prisma = buildFakePrisma();
+    prisma.vehicle.findFirst = vi
+      .fn()
+      .mockImplementation(({ where }: { where: Record<string, unknown> }) => {
+        if (where.vin) return Promise.resolve(null);
+        // plate + plateCountry match with a different VIN.
+        return Promise.resolve({ id: 'zzzzzzzz-zzzz-4zzz-8zzz-zzzzzzzzzzzz' });
+      });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ code: 'vehicle.creation.duplicate_plate_warning' });
+  });
+
+  it('ignores the duplicate-plate warning when force=true', async () => {
+    const prisma = buildFakePrisma();
+    prisma.vehicle.findFirst = vi
+      .fn()
+      .mockImplementation(({ where }: { where: Record<string, unknown> }) => {
+        if (where.vin) return Promise.resolve(null);
+        return Promise.resolve({ id: 'zzzzzzzz-zzzz-4zzz-8zzz-zzzzzzzzzzzz' });
+      });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: { ...validBody, force: true },
+    });
+    // Hits the still-501 stub — the test pins that we did NOT 409 on the warning.
+    expect(res.statusCode).not.toBe(409);
+  });
 });
 
 // Exposed for Task 8 data-path tests to reuse the same fixtures.

@@ -47,6 +47,48 @@ function businessError(code: string, status: number, detail: string): FastifyErr
   return err;
 }
 
+// BR-001: VIN must be globally unique. Duplicate VIN is a hard error
+// (409) — no force-override path. Runs before the plate check because
+// VIN duplicates are common (re-registration of the same vehicle) and
+// failing fast saves a second findFirst round-trip.
+async function checkDuplicateVin(
+  tx: import('@garageos/database').PrismaClient,
+  vin: string,
+): Promise<void> {
+  const existing = await tx.vehicle.findFirst({ where: { vin }, select: { id: true } });
+  if (existing) {
+    throw businessError(
+      'vehicle.creation.duplicate_vin',
+      409,
+      `Esiste già un veicolo con VIN ${vin}.`,
+    );
+  }
+}
+
+// BR-002: plate uniqueness is per-country (an Italian "AB123CD" must
+// not collide with a Spanish "AB123CD"). The check is a *warning* —
+// the workshop can confirm with force=true if they know the plate has
+// been transferred or the previous record is stale.
+async function checkDuplicatePlateWarning(
+  tx: import('@garageos/database').PrismaClient,
+  plate: string,
+  plateCountry: string,
+  force: boolean,
+): Promise<void> {
+  if (force) return;
+  const existing = await tx.vehicle.findFirst({
+    where: { plate, plateCountry },
+    select: { id: true },
+  });
+  if (existing) {
+    throw businessError(
+      'vehicle.creation.duplicate_plate_warning',
+      409,
+      `Esiste già un veicolo con targa ${plate}. Passa force=true per confermare.`,
+    );
+  }
+}
+
 // Current ownership is the single VehicleOwnership row with
 // ended_at IS NULL, enforced by partial unique index
 // uq_ownership_vehicle_active (BR-040 — migration
@@ -320,6 +362,14 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
             'La location indicata non appartiene al tenant corrente.',
           );
         }
+
+        await checkDuplicateVin(tx, body.vehicle.vin);
+        await checkDuplicatePlateWarning(
+          tx,
+          body.vehicle.plate,
+          body.vehicle.plateCountry,
+          body.force,
+        );
 
         void user; // data-path tasks use user.id / user.locationId.
 
