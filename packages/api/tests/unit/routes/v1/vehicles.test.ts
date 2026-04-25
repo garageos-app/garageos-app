@@ -743,6 +743,77 @@ describe('POST /v1/vehicles — validation & auth', () => {
   });
 });
 
+describe('POST /v1/vehicles — data path', () => {
+  let app: FastifyInstance | undefined;
+  let prisma: FakePrisma;
+  beforeEach(() => {
+    app = undefined;
+    prisma = buildFakePrisma();
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  const validBody = {
+    vehicle: {
+      vin: '1M8GDM9AXKP042788',
+      plate: 'AB123CD',
+      plateCountry: 'IT',
+      make: 'Fiat',
+      model: 'Panda',
+      year: 2021,
+      vehicleType: 'car',
+      fuelType: 'petrol',
+      odometerKm: 45000,
+    },
+    customer: {
+      mode: 'existing',
+      customerId: CUSTOMER_ID,
+    },
+    locationId: LOCATION_ID,
+  };
+
+  it('returns 404 when the existing customerId is not found (P2025)', async () => {
+    const { Prisma } = await import('@garageos/database');
+    prisma.customer.findUniqueOrThrow = vi.fn().mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('not found', {
+        code: 'P2025',
+        clientVersion: 'test',
+      }),
+    );
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('reuses an existing customer without inserting a new one', async () => {
+    prisma.customer.findUniqueOrThrow = vi.fn().mockResolvedValue({
+      id: CUSTOMER_ID,
+      email: 'existing@example.com',
+      firstName: 'Luca',
+      lastName: 'Bianchi',
+      cognitoSub: null,
+      appInstalled: false,
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(prisma.customer.create).not.toHaveBeenCalled();
+    // At this checkpoint the data-path is still partially stubbed, so we
+    // only assert on behaviour introduced by this task.
+    void res;
+  });
+});
+
 // Exposed for Task 8 data-path tests to reuse the same fixtures.
 export {
   buildApp,

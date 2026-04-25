@@ -89,6 +89,37 @@ async function checkDuplicatePlateWarning(
   }
 }
 
+interface ResolvedCustomer {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  cognitoSub: string | null;
+  appInstalled: boolean;
+}
+
+async function resolveCustomer(
+  tx: import('@garageos/database').PrismaClient,
+  customer: import('zod').infer<typeof CreateVehicleBodySchema>['customer'],
+): Promise<{ customer: ResolvedCustomer; wasCreated: boolean }> {
+  if (customer.mode === 'existing') {
+    const row = await tx.customer.findUniqueOrThrow({
+      where: { id: customer.customerId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        cognitoSub: true,
+        appInstalled: true,
+      },
+    });
+    return { customer: row, wasCreated: false };
+  }
+  // create_new branch lands in Task 8.
+  throw new Error('create_new branch not implemented yet');
+}
+
 // Current ownership is the single VehicleOwnership row with
 // ended_at IS NULL, enforced by partial unique index
 // uq_ownership_vehicle_active (BR-040 — migration
@@ -370,6 +401,10 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
           body.vehicle.plateCountry,
           body.force,
         );
+
+        const { customer: resolved, wasCreated } = await resolveCustomer(tx, body.customer);
+        void resolved;
+        void wasCreated;
 
         void user; // data-path tasks use user.id / user.locationId.
 
