@@ -858,6 +858,64 @@ describe('POST /v1/vehicles — data path', () => {
       payload: bodyNew,
     });
     expect(prisma.customer.create).toHaveBeenCalledTimes(1);
+    expect(prisma.customer.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          email: 'new@example.com',
+          firstName: 'Mario',
+          lastName: 'Rossi',
+          isBusiness: false,
+        }),
+      }),
+    );
+  });
+
+  it('recovers from a P2002 race by re-fetching the customer (no error to client)', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'race@example.com',
+      },
+      locationId: LOCATION_ID,
+    };
+    const { Prisma } = await import('@garageos/database');
+    // findUnique -> null (initial dedupe check), then create -> P2002,
+    // then findUniqueOrThrow -> the row that won the race.
+    prisma.customer.findUnique.mockResolvedValue(null);
+    prisma.customer.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+    prisma.customer.findUniqueOrThrow.mockResolvedValue({
+      id: CUSTOMER_ID,
+      email: 'race@example.com',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      cognitoSub: null,
+      appInstalled: false,
+      phone: null,
+      status: 'active',
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    // Reaches the 501 stub on the post-customer-resolve path — the test
+    // pins that we did NOT propagate the P2002 as a 500.
+    expect(res.statusCode).not.toBe(500);
+    expect(prisma.customer.findUniqueOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: 'race@example.com' },
+      }),
+    );
   });
 
   it('reuses an existing customer by email instead of creating a duplicate', async () => {

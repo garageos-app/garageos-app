@@ -1,4 +1,4 @@
-import { CreateVehicleSchema } from '@garageos/database';
+import { CreateVehicleSchema, Prisma } from '@garageos/database';
 import type { FastifyError, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
@@ -143,29 +143,52 @@ async function resolveCustomer(
   });
   if (existing) return { customer: existing, wasCreated: false };
 
-  const created = await tx.customer.create({
-    data: {
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-      email: customer.email,
-      ...(customer.phone ? { phone: customer.phone } : {}),
-      ...(customer.taxCode ? { taxCode: customer.taxCode } : {}),
-      isBusiness: customer.isBusiness,
-      ...(customer.businessName ? { businessName: customer.businessName } : {}),
-      ...(customer.vatNumber ? { vatNumber: customer.vatNumber } : {}),
-    },
-    select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      cognitoSub: true,
-      appInstalled: true,
-      phone: true,
-      status: true,
-    },
-  });
-  return { customer: created, wasCreated: true };
+  try {
+    const created = await tx.customer.create({
+      data: {
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        email: customer.email,
+        ...(customer.phone ? { phone: customer.phone } : {}),
+        ...(customer.taxCode ? { taxCode: customer.taxCode } : {}),
+        isBusiness: customer.isBusiness,
+        ...(customer.businessName ? { businessName: customer.businessName } : {}),
+        ...(customer.vatNumber ? { vatNumber: customer.vatNumber } : {}),
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        cognitoSub: true,
+        appInstalled: true,
+        phone: true,
+        status: true,
+      },
+    });
+    return { customer: created, wasCreated: true };
+  } catch (err) {
+    // P2002 race: a concurrent POST with the same email won the INSERT
+    // between our findUnique above and this create. Re-fetch and treat
+    // it as a reuse — same outcome BR-041 wants for the dedupe-hit case.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      const racedRow = await tx.customer.findUniqueOrThrow({
+        where: { email: customer.email },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          cognitoSub: true,
+          appInstalled: true,
+          phone: true,
+          status: true,
+        },
+      });
+      return { customer: racedRow, wasCreated: false };
+    }
+    throw err;
+  }
 }
 
 // Current ownership is the single VehicleOwnership row with
