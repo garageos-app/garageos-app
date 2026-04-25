@@ -51,14 +51,54 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     },
     vehicle: {
       findMany: vi.fn().mockResolvedValue([]),
-      findUniqueOrThrow: vi.fn(),
+      // Default: a fully-shaped certified row, so POST data-path tests that
+      // do not explicitly mock the post-certify fetch still get a usable
+      // value back (the vehicle.id is what downstream calls — ownership,
+      // invitation, access-log — depend on).
+      findUniqueOrThrow: vi.fn().mockResolvedValue({
+        id: VEHICLE_ID,
+        garageCode: 'GO-234-ABCD',
+        vin: '1M8GDM9AXKP042788',
+        plate: 'AB123CD',
+        plateCountry: 'IT',
+        make: 'Fiat',
+        model: 'Panda',
+        version: null,
+        year: 2021,
+        registrationDate: null,
+        vehicleType: 'car' as const,
+        fuelType: 'petrol' as const,
+        engineDisplacement: null,
+        powerKw: null,
+        color: null,
+        status: 'certified' as const,
+        certifiedAt: new Date('2026-04-24T12:00:00Z'),
+        certifiedByTenantId: TENANT_ID,
+        createdAt: new Date('2026-04-24T12:00:00Z'),
+      }),
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: VEHICLE_ID }),
     },
     customer: {
       findUnique: vi.fn().mockResolvedValue(null),
       findUniqueOrThrow: vi.fn(),
-      create: vi.fn().mockResolvedValue({ id: CUSTOMER_ID, email: 'mario.rossi@example.com' }),
+      // Default returns the full ResolvedCustomer shape so the data-path
+      // (invitation gate on cognitoSub, response shape on email/names)
+      // works without each test having to re-mock customer.create.
+      create: vi
+        .fn()
+        .mockImplementation(
+          async ({ data }: { data: { email: string; firstName: string; lastName: string } }) => ({
+            id: CUSTOMER_ID,
+            email: data.email,
+            firstName: data.firstName,
+            lastName: data.lastName,
+            cognitoSub: null,
+            appInstalled: false,
+            phone: null,
+            status: 'active' as const,
+          }),
+        ),
     },
     customerTenantRelation: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -947,6 +987,259 @@ describe('POST /v1/vehicles — data path', () => {
       payload: bodyNew,
     });
     expect(prisma.customer.create).not.toHaveBeenCalled();
+  });
+
+  it('inserts the vehicle with createdByTenantId and pending status', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'happy@example.com',
+      },
+      locationId: LOCATION_ID,
+    };
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    expect(prisma.vehicle.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          vin: bodyNew.vehicle.vin,
+          plate: bodyNew.vehicle.plate,
+          status: 'pending',
+          createdByTenantId: TENANT_ID,
+        }),
+      }),
+    );
+  });
+
+  it('certifies the vehicle by calling generate_garage_code + UPDATE in one transaction', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'cert@example.com',
+      },
+      locationId: LOCATION_ID,
+    };
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    // $queryRaw is called via a tagged template — its first arg is a TemplateStringsArray.
+    const queryCalls = (prisma.$queryRaw as ReturnType<typeof vi.fn>).mock.calls;
+    const sawGenerate = queryCalls.some((args: unknown[]) => {
+      const strings = args[0] as TemplateStringsArray | undefined;
+      return strings ? strings.join('').includes('generate_garage_code') : false;
+    });
+    expect(sawGenerate).toBe(true);
+    // $executeRaw call should reference the certified status update.
+    const execCalls = (prisma.$executeRaw as ReturnType<typeof vi.fn>).mock.calls;
+    const sawCertify = execCalls.some((args: unknown[]) => {
+      const strings = args[0] as TemplateStringsArray | undefined;
+      return strings ? strings.join('').includes("status = 'certified'") : false;
+    });
+    expect(sawCertify).toBe(true);
+  });
+
+  it('creates the ownership and customer_tenant_relation', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'own@example.com',
+      },
+      locationId: LOCATION_ID,
+    };
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    expect(prisma.vehicleOwnership.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          vehicleId: VEHICLE_ID,
+          customerId: CUSTOMER_ID,
+        }),
+      }),
+    );
+    expect(prisma.customerTenantRelation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: TENANT_ID,
+          customerId: CUSTOMER_ID,
+        }),
+      }),
+    );
+  });
+
+  it('skips customer_tenant_relation when one already exists', async () => {
+    prisma.customerTenantRelation.findUnique.mockResolvedValue({
+      id: 'rrrrrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrrr',
+    });
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'skip-relation@example.com',
+      },
+      locationId: LOCATION_ID,
+    };
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    expect(prisma.customerTenantRelation.create).not.toHaveBeenCalled();
+  });
+
+  it('creates an invitation when send_invitation_email=true and the customer has no cognitoSub', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'invite@example.com',
+      },
+      locationId: LOCATION_ID,
+      sendInvitationEmail: true,
+    };
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    expect(prisma.invitation.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT create an invitation when send_invitation_email=false', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'noinvite@example.com',
+      },
+      locationId: LOCATION_ID,
+      sendInvitationEmail: false,
+    };
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    expect(prisma.invitation.create).not.toHaveBeenCalled();
+  });
+
+  it('writes an access_logs row with action=create (BR-154)', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'audit@example.com',
+      },
+      locationId: LOCATION_ID,
+    };
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    expect(prisma.accessLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          vehicleId: VEHICLE_ID,
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          action: 'create',
+        }),
+      }),
+    );
+  });
+
+  it('returns 201 with vehicle + customer + ownership + invitation + tag_download_url', async () => {
+    const bodyNew = {
+      vehicle: validBody.vehicle,
+      customer: {
+        mode: 'create_new',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'response@example.com',
+      },
+      locationId: LOCATION_ID,
+    };
+    prisma.vehicle.findUniqueOrThrow.mockResolvedValue({
+      id: VEHICLE_ID,
+      garageCode: 'GO-234-ABCD',
+      vin: bodyNew.vehicle.vin,
+      plate: bodyNew.vehicle.plate,
+      plateCountry: bodyNew.vehicle.plateCountry,
+      make: bodyNew.vehicle.make,
+      model: bodyNew.vehicle.model,
+      version: null,
+      year: bodyNew.vehicle.year,
+      registrationDate: null,
+      vehicleType: 'car' as const,
+      fuelType: 'petrol' as const,
+      engineDisplacement: null,
+      powerKw: null,
+      color: null,
+      status: 'certified' as const,
+      certifiedAt: new Date('2026-04-24T12:00:00Z'),
+      certifiedByTenantId: TENANT_ID,
+      createdAt: new Date('2026-04-24T12:00:00Z'),
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/vehicles',
+      headers: { authorization: 'Bearer x' },
+      payload: bodyNew,
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as {
+      vehicle: { id: string; garageCode: string; status: string };
+      customer: { id: string; email: string };
+      ownership: { id: string; vehicleId: string; customerId: string };
+      invitation: { id: string; targetEmail: string } | null;
+      tag_download_url: string;
+    };
+    expect(body.vehicle.id).toBe(VEHICLE_ID);
+    expect(body.vehicle.garageCode).toBe('GO-234-ABCD');
+    expect(body.vehicle.status).toBe('certified');
+    expect(body.customer.email).toBe('response@example.com');
+    expect(body.ownership.vehicleId).toBe(VEHICLE_ID);
+    expect(body.tag_download_url).toBe(`/v1/vehicles/${VEHICLE_ID}/tag.pdf`);
   });
 });
 

@@ -3,6 +3,7 @@ import type { FastifyError, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
+import { certifyVehicleWithGarageCode } from '../../lib/garage-code.js';
 import { maskCustomer, resolvePiiVisibility } from '../../lib/pii-filter.js';
 import { validateVinIso3779 } from '../../lib/vin-checksum.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -473,15 +474,156 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
           body.force,
         );
 
-        const { customer: resolved, wasCreated } = await resolveCustomer(tx, body.customer);
-        void resolved;
-        void wasCreated;
+        const { customer } = await resolveCustomer(tx, body.customer);
 
-        void user; // data-path tasks use user.id / user.locationId.
+        // Step 1 of certify flow: INSERT as pending with NULL garage_code —
+        // satisfies chk_pending_consistency and vehicles_insert RLS (the
+        // created_by_tenant_id match).
+        const pendingVehicle = await tx.vehicle.create({
+          data: {
+            vin: body.vehicle.vin,
+            plate: body.vehicle.plate,
+            plateCountry: body.vehicle.plateCountry,
+            make: body.vehicle.make,
+            model: body.vehicle.model,
+            ...(body.vehicle.version ? { version: body.vehicle.version } : {}),
+            year: body.vehicle.year,
+            ...(body.vehicle.registrationDate
+              ? { registrationDate: new Date(body.vehicle.registrationDate) }
+              : {}),
+            vehicleType: body.vehicle.vehicleType,
+            fuelType: body.vehicle.fuelType,
+            ...(body.vehicle.engineDisplacement !== undefined
+              ? { engineDisplacement: body.vehicle.engineDisplacement }
+              : {}),
+            ...(body.vehicle.powerKw !== undefined ? { powerKw: body.vehicle.powerKw } : {}),
+            ...(body.vehicle.color ? { color: body.vehicle.color } : {}),
+            status: 'pending',
+            createdByTenantId: tenantId,
+          },
+          select: { id: true },
+        });
 
-        // Remaining logic lands in Tasks 6-9.
-        reply.code(501);
-        return { message: 'Not implemented yet' };
+        // Step 2: single atomic UPDATE to certified + garage_code + timestamps,
+        // retried up to 3 times on unique_violation (BR-021).
+        await certifyVehicleWithGarageCode(tx, pendingVehicle.id, tenantId);
+
+        // Step 3: fetch the row back for the response shape.
+        const vehicle = await tx.vehicle.findUniqueOrThrow({
+          where: { id: pendingVehicle.id },
+          select: {
+            id: true,
+            garageCode: true,
+            vin: true,
+            plate: true,
+            plateCountry: true,
+            make: true,
+            model: true,
+            version: true,
+            year: true,
+            registrationDate: true,
+            vehicleType: true,
+            fuelType: true,
+            engineDisplacement: true,
+            powerKw: true,
+            color: true,
+            status: true,
+            certifiedAt: true,
+            certifiedByTenantId: true,
+            createdAt: true,
+          },
+        });
+
+        const ownership = await tx.vehicleOwnership.create({
+          data: {
+            vehicleId: vehicle.id,
+            customerId: customer.id,
+            startedAt: new Date(),
+          },
+          select: { id: true, vehicleId: true, customerId: true, startedAt: true },
+        });
+
+        // BR-152: ensure the current tenant has a relation to the customer.
+        // Upsert-style: findUnique by composite key, create only if missing.
+        const existingRelation = await tx.customerTenantRelation.findUnique({
+          where: { tenantId_customerId: { tenantId, customerId: customer.id } },
+          select: { id: true },
+        });
+        if (!existingRelation) {
+          await tx.customerTenantRelation.create({
+            data: { tenantId, customerId: customer.id, interventionCount: 0 },
+            select: { id: true },
+          });
+        }
+
+        // Invitation: only when the customer is not already linked to an
+        // app account (no cognito_sub) AND the caller asked for one.
+        // The actual SES send lives in a later PR — here we only write the
+        // row so the sender job has something to pick up. `token` is an
+        // opaque URL-safe string; signed/expiring tokens land alongside
+        // the SES integration.
+        let invitationResponse: {
+          id: string;
+          target_email: string;
+          expires_at: string;
+          sent: boolean;
+        } | null = null;
+
+        if (body.sendInvitationEmail && !customer.cognitoSub) {
+          const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+          const invitation = await tx.invitation.create({
+            data: {
+              tenantId,
+              invitationType: 'customer_app',
+              targetEmail: customer.email,
+              vehicleId: vehicle.id,
+              customerId: customer.id,
+              token: `inv_${vehicle.id}_${Date.now()}`,
+              expiresAt,
+            },
+            select: { id: true, targetEmail: true, expiresAt: true },
+          });
+          invitationResponse = {
+            id: invitation.id,
+            target_email: invitation.targetEmail,
+            expires_at: invitation.expiresAt.toISOString(),
+            sent: false, // TODO PR observability: flip true when SES job confirms dispatch.
+          };
+        }
+
+        // BR-154: access_log action='create'. Reuses recordVehicleAccess so
+        // the 30-min dedup rules stay centralized (creates are unique by
+        // definition, but going through the same helper keeps auditing
+        // uniform).
+        await recordVehicleAccess({
+          tx,
+          vehicleId: vehicle.id,
+          tenantId,
+          userId: user.id,
+          ...(user.locationId ? { locationId: user.locationId } : {}),
+          action: 'create',
+          ipAddress: request.ip,
+          log: request.log,
+        });
+
+        reply.code(201);
+        return {
+          vehicle,
+          customer: {
+            id: customer.id,
+            firstName: customer.firstName,
+            lastName: customer.lastName,
+            email: customer.email,
+            appInstalled: customer.appInstalled,
+            status: 'active' as const,
+          },
+          ownership,
+          invitation: invitationResponse,
+          // TODO PR S3-presign: replace with a signed URL per APPENDICE_A §2.1
+          // "URL firmato valido 1 ora". Keeping a relative path for now means
+          // downstream clients can still navigate while the signer is built.
+          tag_download_url: `/v1/vehicles/${vehicle.id}/tag.pdf`,
+        };
       });
     },
   );
