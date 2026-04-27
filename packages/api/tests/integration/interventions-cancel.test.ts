@@ -623,4 +623,145 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
     const actions = rows.map((r) => r.action).sort();
     expect(actions).toEqual(['cancel']);
   });
+
+  it('401 unauthenticated: missing Bearer is rejected', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub: `office-${randomUUID().slice(0, 8)}`,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/cancel`,
+      payload: { reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('403 clienti-pool token is rejected by requireOfficinaPool', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+
+    const { customerId } = await createCustomer({
+      cognitoSub: `cust-${randomUUID().slice(0, 8)}`,
+    });
+    const clientToken = await signTestToken({
+      pool: 'clienti',
+      sub: `cust-${randomUUID().slice(0, 8)}`,
+      customerId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/cancel`,
+      headers: { authorization: `Bearer ${clientToken}` },
+      payload: { reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('400 validation.error: missing reason field', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/cancel`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('400 validation.error: extra field rejected by .strict()', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/cancel`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { reason: VALID_REASON, cancelledByUserId: userId },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });
