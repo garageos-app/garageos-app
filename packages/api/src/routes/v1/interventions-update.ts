@@ -59,6 +59,25 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
+        // BR-130: a cancelled intervention is read-only forever — there
+        // is no "uncancel" path; correcting an error means logging a
+        // new intervention. BR-128: disputed status blocks modifications
+        // until the workshop responds via dispute-response (F-OFF-602).
+        if (existing.status === 'cancelled') {
+          throw businessError(
+            'intervention.modification.cancelled',
+            422,
+            'Intervento cancellato: non modificabile.',
+          );
+        }
+        if (existing.status === 'disputed') {
+          throw businessError(
+            'intervention.modification.disputed',
+            422,
+            'Intervento contestato: non modificabile finché non rispondi alla dispute.',
+          );
+        }
+
         // Build the partial update payload. Override flags / reason are
         // never persisted — only the 5 BR-065 editable fields land on
         // the row.
@@ -118,10 +137,6 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
       });
     },
   );
-
-  // Suppress unused-import warning for businessError until Task 6 wires
-  // it in for status guards. Remove this when Task 6 imports it.
-  void businessError;
 };
 
 export default interventionUpdateRoutes;
