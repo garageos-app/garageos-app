@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer';
 import type { FastifyError, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
+import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 
@@ -12,8 +13,6 @@ import { requireAuth } from '../../middleware/require-auth.js';
 // sees shop + own private, customer non-owner 403, private of past
 // owners always hidden. Cursor merges both sources by
 // (interventionDate DESC, id DESC).
-
-const idParamSchema = z.object({ id: z.uuid() });
 
 const timelineQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),

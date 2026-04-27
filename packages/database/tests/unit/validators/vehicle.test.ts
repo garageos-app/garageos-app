@@ -6,6 +6,7 @@ import {
   ClaimVehicleSchema,
   CreateVehicleSchema,
   FuelTypeEnum,
+  UpdateVehicleSchema,
   VehicleTypeEnum,
 } from '../../../src/validators/vehicle.js';
 
@@ -163,5 +164,69 @@ describe('BR-024 — ClaimVehicleSchema case-insensitive transform', () => {
 
   it('rejects codes that do not match the format', () => {
     expect(() => ClaimVehicleSchema.parse({ garageCode: 'GO-012-KXRT' })).toThrow();
+  });
+});
+
+describe('UpdateVehicleSchema', () => {
+  it('accepts a single editable field', () => {
+    const result = UpdateVehicleSchema.safeParse({ color: 'red' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts multiple editable fields', () => {
+    const result = UpdateVehicleSchema.safeParse({
+      color: 'blue',
+      powerKw: 80,
+      registrationDate: '2020-01-15',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects empty body', () => {
+    const result = UpdateVehicleSchema.safeParse({});
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]!.message).toMatch(/almeno un campo/i);
+    }
+  });
+
+  it('rejects unknown fields (strict)', () => {
+    const result = UpdateVehicleSchema.safeParse({ status: 'archived' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects vin with wrong length', () => {
+    const result = UpdateVehicleSchema.safeParse({ vin: 'ABC' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects year out of range (BR-007)', () => {
+    const tooOld = UpdateVehicleSchema.safeParse({ year: 1800 });
+    expect(tooOld.success).toBe(false);
+    const currentYear = new Date().getUTCFullYear();
+    const tooFuture = UpdateVehicleSchema.safeParse({ year: currentYear + 5 });
+    expect(tooFuture.success).toBe(false);
+  });
+
+  it('rejects plateCountry with wrong length', () => {
+    const result = UpdateVehicleSchema.safeParse({ plateCountry: 'ITA' });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts override flags alongside an editable field', () => {
+    const result = UpdateVehicleSchema.safeParse({
+      color: 'red',
+      forceNonstandardVin: true,
+      force: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects body with only override flags (no editable field)', () => {
+    const result = UpdateVehicleSchema.safeParse({
+      forceNonstandardVin: true,
+      force: true,
+    });
+    expect(result.success).toBe(false);
   });
 });

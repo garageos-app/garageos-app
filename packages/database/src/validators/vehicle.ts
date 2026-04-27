@@ -81,7 +81,63 @@ export const ClaimVehicleSchema = z.object({
   garageCode: GarageCodeSchema.transform((s) => s.toUpperCase()),
 });
 
+// PATCH /v1/vehicles/:id (F-OFF-106). All editable fields optional;
+// override flags piggyback for VIN-checksum (forceNonstandardVin) and
+// duplicate-plate confirmation (force). .strict() rejects unknown
+// keys (status, garageCode, certifiedAt, createdByTenantId, ...) so
+// callers get a 400 instead of a silent strip. .refine ensures at
+// least one editable field is present, otherwise the call is a no-op.
+const EDITABLE_FIELDS = [
+  'vin',
+  'plate',
+  'plateCountry',
+  'make',
+  'model',
+  'version',
+  'year',
+  'registrationDate',
+  'vehicleType',
+  'fuelType',
+  'engineDisplacement',
+  'powerKw',
+  'color',
+] as const;
+
+export const UpdateVehicleSchema = z
+  .object({
+    vin: VinSchema.optional(),
+    plate: ItalianPlateSchema.optional(),
+    plateCountry: z.string().length(2).optional(),
+    make: z.string().min(1).max(50).optional(),
+    model: z.string().min(1).max(100).optional(),
+    version: z.string().max(150).nullable().optional(),
+    year: z
+      .number()
+      .int()
+      .min(1900)
+      .max(CURRENT_YEAR + 1)
+      .optional(),
+    registrationDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable()
+      .optional(),
+    vehicleType: VehicleTypeEnum.optional(),
+    fuelType: FuelTypeEnum.optional(),
+    engineDisplacement: z.number().int().positive().nullable().optional(),
+    powerKw: z.number().int().positive().nullable().optional(),
+    color: z.string().max(50).nullable().optional(),
+    forceNonstandardVin: z.boolean().default(false),
+    force: z.boolean().default(false),
+  })
+  .strict()
+  .refine(
+    (data) => EDITABLE_FIELDS.some((k) => (data as Record<string, unknown>)[k] !== undefined),
+    { message: 'Specifica almeno un campo da modificare' },
+  );
+
 export type CreateVehicleInput = z.infer<typeof CreateVehicleSchema>;
 export type ClaimVehicleInput = z.infer<typeof ClaimVehicleSchema>;
+export type UpdateVehicleInput = z.infer<typeof UpdateVehicleSchema>;
 export type VehicleType = z.infer<typeof VehicleTypeEnum>;
 export type FuelType = z.infer<typeof FuelTypeEnum>;
