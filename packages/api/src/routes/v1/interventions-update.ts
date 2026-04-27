@@ -136,6 +136,18 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
         const now = new Date();
         const lockState = computeLockState(existing, now);
 
+        // BR-064: post-lock writes require a reason. Zod already enforces
+        // length when reason is present (>= 10, <= 2000); the undefined
+        // case is the gap to cover here. The `< 10` defensive belt is
+        // redundant in the typical flow but cheap.
+        if (lockState.isLocked && (body.reason === undefined || body.reason.length < 10)) {
+          throw businessError(
+            'intervention.modification.revision_reason_required',
+            400,
+            'Modifica post-lock: serve una motivazione di almeno 10 caratteri.',
+          );
+        }
+
         // Build the partial update payload. Override flags / reason are
         // never persisted — only the 5 BR-065 editable fields land on
         // the row.

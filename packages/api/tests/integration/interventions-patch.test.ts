@@ -287,4 +287,83 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       internalNotes: { from: null, to: 'Nota officina' },
     });
   });
+
+  it('400 intervention.modification.revision_reason_required when post-lock without reason', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      createdAt: fortyNineHoursAgo,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'Aggiornata' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      code: 'intervention.modification.revision_reason_required',
+      status: 400,
+    });
+  });
+
+  it('200 wiki window: reason is ignored if provided', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      description: 'Originale',
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        description: 'Aggiornata',
+        reason: 'Reason ignored in wiki window',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { revision: unknown }).revision).toBeNull();
+  });
 });
