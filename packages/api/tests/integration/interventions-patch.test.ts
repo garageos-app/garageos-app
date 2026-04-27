@@ -631,4 +631,49 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const body = res.json() as { revision: { changes: Record<string, unknown> } };
     expect(Object.keys(body.revision.changes)).toEqual(['internalNotes']);
   });
+
+  it('200 wiki window — writes access_logs row action="update" on parent vehicle (BR-154)', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'Aggiornata' },
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    const logs = await pgAdmin.query<{
+      action: string;
+      vehicle_id: string;
+      tenant_id: string;
+      user_id: string;
+    }>(`SELECT action, vehicle_id, tenant_id, user_id FROM access_logs WHERE vehicle_id = $1`, [
+      vehicleId,
+    ]);
+    expect(logs.rows.length).toBeGreaterThanOrEqual(1);
+    expect(logs.rows.some((r) => r.action === 'update')).toBe(true);
+  });
 });
