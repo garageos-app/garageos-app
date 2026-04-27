@@ -40,7 +40,7 @@ const CreateVehicleBodySchema = CreateVehicleSchema.extend({
 // (409) — no force-override path. Runs before the plate check because
 // VIN duplicates are common (re-registration of the same vehicle) and
 // failing fast saves a second findFirst round-trip.
-async function checkDuplicateVin(
+export async function checkDuplicateVin(
   tx: import('@garageos/database').PrismaClient,
   vin: string,
 ): Promise<void> {
@@ -57,16 +57,23 @@ async function checkDuplicateVin(
 // BR-002: plate uniqueness is per-country (an Italian "AB123CD" must
 // not collide with a Spanish "AB123CD"). The check is a *warning* —
 // the workshop can confirm with force=true if they know the plate has
-// been transferred or the previous record is stale.
-async function checkDuplicatePlateWarning(
+// been transferred or the previous record is stale. excludeId skips a
+// specific vehicle row (used by PATCH so the unchanged-plate case
+// does not collide with itself).
+export async function checkDuplicatePlateWarning(
   tx: import('@garageos/database').PrismaClient,
   plate: string,
   plateCountry: string,
   force: boolean,
+  excludeId?: string,
 ): Promise<void> {
   if (force) return;
   const existing = await tx.vehicle.findFirst({
-    where: { plate, plateCountry },
+    where: {
+      plate,
+      plateCountry,
+      ...(excludeId ? { NOT: { id: excludeId } } : {}),
+    },
     select: { id: true },
   });
   if (existing) {
