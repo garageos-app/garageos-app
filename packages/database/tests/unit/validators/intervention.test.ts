@@ -6,6 +6,7 @@ import {
   CreateDisputeSchema,
   CreateInterventionSchema,
   PartReplacedSchema,
+  UpdateInterventionSchema,
 } from '../../../src/validators/intervention.js';
 
 describe('BR-071 — PartReplacedSchema', () => {
@@ -157,5 +158,95 @@ describe('BR-123 / BR-124 — CreateDisputeSchema', () => {
         attachmentIds: Array.from({ length: 11 }, () => randomUUID()),
       }),
     ).toThrow();
+  });
+});
+
+describe('UpdateInterventionSchema (BR-061, BR-064, BR-065)', () => {
+  it('accepts a single editable field', () => {
+    const parsed = UpdateInterventionSchema.parse({ description: 'Aggiornata' });
+    expect(parsed.description).toBe('Aggiornata');
+  });
+
+  it('accepts all 5 editable fields plus reason', () => {
+    expect(() =>
+      UpdateInterventionSchema.parse({
+        interventionTypeId: randomUUID(),
+        title: 'Titolo nuovo',
+        description: 'Descrizione',
+        partsReplaced: [{ name: 'Olio', quantity: 4 }],
+        internalNotes: 'Nota officina',
+        reason: 'Motivazione modifica >= 10 chars',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects an empty body (refine)', () => {
+    expect(() => UpdateInterventionSchema.parse({})).toThrow();
+  });
+
+  it('rejects a body with only reason (no editable field)', () => {
+    expect(() =>
+      UpdateInterventionSchema.parse({ reason: 'Motivazione lunga abbastanza' }),
+    ).toThrow();
+  });
+
+  it('rejects vehicleId in body (BR-061 immutable, strict)', () => {
+    expect(() =>
+      UpdateInterventionSchema.parse({
+        description: 'X',
+        vehicleId: randomUUID(),
+      }),
+    ).toThrow();
+  });
+
+  it('rejects interventionDate in body (BR-061 immutable, strict)', () => {
+    expect(() =>
+      UpdateInterventionSchema.parse({
+        description: 'X',
+        interventionDate: '2026-01-01',
+      }),
+    ).toThrow();
+  });
+
+  it('rejects odometerKm in body (BR-061 immutable, strict)', () => {
+    expect(() =>
+      UpdateInterventionSchema.parse({
+        description: 'X',
+        odometerKm: 100000,
+      }),
+    ).toThrow();
+  });
+
+  it('rejects partsReplaced not-array', () => {
+    expect(() => UpdateInterventionSchema.parse({ partsReplaced: 'not an array' })).toThrow();
+  });
+
+  it('rejects empty description', () => {
+    expect(() => UpdateInterventionSchema.parse({ description: '' })).toThrow();
+  });
+
+  it('rejects reason shorter than 10 chars', () => {
+    expect(() => UpdateInterventionSchema.parse({ description: 'X', reason: 'short' })).toThrow();
+  });
+
+  it('rejects reason longer than 2000 chars', () => {
+    expect(() =>
+      UpdateInterventionSchema.parse({
+        description: 'X',
+        reason: 'a'.repeat(2001),
+      }),
+    ).toThrow();
+  });
+
+  it('accepts title=null (BR-065 clear field)', () => {
+    expect(() => UpdateInterventionSchema.parse({ title: null })).not.toThrow();
+  });
+
+  it('accepts internalNotes=null (BR-065 clear field)', () => {
+    expect(() => UpdateInterventionSchema.parse({ internalNotes: null })).not.toThrow();
+  });
+
+  it('rejects description=null (NOT NULL on DB column)', () => {
+    expect(() => UpdateInterventionSchema.parse({ description: null })).toThrow();
   });
 });
