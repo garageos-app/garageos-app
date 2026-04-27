@@ -460,3 +460,32 @@ export async function createDispute(params: {
   );
   return { disputeId: rows[0]!.id };
 }
+
+// Direct pgAdmin insert for intervention_revisions seeding. Mirrors
+// createDispute: bypasses RLS so cross-tenant fixtures or backdated
+// revisedAt values can be seeded without driving the public PATCH path.
+// `revisedAt` defaults to NOW(); supply an explicit Date when ordering
+// matters across multiple revision rows in the same test.
+export async function createRevision(params: {
+  interventionId: string;
+  userId: string;
+  revisedAt?: Date;
+  changes?: Record<string, unknown>;
+  reason?: string | null;
+}): Promise<{ revisionId: string }> {
+  const {
+    interventionId,
+    userId,
+    revisedAt = new Date(),
+    changes = { title: { from: 'Old', to: 'New' } },
+    reason = 'Revisione di test',
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_revisions
+       (id, intervention_id, user_id, revised_at, changes, reason)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5)
+     RETURNING id`,
+    [interventionId, userId, revisedAt, JSON.stringify(changes), reason],
+  );
+  return { revisionId: rows[0]!.id };
+}

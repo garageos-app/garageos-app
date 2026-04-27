@@ -11,6 +11,7 @@ import helmetPlugin from './plugins/helmet.js';
 import healthRoutes from './routes/health.js';
 import interventionCancelRoutes from './routes/v1/interventions-cancel.js';
 import interventionDisputeRoutes from './routes/v1/interventions-dispute.js';
+import interventionRevisionsListRoutes from './routes/v1/interventions-revisions-list.js';
 import interventionUpdateRoutes from './routes/v1/interventions-update.js';
 import interventionRoutes from './routes/v1/interventions.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
@@ -86,6 +87,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(vehicleTimelineRoutes);
   await app.register(interventionRoutes);
   await app.register(interventionUpdateRoutes);
+  await app.register(interventionRevisionsListRoutes);
   await app.register(interventionDisputeRoutes);
   await app.register(interventionCancelRoutes);
   await app.register(meVehicleRoutes);

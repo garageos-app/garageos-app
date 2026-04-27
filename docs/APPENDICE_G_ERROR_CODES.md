@@ -267,6 +267,7 @@ Per fornire dati utili al client per gestire l'errore:
 | `intervention.dispute.description_too_short` | 400 | info | Descrizione contestazione troppo breve | <20 caratteri | BR-124 |
 | `intervention.dispute.response.not_your_intervention` | 403 | warning | Contestazione di altro tenant | | |
 | `intervention.dispute.response.description_too_short` | 400 | info | Risposta troppo breve | <20 caratteri | BR-129 |
+| `intervention.revisions.not_owner` | 403 | warning | Solo il proprietario può consultare lo storico modifiche | Cliente non proprietario attivo del veicolo dell'intervento | BR-064 |
 
 ### 3.7 Interventi privati
 
@@ -796,6 +797,7 @@ intervention.modification.disputed
 intervention.modification.locked
 intervention.modification.revision_reason_required
 intervention.not_found
+intervention.revisions.not_owner
 location.cannot_disable_last
 location.cannot_remove_primary
 location.not_found
