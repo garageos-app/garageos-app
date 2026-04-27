@@ -327,7 +327,7 @@ I seguenti campi sono modificabili (con regole wiki vs revision):
 
 Le modifiche a `internal_notes` **non generano revisioni visibili al cliente**, perché il cliente non vede mai questo campo.
 
-### BR-066 — Annullamento intervento
+### BR-066 — Annullamento intervento (F-OFF-307)
 Un intervento **non può essere cancellato fisicamente**. Può essere marcato come `cancelled`:
 - Azione disponibile solo al `super_admin` del tenant che l'ha creato
 - Richiede `cancelled_reason` testuale obbligatorio (min 20 caratteri)
