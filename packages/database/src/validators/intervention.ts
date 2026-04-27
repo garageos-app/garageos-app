@@ -41,6 +41,33 @@ export const CreateDisputeSchema = z.object({
   attachmentIds: z.array(z.uuid()).max(10).optional(),
 });
 
+// BR-065 — fields editable on PATCH /interventions/:id.
+// BR-061 — vehicleId, interventionDate, odometerKm, tenantId, locationId,
+//          userId are absent here on purpose; .strict() rejects them.
+// BR-064 — reason is request-level metadata for the revision row created
+//          when the wiki window is closed; required iff isLocked, validated
+//          handler-side (not in Zod, depends on runtime state).
+export const UpdateInterventionSchema = z
+  .object({
+    interventionTypeId: z.uuid().optional(),
+    title: z.string().max(200).nullable().optional(),
+    description: z.string().min(1).max(5000).optional(),
+    partsReplaced: z.array(PartReplacedSchema).optional(),
+    internalNotes: z.string().max(5000).nullable().optional(),
+    reason: z.string().min(10).max(2000).optional(),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      v.interventionTypeId !== undefined ||
+      v.title !== undefined ||
+      v.description !== undefined ||
+      v.partsReplaced !== undefined ||
+      v.internalNotes !== undefined,
+    { message: 'Almeno un campo modificabile deve essere presente', path: [] },
+  );
+
 export type PartReplaced = z.infer<typeof PartReplacedSchema>;
 export type CreateInterventionInput = z.infer<typeof CreateInterventionSchema>;
 export type CreateDisputeInput = z.infer<typeof CreateDisputeSchema>;
+export type UpdateInterventionInput = z.infer<typeof UpdateInterventionSchema>;
