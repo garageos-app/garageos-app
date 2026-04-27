@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import databasePlugin from '../../../../src/plugins/database.js';
 import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
 import type { JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js';
+import vehicleUpdateRoutes from '../../../../src/routes/v1/vehicles-update.js';
 import vehicleRoutes from '../../../../src/routes/v1/vehicles.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -166,6 +167,7 @@ async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   });
   app.decorate('jwtVerifier', verifier);
   await app.register(vehicleRoutes);
+  await app.register(vehicleUpdateRoutes);
   return app;
 }
 
@@ -1248,6 +1250,62 @@ describe('POST /v1/vehicles — data path', () => {
     expect(body.customer.status).toBe('active'); // Fix #1: status from DB, not hardcoded
     expect(body.ownership.vehicleId).toBe(VEHICLE_ID);
     expect(body.tag_download_url).toBe(`/v1/vehicles/${VEHICLE_ID}/tag.pdf`);
+  });
+});
+
+describe('PATCH /v1/vehicles/:id — body validation', () => {
+  let app: FastifyInstance | undefined;
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  const URL = `/v1/vehicles/${VEHICLE_ID}`;
+
+  it('returns 400 when body is empty', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: URL,
+      headers: { authorization: 'Bearer x' },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 when body has unknown field (strict)', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: URL,
+      headers: { authorization: 'Bearer x' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 when vin length is wrong', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: URL,
+      headers: { authorization: 'Bearer x' },
+      payload: { vin: 'TOO_SHORT' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 when year is out of range (BR-007)', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: URL,
+      headers: { authorization: 'Bearer x' },
+      payload: { year: 1800 },
+    });
+    expect(res.statusCode).toBe(400);
   });
 });
 
