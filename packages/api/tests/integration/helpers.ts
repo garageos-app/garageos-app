@@ -424,3 +424,39 @@ export async function ensureSystemInterventionType(code: string): Promise<{
     defaultDeadlineKm: seed.defaultDeadlineKm,
   };
 }
+
+// Direct pgAdmin insert for dispute fixtures. Mirrors createIntervention:
+// bypasses RLS so cross-tenant or already-resolved disputes can be seeded
+// without driving the public POST /dispute path. status defaults to
+// 'open'; resolvedAt defaults to null. Callers that seed
+// 'resolved_by_cancellation' should set resolvedAt explicitly to mirror
+// production rows.
+export async function createDispute(params: {
+  interventionId: string;
+  customerId: string;
+  reasonCategory?: 'not_performed' | 'wrong_data' | 'not_authorized' | 'other';
+  customerDescription?: string;
+  status?: 'open' | 'responded' | 'resolved_by_cancellation' | 'escalated' | 'closed_by_admin';
+  resolvedAt?: Date | null;
+}): Promise<{ disputeId: string }> {
+  const {
+    interventionId,
+    customerId,
+    reasonCategory = 'not_performed',
+    customerDescription = 'Contestazione di test della durata regolamentare.',
+    status = 'open',
+    resolvedAt = null,
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_disputes
+       (id, intervention_id, customer_id, reason_category, customer_description,
+        status, resolved_at, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2,
+        $3::"DisputeReasonCategory", $4,
+        $5::"DisputeStatus", $6,
+        NOW(), NOW())
+     RETURNING id`,
+    [interventionId, customerId, reasonCategory, customerDescription, status, resolvedAt],
+  );
+  return { disputeId: rows[0]!.id };
+}
