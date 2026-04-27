@@ -1,6 +1,13 @@
 import { Buffer } from 'node:buffer';
 
+import type { Prisma } from '@garageos/database';
+import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+
+import { businessError } from '../../lib/business-error.js';
+import { idParamSchema } from '../../lib/vehicle-shared.js';
+import { dualPoolContext } from '../../middleware/dual-pool-context.js';
+import { requireAuth } from '../../middleware/require-auth.js';
 
 // GET /v1/interventions/:id/revisions — APPENDICE_A §3.6 (F-OFF-304
 // lato lettura). Visibilità Any User: officina cross-tenant
@@ -60,3 +67,145 @@ export function filterRevisionsForCustomer<R extends { changes: unknown }>(rows:
     return [{ ...row, changes: stripped }];
   });
 }
+
+const revisionSelect = {
+  id: true,
+  revisedAt: true,
+  reason: true,
+  changes: true,
+  user: { select: { id: true, firstName: true, lastName: true } },
+  intervention: {
+    select: {
+      tenant: { select: { businessName: true } },
+      location: { select: { city: true } },
+    },
+  },
+} as const;
+
+type RevisionRow = Prisma.InterventionRevisionGetPayload<{ select: typeof revisionSelect }>;
+
+const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
+  app.get(
+    '/v1/interventions/:id/revisions',
+    {
+      preHandler: [requireAuth, dualPoolContext],
+    },
+    async (request) => {
+      const { id: interventionId } = idParamSchema.parse(request.params);
+      const { limit, cursor: cursorRaw } = revisionsListQuerySchema.parse(request.query);
+      const cursor = decodeCursor(cursorRaw);
+
+      const isOfficine = request.authPool === 'officine';
+      const isClienti = request.authPool === 'clienti';
+
+      // Pool-bound role:'user'. Migration 0003 made interventions/tenants/
+      // locations SELECT cross-tenant (USING(true)). intervention_revisions
+      // has no RLS at all — read works in any context. Ownership check
+      // for clienti is the only privacy boundary (sezione 6 spec).
+      const ctx = isOfficine
+        ? { tenantId: request.tenantId!, role: 'user' as const }
+        : { customerId: request.customerId!, role: 'user' as const };
+
+      return app.withContext(ctx, async (tx) => {
+        // 1. Intervention existence — 404 P2025 cross-pool consistente.
+        const intervention = await tx.intervention.findUniqueOrThrow({
+          where: { id: interventionId },
+          select: { id: true, vehicleId: true },
+        });
+
+        // 2. Cliente: ownership attiva sul vehicle (mirror timeline 403).
+        if (isClienti) {
+          const ownership = await tx.vehicleOwnership.findFirst({
+            where: {
+              vehicleId: intervention.vehicleId,
+              customerId: request.customerId!,
+              endedAt: null,
+            },
+            select: { id: true },
+          });
+          if (!ownership) {
+            throw businessError(
+              'intervention.revisions.not_owner',
+              403,
+              'Solo il proprietario attivo può consultare lo storico modifiche.',
+            );
+          }
+        }
+
+        // 3. Fetch limit+1 con cursor predicate (revisedAt DESC, id DESC).
+        const where: Prisma.InterventionRevisionWhereInput = {
+          interventionId,
+          ...(cursor
+            ? {
+                OR: [
+                  { revisedAt: { lt: new Date(cursor.ra) } },
+                  { revisedAt: new Date(cursor.ra), id: { lt: cursor.id } },
+                ],
+              }
+            : {}),
+        };
+
+        const rows: RevisionRow[] = await tx.interventionRevision.findMany({
+          where,
+          select: revisionSelect,
+          orderBy: [{ revisedAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+        });
+
+        const hasMore = rows.length > limit;
+        const fetched = hasMore ? rows.slice(0, limit) : rows;
+
+        // 4. Cursor codifica la posizione DB (lastFetched), NON la
+        // lastFiltered. Il cliente cliccando "next" non salta righe
+        // perché il sort è stabile su (revisedAt, id).
+        const lastFetched = fetched.at(-1);
+        const cursorOut =
+          hasMore && lastFetched
+            ? encodeCursor({
+                ra: lastFetched.revisedAt.toISOString(),
+                id: lastFetched.id,
+              })
+            : undefined;
+
+        // 5. Filter cliente (sezione 4 spec) + map response shape.
+        const visible = isClienti ? filterRevisionsForCustomer(fetched) : fetched;
+
+        const data = visible.map((row) => {
+          const base = {
+            id: row.id,
+            revised_at: row.revisedAt.toISOString(),
+            reason: row.reason,
+            changes: row.changes,
+          };
+          if (isOfficine) {
+            return {
+              ...base,
+              user: {
+                id: row.user.id,
+                first_name: row.user.firstName,
+                last_name: row.user.lastName,
+              },
+            };
+          }
+          return {
+            ...base,
+            tenant: {
+              business_name: row.intervention.tenant.businessName,
+              location_city: row.intervention.location.city,
+            },
+          };
+        });
+
+        return {
+          data,
+          meta: {
+            has_more: hasMore,
+            ...(cursorOut ? { cursor: cursorOut } : {}),
+          },
+        };
+      });
+    },
+  );
+};
+
+export default interventionRevisionsListRoutes;
