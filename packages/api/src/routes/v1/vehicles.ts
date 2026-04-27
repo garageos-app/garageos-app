@@ -1,8 +1,9 @@
 import { CreateVehicleSchema, Prisma } from '@garageos/database';
-import type { FastifyError, FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
+import { businessError } from '../../lib/business-error.js';
 import { certifyVehicleWithGarageCode } from '../../lib/garage-code.js';
 import { maskCustomer, resolvePiiVisibility } from '../../lib/pii-filter.js';
 import { validateVinIso3779 } from '../../lib/vin-checksum.js';
@@ -35,18 +36,6 @@ const idParamSchema = z.object({
 const CreateVehicleBodySchema = CreateVehicleSchema.extend({
   force: z.boolean().default(false),
 });
-
-// Problem+JSON factory with a specific machine code. Used for business-
-// rule failures that the shared error handler cannot infer from the
-// exception shape (the handler maps P2025 → 404 and ZodError → 400, but
-// domain codes like vehicle.creation.duplicate_vin need an explicit
-// path).
-function businessError(code: string, status: number, detail: string): FastifyError {
-  const err = new Error(detail) as FastifyError;
-  err.name = code;
-  err.statusCode = status;
-  return err;
-}
 
 // BR-001: VIN must be globally unique. Duplicate VIN is a hard error
 // (409) — no force-override path. Runs before the plate check because
