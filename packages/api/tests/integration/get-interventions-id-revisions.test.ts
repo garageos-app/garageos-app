@@ -658,4 +658,75 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const body = res.json() as { data: unknown[] };
     expect(body.data).toHaveLength(1);
   });
+
+  it('200 cursor pagination: 8 revisions with limit=3 traverses 3 pages correctly', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-pagi');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    for (let i = 0; i < 8; i++) {
+      await createRevision({
+        interventionId,
+        userId,
+        revisedAt: new Date(`2026-04-26T1${i}:00:00Z`),
+        changes: { title: { from: `t${i}`, to: `T${i}` } },
+        reason: `rev-${i}`,
+      });
+    }
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+
+    const collected: string[] = [];
+    let cursor: string | undefined;
+    let pageCount = 0;
+    const limit = 3;
+
+    do {
+      const url = cursor
+        ? `/v1/interventions/${interventionId}/revisions?limit=${limit}&cursor=${cursor}`
+        : `/v1/interventions/${interventionId}/revisions?limit=${limit}`;
+      const res = await app.inject({
+        method: 'GET',
+        url,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        data: Array<{ reason: string | null }>;
+        meta: { has_more: boolean; cursor?: string };
+      };
+      collected.push(...body.data.map((d) => d.reason ?? ''));
+      cursor = body.meta.cursor;
+      pageCount++;
+      if (!body.meta.has_more) break;
+      if (pageCount > 5) throw new Error('Pagination did not terminate');
+    } while (cursor);
+
+    expect(pageCount).toBe(3);
+    expect(collected).toEqual([
+      'rev-7',
+      'rev-6',
+      'rev-5',
+      'rev-4',
+      'rev-3',
+      'rev-2',
+      'rev-1',
+      'rev-0',
+    ]);
+  });
 });
