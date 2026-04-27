@@ -148,6 +148,19 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
+        // FK validation on type change. Cross-tenant + system NULL types
+        // are visible via RLS; an unknown id surfaces as P2025 → 404
+        // NOT_FOUND via the global handler. Mirrors POST /interventions.
+        if (
+          body.interventionTypeId !== undefined &&
+          body.interventionTypeId !== existing.interventionTypeId
+        ) {
+          await tx.interventionType.findUniqueOrThrow({
+            where: { id: body.interventionTypeId },
+            select: { id: true },
+          });
+        }
+
         // Build the partial update payload. Override flags / reason are
         // never persisted — only the 5 BR-065 editable fields land on
         // the row.

@@ -417,4 +417,38 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     );
     expect(after.rows[0]!.wiki_locked_at).not.toBeNull();
   });
+
+  it('404 NOT_FOUND when changing interventionTypeId to a non-existent id', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { interventionTypeId: randomUUID() },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
 });
