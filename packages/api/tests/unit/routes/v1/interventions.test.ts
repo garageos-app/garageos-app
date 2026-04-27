@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import databasePlugin from '../../../../src/plugins/database.js';
 import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
 import type { JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js';
+import interventionUpdateRoutes from '../../../../src/routes/v1/interventions-update.js';
 import interventionRoutes from '../../../../src/routes/v1/interventions.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -24,7 +25,10 @@ interface FakePrisma {
   intervention: {
     aggregate: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
+    findUniqueOrThrow: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
   };
+  interventionRevision: { create: ReturnType<typeof vi.fn> };
   privateIntervention: { aggregate: ReturnType<typeof vi.fn> };
   customerTenantRelation: { upsert: ReturnType<typeof vi.fn> };
   deadline: { create: ReturnType<typeof vi.fn> };
@@ -103,6 +107,40 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     intervention: {
       aggregate: vi.fn().mockResolvedValue({ _max: { odometerKm: null } }),
       create: vi.fn().mockResolvedValue(buildInterventionRow()),
+      findUniqueOrThrow: vi
+        .fn()
+        .mockResolvedValueOnce({
+          tenantId: TENANT_ID,
+          status: 'active',
+          vehicleId: VEHICLE_ID,
+          createdAt: new Date(),
+          wikiLockedAt: null,
+          firstSeenByCustomerAt: null,
+          interventionTypeId: INTERVENTION_TYPE_ID,
+          title: null,
+          description: 'X',
+          partsReplaced: [],
+          internalNotes: null,
+        })
+        .mockResolvedValue({
+          ...buildInterventionRow(),
+          firstSeenByCustomerAt: null,
+          updatedAt: new Date(),
+          interventionType: {
+            id: INTERVENTION_TYPE_ID,
+            code: 'TAGLIANDO',
+            nameIt: 'Tagliando',
+          },
+        }),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    interventionRevision: {
+      create: vi.fn().mockResolvedValue({
+        id: 'rev-1',
+        revisedAt: new Date(),
+        changes: { description: { from: 'X', to: 'Y' } },
+        reason: 'Test reason',
+      }),
     },
     privateIntervention: {
       aggregate: vi.fn().mockResolvedValue({ _max: { odometerKm: null } }),
@@ -156,6 +194,7 @@ async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   });
   app.decorate('jwtVerifier', verifier);
   await app.register(interventionRoutes);
+  await app.register(interventionUpdateRoutes);
   return app;
 }
 
@@ -640,5 +679,186 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
       nameIt: 'Tagliando',
     });
     expect(body.deadline).toBeNull();
+  });
+});
+
+const validPatchBody = { description: 'Aggiornata' };
+
+describe('PATCH /v1/interventions/:id (unit)', () => {
+  let app: FastifyInstance | undefined;
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it('returns 401 without auth', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      payload: validPatchBody,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 403 for a clienti-pool token', async () => {
+    const clientiVerifier: JwtVerifier = {
+      verify: async (): Promise<VerifyResult> => ({
+        pool: 'clienti',
+        payload: { sub: COGNITO_SUB, token_use: 'id', 'custom:customer_id': CUSTOMER_ID },
+      }),
+    };
+    app = await buildApp({ verifier: clientiVerifier });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+      payload: validPatchBody,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('returns 400 ZodError when body is empty', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 422 intervention.modification.cancelled', async () => {
+    const prisma = buildFakePrisma();
+    prisma.intervention.findUniqueOrThrow = vi.fn().mockResolvedValueOnce({
+      tenantId: TENANT_ID,
+      status: 'cancelled',
+      vehicleId: VEHICLE_ID,
+      createdAt: new Date(),
+      wikiLockedAt: null,
+      firstSeenByCustomerAt: null,
+      interventionTypeId: INTERVENTION_TYPE_ID,
+      title: null,
+      description: 'X',
+      partsReplaced: [],
+      internalNotes: null,
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+      payload: validPatchBody,
+    });
+    expect(res.statusCode).toBe(422);
+    expect((res.json() as { code: string }).code).toBe('intervention.modification.cancelled');
+  });
+
+  it('returns 422 intervention.modification.disputed', async () => {
+    const prisma = buildFakePrisma();
+    prisma.intervention.findUniqueOrThrow = vi.fn().mockResolvedValueOnce({
+      tenantId: TENANT_ID,
+      status: 'disputed',
+      vehicleId: VEHICLE_ID,
+      createdAt: new Date(),
+      wikiLockedAt: null,
+      firstSeenByCustomerAt: null,
+      interventionTypeId: INTERVENTION_TYPE_ID,
+      title: null,
+      description: 'X',
+      partsReplaced: [],
+      internalNotes: null,
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+      payload: validPatchBody,
+    });
+    expect(res.statusCode).toBe(422);
+    expect((res.json() as { code: string }).code).toBe('intervention.modification.disputed');
+  });
+
+  it('returns 400 revision_reason_required when post-lock without reason', async () => {
+    const prisma = buildFakePrisma();
+    prisma.intervention.findUniqueOrThrow = vi.fn().mockResolvedValueOnce({
+      tenantId: TENANT_ID,
+      status: 'active',
+      vehicleId: VEHICLE_ID,
+      createdAt: new Date(Date.now() - 49 * 3600 * 1000),
+      wikiLockedAt: null,
+      firstSeenByCustomerAt: null,
+      interventionTypeId: INTERVENTION_TYPE_ID,
+      title: null,
+      description: 'X',
+      partsReplaced: [],
+      internalNotes: null,
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+      payload: validPatchBody,
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { code: string }).code).toBe(
+      'intervention.modification.revision_reason_required',
+    );
+  });
+
+  it('returns 200 wiki window with no revision', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+      payload: validPatchBody,
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { revision: unknown }).revision).toBeNull();
+  });
+
+  it('returns 200 post-lock with reason and creates a revision row', async () => {
+    const prisma = buildFakePrisma();
+    prisma.intervention.findUniqueOrThrow = vi
+      .fn()
+      .mockResolvedValueOnce({
+        tenantId: TENANT_ID,
+        status: 'active',
+        vehicleId: VEHICLE_ID,
+        createdAt: new Date(Date.now() - 49 * 3600 * 1000),
+        wikiLockedAt: null,
+        firstSeenByCustomerAt: null,
+        interventionTypeId: INTERVENTION_TYPE_ID,
+        title: null,
+        description: 'X',
+        partsReplaced: [],
+        internalNotes: null,
+      })
+      .mockResolvedValueOnce({
+        ...buildInterventionRow(),
+        firstSeenByCustomerAt: null,
+        updatedAt: new Date(),
+        interventionType: {
+          id: INTERVENTION_TYPE_ID,
+          code: 'TAGLIANDO',
+          nameIt: 'Tagliando',
+        },
+      });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+      payload: { description: 'Y', reason: 'Sufficiently long reason' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prisma.interventionRevision.create).toHaveBeenCalledOnce();
+    expect((res.json() as { revision: { reason: string } | null }).revision).not.toBeNull();
   });
 });
