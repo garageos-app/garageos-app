@@ -257,6 +257,8 @@ Per fornire dati utili al client per gestire l'errore:
 | `intervention.creation.type_not_found` | 404 | info | Tipo intervento non trovato | | |
 | `intervention.modification.locked` | 422 | info | Intervento non più modificabile liberamente | Wiki locked | BR-062 |
 | `intervention.modification.revision_reason_required` | 400 | info | Motivazione modifica obbligatoria | Modifica post-lock senza reason | BR-064 |
+| `intervention.modification.cancelled` | 422 | info | Intervento cancellato: non modificabile | BR-130 — modifiche bloccate dopo annullamento | BR-130 |
+| `intervention.modification.disputed` | 422 | info | Intervento contestato: non modificabile | BR-128 — l'officina deve rispondere alla dispute (F-OFF-602) prima di poter modificare | BR-128 |
 | `intervention.cancellation.already_cancelled` | 409 | info | Intervento già annullato | | BR-066 |
 | `intervention.cancellation.reason_too_short` | 400 | info | Motivazione troppo breve | <20 caratteri | BR-066 |
 | `intervention.cancellation.permission_denied` | 403 | warning | Solo super_admin può annullare | | BR-066 |
@@ -789,6 +791,8 @@ intervention.dispute.description_too_short
 intervention.dispute.not_owner
 intervention.dispute.response.description_too_short
 intervention.dispute.response.not_your_intervention
+intervention.modification.cancelled
+intervention.modification.disputed
 intervention.modification.locked
 intervention.modification.revision_reason_required
 intervention.not_found
