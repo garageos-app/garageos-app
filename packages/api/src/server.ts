@@ -9,6 +9,7 @@ import databasePlugin, { type DatabasePluginOptions } from './plugins/database.j
 import { registerErrorHandler } from './plugins/error-handler.js';
 import helmetPlugin from './plugins/helmet.js';
 import healthRoutes from './routes/health.js';
+import interventionDisputeRoutes from './routes/v1/interventions-dispute.js';
 import interventionRoutes from './routes/v1/interventions.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
 import userRoutes from './routes/v1/users.js';
@@ -80,6 +81,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(vehicleRoutes);
   await app.register(vehicleTimelineRoutes);
   await app.register(interventionRoutes);
+  await app.register(interventionDisputeRoutes);
   await app.register(meVehicleRoutes);
 
   // Echo the request id back so clients can correlate. Fastify sets
