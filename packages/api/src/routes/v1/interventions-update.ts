@@ -163,6 +163,10 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           data.partsReplaced = data.partsReplaced as Prisma.InputJsonValue;
         }
 
+        if (lockState.lockedAtToPersist !== null) {
+          data.wikiLockedAt = lockState.lockedAtToPersist;
+        }
+
         await tx.intervention.update({ where: { id }, data });
 
         let revision: {
