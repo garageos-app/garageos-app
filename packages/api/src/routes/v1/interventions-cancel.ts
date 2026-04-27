@@ -2,6 +2,7 @@ import { CancelInterventionSchema } from '@garageos/database';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
+import { businessError } from '../../lib/business-error.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -46,6 +47,34 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
           where: { id },
           select: { tenantId: true, status: true, vehicleId: true },
         });
+
+        // Guard order: 404 → permission → reason → already_cancelled.
+        // Cross-tenant stays opaque (404 first); a mechanic with bad
+        // input still gets a clean 403 before any field-level check;
+        // syntactic input issues precede stateful conflicts.
+        if (user.role !== 'super_admin') {
+          throw businessError(
+            'intervention.cancellation.permission_denied',
+            403,
+            'Solo il super_admin del tenant può annullare un intervento.',
+          );
+        }
+
+        if (body.reason.length < 20) {
+          throw businessError(
+            'intervention.cancellation.reason_too_short',
+            400,
+            'La motivazione di annullamento deve essere di almeno 20 caratteri.',
+          );
+        }
+
+        if (existing.status === 'cancelled') {
+          throw businessError(
+            'intervention.cancellation.already_cancelled',
+            409,
+            'Intervento già annullato.',
+          );
+        }
 
         const now = new Date();
 
