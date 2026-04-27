@@ -5,7 +5,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
 import {
+  createCustomer,
   createIntervention,
+  createOwnership,
   createRevision,
   createTenantWithLocation,
   createUser,
@@ -13,6 +15,7 @@ import {
   ensureSystemInterventionType,
   resetDb,
 } from './helpers.js';
+import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
 describe('GET /v1/interventions/:id/revisions (integration)', () => {
@@ -235,5 +238,155 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const body = res.json() as { data: unknown[]; meta: { has_more: boolean } };
     expect(body.data).toEqual([]);
     expect(body.meta.has_more).toBe(false);
+  });
+
+  it('200 cliente owner happy path: tenant shape, no user', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-happy');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      locationId,
+      firstName: 'Mario',
+      lastName: 'Rossi',
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+
+    const customerCognitoSub = `cust-${randomUUID().slice(0, 8)}`;
+    const { customerId } = await createCustomer({ cognitoSub: customerCognitoSub });
+    await createOwnership({ vehicleId, customerId });
+
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: { title: { from: 'A', to: 'B' } },
+      reason: 'visible to customer',
+    });
+
+    const token = await signTestToken({
+      pool: 'clienti',
+      sub: customerCognitoSub,
+      customerId,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{
+        reason: string | null;
+        changes: Record<string, unknown>;
+        tenant?: { business_name: string; location_city: string };
+        user?: unknown;
+      }>;
+    };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.reason).toBe('visible to customer');
+    expect(body.data[0]!.tenant?.business_name).toContain('Test Tenant');
+    expect(body.data[0]!.tenant?.location_city).toBe('Milano');
+    expect(body.data[0]!.user).toBeUndefined();
+  });
+
+  it('403 cliente non-owner: never had any ownership on this vehicle', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-403');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+
+    const ownerSub = `cust-${randomUUID().slice(0, 8)}`;
+    const intruderSub = `cust-${randomUUID().slice(0, 8)}`;
+    const { customerId: ownerId } = await createCustomer({ cognitoSub: ownerSub });
+    const { customerId: intruderId } = await createCustomer({ cognitoSub: intruderSub });
+    await createOwnership({ vehicleId, customerId: ownerId });
+
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: { title: { from: 'A', to: 'B' } },
+    });
+
+    const token = await signTestToken({
+      pool: 'clienti',
+      sub: intruderSub,
+      customerId: intruderId,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(403);
+    const body = res.json() as { type?: string; code?: string };
+    expect(body.code ?? body.type).toContain('intervention.revisions.not_owner');
+  });
+
+  it('403 cliente past-owner: ownership ended_at is set', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-past');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+
+    const pastSub = `cust-${randomUUID().slice(0, 8)}`;
+    const { customerId: pastOwnerId } = await createCustomer({ cognitoSub: pastSub });
+    const { ownershipId } = await createOwnership({ vehicleId, customerId: pastOwnerId });
+    await pgAdmin.query(`UPDATE vehicle_ownerships SET ended_at = NOW() WHERE id = $1`, [
+      ownershipId,
+    ]);
+
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: { title: { from: 'A', to: 'B' } },
+    });
+
+    const token = await signTestToken({
+      pool: 'clienti',
+      sub: pastSub,
+      customerId: pastOwnerId,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });
