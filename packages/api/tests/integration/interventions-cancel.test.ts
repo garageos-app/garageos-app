@@ -519,4 +519,108 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
     );
     expect(rows[0]!.status).toBe('open');
   });
+
+  it('BR-154 access_log: writes a row with action=cancel on success', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/cancel`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const { rows } = await pgAdmin.query<{ action: string; user_id: string }>(
+      `SELECT action, user_id FROM access_logs
+        WHERE vehicle_id = $1 AND action = 'cancel'`,
+      [vehicleId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.user_id).toBe(userId);
+  });
+
+  it('BR-154 dedup: a view within 30 min after cancel does not duplicate the cancel row', async () => {
+    // The 30-min dedup helper finds the latest log for (vehicle, user)
+    // and skips inserts when one exists. Cancel writes action=cancel;
+    // a subsequent GET /vehicles/:id by the same user should NOT add a
+    // 'view' row because dedup is keyed on (vehicleId, userId), not on
+    // (vehicleId, userId, action).
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const cancelRes = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/cancel`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { reason: VALID_REASON },
+    });
+    expect(cancelRes.statusCode).toBe(200);
+
+    const viewRes = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${vehicleId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(viewRes.statusCode).toBe(200);
+
+    const { rows } = await pgAdmin.query<{ action: string }>(
+      `SELECT action FROM access_logs WHERE vehicle_id = $1 AND user_id = $2`,
+      [vehicleId, userId],
+    );
+    // Only the cancel row should be present (view skipped by dedup).
+    const actions = rows.map((r) => r.action).sort();
+    expect(actions).toEqual(['cancel']);
+  });
 });
