@@ -231,6 +231,14 @@ export async function createIntervention(params: {
   partsReplaced?: unknown[];
   status?: 'active' | 'disputed' | 'cancelled';
   internalNotes?: string | null;
+  // BR-062 wiki-window time-travel for tests. createdAt backdate seeds
+  // the >=48h elapsed condition; firstSeenByCustomerAt seeds the
+  // customer-saw-it condition; wikiLockedAt seeds the persisted lock.
+  // All three are applied via a follow-up UPDATE because Prisma cannot
+  // override `default(now())` or `@updatedAt`.
+  createdAt?: Date;
+  firstSeenByCustomerAt?: Date | null;
+  wikiLockedAt?: Date | null;
 }): Promise<{ interventionId: string }> {
   const {
     tenantId,
@@ -269,7 +277,33 @@ export async function createIntervention(params: {
       status,
     ],
   );
-  return { interventionId: rows[0]!.id };
+  const interventionId = rows[0]!.id;
+
+  if (
+    params.createdAt !== undefined ||
+    params.firstSeenByCustomerAt !== undefined ||
+    params.wikiLockedAt !== undefined
+  ) {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
+    if (params.createdAt !== undefined) {
+      sets.push(`created_at = $${i++}`);
+      values.push(params.createdAt);
+    }
+    if (params.firstSeenByCustomerAt !== undefined) {
+      sets.push(`first_seen_by_customer_at = $${i++}`);
+      values.push(params.firstSeenByCustomerAt);
+    }
+    if (params.wikiLockedAt !== undefined) {
+      sets.push(`wiki_locked_at = $${i++}`);
+      values.push(params.wikiLockedAt);
+    }
+    values.push(interventionId);
+    await pgAdmin.query(`UPDATE interventions SET ${sets.join(', ')} WHERE id = $${i}`, values);
+  }
+
+  return { interventionId };
 }
 
 // Private intervention seed (customer-side). `deleted_at` stays NULL
