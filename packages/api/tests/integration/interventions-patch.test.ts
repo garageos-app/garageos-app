@@ -451,4 +451,184 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
 
     expect(res.statusCode).toBe(404);
   });
+
+  it('404 NOT_FOUND for cross-tenant write (RLS-as-404)', async () => {
+    const tenantA = await createTenantWithLocation();
+    const tenantB = await createTenantWithLocation();
+    const cognitoSubA = `office-${randomUUID().slice(0, 8)}`;
+    const cognitoSubB = `office-${randomUUID().slice(0, 8)}`;
+    const userA = await createUser({
+      tenantId: tenantA.tenantId,
+      cognitoSub: cognitoSubA,
+      locationId: tenantA.locationId,
+    });
+    await createUser({
+      tenantId: tenantB.tenantId,
+      cognitoSub: cognitoSubB,
+      locationId: tenantB.locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantA.tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId: tenantA.tenantId,
+      locationId: tenantA.locationId,
+      userId: userA.userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+
+    // tenantB's JWT trying to PATCH tenantA's intervention.
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSubB,
+      tenantId: tenantB.tenantId,
+      role: 'mechanic',
+      locationId: tenantB.locationId,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'Tentativo cross-tenant' },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('404 NOT_FOUND for non-existent intervention id', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    await createUser({ tenantId, cognitoSub, locationId });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${randomUUID()}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'X' },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('400 ZodError when body contains an immutable field (BR-061)', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'X', odometerKm: 99999 },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { code: string }).code).toBe('VALIDATION_ERROR');
+  });
+
+  it('400 ZodError when body is empty', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('200 internalNotes only, post-lock — revision contains only that field', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      internalNotes: 'Originale',
+      createdAt: fortyNineHoursAgo,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        internalNotes: 'Aggiornata',
+        reason: 'Aggiunta nota interna officina',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { revision: { changes: Record<string, unknown> } };
+    expect(Object.keys(body.revision.changes)).toEqual(['internalNotes']);
+  });
 });
