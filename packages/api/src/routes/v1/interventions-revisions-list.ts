@@ -41,3 +41,22 @@ export function decodeCursor(cursor: string | undefined): RevisionCursor | undef
     return undefined;
   }
 }
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+// BR-065 — internalNotes is workshop-only. Strip it from the JSON
+// `changes` for the customer view, and drop the entire revision row
+// when stripping leaves no other fields. Defensive against malformed
+// `changes` (non-object) — the PATCH path always writes an object,
+// but a hand-edited row should not crash the response.
+export function filterRevisionsForCustomer<R extends { changes: unknown }>(rows: R[]): R[] {
+  return rows.flatMap((row) => {
+    if (!isPlainObject(row.changes)) return [];
+    const stripped = { ...row.changes };
+    delete stripped.internalNotes;
+    if (Object.keys(stripped).length === 0) return [];
+    return [{ ...row, changes: stripped }];
+  });
+}
