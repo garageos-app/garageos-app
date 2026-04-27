@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import {
+  CancelInterventionSchema,
   CreateDisputeSchema,
   CreateInterventionSchema,
   PartReplacedSchema,
@@ -248,5 +249,43 @@ describe('UpdateInterventionSchema (BR-061, BR-064, BR-065)', () => {
 
   it('rejects description=null (NOT NULL on DB column)', () => {
     expect(() => UpdateInterventionSchema.parse({ description: null })).toThrow();
+  });
+});
+
+describe('CancelInterventionSchema (BR-066)', () => {
+  it('accepts a 20-char reason (boundary)', () => {
+    expect(() => CancelInterventionSchema.parse({ reason: 'a'.repeat(20) })).not.toThrow();
+  });
+
+  it('accepts a 2000-char reason (boundary)', () => {
+    expect(() => CancelInterventionSchema.parse({ reason: 'a'.repeat(2000) })).not.toThrow();
+  });
+
+  it('accepts a short reason (the min(20) bound is handler-side)', () => {
+    // Reason BR-066: the reason_too_short error code is mapped from a
+    // handler-level check, not from Zod, to expose the dedicated
+    // business code. The schema only enforces `max(2000)`.
+    expect(() => CancelInterventionSchema.parse({ reason: 'short' })).not.toThrow();
+  });
+
+  it('rejects a reason > 2000 chars', () => {
+    expect(() => CancelInterventionSchema.parse({ reason: 'a'.repeat(2001) })).toThrow();
+  });
+
+  it('rejects extra keys (.strict())', () => {
+    expect(() =>
+      CancelInterventionSchema.parse({
+        reason: 'Errore di trascrizione del numero di telaio.',
+        cancelledByUserId: '00000000-0000-0000-0000-000000000000',
+      }),
+    ).toThrow();
+  });
+
+  it('rejects missing reason', () => {
+    expect(() => CancelInterventionSchema.parse({})).toThrow();
+  });
+
+  it('rejects non-string reason', () => {
+    expect(() => CancelInterventionSchema.parse({ reason: 42 })).toThrow();
   });
 });

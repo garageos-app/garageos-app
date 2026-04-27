@@ -67,7 +67,19 @@ export const UpdateInterventionSchema = z
     { message: 'Almeno un campo modificabile deve essere presente', path: [] },
   );
 
+// BR-066 — minimal cancel payload. The `min(20)` reason bound is
+// validated handler-side to expose the dedicated business code
+// `intervention.cancellation.reason_too_short` rather than a generic
+// `validation.error`. The `max(2000)` upper bound stays in Zod as a
+// safety limit for arbitrarily long client input.
+export const CancelInterventionSchema = z
+  .object({
+    reason: z.string().max(2000),
+  })
+  .strict();
+
 export type PartReplaced = z.infer<typeof PartReplacedSchema>;
 export type CreateInterventionInput = z.infer<typeof CreateInterventionSchema>;
 export type CreateDisputeInput = z.infer<typeof CreateDisputeSchema>;
 export type UpdateInterventionInput = z.infer<typeof UpdateInterventionSchema>;
+export type CancelInterventionInput = z.infer<typeof CancelInterventionSchema>;
