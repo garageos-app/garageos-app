@@ -88,6 +88,30 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
+        // BR-130: cancellation of an intervention auto-resolves all
+        // active disputes on it. updateMany returns a count only, so
+        // we re-fetch the rows that just flipped to populate the
+        // response. Scoping the SELECT by `resolvedAt = now` keeps
+        // pre-existing resolved_by_cancellation rows out of the result.
+        await tx.interventionDispute.updateMany({
+          where: {
+            interventionId: id,
+            status: { in: ['open', 'responded'] },
+          },
+          data: {
+            status: 'resolved_by_cancellation',
+            resolvedAt: now,
+          },
+        });
+        const resolvedDisputes = await tx.interventionDispute.findMany({
+          where: {
+            interventionId: id,
+            status: 'resolved_by_cancellation',
+            resolvedAt: now,
+          },
+          select: { id: true, status: true, resolvedAt: true },
+        });
+
         await recordVehicleAccess({
           tx,
           vehicleId: existing.vehicleId,
@@ -129,7 +153,7 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        return { intervention: reloaded, resolvedDisputes: [] as const };
+        return { intervention: reloaded, resolvedDisputes };
       });
     },
   );

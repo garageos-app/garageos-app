@@ -5,7 +5,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
 import {
+  createCustomer,
+  createDispute,
   createIntervention,
+  createOwnership,
   createTenantWithLocation,
   createUser,
   createVehicle,
@@ -314,5 +317,206 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       [interventionId],
     );
     expect(rows[0]!.status).toBe('active');
+  });
+
+  it('200 BR-130: cancel of a disputed intervention flips a single open dispute to resolved_by_cancellation', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { customerId } = await createCustomer({});
+    await createOwnership({ vehicleId, customerId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      status: 'disputed',
+    });
+    const { disputeId } = await createDispute({
+      interventionId,
+      customerId,
+      status: 'open',
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/cancel`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { reason: VALID_REASON },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      intervention: { status: string; cancelledAt: string };
+      resolvedDisputes: Array<{ id: string; status: string; resolvedAt: string }>;
+    };
+    expect(body.intervention.status).toBe('cancelled');
+    expect(body.resolvedDisputes).toHaveLength(1);
+    expect(body.resolvedDisputes[0]!.id).toBe(disputeId);
+    expect(body.resolvedDisputes[0]!.status).toBe('resolved_by_cancellation');
+    // BR-130: cancelledAt and resolvedAt share the same TX timestamp
+    expect(body.resolvedDisputes[0]!.resolvedAt).toBe(body.intervention.cancelledAt);
+
+    const { rows } = await pgAdmin.query<{ status: string; resolved_at: string }>(
+      'SELECT status, resolved_at FROM intervention_disputes WHERE id = $1',
+      [disputeId],
+    );
+    expect(rows[0]!.status).toBe('resolved_by_cancellation');
+    expect(rows[0]!.resolved_at).not.toBeNull();
+  });
+
+  it('200 BR-130: flips multiple active disputes (open + responded), leaves already-resolved untouched', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { customerId: c1 } = await createCustomer({});
+    const { customerId: c2 } = await createCustomer({});
+    const { customerId: c3 } = await createCustomer({});
+    await createOwnership({ vehicleId, customerId: c1 });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      status: 'disputed',
+    });
+    const { disputeId: d1 } = await createDispute({
+      interventionId,
+      customerId: c1,
+      status: 'open',
+    });
+    const { disputeId: d2 } = await createDispute({
+      interventionId,
+      customerId: c2,
+      status: 'responded',
+    });
+    const priorResolvedAt = new Date('2026-03-01T10:00:00.000Z');
+    const { disputeId: d3 } = await createDispute({
+      interventionId,
+      customerId: c3,
+      status: 'resolved_by_cancellation',
+      resolvedAt: priorResolvedAt,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/cancel`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { reason: VALID_REASON },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      resolvedDisputes: Array<{ id: string; status: string; resolvedAt: string }>;
+    };
+    const resolvedIds = body.resolvedDisputes.map((d) => d.id).sort();
+    expect(resolvedIds).toEqual([d1, d2].sort());
+
+    // d3 (already resolved) preserved with its original resolvedAt
+    const { rows } = await pgAdmin.query<{ status: string; resolved_at: string }>(
+      'SELECT status, resolved_at FROM intervention_disputes WHERE id = $1',
+      [d3],
+    );
+    expect(rows[0]!.status).toBe('resolved_by_cancellation');
+    expect(new Date(rows[0]!.resolved_at).toISOString()).toBe(priorResolvedAt.toISOString());
+  });
+
+  it('200 BR-130: cancel scoped to interventionId — unrelated intervention disputes untouched', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { customerId } = await createCustomer({});
+    await createOwnership({ vehicleId, customerId });
+    const { interventionId: targetId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    const { interventionId: noiseId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-22',
+      odometerKm: 49500,
+      status: 'disputed',
+    });
+    await createDispute({ interventionId: noiseId, customerId, status: 'open' });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${targetId}/cancel`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { reason: VALID_REASON },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      resolvedDisputes: Array<{ id: string }>;
+    };
+    expect(body.resolvedDisputes).toEqual([]);
+
+    // The unrelated intervention's dispute is untouched.
+    const { rows } = await pgAdmin.query<{ status: string }>(
+      `SELECT status FROM intervention_disputes WHERE intervention_id = $1`,
+      [noiseId],
+    );
+    expect(rows[0]!.status).toBe('open');
   });
 });
