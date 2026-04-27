@@ -98,12 +98,19 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
       const isOfficine = request.authPool === 'officine';
       const isClienti = request.authPool === 'clienti';
 
-      // Pool-bound role:'user'. Migration 0003 made interventions/tenants/
-      // locations SELECT cross-tenant (USING(true)). intervention_revisions
-      // has no RLS at all — read works in any context. Ownership check
-      // for clienti is the only privacy boundary (sezione 6 spec).
+      // Officina: role:'admin' narrowed to this read-only audit endpoint
+      // (same precedent as interventions-dispute.ts BR-127). Migration
+      // 0003 split SELECT/WRITE on interventions/tenants/locations/
+      // intervention_types but NOT on users — and the response shape
+      // includes user.{firstName,lastName} for BR-150 audit-chain
+      // visibility cross-tenant. Without admin role, the join to users
+      // returns null for cross-tenant rows and breaks the response.
+      // Cliente: role:'user' bound by customerId; ownership check below
+      // is the only privacy boundary (intervention_revisions has no RLS).
+      // When users acquires its own SELECT/WRITE split (future tech debt),
+      // drop the admin role here.
       const ctx = isOfficine
-        ? { tenantId: request.tenantId!, role: 'user' as const }
+        ? { tenantId: request.tenantId!, role: 'admin' as const }
         : { customerId: request.customerId!, role: 'user' as const };
 
       return app.withContext(ctx, async (tx) => {
