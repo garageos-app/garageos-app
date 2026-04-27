@@ -542,4 +542,120 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     expect(body.data).toHaveLength(2);
     expect(body.meta.has_more).toBe(false);
   });
+
+  it('200 cancelled intervention: revisions still visible (BR-066 audit)', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-cancelled');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      status: 'cancelled',
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: { title: { from: 'A', to: 'B' } },
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: unknown[] };
+    expect(body.data).toHaveLength(1);
+  });
+
+  it('200 disputed intervention: revisions still visible', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-disputed');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      status: 'disputed',
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: { title: { from: 'A', to: 'B' } },
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: unknown[] };
+    expect(body.data).toHaveLength(1);
+  });
+
+  it('200 bogus cursor: returns first page tolerantly', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-bogus-cur');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: { title: { from: 'A', to: 'B' } },
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions?cursor=garbage`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: unknown[] };
+    expect(body.data).toHaveLength(1);
+  });
 });
