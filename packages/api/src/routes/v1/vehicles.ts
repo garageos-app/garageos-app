@@ -6,13 +6,16 @@ import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
 import { certifyVehicleWithGarageCode } from '../../lib/garage-code.js';
 import { maskCustomer, resolvePiiVisibility } from '../../lib/pii-filter.js';
+import {
+  idParamSchema,
+  vehicleDetailSelect,
+  vehicleOwnershipSelect,
+} from '../../lib/vehicle-shared.js';
 import { validateVinIso3779 } from '../../lib/vin-checksum.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 
-// Shared Zod schemas for the two read-only endpoints. Inline at first
-// — if a second vehicles file grows that needs them, factor out.
 const searchQuerySchema = z
   .object({
     vin: z.string().length(17).optional(),
@@ -24,10 +27,6 @@ const searchQuerySchema = z
   .refine((q) => [q.vin, q.plate, q.garage_code].filter((v) => v !== undefined).length === 1, {
     message: 'Exactly one of vin, plate, garage_code is required',
   });
-
-const idParamSchema = z.object({
-  id: z.uuid(),
-});
 
 // Reuses CreateVehicleSchema from @garageos/database verbatim (vehicle +
 // customer discriminator + locationId + sendInvitationEmail +
@@ -181,33 +180,6 @@ async function resolveCustomer(
   }
 }
 
-// Current ownership is the single VehicleOwnership row with
-// ended_at IS NULL, enforced by partial unique index
-// uq_ownership_vehicle_active (BR-040 — migration
-// 20260424100000:190-192). take:1 is defensive in case future rows
-// leak through during a transfer window.
-const vehicleOwnershipSelect = {
-  where: { endedAt: null },
-  select: {
-    id: true,
-    customerId: true,
-    startedAt: true,
-    customer: {
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        isBusiness: true,
-        businessName: true,
-        vatNumber: true,
-      },
-    },
-  },
-  take: 1,
-} as const;
-
 const vehicleSearchSelect = {
   id: true,
   garageCode: true,
@@ -220,31 +192,6 @@ const vehicleSearchSelect = {
   vehicleType: true,
   fuelType: true,
   status: true,
-  ownerships: vehicleOwnershipSelect,
-} as const;
-
-// Detail shape: all public tech fields + certifiedAt/createdAt. Kept
-// in sync by comment only with BR-153 "VISIBILE" — missing fields
-// like version/color/displacement are added here explicitly.
-const vehicleDetailSelect = {
-  id: true,
-  garageCode: true,
-  vin: true,
-  plate: true,
-  plateCountry: true,
-  make: true,
-  model: true,
-  version: true,
-  year: true,
-  registrationDate: true,
-  vehicleType: true,
-  fuelType: true,
-  engineDisplacement: true,
-  powerKw: true,
-  color: true,
-  status: true,
-  certifiedAt: true,
-  createdAt: true,
   ownerships: vehicleOwnershipSelect,
 } as const;
 
