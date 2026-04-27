@@ -157,11 +157,11 @@ describe('GET /v1/vehicles/:id/timeline (officine pool)', () => {
     expect(privateFindMany).not.toHaveBeenCalled();
   });
 
-  it('elevates withContext to role: admin so cross-tenant joins succeed', async () => {
-    // The timeline handler intentionally bypasses tenants / locations
-    // RLS to project tenant.business_name and location.city for shop
-    // rows (BR-153 visibility). App-layer filtering is the privacy
-    // boundary instead — see the route header comment.
+  it('uses pool-bound role: user (migration 0003 made cross-tenant SELECT permissive)', async () => {
+    // Post-migration 0003, the SELECT side of interventions /
+    // attachments / tenants / locations / intervention_types is
+    // cross-tenant readable, so the handler runs with the pool's
+    // tenantId and role: 'user' — no admin elevation required.
     const withContext = vi.fn(async (_ctx, fn) => fn(buildFakePrisma()));
     app = await buildApp({ verifier: officineVerifier, withContext });
 
@@ -172,7 +172,7 @@ describe('GET /v1/vehicles/:id/timeline (officine pool)', () => {
     });
 
     expect(withContext).toHaveBeenCalledWith(
-      expect.objectContaining({ role: 'admin' }),
+      expect.objectContaining({ role: 'user', tenantId: expect.any(String) }),
       expect.any(Function),
     );
   });

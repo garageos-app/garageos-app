@@ -144,17 +144,16 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
       const isOfficine = request.authPool === 'officine';
       const isClienti = request.authPool === 'clienti';
 
-      // role: 'admin' deliberately elevates the read because timeline
-      // crosses tenant and customer boundaries by design (BR-150/153 +
-      // spec §2.5) and the current RLS on tenants/locations is strict.
-      // App-layer filtering is the privacy boundary: vehicleId always
-      // in WHERE, customerId+deletedAt on private query, ownership
-      // precondition for clienti above. No writes run here, so the
-      // elevated role cannot be misused. A future migration that
-      // splits interventions/attachments SELECT from writes will let
-      // this drop to role: 'user' — see project_tech_debt.md.
-      const ctx = { role: 'admin' as const };
-      void isOfficine;
+      // Migration 0003 (split_interventions_attachments_rls) made
+      // SELECT cross-tenant on interventions, attachments, tenants,
+      // locations, and intervention_types — i.e. the entire shape of
+      // shopRowSelect joined here. The pool-bound `role: 'user'` ctx
+      // is sufficient: every WHERE in this handler scopes to vehicleId
+      // (and to customerId + deletedAt for the private query), and
+      // ownership for clienti is verified above. No writes run here.
+      const ctx = isOfficine
+        ? { tenantId: request.tenantId!, role: 'user' as const }
+        : { customerId: request.customerId!, role: 'user' as const };
 
       return app.withContext(ctx, async (tx) => {
         // Vehicle existence first — 404 before any pool-specific work

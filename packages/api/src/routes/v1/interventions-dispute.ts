@@ -15,19 +15,23 @@ import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
 // open/responded dispute exists), BR-128 (disputes are immutable: we
 // never DELETE — closed states resolve via separate transitions).
 //
-// RLS escape hatch: the transaction runs with `role: 'admin'` because
-// `interventions` carries a strict tenant-scoped SELECT/UPDATE policy
-// and this customer-pool handler must both read the row (vehicleId,
-// status) and write the BR-127 status flip. The privacy boundary is
-// enforced application-side instead:
+// RLS escape hatch: the transaction runs with `role: 'admin'` SOLELY
+// for the BR-127 UPDATE flip on `interventions.status` — customer-pool
+// sessions don't satisfy the tenant-scoped `interventions_update`
+// USING/WITH CHECK clause. The SELECT side no longer requires admin
+// (migration 0003 made interventions cross-tenant readable), but the
+// UPDATE is the tightest possible exception. The privacy boundary is
+// enforced application-side:
 //   - BR-120: vehicle_ownerships lookup with the JWT-bound customerId
 //             happens BEFORE any insert, so a non-owner cannot create
 //             rows on someone else's intervention.
 //   - The dispute row always carries the authenticated customerId.
 //   - The only field written on `interventions` is `status`, which is
 //     exactly the field BR-127 mandates.
-// Tracked alongside vehicles-timeline in project_tech_debt.md as a
-// future RLS-split chore (split SELECT vs WRITE for `interventions`).
+// Future work (project_tech_debt.md): replace this admin elevation
+// with a customer-side WRITE policy that allows UPDATE only when an
+// open/responded `intervention_disputes` row exists for the current
+// customer — optional column-level guard via BEFORE UPDATE trigger.
 //
 // Attachments: the shared `CreateDisputeSchema` accepts attachmentIds
 // to honor the API contract in APPENDICE_A §2.6, but the storage layer

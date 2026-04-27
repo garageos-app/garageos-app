@@ -910,6 +910,8 @@ model PushToken {
 >
 > I contenuti SQL sono quelli mostrati nelle sottosezioni qui sotto, più i CHECK constraint e i partial unique index. Usa il file di migration come fonte autorevole per la forma esatta applicata in produzione.
 
+> **Nota di implementazione (migration 0003, 2026-04-27).** Le RLS su `interventions`, `attachments`, `tenants`, `locations`, `intervention_types` sono passate da una single-policy `_isolation`/`_access` a coppie `_read FOR SELECT USING (true)` + `_write FOR ALL` tenant/owner-scoped — mirror di `vehicles`/`customers`. Motivazione: BR-150/BR-153 richiedono SELECT cross-tenant per la timeline veicolo (`shopRowSelect` joina tenant.business_name, location.city, intervention_type.code/name_it). Il pattern è espansivo (no drop di colonne). Riferimento: `prisma/migrations/20260427120000_split_interventions_attachments_rls/migration.sql`.
+
 ### 3.1 File `sql/triggers.sql`
 
 ```sql
@@ -1095,8 +1097,12 @@ DO $$
 DECLARE
     t text;
     tenant_tables text[] := ARRAY[
-        'locations', 'users', 'customer_tenant_relations',
-        'interventions', 'intervention_disputes',
+        -- 'locations', 'interventions' splittate in `_read FOR SELECT
+        -- USING (true)` + `_write FOR ALL` dalla migration 0003 per
+        -- supportare BR-150/BR-153 (timeline cross-tenant). Vedi i
+        -- blocchi dedicati più sotto.
+        'users', 'customer_tenant_relations',
+        'intervention_disputes',
         'deadlines', 'deadline_notifications',
         'access_logs', 'invitations'
     ];
@@ -1119,25 +1125,37 @@ END $$;
 -- TENANT TABLE (è root, policy diversa)
 -- =====================================================
 
+-- TENANTS (post migration 0003): SELECT permissive (BR-150 timeline
+-- joins businessName cross-tenant), WRITE tenant-scoped.
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS tenants_isolation ON tenants;
-CREATE POLICY tenants_isolation ON tenants
-USING (is_admin_role() OR id = current_tenant_id());
+DROP POLICY IF EXISTS tenants_read ON tenants;
+CREATE POLICY tenants_read ON tenants
+FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS tenants_write ON tenants;
+CREATE POLICY tenants_write ON tenants
+FOR ALL
+USING (is_admin_role() OR id = current_tenant_id())
+WITH CHECK (is_admin_role() OR id = current_tenant_id());
 
 -- =====================================================
--- INTERVENTION_TYPES: tipi di sistema (tenant_id NULL) o del tenant
+-- INTERVENTION_TYPES (post migration 0003): SELECT permissive,
+-- WRITE tenant-scoped. System types (tenant_id NULL) restano
+-- scrivibili solo via admin paths (seed/migration).
 -- =====================================================
 
 ALTER TABLE intervention_types ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS intervention_types_isolation ON intervention_types;
-CREATE POLICY intervention_types_isolation ON intervention_types
-USING (
-    is_admin_role()
-    OR tenant_id IS NULL  -- Tipi di sistema visibili a tutti
-    OR tenant_id = current_tenant_id()
-);
+DROP POLICY IF EXISTS intervention_types_read ON intervention_types;
+CREATE POLICY intervention_types_read ON intervention_types
+FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS intervention_types_write ON intervention_types;
+CREATE POLICY intervention_types_write ON intervention_types
+FOR ALL
+USING (is_admin_role() OR tenant_id = current_tenant_id())
+WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
 
 -- =====================================================
 -- CUSTOMERS: accessibili a tutti i tenant (dati tecnici),
@@ -1213,6 +1231,46 @@ CREATE POLICY transfers_access ON vehicle_transfers
 USING (true);  -- Gestito a livello applicativo
 
 -- =====================================================
+-- INTERVENTIONS (post migration 0003): SELECT cross-pool, WRITE
+-- tenant-scoped. Customer-side UPDATE per il flip BR-127 status
+-- è concesso via app-layer `role: 'admin'` short-lived (vedi
+-- packages/api/src/routes/v1/interventions-dispute.ts).
+-- =====================================================
+
+ALTER TABLE interventions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS interventions_read ON interventions;
+CREATE POLICY interventions_read ON interventions
+FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS interventions_insert ON interventions;
+CREATE POLICY interventions_insert ON interventions
+FOR INSERT WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
+
+DROP POLICY IF EXISTS interventions_update ON interventions;
+CREATE POLICY interventions_update ON interventions
+FOR UPDATE
+USING (is_admin_role() OR tenant_id = current_tenant_id())
+WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
+
+-- =====================================================
+-- LOCATIONS (post migration 0003): SELECT cross-pool, WRITE
+-- tenant-scoped (BR-150 timeline joina city cross-tenant).
+-- =====================================================
+
+ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS locations_read ON locations;
+CREATE POLICY locations_read ON locations
+FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS locations_write ON locations;
+CREATE POLICY locations_write ON locations
+FOR ALL
+USING (is_admin_role() OR tenant_id = current_tenant_id())
+WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
+
+-- =====================================================
 -- PRIVATE_INTERVENTIONS: solo il customer proprietario
 -- (+ admin)
 -- L'app imposta SET LOCAL app.current_customer per customer sessions
@@ -1263,18 +1321,37 @@ FOR INSERT
 WITH CHECK (true);  -- Write-only per utenti non admin
 
 -- =====================================================
--- ATTACHMENTS: complesso, gestito principalmente a livello app
+-- ATTACHMENTS (post migration 0003): SELECT cross-pool, WRITE
+-- owner-scoped (intervention attachments → tenant; private →
+-- customer).
 -- =====================================================
 
 ALTER TABLE attachments ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS attachments_access ON attachments;
-CREATE POLICY attachments_access ON attachments
+DROP POLICY IF EXISTS attachments_read ON attachments;
+CREATE POLICY attachments_read ON attachments
+FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS attachments_insert ON attachments;
+CREATE POLICY attachments_insert ON attachments
+FOR INSERT WITH CHECK (
+    is_admin_role()
+    OR (owner_type = 'intervention' AND tenant_id = current_tenant_id())
+    OR (owner_type = 'private_intervention' AND customer_id = current_customer_id())
+);
+
+DROP POLICY IF EXISTS attachments_update ON attachments;
+CREATE POLICY attachments_update ON attachments
+FOR UPDATE
 USING (
     is_admin_role()
     OR (owner_type = 'intervention' AND tenant_id = current_tenant_id())
     OR (owner_type = 'private_intervention' AND customer_id = current_customer_id())
-    -- Lettura cross-tenant gestita a livello applicativo per permettere visibilità storico
+)
+WITH CHECK (
+    is_admin_role()
+    OR (owner_type = 'intervention' AND tenant_id = current_tenant_id())
+    OR (owner_type = 'private_intervention' AND customer_id = current_customer_id())
 );
 ```
 
