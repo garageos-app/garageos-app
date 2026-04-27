@@ -389,4 +389,157 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it('200 cliente: revision with mixed changes → internalNotes stripped from response', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-strip');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+
+    const custSub = `cust-${randomUUID().slice(0, 8)}`;
+    const { customerId } = await createCustomer({ cognitoSub: custSub });
+    await createOwnership({ vehicleId, customerId });
+
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: {
+        title: { from: 'Old', to: 'New' },
+        internalNotes: { from: 'priv old', to: 'priv new' },
+      },
+      reason: 'mixed change',
+    });
+
+    const token = await signTestToken({
+      pool: 'clienti',
+      sub: custSub,
+      customerId,
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: Array<{ changes: Record<string, unknown> }> };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.changes).toEqual({
+      title: { from: 'Old', to: 'New' },
+    });
+    expect('internalNotes' in body.data[0]!.changes).toBe(false);
+  });
+
+  it('200 cliente: revision with only internalNotes → row dropped from data', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-drop');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+
+    const custSub = `cust-${randomUUID().slice(0, 8)}`;
+    const { customerId } = await createCustomer({ cognitoSub: custSub });
+    await createOwnership({ vehicleId, customerId });
+
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: { internalNotes: { from: 'X', to: 'Y' } },
+      reason: 'internal-only',
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T11:00:00Z'),
+      changes: { title: { from: 'A', to: 'B' } },
+      reason: 'title-only',
+    });
+
+    const token = await signTestToken({
+      pool: 'clienti',
+      sub: custSub,
+      customerId,
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: Array<{ reason: string | null }> };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.reason).toBe('title-only');
+  });
+
+  it('200 cliente: shrunk page can be smaller than limit, has_more reflects DB fetch', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-shrink');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+
+    const custSub = `cust-${randomUUID().slice(0, 8)}`;
+    const { customerId } = await createCustomer({ cognitoSub: custSub });
+    await createOwnership({ vehicleId, customerId });
+
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    for (let i = 0; i < 5; i++) {
+      await createRevision({
+        interventionId,
+        userId,
+        revisedAt: new Date(`2026-04-26T1${i}:00:00Z`),
+        changes:
+          i % 2 === 0
+            ? { internalNotes: { from: `n${i}`, to: `m${i}` } }
+            : { title: { from: `t${i}`, to: `T${i}` } },
+        reason: `rev-${i}`,
+      });
+    }
+
+    const token = await signTestToken({
+      pool: 'clienti',
+      sub: custSub,
+      customerId,
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions?limit=10`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{ reason: string | null }>;
+      meta: { has_more: boolean };
+    };
+    expect(body.data).toHaveLength(2);
+    expect(body.meta.has_more).toBe(false);
+  });
 });
