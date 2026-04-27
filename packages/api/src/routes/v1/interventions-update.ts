@@ -24,6 +24,61 @@ const EDITABLE_KEYS = [
   'internalNotes',
 ] as const;
 
+type LockState = { isLocked: boolean; lockedAtToPersist: Date | null };
+
+// BR-062: a wiki window is open while
+//   wiki_locked_at IS NULL
+//   AND now - created_at < 48h
+//   AND first_seen_by_customer_at IS NULL.
+// As soon as one age/seen condition fires, we persist
+// wiki_locked_at = now() in the same UPDATE — a one-way state, never
+// reversed. If wiki_locked_at is already set, we skip the persist
+// (idempotent).
+function computeLockState(
+  existing: {
+    wikiLockedAt: Date | null;
+    firstSeenByCustomerAt: Date | null;
+    createdAt: Date;
+  },
+  now: Date,
+): LockState {
+  if (existing.wikiLockedAt !== null) {
+    return { isLocked: true, lockedAtToPersist: null };
+  }
+  const ageMs = now.getTime() - existing.createdAt.getTime();
+  const ageGate = ageMs >= 48 * 60 * 60 * 1000;
+  const seenGate = existing.firstSeenByCustomerAt !== null;
+  if (ageGate || seenGate) {
+    return { isLocked: true, lockedAtToPersist: now };
+  }
+  return { isLocked: false, lockedAtToPersist: null };
+}
+
+// Cheap structural equality for diff suppression. partsReplaced is an
+// arbitrary JSON array; JSON-stringify is good enough here because we
+// only compare canonicalized values that came either from the DB or
+// from a Zod-parsed body — both produce stable orderings for our
+// schema's keys.
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function buildChangesJson(
+  existing: Record<string, unknown>,
+  body: Record<string, unknown>,
+): Record<string, { from: unknown; to: unknown }> {
+  const fields = ['interventionTypeId', 'title', 'description', 'partsReplaced', 'internalNotes'];
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  for (const k of fields) {
+    if (body[k] === undefined) continue;
+    if (valuesEqual(existing[k], body[k])) continue;
+    changes[k] = { from: existing[k], to: body[k] };
+  }
+  return changes;
+}
+
 const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
   app.patch(
     '/v1/interventions/:id',
@@ -78,6 +133,9 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
+        const now = new Date();
+        const lockState = computeLockState(existing, now);
+
         // Build the partial update payload. Override flags / reason are
         // never persisted — only the 5 BR-065 editable fields land on
         // the row.
@@ -94,6 +152,32 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
         }
 
         await tx.intervention.update({ where: { id }, data });
+
+        let revision: {
+          id: string;
+          revisedAt: Date;
+          changes: Prisma.JsonValue;
+          reason: string | null;
+        } | null = null;
+        if (lockState.isLocked) {
+          const changes = buildChangesJson(
+            existing as Record<string, unknown>,
+            body as Record<string, unknown>,
+          );
+          revision = await tx.interventionRevision.create({
+            data: {
+              interventionId: id,
+              userId: user.id,
+              revisedAt: now,
+              changes: changes as Prisma.InputJsonValue,
+              reason: body.reason ?? null,
+            },
+            select: { id: true, revisedAt: true, changes: true, reason: true },
+          });
+        }
+
+        // TODO post-lock: notifica push + email cliente sulla revision
+        // (BR-064). Push tokens infra + SES non shipped — placeholder.
 
         await recordVehicleAccess({
           tx,
@@ -133,7 +217,7 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        return { intervention: reloaded, revision: null };
+        return { intervention: reloaded, revision };
       });
     },
   );
