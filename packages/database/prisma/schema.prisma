@@ -164,6 +164,7 @@ enum AccessLogAction {
   create
   update
   search_match
+  cancel
 }
 
 enum InvitationType {
