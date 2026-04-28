@@ -7,6 +7,7 @@ import {
   CreateDisputeSchema,
   CreateInterventionSchema,
   PartReplacedSchema,
+  RespondToDisputeSchema,
   UpdateInterventionSchema,
 } from '../../../src/validators/intervention.js';
 
@@ -287,5 +288,90 @@ describe('CancelInterventionSchema (BR-066)', () => {
 
   it('rejects non-string reason', () => {
     expect(() => CancelInterventionSchema.parse({ reason: 42 })).toThrow();
+  });
+});
+
+describe('RespondToDisputeSchema (BR-129)', () => {
+  it('accepts a 20-char tenantResponse (boundary)', () => {
+    expect(() => RespondToDisputeSchema.parse({ tenantResponse: 'a'.repeat(20) })).not.toThrow();
+  });
+
+  it('accepts a 2000-char tenantResponse (boundary)', () => {
+    expect(() => RespondToDisputeSchema.parse({ tenantResponse: 'a'.repeat(2000) })).not.toThrow();
+  });
+
+  it('accepts a short tenantResponse (the min(20) bound is handler-side)', () => {
+    // BR-129: the description_too_short error code is emitted by the
+    // route handler, not Zod, to expose the dedicated business code.
+    // The schema only enforces `max(2000)`.
+    expect(() => RespondToDisputeSchema.parse({ tenantResponse: 'short' })).not.toThrow();
+  });
+
+  it('rejects a tenantResponse > 2000 chars', () => {
+    expect(() => RespondToDisputeSchema.parse({ tenantResponse: 'a'.repeat(2001) })).toThrow();
+  });
+
+  it('accepts an optional disputeId UUID', () => {
+    expect(() =>
+      RespondToDisputeSchema.parse({
+        tenantResponse: 'a'.repeat(20),
+        disputeId: '11111111-1111-4111-8111-111111111111',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects an invalid disputeId (non-UUID)', () => {
+    expect(() =>
+      RespondToDisputeSchema.parse({
+        tenantResponse: 'a'.repeat(20),
+        disputeId: 'not-a-uuid',
+      }),
+    ).toThrow();
+  });
+
+  it('accepts an empty attachmentIds array', () => {
+    expect(() =>
+      RespondToDisputeSchema.parse({
+        tenantResponse: 'a'.repeat(20),
+        attachmentIds: [],
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts up to 10 attachmentIds', () => {
+    const ids = Array.from(
+      { length: 10 },
+      (_, i) => `${'a'.repeat(8)}-aaaa-4aaa-8aaa-${(i + 100000000000).toString().slice(-12)}`,
+    );
+    expect(() =>
+      RespondToDisputeSchema.parse({ tenantResponse: 'a'.repeat(20), attachmentIds: ids }),
+    ).not.toThrow();
+  });
+
+  it('rejects more than 10 attachmentIds', () => {
+    const ids = Array.from(
+      { length: 11 },
+      (_, i) => `${'a'.repeat(8)}-aaaa-4aaa-8aaa-${(i + 100000000000).toString().slice(-12)}`,
+    );
+    expect(() =>
+      RespondToDisputeSchema.parse({ tenantResponse: 'a'.repeat(20), attachmentIds: ids }),
+    ).toThrow();
+  });
+
+  it('rejects extra keys (.strict())', () => {
+    expect(() =>
+      RespondToDisputeSchema.parse({
+        tenantResponse: 'a'.repeat(20),
+        respondedByUserId: '00000000-0000-0000-0000-000000000000',
+      }),
+    ).toThrow();
+  });
+
+  it('rejects missing tenantResponse', () => {
+    expect(() => RespondToDisputeSchema.parse({})).toThrow();
+  });
+
+  it('rejects non-string tenantResponse', () => {
+    expect(() => RespondToDisputeSchema.parse({ tenantResponse: 42 })).toThrow();
   });
 });

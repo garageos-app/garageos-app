@@ -558,6 +558,83 @@ Authorization: Bearer <customer_jwt>
 
 ---
 
+### 2.6.1 `POST /interventions/:id/dispute-response` — Risposta officina
+
+**Feature:** F-OFF-602
+
+**Auth:** Tenant User (officina pool); ruolo in `{super_admin, mechanic}`
+
+#### Descrizione
+
+L'officina risponde a una o più contestazioni `open` su un proprio intervento, fornendo `tenant_response` (≥20 chars). Sblocca PATCH dell'intervento se non restano dispute `open` residue (`intervention.status` flippa da `disputed` ad `active`).
+
+#### Request
+
+```http
+POST /v1/interventions/01HKXQ.../dispute-response
+Content-Type: application/json
+Authorization: Bearer <officina_jwt>
+
+{
+  "tenant_response": "L'intervento è stato eseguito come da preventivo firmato il 2026-04-20; in allegato il foglio di lavoro.",
+  "dispute_id": "01HKZB...",
+  "attachment_ids": []
+}
+```
+
+| Campo | Tipo | Required | Note |
+|---|---|---|---|
+| `tenant_response` | string | yes | min 20, max 2000 chars (BR-129) |
+| `dispute_id` | UUID | no | Se omesso, risponde a tutte le `open` su questa intervention |
+| `attachment_ids` | UUID[] | no | Forward-compat; in v1 deve essere vuoto/assente |
+
+#### Response `200 OK`
+
+```json
+{
+  "disputes": [
+    {
+      "id": "01HKZB...",
+      "intervention_id": "01HKXQ...",
+      "customer_id": "01HKXN6...",
+      "reason_category": "not_performed",
+      "customer_description": "...",
+      "tenant_response": "...",
+      "tenant_response_at": "2026-04-28T09:15:00Z",
+      "tenant_response_user_id": "01HKUS...",
+      "status": "responded",
+      "resolved_at": null,
+      "created_at": "2026-04-22T09:15:00Z"
+    }
+  ],
+  "intervention_status": "active"
+}
+```
+
+`disputes` è sempre array (length 1 con `disputeId`, ≥1 col fanout).
+`intervention_status` è `"active"` se 0 `open` residue post-update; `"disputed"` altrimenti.
+
+#### Errori
+
+| Status | `code` | Trigger |
+|---|---|---|
+| 400 | `intervention.dispute.response.description_too_short` | `tenant_response` < 20 |
+| 400 | `validation.error` | Zod fail (max, attachmentIds shape, body shape) |
+| 401 | `auth.unauthenticated` | JWT mancante/invalido |
+| 403 | `intervention.dispute.response.permission_denied` | Ruolo non in allow-list |
+| 404 | `not_found` | Intervention con id inesistente; `dispute_id` non trovato o di altro tenant |
+| 409 | `intervention.dispute.response.no_active_dispute` | Nessuna `open` da rispondere; OPPURE intervention di altro tenant (vedi Note RLS) |
+| 422 | `intervention.dispute.attachments_not_supported` | `attachment_ids` non vuoto |
+
+#### Note
+
+- BR-128: la response è immutabile. Non c'è un'edit/delete in v1.
+- Multi-dispute (più customer sullo stesso intervento): risposta unica con stesso `tenant_response` testo per tutte le `open`, salvo targeting esplicito via `dispute_id`.
+- BR-127 status flip: `intervention.status` flippa a `active` solo se 0 `open` residue. `responded` NON conta come "blocco PATCH".
+- RLS topology: `interventions_read` è permissivo (post PR #22), quindi una POST con id di intervento di altro tenant non ritorna 404 ma **409 `no_active_dispute`** — il lookup dell'intervention succeed, ma le dispute di altro tenant sono invisibili via `intervention_disputes_access` (`findMany` ritorna `[]`). L'isolation di scrittura resta garantita: tenant B non può mai mutare le dispute di tenant A.
+
+---
+
 ### 2.7 `POST /attachments/upload-url` — Presigned URL upload
 
 **Feature:** F-OFF-305
@@ -698,7 +775,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | POST | `/interventions/:id/cancel` | F-OFF-307 | Super Admin | Annulla intervento con motivazione |
 | GET | `/interventions/:id/revisions` | F-OFF-304 | Any User | Storico modifiche |
 | POST | `/interventions/:id/dispute` | F-CLI-206 | Customer | **[DETTAGLIATO §2.6]** Contesta intervento |
-| POST | `/interventions/:id/dispute-response` | F-OFF-602 | Tenant User | Risposta officina a contestazione |
+| POST | `/interventions/:id/dispute-response` | F-OFF-602 | Tenant User | **[DETTAGLIATO §2.6.1]** Risposta officina a contestazione |
 | GET | `/intervention-types` | F-OFF-302 | Any User | Catalogo tipi intervento |
 | POST | `/intervention-types` | F-OFF-302 | Super Admin | Crea tipo custom (tenant) |
 | GET | `/intervention-templates` | F-OFF-303 | Tenant User | Template tenant (v1.1) |
