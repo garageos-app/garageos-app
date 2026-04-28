@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 
+import { ApiGatewayConstruct } from '../lib/constructs/api-gateway.js';
 import { DnsConstruct } from '../lib/constructs/dns.js';
 import { LambdaApiConstruct } from '../lib/constructs/lambda-api.js';
 import { SecretsConstruct } from '../lib/constructs/secrets.js';
@@ -190,6 +191,82 @@ describe('LambdaApiConstruct', () => {
   it('log group retention is 7 days', () => {
     template.hasResourceProperties('AWS::Logs::LogGroup', {
       LogGroupName: '/aws/lambda/garageos-api',
+      RetentionInDays: 7,
+    });
+  });
+});
+
+describe('ApiGatewayConstruct', () => {
+  // Hoist template build to describe scope (same pattern Task 6 used)
+  // — esbuild bundling is expensive and disk space is constrained.
+  // CDK Templates are immutable after fromStack so sharing is safe.
+  function buildTemplate() {
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'TestApiGwStack', {
+      env: { account: '123456789012', region: 'eu-central-1' },
+    });
+    const dns = new DnsConstruct(stack, 'Dns', {
+      domainName: 'garageos.it',
+      apiSubdomain: 'api',
+      synthMock: true,
+    });
+    const secrets = new SecretsConstruct(stack, 'Secrets', { environment: 'production' });
+    const lambdaApi = new LambdaApiConstruct(stack, 'LambdaApi', {
+      memoryMb: 1024,
+      architecture: 'arm64',
+      timeoutSec: 30,
+      reservedConcurrency: 100,
+      logRetentionDays: 7,
+      appSecret: secrets.appSecret,
+    });
+    new ApiGatewayConstruct(stack, 'ApiGateway', {
+      apiSubdomain: 'api',
+      domainName: 'garageos.it',
+      hostedZone: dns.hostedZone,
+      apiCertificate: dns.apiCertificate,
+      lambdaFunction: lambdaApi.function,
+      throttleBurst: 200,
+      throttleRate: 100,
+      logRetentionDays: 7,
+    });
+    return Template.fromStack(stack);
+  }
+  const template = buildTemplate();
+
+  it('provisions exactly one HTTP API v2', () => {
+    template.resourceCountIs('AWS::ApiGatewayV2::Api', 1);
+    template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      Name: 'garageos-api',
+      ProtocolType: 'HTTP',
+    });
+  });
+
+  it('provisions custom domain api.garageos.it with TLS 1.2', () => {
+    template.resourceCountIs('AWS::ApiGatewayV2::DomainName', 1);
+    template.hasResourceProperties('AWS::ApiGatewayV2::DomainName', {
+      DomainName: 'api.garageos.it',
+      DomainNameConfigurations: Match.arrayWith([
+        Match.objectLike({ SecurityPolicy: 'TLS_1_2', EndpointType: 'REGIONAL' }),
+      ]),
+    });
+  });
+
+  it('provisions Route53 A record alias for api.garageos.it', () => {
+    template.hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'api.garageos.it.',
+      Type: 'A',
+    });
+  });
+
+  it('catch-all proxy route exists', () => {
+    template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+      RouteKey: 'ANY /{proxy+}',
+    });
+  });
+
+  it('access log group has 7-day retention', () => {
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/aws/apigateway/garageos-api-access',
       RetentionInDays: 7,
     });
   });
