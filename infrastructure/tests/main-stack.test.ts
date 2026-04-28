@@ -3,6 +3,7 @@ import { Template, Match } from 'aws-cdk-lib/assertions';
 import { describe, it } from 'vitest';
 
 import { DnsConstruct } from '../lib/constructs/dns.js';
+import { SecretsConstruct } from '../lib/constructs/secrets.js';
 import { OidcStack } from '../lib/stacks/oidc-stack.js';
 
 describe('OidcStack', () => {
@@ -87,6 +88,33 @@ describe('DnsConstruct (synth-mock mode)', () => {
     template.hasResourceProperties('AWS::CertificateManager::Certificate', {
       DomainName: 'api.garageos.it',
       ValidationMethod: 'DNS',
+    });
+  });
+});
+
+describe('SecretsConstruct', () => {
+  function buildTemplate() {
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'TestSecretsStack', {
+      env: { account: '123456789012', region: 'eu-central-1' },
+    });
+    new SecretsConstruct(stack, 'Secrets', { environment: 'production' });
+    return Template.fromStack(stack);
+  }
+
+  it('provisions the garageos/production/app secret', () => {
+    const template = buildTemplate();
+    template.resourceCountIs('AWS::SecretsManager::Secret', 1);
+    template.hasResourceProperties('AWS::SecretsManager::Secret', {
+      Name: 'garageos/production/app',
+    });
+  });
+
+  it('secret retains on stack deletion', () => {
+    const template = buildTemplate();
+    template.hasResource('AWS::SecretsManager::Secret', {
+      DeletionPolicy: 'Retain',
+      UpdateReplacePolicy: 'Retain',
     });
   });
 });
