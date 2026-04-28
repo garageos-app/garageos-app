@@ -1,8 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { DnsConstruct } from '../lib/constructs/dns.js';
+import { LambdaApiConstruct } from '../lib/constructs/lambda-api.js';
 import { SecretsConstruct } from '../lib/constructs/secrets.js';
 import { OidcStack } from '../lib/stacks/oidc-stack.js';
 
@@ -115,6 +116,81 @@ describe('SecretsConstruct', () => {
     template.hasResource('AWS::SecretsManager::Secret', {
       DeletionPolicy: 'Retain',
       UpdateReplacePolicy: 'Retain',
+    });
+  });
+});
+
+describe('LambdaApiConstruct', () => {
+  // Build once per describe to avoid running esbuild bundling 5 times
+  // (each call triggers NodejsFunction synth → ~1.4 MB bundle + Prisma
+  // engines under a fresh cdk.out temp dir; multiplying that by 5 is
+  // both slow and disk-heavy on Windows).
+  const app = new cdk.App();
+  const stack = new cdk.Stack(app, 'TestLambdaStack', {
+    env: { account: '123456789012', region: 'eu-central-1' },
+  });
+  const secrets = new SecretsConstruct(stack, 'Secrets', { environment: 'production' });
+  new LambdaApiConstruct(stack, 'LambdaApi', {
+    memoryMb: 1024,
+    architecture: 'arm64',
+    timeoutSec: 30,
+    reservedConcurrency: 100,
+    logRetentionDays: 7,
+    appSecret: secrets.appSecret,
+  });
+  const template = Template.fromStack(stack);
+
+  it('provisions exactly one Lambda function on Node 22 arm64', () => {
+    template.resourceCountIs('AWS::Lambda::Function', 1);
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Runtime: 'nodejs22.x',
+      Architectures: ['arm64'],
+      MemorySize: 1024,
+      Timeout: 30,
+      ReservedConcurrentExecutions: 100,
+    });
+  });
+
+  it('Lambda includes the LWA arm64 layer', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Layers: Match.arrayWith([Match.stringLikeRegexp('LambdaAdapterLayerArm64')]),
+    });
+  });
+
+  it('Lambda env wires LWA + APP_SECRETS_ARN', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          NODE_ENV: 'production',
+          AWS_LWA_PORT: '8080',
+          AWS_LWA_READINESS_CHECK_PATH: '/health',
+          AWS_LWA_ASYNC_INIT: 'true',
+          APP_SECRETS_ARN: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it('execution role has secretsmanager:GetSecretValue but NO s3 or cognito actions', () => {
+    // Find the inline policy attached to the execution role and check
+    // its statements. We assert presence of secretsmanager and absence
+    // of s3:* / cognito-idp:* — those are deferred to later PRs.
+    const policies = template.findResources('AWS::IAM::Policy');
+    const inlineStatements = Object.values(policies).flatMap(
+      (res) => res.Properties.PolicyDocument.Statement as Array<{ Action: string | string[] }>,
+    );
+    const allActions = inlineStatements.flatMap((s) =>
+      Array.isArray(s.Action) ? s.Action : [s.Action],
+    );
+    expect(allActions).toContain('secretsmanager:GetSecretValue');
+    expect(allActions.some((a) => a.startsWith('s3:'))).toBe(false);
+    expect(allActions.some((a) => a.startsWith('cognito-idp:'))).toBe(false);
+  });
+
+  it('log group retention is 7 days', () => {
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/aws/lambda/garageos-api',
+      RetentionInDays: 7,
     });
   });
 });

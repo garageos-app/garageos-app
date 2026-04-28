@@ -1,0 +1,120 @@
+import { fileURLToPath } from 'node:url';
+import * as path from 'node:path';
+
+import * as cdk from 'aws-cdk-lib';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import { Construct } from 'constructs';
+
+// AWS Lambda function running the Fastify backend via Lambda Web Adapter
+// (LWA) layer. LWA proxies Lambda events to a local HTTP server on
+// AWS_LWA_PORT — application code stays a vanilla Fastify server, see
+// packages/api/src/index.ts.
+//
+// Bundling: NodejsFunction L2 runs esbuild during synth. The api
+// imports @garageos/database (workspace package, TS source) which
+// imports the generated Prisma client. We external `@aws-sdk/*`
+// (Lambda runtime ships it) and ship `@prisma/client` + `prisma`
+// as nodeModules so their native engine binaries are copied verbatim.
+//
+// IAM in PR 21 is intentionally minimal: only secretsmanager:GetSecretValue
+// on the appSecret ARN. S3 / Cognito / SES / Scheduler permissions
+// arrive in subsequent PRs together with the construct that needs them.
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export interface LambdaApiConstructProps {
+  readonly memoryMb: number;
+  readonly architecture: 'arm64' | 'x86_64';
+  readonly timeoutSec: number;
+  readonly reservedConcurrency: number;
+  readonly logRetentionDays: number;
+  readonly appSecret: secretsmanager.ISecret;
+}
+
+export class LambdaApiConstruct extends Construct {
+  public readonly function: lambda.Function;
+  public readonly logGroup: logs.LogGroup;
+
+  constructor(scope: Construct, id: string, props: LambdaApiConstructProps) {
+    super(scope, id);
+
+    const executionRole = new iam.Role(this, 'ExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+    });
+    props.appSecret.grantRead(executionRole);
+
+    this.logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
+      logGroupName: '/aws/lambda/garageos-api',
+      retention: this.mapRetention(props.logRetentionDays),
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // LWA layer ARN (verify at first deploy: layer version may have
+    // bumped past 27 since 2026-04-23). Lookup command:
+    //   aws lambda list-layer-versions --layer-name LambdaAdapterLayerArm64
+    //     --region eu-central-1 --query 'LayerVersions[0].LayerVersionArn'
+    const lwaLayer = lambda.LayerVersion.fromLayerVersionArn(
+      this,
+      'LwaLayer',
+      `arn:aws:lambda:${cdk.Stack.of(this).region}:753240598075:layer:LambdaAdapterLayerArm64:27`,
+    );
+
+    const arch =
+      props.architecture === 'arm64' ? lambda.Architecture.ARM_64 : lambda.Architecture.X86_64;
+
+    // Entry resolves from <repo-root>/infrastructure/lib/constructs/
+    // up three levels to <repo-root>/, then packages/api/src/index.ts.
+    const entryPath = path.join(__dirname, '..', '..', '..', 'packages', 'api', 'src', 'index.ts');
+
+    this.function = new lambdaNodejs.NodejsFunction(this, 'ApiFunction', {
+      functionName: 'garageos-api',
+      entry: entryPath,
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: arch,
+      memorySize: props.memoryMb,
+      timeout: cdk.Duration.seconds(props.timeoutSec),
+      reservedConcurrentExecutions: props.reservedConcurrency,
+      role: executionRole,
+      logGroup: this.logGroup,
+      layers: [lwaLayer],
+      tracing: lambda.Tracing.ACTIVE,
+      environment: {
+        NODE_ENV: 'production',
+        AWS_LWA_PORT: '8080',
+        AWS_LWA_READINESS_CHECK_PATH: '/health',
+        AWS_LWA_ASYNC_INIT: 'true',
+        APP_SECRETS_ARN: props.appSecret.secretArn,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node22',
+        format: lambdaNodejs.OutputFormat.ESM,
+        externalModules: ['@aws-sdk/*'],
+        nodeModules: ['@prisma/client', 'prisma'],
+      },
+    });
+  }
+
+  private mapRetention(days: number): logs.RetentionDays {
+    switch (days) {
+      case 7:
+        return logs.RetentionDays.ONE_WEEK;
+      case 14:
+        return logs.RetentionDays.TWO_WEEKS;
+      case 30:
+        return logs.RetentionDays.ONE_MONTH;
+      default:
+        throw new Error(`Unsupported logRetentionDays: ${days}`);
+    }
+  }
+}
