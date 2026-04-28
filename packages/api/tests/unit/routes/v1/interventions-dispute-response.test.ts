@@ -476,6 +476,54 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
     expect(body.code).toBe('intervention.dispute.response.permission_denied');
     expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
   });
+
+  it('404 cross-tenant intervention → P2025 → 404 (RLS-as-404)', async () => {
+    const { Prisma } = await import('@garageos/database');
+    const prisma = buildFakePrisma();
+    prisma.intervention.findUniqueOrThrow = vi.fn().mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('not found', {
+        code: 'P2025',
+        clientVersion: 'test',
+      }),
+    );
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('401 missing Authorization header', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('409 omitted disputeId with zero open targets → no_active_dispute', async () => {
+    const prisma = buildFakePrisma({
+      interventionStatus: 'active',
+      openTargets: [], // findMany returns empty array
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { code: string };
+    expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
+    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
+  });
 });
 
 export { buildApp, buildFakePrisma, buildOpenDispute, buildRespondedDispute };
