@@ -204,6 +204,13 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
         action: 'respond',
       }),
     });
+
+    // Defense: assert the fanout branch was taken (omitted disputeId).
+    // If a future refactor accidentally routes through findUnique
+    // instead, this would fail loudly rather than silently changing
+    // semantics. Tests in Task 7 explicitly exercise the disputeId
+    // branch — this assertion keeps them mutually exclusive.
+    expect(prisma.interventionDispute.findUnique).not.toHaveBeenCalled();
   });
 });
 

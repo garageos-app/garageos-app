@@ -52,6 +52,12 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
           select: { id: true, role: true, locationId: true },
         });
 
+        // Guard order: permission → reason → attachments → 404
+        // (findUniqueOrThrow). Role check fires first because the
+        // user-lookup already bound the request to the correct tenant
+        // (post-#27 defense-in-depth), so 403 here is acceptable
+        // opacity. Cross-tenant intervention id is masked opaquely
+        // by RLS-as-404 at findUniqueOrThrow below.
         if (!isAllowedRole(user.role)) {
           throw businessError(
             'intervention.dispute.response.permission_denied',
