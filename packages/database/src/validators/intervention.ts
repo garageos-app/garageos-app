@@ -78,8 +78,25 @@ export const CancelInterventionSchema = z
   })
   .strict();
 
+// BR-129 — tenant_response is 20..2000 chars. The min(20) bound is
+// validated handler-side to expose
+// `intervention.dispute.response.description_too_short` instead of a
+// generic `validation.error`. The max(2000) upper bound stays in Zod.
+// `disputeId` is optional: when present, target a single dispute by id;
+// when absent, target all `open` disputes on the parent intervention.
+// `attachmentIds` accepted for forward-compat (rejected handler-side
+// 422 in v1 — storage layer not shipped).
+export const RespondToDisputeSchema = z
+  .object({
+    tenantResponse: z.string().max(2000),
+    disputeId: z.uuid().optional(),
+    attachmentIds: z.array(z.uuid()).max(10).optional(),
+  })
+  .strict();
+
 export type PartReplaced = z.infer<typeof PartReplacedSchema>;
 export type CreateInterventionInput = z.infer<typeof CreateInterventionSchema>;
 export type CreateDisputeInput = z.infer<typeof CreateDisputeSchema>;
 export type UpdateInterventionInput = z.infer<typeof UpdateInterventionSchema>;
 export type CancelInterventionInput = z.infer<typeof CancelInterventionSchema>;
+export type RespondToDisputeInput = z.infer<typeof RespondToDisputeSchema>;
