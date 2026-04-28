@@ -102,17 +102,27 @@ function buildFakePrisma(o: FakePrismaOverrides = {}): FakePrisma {
         .mockResolvedValue(buildInterventionRow({ status: o.interventionStatus ?? 'disputed' })),
       update: vi.fn().mockResolvedValue({ id: INTERVENTION_ID, status: 'active' }),
     },
-    interventionDispute: {
-      findUnique: vi.fn().mockResolvedValue(o.singleTarget ?? null),
-      findMany: vi
-        .fn()
-        // First call: findMany targets (omitted disputeId path).
-        // Second call: findMany respondedRows.
-        .mockResolvedValueOnce(o.openTargets ?? [{ id: DISPUTE_ID }])
-        .mockResolvedValueOnce(o.respondedRows ?? [buildRespondedDispute()]),
-      updateMany: vi.fn().mockResolvedValue({ count: o.openTargets?.length ?? 1 }),
-      count: vi.fn().mockResolvedValue(o.remainingOpen ?? 0),
-    },
+    interventionDispute: (() => {
+      const respondedRows = o.respondedRows ?? [buildRespondedDispute()];
+      // If `singleTarget` is provided, the route uses findUnique for
+      // resolution and findMany only fires once (the post-update
+      // re-fetch). Otherwise findMany fires twice: targets discovery,
+      // then re-fetch.
+      const findManyMock = vi.fn();
+      if (o.singleTarget !== undefined) {
+        findManyMock.mockResolvedValueOnce(respondedRows);
+      } else {
+        findManyMock
+          .mockResolvedValueOnce(o.openTargets ?? [{ id: DISPUTE_ID }])
+          .mockResolvedValueOnce(respondedRows);
+      }
+      return {
+        findUnique: vi.fn().mockResolvedValue(o.singleTarget ?? null),
+        findMany: findManyMock,
+        updateMany: vi.fn().mockResolvedValue({ count: o.openTargets?.length ?? 1 }),
+        count: vi.fn().mockResolvedValue(o.remainingOpen ?? 0),
+      };
+    })(),
     accessLog: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue(undefined),
@@ -340,6 +350,15 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
       where: { id: { in: [DISPUTE_ID] } },
       data: expect.objectContaining({ status: 'responded' }),
     });
+    const body = res.json() as {
+      disputes: Array<{ id: string; status: string; tenantResponse: string }>;
+      interventionStatus: string;
+    };
+    expect(body.disputes).toHaveLength(1);
+    expect(body.disputes[0]!.id).toBe(DISPUTE_ID);
+    expect(body.disputes[0]!.status).toBe('responded');
+    expect(body.disputes[0]!.tenantResponse).toBe(VALID_RESPONSE);
+    expect(body.interventionStatus).toBe('active');
   });
 
   it('404 disputeId points to a dispute on another intervention', async () => {
@@ -376,6 +395,25 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
     expect(res.statusCode).toBe(409);
     const body = res.json() as { code: string };
     expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
+  });
+
+  it('404 disputeId points to a nonexistent dispute (findUnique returns null)', async () => {
+    // singleTarget omitted → findUnique returns null → !target branch
+    // of the compound guard (`!target || target.interventionId !== id`).
+    // This is the second sub-condition of the same 404, distinct from
+    // cross-intervention which exercises the right side.
+    const prisma = buildFakePrisma({
+      interventionStatus: 'disputed',
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE, disputeId: DISPUTE_ID },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
   });
 
   it('400 missing tenant_response → Zod validation.error', async () => {
