@@ -265,8 +265,10 @@ Per fornire dati utili al client per gestire l'errore:
 | `intervention.dispute.already_exists` | 409 | info | Contestazione già aperta | Una per customer per intervention | BR-122 |
 | `intervention.dispute.not_owner` | 403 | warning | Solo il proprietario può contestare | | BR-120 |
 | `intervention.dispute.description_too_short` | 400 | info | Descrizione contestazione troppo breve | <20 caratteri | BR-124 |
-| `intervention.dispute.response.not_your_intervention` | 403 | warning | Contestazione di altro tenant | | |
+| `intervention.dispute.response.not_your_intervention` | 403 | warning | Contestazione di altro tenant (~~reservato — sostituito da RLS-as-404 in v1~~) | | |
 | `intervention.dispute.response.description_too_short` | 400 | info | Risposta troppo breve | <20 caratteri | BR-129 |
+| `intervention.dispute.response.permission_denied` | 403 | warning | Ruolo non autorizzato a rispondere | Ruolo fuori da {super_admin, mechanic} | BR-129 |
+| `intervention.dispute.response.no_active_dispute` | 409 | info | Nessuna contestazione `open` da rispondere | Omitted dispute_id senza target oppure dispute_id su stato non `open` | BR-129 |
 | `intervention.revisions.not_owner` | 403 | warning | Solo il proprietario può consultare lo storico modifiche | Cliente non proprietario attivo del veicolo dell'intervento | BR-064 |
 
 ### 3.7 Interventi privati
@@ -791,7 +793,9 @@ intervention.dispute.already_exists
 intervention.dispute.description_too_short
 intervention.dispute.not_owner
 intervention.dispute.response.description_too_short
+intervention.dispute.response.no_active_dispute
 intervention.dispute.response.not_your_intervention
+intervention.dispute.response.permission_denied
 intervention.modification.cancelled
 intervention.modification.disputed
 intervention.modification.locked
