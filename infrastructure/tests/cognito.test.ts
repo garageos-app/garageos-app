@@ -102,25 +102,33 @@ describe('CognitoConstruct (mfaTotpEnabled=true)', () => {
   });
 
   it('officine app client uses SRP + USER_PASSWORD flows with 30-day refresh', () => {
-    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-      ClientName: 'garageos-officine-client',
-      ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH', 'ALLOW_USER_PASSWORD_AUTH']),
-      AccessTokenValidity: 60,
-      IdTokenValidity: 60,
-      RefreshTokenValidity: 30 * 24 * 60,
-      PreventUserExistenceErrors: 'ENABLED',
-    });
+    const clients = template.findResources('AWS::Cognito::UserPoolClient');
+    const officineClient = Object.values(clients).find(
+      (c) => c.Properties?.ClientName === 'garageos-officine-client',
+    );
+    expect(officineClient).toBeDefined();
+    expect(officineClient?.Properties?.ExplicitAuthFlows).toContain('ALLOW_USER_SRP_AUTH');
+    expect(officineClient?.Properties?.ExplicitAuthFlows).toContain('ALLOW_USER_PASSWORD_AUTH');
+    expect(officineClient?.Properties?.ExplicitAuthFlows).toContain('ALLOW_REFRESH_TOKEN_AUTH');
+    expect(officineClient?.Properties?.AccessTokenValidity).toBe(60);
+    expect(officineClient?.Properties?.IdTokenValidity).toBe(60);
+    expect(officineClient?.Properties?.RefreshTokenValidity).toBe(30 * 24 * 60);
+    expect(officineClient?.Properties?.PreventUserExistenceErrors).toBe('ENABLED');
   });
 
   it('clienti app client uses SRP + USER_PASSWORD flows with 60-day refresh', () => {
-    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-      ClientName: 'garageos-clienti-client',
-      ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH', 'ALLOW_USER_PASSWORD_AUTH']),
-      AccessTokenValidity: 60,
-      IdTokenValidity: 60,
-      RefreshTokenValidity: 60 * 24 * 60,
-      PreventUserExistenceErrors: 'ENABLED',
-    });
+    const clients = template.findResources('AWS::Cognito::UserPoolClient');
+    const clientiClient = Object.values(clients).find(
+      (c) => c.Properties?.ClientName === 'garageos-clienti-client',
+    );
+    expect(clientiClient).toBeDefined();
+    expect(clientiClient?.Properties?.ExplicitAuthFlows).toContain('ALLOW_USER_SRP_AUTH');
+    expect(clientiClient?.Properties?.ExplicitAuthFlows).toContain('ALLOW_USER_PASSWORD_AUTH');
+    expect(clientiClient?.Properties?.ExplicitAuthFlows).toContain('ALLOW_REFRESH_TOKEN_AUTH');
+    expect(clientiClient?.Properties?.AccessTokenValidity).toBe(60);
+    expect(clientiClient?.Properties?.IdTokenValidity).toBe(60);
+    expect(clientiClient?.Properties?.RefreshTokenValidity).toBe(60 * 24 * 60);
+    expect(clientiClient?.Properties?.PreventUserExistenceErrors).toBe('ENABLED');
   });
 
   it('email is the sign-in alias on both pools (UsernameAttributes=email)', () => {
