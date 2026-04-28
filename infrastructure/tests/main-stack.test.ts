@@ -6,7 +6,9 @@ import { ApiGatewayConstruct } from '../lib/constructs/api-gateway.js';
 import { DnsConstruct } from '../lib/constructs/dns.js';
 import { LambdaApiConstruct } from '../lib/constructs/lambda-api.js';
 import { SecretsConstruct } from '../lib/constructs/secrets.js';
+import { MainStack } from '../lib/stacks/main-stack.js';
 import { OidcStack } from '../lib/stacks/oidc-stack.js';
+import { productionConfig } from '../lib/config/production.js';
 
 describe('OidcStack', () => {
   const app = new cdk.App();
@@ -269,5 +271,44 @@ describe('ApiGatewayConstruct', () => {
       LogGroupName: '/aws/apigateway/garageos-api-access',
       RetentionInDays: 7,
     });
+  });
+});
+
+describe('MainStack (integration)', () => {
+  // Override synthMock unconditionally for this suite — productionConfig
+  // reads CDK_SYNTH_MOCK lazily, which may be unset in the test runner.
+  const config = { ...productionConfig, synthMock: true };
+
+  // Hoist build (Task 6/7 pattern) so the Lambda bundles once for all
+  // assertions. Disk space is tight; one bundle pass per describe is
+  // the budget.
+  function buildTemplate() {
+    const app = new cdk.App();
+    const stack = new MainStack(app, 'TestMainStack', {
+      env: { account: '123456789012', region: 'eu-central-1' },
+      config,
+    });
+    return Template.fromStack(stack);
+  }
+  const template = buildTemplate();
+
+  it('exposes ApiUrl, HttpApiEndpoint, LambdaFunctionArn, AppSecretsArn outputs', () => {
+    template.hasOutput('ApiUrl', {});
+    template.hasOutput('HttpApiEndpoint', {});
+    template.hasOutput('LambdaFunctionArn', {});
+    template.hasOutput('AppSecretsArn', {});
+  });
+
+  it('combined resource counts match scope', () => {
+    template.resourceCountIs('AWS::Lambda::Function', 1);
+    template.resourceCountIs('AWS::ApiGatewayV2::Api', 1);
+    template.resourceCountIs('AWS::ApiGatewayV2::DomainName', 1);
+    template.resourceCountIs('AWS::SecretsManager::Secret', 1);
+    template.resourceCountIs('AWS::CertificateManager::Certificate', 1);
+    template.resourceCountIs('AWS::Route53::RecordSet', 1);
+    // No Cognito, no S3, no WAF in PR 21.
+    template.resourceCountIs('AWS::Cognito::UserPool', 0);
+    template.resourceCountIs('AWS::S3::Bucket', 0);
+    template.resourceCountIs('AWS::WAFv2::WebACL', 0);
   });
 });
