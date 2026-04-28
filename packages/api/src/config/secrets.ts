@@ -24,7 +24,12 @@ export async function loadSecretsIntoEnv(client?: SecretsManagerClient): Promise
   const secretArn = process.env.APP_SECRETS_ARN;
   if (!secretArn) return;
 
-  const sm = client ?? new SecretsManagerClient({ region: process.env.AWS_REGION });
+  // Pass region only when defined: `exactOptionalPropertyTypes: true`
+  // forbids passing `undefined` to optional fields. Lambda runtime
+  // always sets AWS_REGION; this branch matters for local dev where
+  // the SDK's default provider chain handles resolution.
+  const region = process.env.AWS_REGION;
+  const sm = client ?? new SecretsManagerClient(region ? { region } : {});
   const response = await sm.send(new GetSecretValueCommand({ SecretId: secretArn }));
   if (!response.SecretString) {
     throw new Error('APP_SECRETS_ARN secret has no SecretString');
