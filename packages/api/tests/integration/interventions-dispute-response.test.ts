@@ -335,4 +335,235 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.action).toBe('respond');
   });
+
+  it('cross-tenant isolation: officina B cannot respond to officina A dispute (disputes RLS blocks, returns 409)', async () => {
+    // interventions_read is permissive (FOR SELECT USING (true)), so
+    // findUniqueOrThrow succeeds for tenant B. The isolation is enforced
+    // by intervention_disputes_access, which hides tenant A's disputes
+    // from tenant B's context. findMany returns [] → 409 no_active_dispute.
+    // The DB assertion confirms tenant A's dispute is untouched (still open).
+    const a = await createTenantWithLocation('rls-a');
+    const aSub = `office-a-${randomUUID().slice(0, 8)}`;
+    const { userId: aUserId } = await createUser({
+      tenantId: a.tenantId,
+      cognitoSub: aSub,
+      role: 'super_admin',
+      locationId: a.locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
+    const { customerId } = await createCustomer({});
+    await createOwnership({ vehicleId, customerId });
+    const { interventionId } = await createIntervention({
+      tenantId: a.tenantId,
+      locationId: a.locationId,
+      userId: aUserId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      status: 'disputed',
+    });
+    const { disputeId } = await createDispute({ interventionId, customerId, status: 'open' });
+
+    const b = await createTenantWithLocation('rls-b');
+    const bSub = `office-b-${randomUUID().slice(0, 8)}`;
+    await createUser({
+      tenantId: b.tenantId,
+      cognitoSub: bSub,
+      role: 'super_admin',
+      locationId: b.locationId,
+    });
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: bSub,
+      tenantId: b.tenantId,
+      role: 'super_admin',
+      locationId: b.locationId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/dispute-response`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    // Disputes are invisible to tenant B → findMany returns [] → 409.
+    // (interventions_read is permissive; isolation lives on disputes RLS.)
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { code: string };
+    expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
+
+    // Sanity: tenant A's dispute is still open (not mutated by tenant B).
+    const { rows } = await pgAdmin.query<{ status: string }>(
+      'SELECT status FROM intervention_disputes WHERE id = $1',
+      [disputeId],
+    );
+    expect(rows[0]!.status).toBe('open');
+  });
+
+  it('409 already responded: re-responding to the same dispute returns no_active_dispute', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { customerId } = await createCustomer({});
+    await createOwnership({ vehicleId, customerId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      status: 'disputed',
+    });
+    const { disputeId } = await createDispute({
+      interventionId,
+      customerId,
+      status: 'open',
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/dispute-response`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { tenantResponse: VALID_RESPONSE, disputeId: disputeId },
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/dispute-response`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { tenantResponse: VALID_RESPONSE, disputeId: disputeId },
+    });
+    expect(second.statusCode).toBe(409);
+    const body = second.json() as { code: string };
+    expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
+  });
+
+  it('PATCH unlock end-to-end: dispute-response then PATCH /interventions/:id succeeds', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { customerId } = await createCustomer({});
+    await createOwnership({ vehicleId, customerId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      status: 'disputed',
+      description: 'Tagliando completo',
+    });
+    await createDispute({ interventionId, customerId, status: 'open' });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    // Step 1: PATCH while disputed → 422 modification.disputed
+    const patchPre = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'Tagliando completo + filtro' },
+    });
+    expect(patchPre.statusCode).toBe(422);
+    const preBody = patchPre.json() as { code: string };
+    expect(preBody.code).toBe('intervention.modification.disputed');
+
+    // Step 2: respond to dispute → unlocks PATCH
+    const respond = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/dispute-response`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(respond.statusCode).toBe(200);
+    const respondBody = respond.json() as { interventionStatus: string };
+    expect(respondBody.interventionStatus).toBe('active');
+
+    // Step 3: PATCH succeeds
+    const patchPost = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'Tagliando completo + filtro' },
+    });
+    expect(patchPost.statusCode).toBe(200);
+    const postBody = patchPost.json() as { intervention: { description: string } };
+    expect(postBody.intervention.description).toBe('Tagliando completo + filtro');
+  });
+
+  it('409 omitted disputeId on intervention with zero open disputes', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      // no dispute → status active
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/dispute-response`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { code: string };
+    expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
+  });
 });
