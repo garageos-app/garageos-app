@@ -212,6 +212,106 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
     // branch — this assertion keeps them mutually exclusive.
     expect(prisma.interventionDispute.findUnique).not.toHaveBeenCalled();
   });
+
+  it('200 multi-dispute fanout: 2 open disputes → both responded, status active', async () => {
+    const D1 = '01010101-0101-4101-8101-010101010101';
+    const D2 = '02020202-0202-4202-8202-020202020202';
+    const responded = [
+      { ...buildRespondedDispute(D1), customerId: '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a' },
+      { ...buildRespondedDispute(D2), customerId: '0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b0b' },
+    ];
+    const prisma = buildFakePrisma({
+      interventionStatus: 'disputed',
+      openTargets: [{ id: D1 }, { id: D2 }],
+      respondedRows: responded,
+      remainingOpen: 0,
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      disputes: Array<{ id: string }>;
+      interventionStatus: string;
+    };
+    expect(body.disputes.map((d) => d.id).sort()).toEqual([D1, D2].sort());
+    expect(body.interventionStatus).toBe('active');
+    expect(prisma.interventionDispute.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [D1, D2] } },
+      data: expect.objectContaining({ status: 'responded' }),
+    });
+  });
+
+  it('200 with another open dispute remaining → intervention_status stays disputed', async () => {
+    const prisma = buildFakePrisma({
+      interventionStatus: 'disputed',
+      openTargets: [{ id: DISPUTE_ID }],
+      respondedRows: [buildRespondedDispute()],
+      remainingOpen: 1,
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { interventionStatus: string };
+    expect(body.interventionStatus).toBe('disputed');
+    expect(prisma.intervention.update).not.toHaveBeenCalled();
+  });
+
+  it('200 only `responded` siblings remain (not counted as open) → status flips to active', async () => {
+    const prisma = buildFakePrisma({
+      interventionStatus: 'disputed',
+      openTargets: [{ id: DISPUTE_ID }],
+      respondedRows: [buildRespondedDispute()],
+      remainingOpen: 0, // siblings sono `responded`, non `open`
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { interventionStatus: string };
+    expect(body.interventionStatus).toBe('active');
+    expect(prisma.intervention.update).toHaveBeenCalledOnce();
+  });
+
+  it('200 intervention.status was already `active` → no flip update needed', async () => {
+    // Edge case: customer aprì dispute ma intervention.status non era stato
+    // flippato (data integrity drift). La response non deve fare l'UPDATE
+    // perché lo status è già nel target value.
+    const prisma = buildFakePrisma({
+      interventionStatus: 'active',
+      openTargets: [{ id: DISPUTE_ID }],
+      respondedRows: [buildRespondedDispute()],
+      remainingOpen: 0,
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { interventionStatus: string };
+    expect(body.interventionStatus).toBe('active');
+    expect(prisma.intervention.update).not.toHaveBeenCalled();
+  });
 });
 
 export { buildApp, buildFakePrisma, buildOpenDispute, buildRespondedDispute };
