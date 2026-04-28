@@ -1099,10 +1099,10 @@ DECLARE
     tenant_tables text[] := ARRAY[
         -- 'locations', 'interventions' splittate in `_read FOR SELECT
         -- USING (true)` + `_write FOR ALL` dalla migration 0003;
-        -- 'users' splittato dalla migration 0004 con lo stesso pattern.
+        -- 'users' splittato con lo stesso pattern dalla migration 0004.
         -- Vedi i blocchi dedicati più sotto. Tutti per supportare
         -- BR-150/BR-153 (timeline + audit-chain cross-tenant).
-        'users', 'customer_tenant_relations',
+        'customer_tenant_relations',
         'intervention_disputes',
         'deadlines', 'deadline_notifications',
         'access_logs', 'invitations'
@@ -1162,10 +1162,8 @@ WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
 -- USERS (post migration 0004): SELECT permissive (BR-150 audit
 -- chain join a users.firstName/lastName cross-tenant), WRITE
 -- tenant-scoped. Mirror del pattern tenants/locations post-0003.
+-- (ENABLE+FORCE RLS già applicati dall'init migration via DO loop.)
 -- =====================================================
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users FORCE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS users_tenant_isolation ON users;
 
 CREATE POLICY users_read ON users
