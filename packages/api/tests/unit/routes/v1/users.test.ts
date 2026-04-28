@@ -25,12 +25,12 @@ const USER_ROW = {
 
 interface AppDeps {
   verifier?: JwtVerifier;
-  findUniqueOrThrow?: ReturnType<typeof vi.fn>;
+  findFirstOrThrow?: ReturnType<typeof vi.fn>;
 }
 
 async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
-  const findUniqueOrThrow = deps.findUniqueOrThrow ?? vi.fn().mockResolvedValue(USER_ROW);
-  const fakePrisma = { user: { findUniqueOrThrow } };
+  const findFirstOrThrow = deps.findFirstOrThrow ?? vi.fn().mockResolvedValue(USER_ROW);
+  const fakePrisma = { user: { findFirstOrThrow } };
   const fakeWithContext = vi.fn(async (_ctx, fn) => fn(fakePrisma));
 
   const defaultVerifier: JwtVerifier = {
@@ -71,8 +71,8 @@ describe('GET /v1/users/me', () => {
   });
 
   it('returns the current user looked up via cognitoSub', async () => {
-    const findUniqueOrThrow = vi.fn().mockResolvedValue(USER_ROW);
-    app = await buildApp({ findUniqueOrThrow });
+    const findFirstOrThrow = vi.fn().mockResolvedValue(USER_ROW);
+    app = await buildApp({ findFirstOrThrow });
 
     const res = await app.inject({
       method: 'GET',
@@ -81,9 +81,9 @@ describe('GET /v1/users/me', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(findUniqueOrThrow).toHaveBeenCalledWith(
+    expect(findFirstOrThrow).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { cognitoSub: COGNITO_SUB },
+        where: { cognitoSub: COGNITO_SUB, tenantId: TENANT_ID },
       }),
     );
     expect(res.json()).toMatchObject({
@@ -97,8 +97,8 @@ describe('GET /v1/users/me', () => {
   });
 
   it('calls the Prisma select with a minimal safe projection', async () => {
-    const findUniqueOrThrow = vi.fn().mockResolvedValue(USER_ROW);
-    app = await buildApp({ findUniqueOrThrow });
+    const findFirstOrThrow = vi.fn().mockResolvedValue(USER_ROW);
+    app = await buildApp({ findFirstOrThrow });
 
     await app.inject({
       method: 'GET',
@@ -106,7 +106,7 @@ describe('GET /v1/users/me', () => {
       headers: { authorization: 'Bearer valid.jwt' },
     });
 
-    const call = findUniqueOrThrow.mock.calls[0]?.[0] as { select: Record<string, boolean> };
+    const call = findFirstOrThrow.mock.calls[0]?.[0] as { select: Record<string, boolean> };
     expect(call.select).toEqual({
       id: true,
       email: true,
@@ -163,8 +163,8 @@ describe('GET /v1/users/me', () => {
 
   it('invokes withContext with the tenantId from the JWT', async () => {
     // Spy on the withContext argument — we need a fresh inline fake
-    const findUniqueOrThrow = vi.fn().mockResolvedValue(USER_ROW);
-    const fakePrisma = { user: { findUniqueOrThrow } };
+    const findFirstOrThrow = vi.fn().mockResolvedValue(USER_ROW);
+    const fakePrisma = { user: { findFirstOrThrow } };
     const withContextSpy = vi.fn(async (_ctx, fn) => fn(fakePrisma));
 
     const app2 = Fastify({ logger: false });
@@ -206,8 +206,8 @@ describe('GET /v1/users/me', () => {
       code: 'P2025',
       clientVersion: 'test',
     });
-    const findUniqueOrThrow = vi.fn().mockRejectedValue(notFoundError);
-    app = await buildApp({ findUniqueOrThrow });
+    const findFirstOrThrow = vi.fn().mockRejectedValue(notFoundError);
+    app = await buildApp({ findFirstOrThrow });
 
     const res = await app.inject({
       method: 'GET',

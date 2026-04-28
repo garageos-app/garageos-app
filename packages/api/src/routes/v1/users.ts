@@ -32,9 +32,16 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = request.tenantId!;
       const cognitoSub = request.userId!;
 
+      // Bind the lookup to (cognitoSub, tenantId) so a JWT issued by
+      // tenant A's pool that carries a sub belonging to tenant B's user
+      // produces a clean 404 instead of leaking the cross-tenant row.
+      // Pre-migration 0004 the single `users_tenant_isolation` policy
+      // enforced this defense-in-depth at the RLS layer; post-0004
+      // `users_read FOR SELECT USING (true)` is permissive, so the
+      // tenant boundary is now an application-layer concern.
       return app.withContext({ tenantId }, (tx) =>
-        tx.user.findUniqueOrThrow({
-          where: { cognitoSub },
+        tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
           select: {
             id: true,
             email: true,
