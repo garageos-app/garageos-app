@@ -134,6 +134,7 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
 
         const respondedDisputes = await tx.interventionDispute.findMany({
           where: { id: { in: targetIds } },
+          orderBy: { createdAt: 'asc' },
           select: {
             id: true,
             interventionId: true,

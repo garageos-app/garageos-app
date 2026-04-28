@@ -562,6 +562,51 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
     expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
     expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
   });
+
+  it('409 disputeId points to a dispute resolved_by_cancellation', async () => {
+    // Distinct from the `responded` 409: the !== 'open' guard covers
+    // every non-open status. Pinning this branch prevents a future
+    // refactor from special-casing terminal states.
+    const prisma = buildFakePrisma({
+      interventionStatus: 'disputed',
+      singleTarget: { ...buildOpenDispute(), status: 'resolved_by_cancellation' as never },
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE, disputeId: DISPUTE_ID },
+    });
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { code: string };
+    expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
+    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('404 user.findFirstOrThrow throws P2025 → defense-in-depth post-#27', async () => {
+    // Cross-tenant JWT sub: the JWT verifier accepts the token (its
+    // claims look fine), but {cognitoSub, tenantId} returns no row in
+    // users → P2025 → global handler → 404. Pin this so the post-#27
+    // tightening does not accidentally degrade.
+    const { Prisma } = await import('@garageos/database');
+    const prisma = buildFakePrisma();
+    prisma.user.findFirstOrThrow = vi.fn().mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('not found', {
+        code: 'P2025',
+        clientVersion: 'test',
+      }),
+    );
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
+  });
 });
 
 export { buildApp, buildFakePrisma, buildOpenDispute, buildRespondedDispute };

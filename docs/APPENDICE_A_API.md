@@ -622,8 +622,8 @@ Authorization: Bearer <officina_jwt>
 | 400 | `validation.error` | Zod fail (max, attachmentIds shape, body shape) |
 | 401 | `auth.unauthenticated` | JWT mancante/invalido |
 | 403 | `intervention.dispute.response.permission_denied` | Ruolo non in allow-list |
-| 404 | `not_found` | Intervention non trovata o cross-tenant; `dispute_id` non trovato/cross-tenant |
-| 409 | `intervention.dispute.response.no_active_dispute` | Nessuna `open` da rispondere |
+| 404 | `not_found` | Intervention con id inesistente; `dispute_id` non trovato o di altro tenant |
+| 409 | `intervention.dispute.response.no_active_dispute` | Nessuna `open` da rispondere; OPPURE intervention di altro tenant (vedi Note RLS) |
 | 422 | `intervention.dispute.attachments_not_supported` | `attachment_ids` non vuoto |
 
 #### Note
@@ -631,6 +631,7 @@ Authorization: Bearer <officina_jwt>
 - BR-128: la response è immutabile. Non c'è un'edit/delete in v1.
 - Multi-dispute (più customer sullo stesso intervento): risposta unica con stesso `tenant_response` testo per tutte le `open`, salvo targeting esplicito via `dispute_id`.
 - BR-127 status flip: `intervention.status` flippa a `active` solo se 0 `open` residue. `responded` NON conta come "blocco PATCH".
+- RLS topology: `interventions_read` è permissivo (post PR #22), quindi una POST con id di intervento di altro tenant non ritorna 404 ma **409 `no_active_dispute`** — il lookup dell'intervention succeed, ma le dispute di altro tenant sono invisibili via `intervention_disputes_access` (`findMany` ritorna `[]`). L'isolation di scrittura resta garantita: tenant B non può mai mutare le dispute di tenant A.
 
 ---
 
