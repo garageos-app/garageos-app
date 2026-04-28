@@ -312,6 +312,71 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
     expect(body.interventionStatus).toBe('active');
     expect(prisma.intervention.update).not.toHaveBeenCalled();
   });
+
+  it('200 with explicit disputeId → only that one updated, others not in updateMany', async () => {
+    const target = buildOpenDispute(DISPUTE_ID);
+    const responded = buildRespondedDispute(DISPUTE_ID);
+    const prisma = buildFakePrisma({
+      interventionStatus: 'disputed',
+      singleTarget: target,
+      respondedRows: [responded],
+      remainingOpen: 0,
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE, disputeId: DISPUTE_ID },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prisma.interventionDispute.findUnique).toHaveBeenCalledWith({
+      where: { id: DISPUTE_ID },
+      select: { id: true, interventionId: true, status: true },
+    });
+    expect(prisma.interventionDispute.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.interventionDispute.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [DISPUTE_ID] } },
+      data: expect.objectContaining({ status: 'responded' }),
+    });
+  });
+
+  it('404 disputeId points to a dispute on another intervention', async () => {
+    const wrongIntervention = '99999999-9999-4999-8999-999999999999';
+    const prisma = buildFakePrisma({
+      interventionStatus: 'disputed',
+      singleTarget: { ...buildOpenDispute(), interventionId: wrongIntervention },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE, disputeId: DISPUTE_ID },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('409 disputeId points to a dispute already responded', async () => {
+    const prisma = buildFakePrisma({
+      interventionStatus: 'disputed',
+      singleTarget: { ...buildOpenDispute(), status: 'responded' as never },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE, disputeId: DISPUTE_ID },
+    });
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { code: string };
+    expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
+  });
 });
 
 export { buildApp, buildFakePrisma, buildOpenDispute, buildRespondedDispute };
