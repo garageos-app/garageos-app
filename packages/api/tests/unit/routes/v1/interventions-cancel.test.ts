@@ -19,7 +19,7 @@ const VALID_REASON =
   'Annullamento per errore di trascrizione VIN — la riga è stata reinserita correttamente in seguito.';
 
 interface FakePrisma {
-  user: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
+  user: { findFirstOrThrow: ReturnType<typeof vi.fn> };
   intervention: {
     findUniqueOrThrow: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
@@ -93,7 +93,7 @@ function buildFakePrisma(
 ): FakePrisma {
   return {
     user: {
-      findUniqueOrThrow: vi
+      findFirstOrThrow: vi
         .fn()
         .mockResolvedValue(buildUserRow(overrides.userRole ?? 'super_admin')),
     },

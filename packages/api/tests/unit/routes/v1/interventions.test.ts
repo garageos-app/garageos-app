@@ -19,7 +19,7 @@ const INTERVENTION_ID = '88888888-8888-4888-8888-888888888888';
 const DEADLINE_ID = '99999999-9999-4999-8999-999999999999';
 
 interface FakePrisma {
-  user: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
+  user: { findFirstOrThrow: ReturnType<typeof vi.fn> };
   vehicle: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
   interventionType: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
   intervention: {
@@ -96,7 +96,7 @@ function buildInterventionRow() {
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
   return {
     user: {
-      findUniqueOrThrow: vi.fn().mockResolvedValue({ id: USER_ID, locationId: LOCATION_ID }),
+      findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID, locationId: LOCATION_ID }),
     },
     vehicle: {
       findUniqueOrThrow: vi.fn().mockResolvedValue(buildVehicleRow()),
@@ -307,7 +307,7 @@ describe('POST /v1/vehicles/:id/interventions — preconditions', () => {
   });
 
   it('returns 422 user_no_location when the authenticated user has no locationId', async () => {
-    prisma.user.findUniqueOrThrow.mockResolvedValue({ id: USER_ID, locationId: null });
+    prisma.user.findFirstOrThrow.mockResolvedValue({ id: USER_ID, locationId: null });
     app = await buildApp({ prisma });
     const res = await app.inject({
       method: 'POST',

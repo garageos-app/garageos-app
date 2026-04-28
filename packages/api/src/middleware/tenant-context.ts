@@ -8,7 +8,11 @@ import type { CognitoIdTokenPayload } from '../plugins/auth.js';
 // Contract change from PR 6: `request.userId` is now the Cognito `sub`
 // claim (VARCHAR(100) — opaque to us) rather than a DB-issued UUID.
 // Handlers that need the database User.id must look it up via
-//   prisma.user.findUnique({ where: { cognitoSub: request.userId } })
+//   prisma.user.findFirstOrThrow({
+//     where: { cognitoSub: request.userId, tenantId: request.tenantId }
+//   })
+// (`tenantId` is the post-0004 application-layer guard — see
+// packages/api/src/routes/v1/users.ts header for rationale.)
 // This is intentional: moving the DB lookup out of the preHandler
 // keeps hot paths single-query and lets handlers that do not need the
 // DB row (e.g. pure auth checks) skip the round-trip entirely.

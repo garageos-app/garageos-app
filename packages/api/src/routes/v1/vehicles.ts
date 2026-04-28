@@ -231,10 +231,10 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
 
       return app.withContext({ tenantId }, async (tx) => {
         // User lookup is the source of truth for the DB user id (the
-        // JWT sub goes to cognito_sub). Matches the pattern in
-        // users.ts — see that file's header comment for rationale.
-        const user = await tx.user.findUniqueOrThrow({
-          where: { cognitoSub },
+        // JWT sub goes to cognito_sub). Bound to (cognitoSub, tenantId)
+        // post-0004 — see users.ts header for rationale.
+        const user = await tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
           select: { id: true, locationId: true },
         });
 
@@ -324,8 +324,9 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
       const cognitoSub = request.userId!;
 
       return app.withContext({ tenantId }, async (tx) => {
-        const user = await tx.user.findUniqueOrThrow({
-          where: { cognitoSub },
+        // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
+        const user = await tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
           select: { id: true, locationId: true },
         });
 
@@ -388,8 +389,9 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
       const cognitoSub = request.userId!;
 
       return app.withContext({ tenantId }, async (tx) => {
-        const user = await tx.user.findUniqueOrThrow({
-          where: { cognitoSub },
+        // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
+        const user = await tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
           select: { id: true, locationId: true },
         });
 

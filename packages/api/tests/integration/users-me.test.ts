@@ -64,7 +64,7 @@ describe('GET /v1/users/me (integration)', () => {
 
   it('returns 404 when no user row matches the JWT cognito_sub', async () => {
     const { tenantId } = await createTenantWithLocation('users-me-noone');
-    // No user inserted — findUniqueOrThrow lands in P2025.
+    // No user inserted — findFirstOrThrow lands in P2025.
 
     const token = await signTestToken({
       pool: 'officine',
@@ -90,8 +90,9 @@ describe('GET /v1/users/me (integration)', () => {
     const { tenantId: tenantB } = await createTenantWithLocation('users-me-isolation-B');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
     // User belongs to Tenant B; the token carries Tenant A's tenantId
-    // claim. RLS (app.current_tenant_id = tenantA) filters the row out
-    // so findUniqueOrThrow lands on P2025 → 404.
+    // claim. Post-0004 `users_read` is permissive — the app-layer
+    // (cognitoSub, tenantId) where-clause filters the row out so
+    // findFirstOrThrow lands on P2025 → 404.
     await createUser({ tenantId: tenantB, cognitoSub });
 
     const token = await signTestToken({

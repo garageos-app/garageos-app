@@ -94,9 +94,11 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
       return app.withContext({ tenantId }, async (tx) => {
         // User lookup mirrors vehicles.ts: JWT sub → DB user row. The
         // intervention.user_id FK points at users.id (UUID), not the
-        // Cognito sub, so the round-trip is mandatory.
-        const user = await tx.user.findUniqueOrThrow({
-          where: { cognitoSub },
+        // Cognito sub, so the round-trip is mandatory. Bound to
+        // (cognitoSub, tenantId) post-0004 because `users_read` is
+        // permissive — see users.ts header for rationale.
+        const user = await tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
           select: { id: true, locationId: true },
         });
 

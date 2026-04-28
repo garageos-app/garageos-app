@@ -52,38 +52,6 @@ describe('RLS — tenant isolation (smoke)', () => {
     return { tenantAId, tenantBId };
   }
 
-  // Pre-migration 0003 these two smoke tests asserted that
-  // `locations` and `tenants` were tenant-isolated for SELECT. The
-  // migration intentionally made SELECT cross-tenant on both (BR-150
-  // timeline join). Post-split SELECT permissive is now covered by
-  // the second describe block below; here we keep one smoke test on
-  // a table that DID retain `_tenant_isolation` (users), to preserve
-  // a regression guard against accidental wide-open RLS rewrites.
-  it('isolates users between tenants (still single-policy isolation)', async () => {
-    const { tenantAId, tenantBId } = await seedTwoTenants();
-    await pgAdmin.query(
-      `INSERT INTO users
-         (id, tenant_id, cognito_sub, email, first_name, last_name,
-          role, status, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), $1, 'sub-iso-A', 'a-iso@test.it', 'A', 'A',
-          'mechanic'::"UserRole", 'active'::"UserStatus", NOW(), NOW()),
-         (gen_random_uuid(), $2, 'sub-iso-B', 'b-iso@test.it', 'B', 'B',
-          'mechanic'::"UserRole", 'active'::"UserStatus", NOW(), NOW())`,
-      [tenantAId, tenantBId],
-    );
-
-    const seenByA = await withContext({ tenantId: tenantAId }, (tx) =>
-      tx.user.findMany({ select: { tenantId: true } }),
-    );
-    expect(seenByA.every((u) => u.tenantId === tenantAId)).toBe(true);
-
-    const seenByB = await withContext({ tenantId: tenantBId }, (tx) =>
-      tx.user.findMany({ select: { tenantId: true } }),
-    );
-    expect(seenByB.every((u) => u.tenantId === tenantBId)).toBe(true);
-  });
-
   it('tenants WRITE remains tenant-isolated (cross-tenant UPDATE returns 0 rows)', async () => {
     const { tenantAId, tenantBId } = await seedTwoTenants();
 
@@ -395,5 +363,355 @@ describe('RLS — interventions/attachments split (post-migration 0003)', () => 
       }),
     );
     expect(seenByB?.code).toBe('TAGLIANDO');
+  });
+});
+
+// Migration 0004 splits SELECT/WRITE on `users` so the audit-chain
+// joins to users.firstName/lastName (timeline §2.5, revisions list
+// §3.6) work cross-tenant without `role: 'admin'` short-lived. WRITE
+// remains tenant-scoped. Mirror of the post-0003 pattern on the
+// 5 already-split tables.
+describe('RLS — users split (post-migration 0004)', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  async function seedTwoTenantsWithUsers(): Promise<{
+    tenantAId: string;
+    tenantBId: string;
+    userAId: string;
+    userBId: string;
+  }> {
+    const { rows: tA } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
+       VALUES (gen_random_uuid(), 'Officina A', '11111111111', 'a@test.it', NOW(), NOW())
+       RETURNING id`,
+    );
+    const { rows: tB } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
+       VALUES (gen_random_uuid(), 'Officina B', '22222222222', 'b@test.it', NOW(), NOW())
+       RETURNING id`,
+    );
+    const tenantAId = tA[0]!.id;
+    const tenantBId = tB[0]!.id;
+
+    const { rows: uA } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO users
+         (id, tenant_id, cognito_sub, email, first_name, last_name,
+          role, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, 'a-split@test.it', 'A', 'A',
+          'mechanic'::"UserRole", 'active'::"UserStatus", NOW(), NOW())
+       RETURNING id`,
+      [tenantAId, `sub-users-split-A-${Date.now()}`],
+    );
+    const { rows: uB } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO users
+         (id, tenant_id, cognito_sub, email, first_name, last_name,
+          role, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, 'b-split@test.it', 'B', 'B',
+          'mechanic'::"UserRole", 'active'::"UserStatus", NOW(), NOW())
+       RETURNING id`,
+      [tenantBId, `sub-users-split-B-${Date.now()}`],
+    );
+
+    return {
+      tenantAId,
+      tenantBId,
+      userAId: uA[0]!.id,
+      userBId: uB[0]!.id,
+    };
+  }
+
+  it('cross-tenant SELECT on users is permissive (audit join visibility)', async () => {
+    const { tenantAId, userBId } = await seedTwoTenantsWithUsers();
+
+    // Tenant A reads tenant B's user via findUnique. Pre-0004 (single
+    // _tenant_isolation policy) this returned null; post-0004
+    // (_read FOR SELECT USING (true)) it returns the row.
+    const seenByA = await withContext({ tenantId: tenantAId }, (tx) =>
+      tx.user.findUnique({
+        where: { id: userBId },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+    );
+    expect(seenByA?.id).toBe(userBId);
+    expect(seenByA?.firstName).toBe('B');
+  });
+
+  it('cross-tenant INSERT on users is blocked', async () => {
+    const { tenantAId, tenantBId } = await seedTwoTenantsWithUsers();
+
+    // Tenant B tries to create a user pretending to belong to tenant A.
+    // _write FOR ALL WITH CHECK rejects: tenant_id ≠ current_tenant_id().
+    await expect(
+      withContext({ tenantId: tenantBId }, (tx) =>
+        tx.user.create({
+          data: {
+            tenantId: tenantAId,
+            cognitoSub: `sub-cross-insert-${Date.now()}`,
+            email: 'cross-insert@test.it',
+            firstName: 'Cross',
+            lastName: 'Insert',
+            role: 'mechanic',
+            status: 'active',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/row-level security|new row violates/i);
+  });
+
+  it('cross-tenant UPDATE on users returns 0 rows (USING filters row)', async () => {
+    const { tenantBId, userAId } = await seedTwoTenantsWithUsers();
+
+    // Tenant B tries to rename tenant A's user. The USING clause of
+    // _write hides the row from tenant B → updateMany count: 0.
+    const result = await withContext({ tenantId: tenantBId }, (tx) =>
+      tx.user.updateMany({
+        where: { id: userAId },
+        data: { firstName: 'Hijacked' },
+      }),
+    );
+    expect(result.count).toBe(0);
+  });
+
+  it('admin role bypasses users tenant filtering', async () => {
+    await seedTwoTenantsWithUsers();
+
+    const all = await withContext({ role: 'admin' }, (tx) => tx.user.findMany());
+    expect(all.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// Migration 0004 enables RLS on intervention_revisions (absent
+// pre-0004): SELECT permissive (BR-150 audit chain), INSERT
+// append-only enforced via EXISTS join to parent intervention,
+// no UPDATE/DELETE policies → default deny. Cascade DELETE from
+// the parent intervention bypasses RLS via FK CASCADE (mirrors
+// intervention_disputes pattern from migration 0002).
+describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  async function seedInterventionWithRevision(): Promise<{
+    tenantAId: string;
+    tenantBId: string;
+    locationAId: string;
+    userAId: string;
+    customerId: string;
+    vehicleId: string;
+    interventionId: string;
+    revisionId: string;
+  }> {
+    const { rows: tA } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
+       VALUES (gen_random_uuid(), 'Officina A', '11111111111', 'a@test.it', NOW(), NOW())
+       RETURNING id`,
+    );
+    const { rows: tB } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
+       VALUES (gen_random_uuid(), 'Officina B', '22222222222', 'b@test.it', NOW(), NOW())
+       RETURNING id`,
+    );
+    const tenantAId = tA[0]!.id;
+    const tenantBId = tB[0]!.id;
+
+    const { rows: lA } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO locations
+         (id, tenant_id, name, address_line, city, province, postal_code, country,
+          is_primary, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, 'Sede A', 'Via A 1', 'Milano', 'MI', '20100', 'IT',
+          true, 'active'::"LocationStatus", NOW(), NOW())
+       RETURNING id`,
+      [tenantAId],
+    );
+    const locationAId = lA[0]!.id;
+
+    const { rows: uA } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO users
+         (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+          role, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, $3, 'mech-rev@a.it', 'Mech', 'A',
+          'mechanic'::"UserRole", 'active'::"UserStatus", NOW(), NOW())
+       RETURNING id`,
+      [tenantAId, locationAId, `sub-rev-${Date.now()}`],
+    );
+    const userAId = uA[0]!.id;
+
+    const { rows: cust } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO customers (id, email, first_name, last_name, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, 'Cust', 'Owner', NOW(), NOW())
+       RETURNING id`,
+      [`cust-rev-${Date.now()}@test.it`],
+    );
+    const customerId = cust[0]!.id;
+
+    const { rows: veh } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO vehicles
+         (id, vin, plate, plate_country, make, model, year, vehicle_type, fuel_type,
+          status, created_by_tenant_id, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, 'AA111BB', 'IT', 'Fiat', 'Panda', 2021,
+          'car'::"VehicleType", 'petrol'::"FuelType",
+          'pending'::"VehicleStatus", $2, NOW(), NOW())
+       RETURNING id`,
+      [`VIN${Date.now()}${Math.floor(Math.random() * 1e6)}`.slice(0, 17), tenantAId],
+    );
+    const vehicleId = veh[0]!.id;
+
+    await pgAdmin.query(
+      `INSERT INTO vehicle_ownerships
+         (id, vehicle_id, customer_id, started_at, created_at)
+       VALUES (gen_random_uuid(), $1, $2, NOW(), NOW())`,
+      [vehicleId, customerId],
+    );
+
+    const { rows: it } = await pgAdmin.query<{ id: string }>(
+      `SELECT id FROM intervention_types WHERE tenant_id IS NULL AND code = 'TAGLIANDO' LIMIT 1`,
+    );
+    const interventionTypeId = it[0]!.id;
+
+    const { rows: iv } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO interventions
+         (id, tenant_id, location_id, user_id, vehicle_id, intervention_type_id,
+          intervention_date, odometer_km, title, description, parts_replaced,
+          status, km_anomaly, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, $3, $4, $5, '2026-04-15'::date, 45000,
+          'Tagliando A', 'Test', '[]'::jsonb, 'active'::"InterventionStatus",
+          false, NOW(), NOW())
+       RETURNING id`,
+      [tenantAId, locationAId, userAId, vehicleId, interventionTypeId],
+    );
+    const interventionId = iv[0]!.id;
+
+    const { rows: rv } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO intervention_revisions
+         (id, intervention_id, user_id, revised_at, changes, reason)
+       VALUES
+         (gen_random_uuid(), $1, $2, NOW(),
+          '{"description":{"old":"Test","new":"Test v2"}}'::jsonb,
+          'Updated description')
+       RETURNING id`,
+      [interventionId, userAId],
+    );
+    const revisionId = rv[0]!.id;
+
+    return {
+      tenantAId,
+      tenantBId,
+      locationAId,
+      userAId,
+      customerId,
+      vehicleId,
+      interventionId,
+      revisionId,
+    };
+  }
+
+  it('cross-tenant SELECT on intervention_revisions is permissive (audit chain)', async () => {
+    const { tenantBId, revisionId } = await seedInterventionWithRevision();
+
+    // Tenant B reads a revision belonging to tenant A's intervention.
+    // _read FOR SELECT USING (true) → row visible cross-tenant.
+    const seenByB = await withContext({ tenantId: tenantBId }, (tx) =>
+      tx.interventionRevision.findUnique({ where: { id: revisionId } }),
+    );
+    expect(seenByB?.id).toBe(revisionId);
+  });
+
+  it('customer-pool SELECT on intervention_revisions works (app-layer guards privacy)', async () => {
+    const { customerId, revisionId } = await seedInterventionWithRevision();
+
+    // Customer pool has current_customer_id set, no current_tenant_id.
+    // _read FOR SELECT USING (true) is unconditional → row visible.
+    // App-layer ownership pre-check is the actual privacy boundary.
+    const seenByCustomer = await withContext({ customerId }, (tx) =>
+      tx.interventionRevision.findUnique({ where: { id: revisionId } }),
+    );
+    expect(seenByCustomer?.id).toBe(revisionId);
+  });
+
+  it('cross-tenant INSERT on intervention_revisions is blocked', async () => {
+    const { tenantBId, interventionId, userAId } = await seedInterventionWithRevision();
+
+    // Tenant B tries to create a revision on tenant A's intervention.
+    // _insert WITH CHECK EXISTS(parent.tenant_id = current_tenant_id())
+    // returns false → INSERT rejected.
+    await expect(
+      withContext({ tenantId: tenantBId }, (tx) =>
+        tx.interventionRevision.create({
+          data: {
+            interventionId,
+            userId: userAId,
+            revisedAt: new Date(),
+            changes: { description: { old: 'A', new: 'B' } },
+            reason: 'Cross-tenant attempt',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/row-level security|new row violates/i);
+  });
+
+  it('same-tenant INSERT on intervention_revisions succeeds (PATCH path baseline)', async () => {
+    const { tenantAId, interventionId, userAId } = await seedInterventionWithRevision();
+
+    // Tenant A creates a revision on its own intervention.
+    // _insert WITH CHECK EXISTS finds parent → INSERT allowed.
+    const created = await withContext({ tenantId: tenantAId }, (tx) =>
+      tx.interventionRevision.create({
+        data: {
+          interventionId,
+          userId: userAId,
+          revisedAt: new Date(),
+          changes: { description: { old: 'A', new: 'B' } },
+          reason: 'Same-tenant baseline',
+        },
+        select: { id: true },
+      }),
+    );
+    expect(created.id).toBeDefined();
+  });
+
+  it('UPDATE on intervention_revisions is blocked even within same tenant (append-only)', async () => {
+    const { tenantAId, revisionId } = await seedInterventionWithRevision();
+
+    // No _update policy → RLS default-denies UPDATE for non-admin.
+    // updateMany returns count: 0 (USING-style behavior of default deny).
+    const result = await withContext({ tenantId: tenantAId }, (tx) =>
+      tx.interventionRevision.updateMany({
+        where: { id: revisionId },
+        data: { reason: 'Modified' },
+      }),
+    );
+    expect(result.count).toBe(0);
+  });
+
+  it('admin role bypasses intervention_revisions filtering', async () => {
+    const { revisionId, interventionId, userAId } = await seedInterventionWithRevision();
+
+    // Admin SELECT cross-tenant + admin INSERT cross-tenant both work.
+    const seenByAdmin = await withContext({ role: 'admin' }, (tx) =>
+      tx.interventionRevision.findUnique({ where: { id: revisionId } }),
+    );
+    expect(seenByAdmin?.id).toBe(revisionId);
+
+    const created = await withContext({ role: 'admin' }, (tx) =>
+      tx.interventionRevision.create({
+        data: {
+          interventionId,
+          userId: userAId,
+          revisedAt: new Date(),
+          changes: { reason: { old: 'X', new: 'Y' } },
+          reason: 'Admin write',
+        },
+        select: { id: true },
+      }),
+    );
+    expect(created.id).toBeDefined();
   });
 });

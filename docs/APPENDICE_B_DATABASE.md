@@ -2,7 +2,7 @@
 
 > **Documento correlato:** questo è un'appendice del documento principale `GarageOS-Specifiche.md`. Formalizza lo schema Prisma, le migration, i seed, i validator Zod e la configurazione RLS.
 >
-> **Versione:** v1.2 — allineata a `GarageOS-Specifiche.md` v1.1 e `APPENDICE_F_BUSINESS_LOGIC.md` v1.0
+> **Versione:** v1.3 — allineata a `GarageOS-Specifiche.md` v1.1 e `APPENDICE_F_BUSINESS_LOGIC.md` v1.0. Migration 0004: split SELECT/WRITE su `users`, abilita RLS append-only su `intervention_revisions`.
 > **Ultimo aggiornamento:** 24 aprile 2026
 >
 > **Nota Prisma 7.** I frammenti di codice in §1.3 e §2.1 sono il riferimento originale per Prisma 5/6. La codebase effettiva usa Prisma 7 con alcuni adattamenti:
@@ -1098,10 +1098,11 @@ DECLARE
     t text;
     tenant_tables text[] := ARRAY[
         -- 'locations', 'interventions' splittate in `_read FOR SELECT
-        -- USING (true)` + `_write FOR ALL` dalla migration 0003 per
-        -- supportare BR-150/BR-153 (timeline cross-tenant). Vedi i
-        -- blocchi dedicati più sotto.
-        'users', 'customer_tenant_relations',
+        -- USING (true)` + `_write FOR ALL` dalla migration 0003;
+        -- 'users' splittato con lo stesso pattern dalla migration 0004.
+        -- Vedi i blocchi dedicati più sotto. Tutti per supportare
+        -- BR-150/BR-153 (timeline + audit-chain cross-tenant).
+        'customer_tenant_relations',
         'intervention_disputes',
         'deadlines', 'deadline_notifications',
         'access_logs', 'invitations'
@@ -1156,6 +1157,48 @@ CREATE POLICY intervention_types_write ON intervention_types
 FOR ALL
 USING (is_admin_role() OR tenant_id = current_tenant_id())
 WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
+
+-- =====================================================
+-- USERS (post migration 0004): SELECT permissive (BR-150 audit
+-- chain join a users.firstName/lastName cross-tenant), WRITE
+-- tenant-scoped. Mirror del pattern tenants/locations post-0003.
+-- (ENABLE+FORCE RLS già applicati dall'init migration via DO loop.)
+-- =====================================================
+DROP POLICY IF EXISTS users_tenant_isolation ON users;
+
+CREATE POLICY users_read ON users
+FOR SELECT USING (true);
+
+CREATE POLICY users_write ON users
+FOR ALL
+USING (is_admin_role() OR tenant_id = current_tenant_id())
+WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
+
+-- =====================================================
+-- INTERVENTION_REVISIONS (post migration 0004): RLS abilitata
+-- ex-novo. SELECT permissive (audit chain BR-150 cross-tenant),
+-- INSERT append-only enforced via EXISTS join al parent
+-- intervention. Nessuna policy UPDATE/DELETE -> default deny.
+-- Cascade DELETE dal parent intervention bypassa RLS via FK
+-- CASCADE (mirror intervention_disputes pre-esistente).
+-- =====================================================
+ALTER TABLE intervention_revisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE intervention_revisions FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS intervention_revisions_read ON intervention_revisions;
+CREATE POLICY intervention_revisions_read ON intervention_revisions
+FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS intervention_revisions_insert ON intervention_revisions;
+CREATE POLICY intervention_revisions_insert ON intervention_revisions
+FOR INSERT WITH CHECK (
+    is_admin_role()
+    OR EXISTS (
+        SELECT 1 FROM interventions i
+        WHERE i.id = intervention_revisions.intervention_id
+          AND i.tenant_id = current_tenant_id()
+    )
+);
 
 -- =====================================================
 -- CUSTOMERS: accessibili a tutti i tenant (dati tecnici),

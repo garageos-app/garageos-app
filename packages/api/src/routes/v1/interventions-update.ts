@@ -92,8 +92,9 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
       const cognitoSub = request.userId!;
 
       return app.withContext({ tenantId }, async (tx) => {
-        const user = await tx.user.findUniqueOrThrow({
-          where: { cognitoSub },
+        // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
+        const user = await tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
           select: { id: true, locationId: true },
         });
 
