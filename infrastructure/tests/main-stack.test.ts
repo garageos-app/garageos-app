@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
 import { describe, it } from 'vitest';
 
+import { DnsConstruct } from '../lib/constructs/dns.js';
 import { OidcStack } from '../lib/stacks/oidc-stack.js';
 
 describe('OidcStack', () => {
@@ -60,5 +61,32 @@ describe('OidcStack', () => {
 
   it('outputs the deploy role ARN', () => {
     template.hasOutput('DeployRoleArn', {});
+  });
+});
+
+describe('DnsConstruct (synth-mock mode)', () => {
+  // Synth-mock skips Route53 fromLookup; without it cdk synth would
+  // require an AWS account-id in the env. CI runs with no creds, so
+  // every cdk synth in CI sets CDK_SYNTH_MOCK=true.
+  function buildStack() {
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'TestDnsStack', {
+      env: { account: '123456789012', region: 'eu-central-1' },
+    });
+    new DnsConstruct(stack, 'Dns', {
+      domainName: 'garageos.it',
+      apiSubdomain: 'api',
+      synthMock: true,
+    });
+    return Template.fromStack(stack);
+  }
+
+  it('provisions an ACM certificate for api.garageos.it', () => {
+    const template = buildStack();
+    template.resourceCountIs('AWS::CertificateManager::Certificate', 1);
+    template.hasResourceProperties('AWS::CertificateManager::Certificate', {
+      DomainName: 'api.garageos.it',
+      ValidationMethod: 'DNS',
+    });
   });
 });
