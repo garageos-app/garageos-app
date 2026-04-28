@@ -15,9 +15,11 @@ import { requireAuth } from '../../middleware/require-auth.js';
 // `changes` con `internalNotes` strippato (BR-065); revisioni
 // `internalNotes`-only droppate dalla response.
 //
-// `intervention_revisions` non ha RLS — la privacy boundary è 100%
-// application-layer (ownership pre-check su vehicle_ownerships).
-// Defense-in-depth via RLS è registrata come tech debt low-priority.
+// `intervention_revisions` ha RLS dal migration 0004:
+// SELECT cross-tenant permissive (BR-150 audit chain), INSERT
+// append-only enforced via EXISTS join al parent. La privacy del
+// cliente resta application-layer (ownership pre-check su
+// vehicle_ownerships) perche RLS non e pool-aware.
 
 export const revisionsListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
@@ -98,19 +100,13 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
       const isOfficine = request.authPool === 'officine';
       const isClienti = request.authPool === 'clienti';
 
-      // Officina: role:'admin' narrowed to this read-only audit endpoint
-      // (same precedent as interventions-dispute.ts BR-127). Migration
-      // 0003 split SELECT/WRITE on interventions/tenants/locations/
-      // intervention_types but NOT on users — and the response shape
-      // includes user.{firstName,lastName} for BR-150 audit-chain
-      // visibility cross-tenant. Without admin role, the join to users
-      // returns null for cross-tenant rows and breaks the response.
-      // Cliente: role:'user' bound by customerId; ownership check below
-      // is the only privacy boundary (intervention_revisions has no RLS).
-      // When users acquires its own SELECT/WRITE split (future tech debt),
-      // drop the admin role here.
+      // Officina: pool-bound user role. Migration 0004 ha splittato users
+      // SELECT/WRITE -> il join cross-tenant a users.firstName/lastName
+      // funziona ora senza `role: 'admin'` short-lived (mirror del
+      // pattern timeline §2.5). Cliente: customerId-scoped; il
+      // privacy boundary resta l'ownership pre-check sotto.
       const ctx = isOfficine
-        ? { tenantId: request.tenantId!, role: 'admin' as const }
+        ? { tenantId: request.tenantId!, role: 'user' as const }
         : { customerId: request.customerId!, role: 'user' as const };
 
       return app.withContext(ctx, async (tx) => {
