@@ -377,6 +377,105 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
     const body = res.json() as { code: string };
     expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
   });
+
+  it('400 missing tenant_response → Zod validation.error', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('400 tenant_response < 20 chars → description_too_short (handler-side)', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: 'a'.repeat(19) },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = res.json() as { code: string };
+    expect(body.code).toBe('intervention.dispute.response.description_too_short');
+    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('400 tenant_response > 2000 → Zod validation.error', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: 'a'.repeat(2001) },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('422 attachments not empty → attachments_not_supported', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: {
+        tenantResponse: VALID_RESPONSE,
+        attachmentIds: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    const body = res.json() as { code: string };
+    expect(body.code).toBe('intervention.dispute.attachments_not_supported');
+    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('400 extra body field → strict() rejection', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE, foo: 'bar' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('200 mechanic role is allowed (allow-list)', async () => {
+    const prisma = buildFakePrisma({ userRole: 'mechanic' });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('403 unknown role (forced via mock) → permission_denied', async () => {
+    // Synthetic: simulate a future enum value not in the allow-list.
+    const prisma = buildFakePrisma();
+    prisma.user.findFirstOrThrow = vi.fn().mockResolvedValue({
+      id: USER_ID,
+      role: 'read_only', // hypothetical future role
+      locationId: LOCATION_ID,
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
+      headers: { authorization: 'Bearer test' },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+    expect(res.statusCode).toBe(403);
+    const body = res.json() as { code: string };
+    expect(body.code).toBe('intervention.dispute.response.permission_denied');
+    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
+  });
 });
 
 export { buildApp, buildFakePrisma, buildOpenDispute, buildRespondedDispute };
