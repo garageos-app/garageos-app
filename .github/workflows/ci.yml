@@ -106,3 +106,26 @@ jobs:
       # exercises the full HTTP → tenantContext → withContext → RLS
       # chain end-to-end.
       - run: pnpm --filter @garageos/api test:integration
+
+  cdk-synth:
+    name: CDK synth
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # NodejsFunction synth runs esbuild on packages/api/src/index.ts,
+      # which transitively imports @garageos/database. The generated
+      # Prisma client must exist or esbuild fails to resolve the
+      # `prisma/generated/index.js` re-export.
+      - run: pnpm db:generate
+      - name: Run cdk synth in mock mode
+        env:
+          CDK_SYNTH_MOCK: 'true'
+        run: pnpm --filter infrastructure synth --quiet
+      # Also exercise the assertion test suite — same prereqs.
+      - run: pnpm --filter infrastructure test

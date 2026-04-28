@@ -1,0 +1,51 @@
+name: Deploy infrastructure
+
+# Manual trigger only until AWS account is bootstrapped and OIDC role
+# is wired in GitHub secrets. After the first successful deploy we
+# can flip on `push: branches: [main]` in a follow-up PR.
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: 'Which CDK stack to deploy'
+        required: true
+        default: 'GarageosMainStack'
+        type: choice
+        options:
+          - GarageosOidcStack
+          - GarageosMainStack
+          - --all
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  deploy:
+    name: cdk deploy
+    runs-on: ubuntu-latest
+    environment: production # Required reviewer gate, configured in GitHub Settings.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Required by NodejsFunction synth — see ci.yml cdk-synth job
+      # for the same reason.
+      - run: pnpm db:generate
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-central-1
+      - name: Deploy CDK stack
+        run: pnpm --filter infrastructure cdk deploy ${{ inputs.stack }} --require-approval never
