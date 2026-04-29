@@ -124,6 +124,20 @@ export class LambdaApiConstruct extends Construct {
         format: lambdaNodejs.OutputFormat.ESM,
         externalModules: ['@aws-sdk/*'],
         nodeModules: ['@prisma/client'],
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling: (_inputDir, outputDir) => [
+            // Prisma 7's @prisma/client ships ~75 MB of WASM query
+            // compilers covering every database vendor (cockroachdb,
+            // mysql, postgresql, sqlite, sqlserver) × 2 size variants
+            // × 2 module formats — plus @prisma/studio-core (38 MB)
+            // and @prisma/dev (16 MB) of dev-time tooling. None of
+            // that runs on Lambda — strip after install to keep the
+            // unzipped bundle under the 250 MB AWS limit.
+            `node -e "const fs=require('fs'),p=require('path');const out=${JSON.stringify(outputDir)};['studio-core','dev'].forEach(d=>{try{fs.rmSync(p.join(out,'node_modules','@prisma',d),{recursive:true,force:true})}catch(e){}});const rt=p.join(out,'node_modules','@prisma','client','runtime');try{for(const f of fs.readdirSync(rt)){if(/query_compiler_(fast|small)_bg\\.(cockroachdb|mysql|sqlite|sqlserver)\\./.test(f))fs.unlinkSync(p.join(rt,f))}}catch(e){}"`,
+          ],
+        },
       },
     });
   }
