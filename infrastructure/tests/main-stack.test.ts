@@ -248,6 +248,10 @@ describe('ApiGatewayConstruct', () => {
       synthMock: true,
     });
     const secrets = new SecretsConstruct(stack, 'Secrets', { environment: 'production' });
+    const cognito = new CognitoConstruct(stack, 'Cognito', {
+      environment: 'production',
+      mfaTotpEnabled: true,
+    });
     const lambdaApi = new LambdaApiConstruct(stack, 'LambdaApi', {
       memoryMb: 1024,
       architecture: 'arm64',
@@ -255,6 +259,8 @@ describe('ApiGatewayConstruct', () => {
       reservedConcurrency: 100,
       logRetentionDays: 7,
       appSecret: secrets.appSecret,
+      officineUserPoolArn: cognito.officineUserPool.userPoolArn,
+      clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
     });
     new ApiGatewayConstruct(stack, 'ApiGateway', {
       apiSubdomain: 'api',
@@ -327,11 +333,15 @@ describe('MainStack (integration)', () => {
   }
   const template = buildTemplate();
 
-  it('exposes ApiUrl, HttpApiEndpoint, LambdaFunctionArn, AppSecretsArn outputs', () => {
+  it('exposes all top-level CfnOutput', () => {
     template.hasOutput('ApiUrl', {});
     template.hasOutput('HttpApiEndpoint', {});
     template.hasOutput('LambdaFunctionArn', {});
     template.hasOutput('AppSecretsArn', {});
+    template.hasOutput('CognitoOfficineUserPoolId', {});
+    template.hasOutput('CognitoOfficineClientId', {});
+    template.hasOutput('CognitoClientiUserPoolId', {});
+    template.hasOutput('CognitoClientiClientId', {});
   });
 
   it('combined resource counts match scope', () => {
@@ -341,8 +351,11 @@ describe('MainStack (integration)', () => {
     template.resourceCountIs('AWS::SecretsManager::Secret', 1);
     template.resourceCountIs('AWS::CertificateManager::Certificate', 1);
     template.resourceCountIs('AWS::Route53::RecordSet', 1);
-    // No Cognito, no S3, no WAF in PR 21.
-    template.resourceCountIs('AWS::Cognito::UserPool', 0);
+    // PR 22: Cognito officine + clienti pools (each pool also produces
+    // one UserPoolClient).
+    template.resourceCountIs('AWS::Cognito::UserPool', 2);
+    template.resourceCountIs('AWS::Cognito::UserPoolClient', 2);
+    // No S3, no WAF — those arrive in PR 23.
     template.resourceCountIs('AWS::S3::Bucket', 0);
     template.resourceCountIs('AWS::WAFv2::WebACL', 0);
   });
