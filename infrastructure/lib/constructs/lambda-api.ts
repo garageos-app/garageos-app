@@ -17,8 +17,11 @@ import { Construct } from 'constructs';
 // Bundling: NodejsFunction L2 runs esbuild during synth. The api
 // imports @garageos/database (workspace package, TS source) which
 // imports the generated Prisma client. We external `@aws-sdk/*`
-// (Lambda runtime ships it) and ship `@prisma/client` + `prisma`
-// as nodeModules so their native engine binaries are copied verbatim.
+// (Lambda runtime ships it) and ship `@prisma/client` as nodeModules
+// so its native engine binary is copied verbatim. The `prisma` CLI
+// package is deliberately excluded — it bundles ~150 MB of cross-
+// platform engine binaries and is only needed for `prisma migrate`,
+// which we run from operator machines / CI, never from the Lambda.
 //
 // IAM in PR 21 is intentionally minimal: only secretsmanager:GetSecretValue
 // on the appSecret ARN. S3 / Cognito / SES / Scheduler permissions
@@ -120,7 +123,7 @@ export class LambdaApiConstruct extends Construct {
         target: 'node22',
         format: lambdaNodejs.OutputFormat.ESM,
         externalModules: ['@aws-sdk/*'],
-        nodeModules: ['@prisma/client', 'prisma'],
+        nodeModules: ['@prisma/client'],
       },
     });
   }
