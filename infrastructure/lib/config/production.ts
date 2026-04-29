@@ -34,11 +34,11 @@ export interface EnvironmentConfig {
 
 export const productionConfig: EnvironmentConfig = {
   environment: 'production',
-  domainName: 'garageos.it',
+  domainName: 'garageos.aifollyadvisor.com',
   apiSubdomain: 'api',
   appSubdomain: 'app',
-  emailFromDomain: 'garageos.it',
-  emailFromAddress: 'noreply@garageos.it',
+  emailFromDomain: 'garageos.aifollyadvisor.com',
+  emailFromAddress: 'noreply@garageos.aifollyadvisor.com',
   lambda: {
     memoryMb: 1024,
     architecture: 'arm64',
