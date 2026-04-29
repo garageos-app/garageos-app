@@ -245,14 +245,18 @@ The squash commit message should be the PR title + a reference to the PR number 
 
 ## Testing
 
-Before opening any PR, run locally:
+Before opening any PR, run locally **only the fast checks** — integration tests run on CI:
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test:unit
-pnpm test:integration   # requires Docker for Testcontainers
+pnpm test:fast   # = lint + typecheck + test:unit, no Docker required
 ```
+
+Integration tests (`pnpm test:integration`) require Docker + Testcontainers and are **slow / resource-intensive on local machines**. They are gated by GitHub Actions on every PR (see `.github/workflows/ci.yml` job `integration-tests`), so do **not** run them in local sessions by default. Only run them locally when:
+
+- you are explicitly debugging an integration-test failure that already showed up on CI, or
+- the user asks for it.
+
+After pushing a branch, watch CI status with `gh pr checks --watch` (or `gh run watch`) instead of waiting on local Docker. If CI fails, push a follow-up commit to the same branch.
 
 See `docs/APPENDICE_E_TESTING.md` for the full testing strategy, including which `BR-XXX` rules require explicit tests.
 

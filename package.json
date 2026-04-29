@@ -16,6 +16,7 @@
     "test": "pnpm -r test",
     "test:unit": "pnpm -r test:unit",
     "test:integration": "pnpm -r test:integration",
+    "test:fast": "pnpm lint && pnpm typecheck && pnpm test:unit",
     "build": "pnpm -r build",
     "dev": "pnpm -r --parallel dev",
     "format": "prettier --write .",
