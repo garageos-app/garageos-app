@@ -9,10 +9,11 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
-// AWS Lambda function running the Fastify backend via Lambda Web Adapter
-// (LWA) layer. LWA proxies Lambda events to a local HTTP server on
-// AWS_LWA_PORT — application code stays a vanilla Fastify server, see
-// packages/api/src/index.ts.
+// AWS Lambda function running the Fastify backend via the
+// @fastify/aws-lambda adapter. The api package's index.ts wraps the
+// Fastify instance and exports a Lambda handler that translates
+// APIGW v2 events ↔ Fastify requests/responses entirely in-process —
+// no HTTP localhost loop, no extension layer, no port mapping.
 //
 // Bundling: NodejsFunction L2 runs esbuild during synth. The api
 // imports @garageos/database (workspace package, TS source) which
@@ -80,16 +81,6 @@ export class LambdaApiConstruct extends Construct {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // LWA layer ARN (verify at first deploy: layer version may have
-    // bumped past 27 since 2026-04-23). Lookup command:
-    //   aws lambda list-layer-versions --layer-name LambdaAdapterLayerArm64
-    //     --region eu-central-1 --query 'LayerVersions[0].LayerVersionArn'
-    const lwaLayer = lambda.LayerVersion.fromLayerVersionArn(
-      this,
-      'LwaLayer',
-      `arn:aws:lambda:${cdk.Stack.of(this).region}:753240598075:layer:LambdaAdapterLayerArm64:27`,
-    );
-
     const arch =
       props.architecture === 'arm64' ? lambda.Architecture.ARM_64 : lambda.Architecture.X86_64;
 
@@ -108,24 +99,9 @@ export class LambdaApiConstruct extends Construct {
       reservedConcurrentExecutions: props.reservedConcurrency,
       role: executionRole,
       logGroup: this.logGroup,
-      layers: [lwaLayer],
       tracing: lambda.Tracing.ACTIVE,
       environment: {
         NODE_ENV: 'production',
-        // AWS_LAMBDA_EXEC_WRAPPER is the official entry point that
-        // makes the LWA layer wrap the runtime before the user's
-        // handler runs. Without it, Lambda calls index.mjs directly,
-        // hits the safety-net throw, and LWA never gets to proxy.
-        // Required for the Node.js managed runtime per AWS docs.
-        AWS_LAMBDA_EXEC_WRAPPER: '/opt/bootstrap',
-        // PORT is what the Fastify server reads (defaults to 3100 for
-        // local dev). It MUST match AWS_LWA_PORT — LWA proxies Lambda
-        // events to localhost:AWS_LWA_PORT, so Fastify needs to listen
-        // there.
-        PORT: '8080',
-        AWS_LWA_PORT: '8080',
-        AWS_LWA_READINESS_CHECK_PATH: '/health',
-        AWS_LWA_ASYNC_INIT: 'true',
         APP_SECRETS_ARN: props.appSecret.secretArn,
       },
       bundling: {

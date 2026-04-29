@@ -161,20 +161,20 @@ describe('LambdaApiConstruct', () => {
     });
   });
 
-  it('Lambda includes the LWA arm64 layer', () => {
-    template.hasResourceProperties('AWS::Lambda::Function', {
-      Layers: Match.arrayWith([Match.stringLikeRegexp('LambdaAdapterLayerArm64')]),
-    });
+  it('Lambda has no extension layers attached (adapter is in-process via @fastify/aws-lambda)', () => {
+    const fns = template.findResources('AWS::Lambda::Function');
+    for (const res of Object.values(fns)) {
+      const layers = (res.Properties as { Layers?: unknown[] }).Layers;
+      // CDK omits the property entirely when there are no layers.
+      expect(layers === undefined || layers.length === 0).toBe(true);
+    }
   });
 
-  it('Lambda env wires LWA + APP_SECRETS_ARN', () => {
+  it('Lambda env wires NODE_ENV + APP_SECRETS_ARN only', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       Environment: {
         Variables: Match.objectLike({
           NODE_ENV: 'production',
-          AWS_LWA_PORT: '8080',
-          AWS_LWA_READINESS_CHECK_PATH: '/health',
-          AWS_LWA_ASYNC_INIT: 'true',
           APP_SECRETS_ARN: Match.anyValue(),
         }),
       },
