@@ -59,11 +59,13 @@ export class ApiGatewayConstruct extends Construct {
       apiName: 'garageos-api',
       description: 'GarageOS backend (Fastify on Lambda via LWA)',
       corsPreflight: {
+        // Mobile apps (Expo / React Native) do not run in a browser and
+        // therefore do not enforce CORS — only browser-served origins
+        // need to be listed here. API Gateway HTTP v2 also rejects
+        // non-host origins like `exp://` at deploy time.
         allowOrigins: [
           'https://app.garageos.aifollyadvisor.com',
           'https://garageos.aifollyadvisor.com',
-          'exp://',
-          'garageos://',
         ],
         allowMethods: [
           apigw.CorsHttpMethod.GET,
