@@ -29,3 +29,9 @@
 *.zip binary
 *.woff binary
 *.woff2 binary
+
+# Keep PEM/CRT files LF-normalized so Node's TLS parser sees the
+# canonical line endings regardless of host OS (Windows checkout
+# would otherwise rewrite to CRLF on autocrlf=true).
+*.crt text eol=lf
+*.pem text eol=lf
