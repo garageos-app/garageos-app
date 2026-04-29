@@ -34,6 +34,12 @@ export interface LambdaApiConstructProps {
   readonly reservedConcurrency: number;
   readonly logRetentionDays: number;
   readonly appSecret: secretsmanager.ISecret;
+  // Pre-emptive grant on these pool ARNs — the api code base will
+  // start calling AdminCreateUser / AdminUpdateUserAttributes in the
+  // PR that ships the signup-flow plumbing. Granting now keeps the
+  // "construct ships its own IAM" invariant (vs. a follow-up chore PR).
+  readonly officineUserPoolArn: string;
+  readonly clientiUserPoolArn: string;
 }
 
 export class LambdaApiConstruct extends Construct {
@@ -50,6 +56,20 @@ export class LambdaApiConstruct extends Construct {
       ],
     });
     props.appSecret.grantRead(executionRole);
+
+    // Cognito admin actions used by future signup-flow / onboarding
+    // endpoints. Scoped to the two pool ARNs (least-privilege).
+    executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'cognito-idp:AdminGetUser',
+          'cognito-idp:AdminCreateUser',
+          'cognito-idp:AdminUpdateUserAttributes',
+          'cognito-idp:ListUsers',
+        ],
+        resources: [props.officineUserPoolArn, props.clientiUserPoolArn],
+      }),
+    );
 
     this.logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
       logGroupName: '/aws/lambda/garageos-api',

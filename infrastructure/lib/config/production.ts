@@ -25,6 +25,9 @@ export interface EnvironmentConfig {
     readonly throttleBurst: number;
     readonly throttleRate: number;
   };
+  readonly cognito: {
+    readonly mfaTotpEnabled: boolean;
+  };
   readonly logRetentionDays: number;
   readonly synthMock: boolean;
 }
@@ -45,6 +48,9 @@ export const productionConfig: EnvironmentConfig = {
   apiGateway: {
     throttleBurst: 200,
     throttleRate: 100,
+  },
+  cognito: {
+    mfaTotpEnabled: true,
   },
   logRetentionDays: 7,
   synthMock: process.env.CDK_SYNTH_MOCK === 'true',

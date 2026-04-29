@@ -2,12 +2,12 @@
 
 CDK in TypeScript. Deploya il backend GarageOS su AWS in `eu-central-1`.
 
-In v1 (PR 21): scaffolding minimo per il primo deploy live.
+In v1 (PR 21+22): scaffolding minimo per il primo deploy live + auth.
 
 - 1 stack OIDC separato (`GarageosOidcStack`)
-- 1 stack principale (`GarageosMainStack`) con DNS + Secrets + Lambda API + APIGW HTTP v2
+- 1 stack principale (`GarageosMainStack`) con DNS + Secrets + Cognito + Lambda API + APIGW HTTP v2
 
-PR successivi: Cognito (PR 22), Storage+WAF (PR 23), SES+Scheduler+Monitoring (PR 24), Web app S3+CloudFront (PR 25).
+PR successivi: Storage+WAF (PR 23), SES+Scheduler+Monitoring (PR 24), Web app S3+CloudFront (PR 25).
 
 ## Runbook — primo deploy end-to-end
 
@@ -114,7 +114,19 @@ A questo punto la Lambda esiste, ma ogni request fallisce: il secret è popolato
 
 > NON incollare le credenziali in chat con Claude né in nessun file committato. Tenerle nel password manager.
 
-Estrarre dal password manager dell'utente le due connection string Supabase, **rinominando `DATABASE_URL_DIRECT` → `DIRECT_URL`** (env.ts richiede `DIRECT_URL`, non `DATABASE_URL_DIRECT`).
+Prima leggere i 4 ID Cognito dagli stack outputs (PR 22+ — se questo è il primissimo deploy pre-PR-22, saltare al placeholder JSON in fondo):
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name GarageosMainStack \
+  --region eu-central-1 \
+  --query 'Stacks[0].Outputs[?starts_with(OutputKey, `Cognito`)].[OutputKey,OutputValue]' \
+  --output table
+```
+
+Output atteso: tabella con 4 righe (`CognitoOfficineUserPoolId`, `CognitoOfficineClientId`, `CognitoClientiUserPoolId`, `CognitoClientiClientId`) — annota i valori.
+
+Estrarre dal password manager le due connection string Supabase, **rinominando `DATABASE_URL_DIRECT` → `DIRECT_URL`** (env.ts richiede `DIRECT_URL`, non `DATABASE_URL_DIRECT`).
 
 ```bash
 aws secretsmanager update-secret \
@@ -123,15 +135,68 @@ aws secretsmanager update-secret \
   --secret-string '{
     "DATABASE_URL": "<incollare DATABASE_URL Supabase>",
     "DIRECT_URL": "<incollare DATABASE_URL_DIRECT Supabase>",
-    "COGNITO_OFFICINE_POOL_ID": "eu-central-1_PLACEHOLDER",
-    "COGNITO_OFFICINE_CLIENT_ID": "PLACEHOLDER",
-    "COGNITO_CLIENTI_POOL_ID": "eu-central-1_PLACEHOLDER",
-    "COGNITO_CLIENTI_CLIENT_ID": "PLACEHOLDER",
+    "COGNITO_OFFICINE_POOL_ID": "<CognitoOfficineUserPoolId>",
+    "COGNITO_OFFICINE_CLIENT_ID": "<CognitoOfficineClientId>",
+    "COGNITO_CLIENTI_POOL_ID": "<CognitoClientiUserPoolId>",
+    "COGNITO_CLIENTI_CLIENT_ID": "<CognitoClientiClientId>",
     "SENTRY_DSN": "https://placeholder@sentry.io/0"
   }'
 ```
 
-> I 4 placeholder Cognito soddisfano il regex di `env.ts` ma puntano a pool inesistenti. Permettono il boot della Lambda. Le route auth-protected falliranno con `5xx` fino a PR 22 (Cognito construct). `/health` è auth-free e funzionerà.
+> Pre-PR-22 fallback: usare placeholder `eu-central-1_PLACEHOLDER` / `PLACEHOLDER` per i 4 ID Cognito. Soddisfano il regex di `env.ts` ma puntano a pool inesistenti — la Lambda booterà ma le route auth-protected falliranno con `5xx`. Solo `/health` (auth-free) funzionerà. NON usare questo path se PR 22 è già in main.
+
+### F7.5. Step 6.5 — Bootstrap del primo super_admin officine (one-off)
+
+> **Eseguire una sola volta**, dopo F7+F8 con i 4 valori reali Cognito. Crea un tenant seed in DB + un Cognito user super_admin per smoke test end-to-end auth. Da PR 22+; non applicabile pre-PR-22.
+
+#### F7.5.a — Inserire un tenant seed in Supabase (SQL diretto)
+
+Eseguire dal Supabase SQL Editor o psql collegato al production project. I 3 NOT NULL senza default sono i soli obbligatori — gli altri prendono i default da `packages/database/prisma/schema.prisma` model `Tenant` (`status='active'`, `billing_status='manual'`, `plan='starter'`, `settings='{}'`, `id=gen_random_uuid()`, `created_at=now()`).
+
+```sql
+INSERT INTO tenants (business_name, vat_number, email)
+VALUES (
+  'Officina Bootstrap',
+  'IT00000000001',
+  'admin@example.com'
+)
+RETURNING id;
+```
+
+> Annota l'`id` UUID restituito. Serve per `custom:tenant_id` in F7.5.b.
+> Nota: `tenants` NON ha colonna `garage_code` (quel field è su `vehicles` per BR-020). Il tenant di bootstrap non ne ha bisogno — il PR onboarding futuro assegnerà `garage_code` ai veicoli registrati nel tenant.
+
+#### F7.5.b — `aws cognito-idp admin-create-user`
+
+```bash
+OFFICINE_POOL="<CognitoOfficineUserPoolId — dal table di F7>"
+TENANT_ID="<UUID generato da F7.5.a>"
+ADMIN_EMAIL="admin@example.com"   # email reale per ricevere l'invito
+TEMP_PASSWORD="ChangeMe-XYZ-2026!"  # forte, lower+upper+digit, min 10 char
+
+aws cognito-idp admin-create-user \
+  --user-pool-id "$OFFICINE_POOL" \
+  --username "$ADMIN_EMAIL" \
+  --user-attributes \
+    Name=email,Value="$ADMIN_EMAIL" \
+    Name=email_verified,Value=true \
+    Name=given_name,Value=Admin \
+    Name=family_name,Value=Bootstrap \
+    Name=custom:tenant_id,Value="$TENANT_ID" \
+    Name=custom:role,Value=super_admin \
+  --temporary-password "$TEMP_PASSWORD" \
+  --region eu-central-1
+```
+
+Cognito invia email automatica con il temporary password. Al primo SRP sign-in, l'utente sarà forzato a cambiare la password.
+
+#### F7.5.c — Smoke test end-to-end auth
+
+1. Dal client (curl, Postman, Amplify CLI) eseguire `USER_SRP_AUTH` con `$ADMIN_EMAIL` + `$TEMP_PASSWORD`.
+2. Cognito risponde con challenge `NEW_PASSWORD_REQUIRED`. Risolvere con un nuovo password forte.
+3. Ottenere `IdToken` dal response finale.
+4. `curl -H "Authorization: Bearer $ID_TOKEN" https://api.garageos.it/v1/vehicles` — attendersi `200` con array vuoto, o `404`.
+5. Se ricevuto `401`: probabile mismatch issuer/audience nel JWT verifier vs pool/client ID nel secret. Verificare con la Cognito console + il secret content (`aws secretsmanager get-secret-value --secret-id garageos/production/app`).
 
 ### F8. Step 7 — Forza cold start della Lambda
 
