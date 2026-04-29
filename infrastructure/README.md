@@ -271,3 +271,119 @@ pnpm --filter infrastructure cdk diff GarageosMainStack
 # Test assertion sul template
 pnpm --filter infrastructure test
 ```
+
+## TLS verification rotation runbook
+
+The Lambda bundle ships the public Supabase root CA at
+`/var/task/supabase-ca.crt` and the function's `NODE_EXTRA_CA_CERTS`
+env var points to it. As long as `DATABASE_URL` / `DIRECT_URL` in
+Secrets Manager use `sslmode=verify-full` (or fallback `verify-ca`),
+the Postgres TLS handshake is properly chain-validated.
+
+### When to run this runbook
+
+- **First-time enablement** (post-merge of the TLS verification PR).
+- **CA rotation** — when the vendored cert in `infrastructure/assets/supabase-ca.crt` is replaced because Supabase publishes a new root.
+- **Suspected TLS misconfiguration** — recover from a transient `verify-ca`/`no-verify` fallback by re-attempting `verify-full`.
+
+### Step 1 — Deploy CDK
+
+The PR merges with the cert + env var already wired. Deploy:
+
+```bash
+pnpm --filter @garageos/infrastructure cdk deploy GarageosMainStack
+```
+
+Smoke: `curl https://api.garageos.aifollyadvisor.com/health` → 200, `database: ok`.
+
+At this point the secret still has `sslmode=no-verify` (or whatever
+mode was previously in place) — the Lambda is "armed but inert".
+
+### Step 2 — Verify cert is in the Lambda zip
+
+```bash
+aws lambda get-function --function-name garageos-api \
+  --query Code.Location --output text > /tmp/lambda-url.txt
+curl -s -o /tmp/lambda.zip "$(cat /tmp/lambda-url.txt)"
+unzip -l /tmp/lambda.zip | grep supabase-ca.crt
+rm -f /tmp/lambda.zip /tmp/lambda-url.txt
+```
+
+Expected: 1 line listing `supabase-ca.crt`. If empty, the
+`commandHooks.afterBundling` step did not run as expected — fix
+before continuing.
+
+### Step 3 — Rotate the secret to `sslmode=verify-full`
+
+```bash
+aws secretsmanager get-secret-value \
+  --secret-id garageos/production/app \
+  --query SecretString --output text > /tmp/secret.json
+
+# Edit /tmp/secret.json: replace sslmode=no-verify with sslmode=verify-full
+# in both DATABASE_URL and DIRECT_URL values. Use jq or sed.
+
+aws secretsmanager update-secret \
+  --secret-id garageos/production/app \
+  --secret-string file:///tmp/secret.json
+
+shred -u /tmp/secret.json
+```
+
+### Step 4 — Force Lambda cold start
+
+`update-secret` does NOT recycle warm containers. They have the old
+`DATABASE_URL` already loaded in memory. To invalidate them, bump a
+dummy env var. **Read the current env vars first** — the
+`update-function-configuration --environment` flag REPLACES the full
+set, never merges.
+
+```bash
+CURRENT=$(aws lambda get-function-configuration \
+  --function-name garageos-api \
+  --query Environment.Variables --output json)
+NEW=$(echo "$CURRENT" | jq '. + {SECRET_REVISION: "2"}')
+aws lambda update-function-configuration \
+  --function-name garageos-api \
+  --environment "Variables=$NEW"
+```
+
+Bump `SECRET_REVISION` (`"2"` → `"3"` …) on each subsequent rotation.
+
+Hands-off alternative: wait ~15-30 min of idle traffic; AWS recycles
+warm containers naturally.
+
+### Step 5 — Smoke-test post-rotate
+
+```bash
+curl https://api.garageos.aifollyadvisor.com/health
+# Expect 200 with database: ok
+
+# With a valid bearer token:
+curl -H "Authorization: Bearer $TOKEN" \
+  https://api.garageos.aifollyadvisor.com/v1/users/me
+# Expect 200 with full user JSON
+```
+
+Inspect CloudWatch logs `/aws/lambda/garageos-api` for the latest
+cold-start invocations: no entries containing `self-signed certificate`,
+`unable to verify`, or `Hostname/IP does not match`.
+
+### Failure modes and fallbacks
+
+- **`Hostname/IP does not match certificate's altnames`**
+  The pooler hostname is not in the cert SAN. Repeat Step 3 with
+  `sslmode=verify-ca` (validates chain, skips hostname check). This
+  is still much better than `no-verify` — the cert chain proves the
+  server controls the matching private key.
+- **`unable to verify the first certificate` / `self-signed certificate in certificate chain`**
+  The cert in `infrastructure/assets/supabase-ca.crt` is wrong,
+  outdated, or the bundle is missing it. Re-download from the
+  Supabase dashboard (see `SUPABASE_CA_NOTES.md`), replace, redeploy.
+- **`certificate has expired`**
+  `notAfter` reached. Same fix: download successor CA from Supabase,
+  replace, redeploy. Update `SUPABASE_CA_NOTES.md` with new dates.
+- **Last-resort rollback**
+  Repeat Step 3 with `sslmode=no-verify`. This restores connectivity
+  while you debug. Open a tech-debt ticket immediately — `no-verify`
+  is **not** an acceptable steady state.
