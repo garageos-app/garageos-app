@@ -112,6 +112,14 @@ export class LambdaApiConstruct extends Construct {
       tracing: lambda.Tracing.ACTIVE,
       environment: {
         NODE_ENV: 'production',
+        // PORT is what the Fastify server reads (defaults to 3100 for
+        // local dev). It MUST match AWS_LWA_PORT — LWA proxies Lambda
+        // events to localhost:AWS_LWA_PORT, so Fastify needs to listen
+        // there. The runbook had them aligned in spirit but no code
+        // path actually set PORT in the Lambda env block, so Fastify
+        // bound 3100 while LWA polled 8080 → "Lambda Web Adapter
+        // should have intercepted this invocation" on every request.
+        PORT: '8080',
         AWS_LWA_PORT: '8080',
         AWS_LWA_READINESS_CHECK_PATH: '/health',
         AWS_LWA_ASYNC_INIT: 'true',
