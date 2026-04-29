@@ -103,6 +103,13 @@ export class LambdaApiConstruct extends Construct {
       environment: {
         NODE_ENV: 'production',
         APP_SECRETS_ARN: props.appSecret.secretArn,
+        // Make Node's TLS layer trust the Supabase root CA at process
+        // startup. Required for sslmode=verify-full / verify-ca on the
+        // Supabase pooler — the public Supabase root is not in Node's
+        // default trust store. The cert itself is shipped into
+        // /var/task/ via commandHooks.afterBundling below; see
+        // infrastructure/assets/SUPABASE_CA_NOTES.md.
+        NODE_EXTRA_CA_CERTS: '/var/task/supabase-ca.crt',
       },
       bundling: {
         minify: true,
@@ -137,6 +144,12 @@ export class LambdaApiConstruct extends Construct {
             // Windows operator workstations) and keep the logic
             // testable in isolation if it grows.
             `node "${path.join(__dirname, '..', '..', 'scripts', 'strip-prisma-bloat.cjs')}" "${outputDir}"`,
+            // Copy runtime assets (Supabase CA cert) into the bundle
+            // root so /var/task/supabase-ca.crt is reachable by
+            // NODE_EXTRA_CA_CERTS at Lambda cold start. See
+            // infrastructure/scripts/copy-runtime-assets.cjs and
+            // infrastructure/assets/SUPABASE_CA_NOTES.md.
+            `node "${path.join(__dirname, '..', '..', 'scripts', 'copy-runtime-assets.cjs')}" "${outputDir}"`,
           ],
         },
       },
