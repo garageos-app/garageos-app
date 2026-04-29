@@ -3,6 +3,7 @@ import { Template, Match } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 
 import { ApiGatewayConstruct } from '../lib/constructs/api-gateway.js';
+import { CognitoConstruct } from '../lib/constructs/cognito.js';
 import { DnsConstruct } from '../lib/constructs/dns.js';
 import { LambdaApiConstruct } from '../lib/constructs/lambda-api.js';
 import { SecretsConstruct } from '../lib/constructs/secrets.js';
@@ -133,6 +134,10 @@ describe('LambdaApiConstruct', () => {
     env: { account: '123456789012', region: 'eu-central-1' },
   });
   const secrets = new SecretsConstruct(stack, 'Secrets', { environment: 'production' });
+  const cognito = new CognitoConstruct(stack, 'Cognito', {
+    environment: 'production',
+    mfaTotpEnabled: true,
+  });
   new LambdaApiConstruct(stack, 'LambdaApi', {
     memoryMb: 1024,
     architecture: 'arm64',
@@ -140,6 +145,8 @@ describe('LambdaApiConstruct', () => {
     reservedConcurrency: 100,
     logRetentionDays: 7,
     appSecret: secrets.appSecret,
+    officineUserPoolArn: cognito.officineUserPool.userPoolArn,
+    clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
   });
   const template = Template.fromStack(stack);
 
@@ -174,10 +181,10 @@ describe('LambdaApiConstruct', () => {
     });
   });
 
-  it('execution role has secretsmanager:GetSecretValue but NO s3 or cognito actions', () => {
+  it('execution role has secretsmanager:GetSecretValue and the 4 cognito-idp:Admin* actions, but NO s3 actions', () => {
     // Find the inline policy attached to the execution role and check
-    // its statements. We assert presence of secretsmanager and absence
-    // of s3:* / cognito-idp:* — those are deferred to later PRs.
+    // its statements. Presence: secretsmanager:GetSecretValue +
+    // 4 cognito-idp Admin/List actions. Absence: s3:* (deferred to PR 23).
     const policies = template.findResources('AWS::IAM::Policy');
     const inlineStatements = Object.values(policies).flatMap(
       (res) => res.Properties.PolicyDocument.Statement as Array<{ Action: string | string[] }>,
@@ -186,8 +193,36 @@ describe('LambdaApiConstruct', () => {
       Array.isArray(s.Action) ? s.Action : [s.Action],
     );
     expect(allActions).toContain('secretsmanager:GetSecretValue');
+    expect(allActions).toContain('cognito-idp:AdminGetUser');
+    expect(allActions).toContain('cognito-idp:AdminCreateUser');
+    expect(allActions).toContain('cognito-idp:AdminUpdateUserAttributes');
+    expect(allActions).toContain('cognito-idp:ListUsers');
     expect(allActions.some((a) => a.startsWith('s3:'))).toBe(false);
-    expect(allActions.some((a) => a.startsWith('cognito-idp:'))).toBe(false);
+  });
+
+  it('cognito-idp policy is scoped to both user pool ARNs (not Resource: *)', () => {
+    const policies = template.findResources('AWS::IAM::Policy');
+    const cognitoStatements = Object.values(policies).flatMap((res) =>
+      (
+        res.Properties.PolicyDocument.Statement as Array<{
+          Action: string | string[];
+          Resource: unknown;
+        }>
+      ).filter((s) => {
+        const actions = Array.isArray(s.Action) ? s.Action : [s.Action];
+        return actions.some((a) => a.startsWith('cognito-idp:'));
+      }),
+    );
+    expect(cognitoStatements.length).toBeGreaterThanOrEqual(1);
+    for (const stmt of cognitoStatements) {
+      // Resource is either an array of refs (Fn::GetAtt to user pool Arn)
+      // or a single ref. Wildcard '*' would be a least-privilege violation.
+      const resources = Array.isArray(stmt.Resource) ? stmt.Resource : [stmt.Resource];
+      for (const r of resources) {
+        expect(r).not.toBe('*');
+      }
+      expect(resources.length).toBe(2); // both pool ARNs
+    }
   });
 
   it('log group retention is 7 days', () => {
