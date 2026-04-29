@@ -124,6 +124,25 @@ export class LambdaApiConstruct extends Construct {
         format: lambdaNodejs.OutputFormat.ESM,
         externalModules: ['@aws-sdk/*'],
         nodeModules: ['@prisma/client'],
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling: (_inputDir, outputDir) => [
+            // Prisma 7's @prisma/client ships ~75 MB of WASM query
+            // compilers covering every database vendor (cockroachdb,
+            // mysql, postgresql, sqlite, sqlserver) × 2 size variants
+            // × 2 module formats — plus @prisma/studio-core (38 MB)
+            // and @prisma/dev (16 MB) of dev-time tooling. None of
+            // that runs on Lambda — strip after install to keep the
+            // unzipped bundle under the 250 MB AWS limit.
+            //
+            // The cleanup runs from a sibling .cjs script so we avoid
+            // shell-quoting hell (bash -c on Linux CI vs cmd.exe on
+            // Windows operator workstations) and keep the logic
+            // testable in isolation if it grows.
+            `node "${path.join(__dirname, '..', '..', 'scripts', 'strip-prisma-bloat.cjs')}" "${outputDir}"`,
+          ],
+        },
       },
     });
   }
