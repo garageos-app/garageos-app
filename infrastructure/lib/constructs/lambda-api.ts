@@ -122,6 +122,15 @@ export class LambdaApiConstruct extends Construct {
         sourceMap: true,
         target: 'node22',
         format: lambdaNodejs.OutputFormat.ESM,
+        // Inject a CommonJS-in-ESM compatibility shim. esbuild's ESM
+        // output rewrites every static import as ESM but leaves
+        // dynamic `require()` calls intact — and several transitive
+        // deps (Fastify plugins, prisma client runtime helpers) call
+        // `require('path')` / `require('fs')` lazily. Without this
+        // banner the Lambda crashes at boot:
+        //   Error: Dynamic require of "path" is not supported
+        banner:
+          "import{createRequire as __createRequire}from'module';const require=__createRequire(import.meta.url);",
         externalModules: ['@aws-sdk/*'],
         nodeModules: ['@prisma/client'],
         commandHooks: {
