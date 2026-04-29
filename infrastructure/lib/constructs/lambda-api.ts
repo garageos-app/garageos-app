@@ -135,7 +135,12 @@ export class LambdaApiConstruct extends Construct {
             // and @prisma/dev (16 MB) of dev-time tooling. None of
             // that runs on Lambda — strip after install to keep the
             // unzipped bundle under the 250 MB AWS limit.
-            `node -e "const fs=require('fs'),p=require('path');const out=${JSON.stringify(outputDir)};['studio-core','dev'].forEach(d=>{try{fs.rmSync(p.join(out,'node_modules','@prisma',d),{recursive:true,force:true})}catch(e){}});const rt=p.join(out,'node_modules','@prisma','client','runtime');try{for(const f of fs.readdirSync(rt)){if(/query_compiler_(fast|small)_bg\\.(cockroachdb|mysql|sqlite|sqlserver)\\./.test(f))fs.unlinkSync(p.join(rt,f))}}catch(e){}"`,
+            //
+            // The cleanup runs from a sibling .cjs script so we avoid
+            // shell-quoting hell (bash -c on Linux CI vs cmd.exe on
+            // Windows operator workstations) and keep the logic
+            // testable in isolation if it grows.
+            `node "${path.join(__dirname, '..', '..', 'scripts', 'strip-prisma-bloat.cjs')}" "${outputDir}"`,
           ],
         },
       },
