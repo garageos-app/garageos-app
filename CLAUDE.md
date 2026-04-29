@@ -245,18 +245,31 @@ The squash commit message should be the PR title + a reference to the PR number 
 
 ## Testing
 
-Before opening any PR, run locally **only the fast checks** — integration tests run on CI:
+**Local pre-PR gate is intentionally minimal — full validation runs on CI.**
+
+The only mandatory local check before pushing is **typecheck**, enforced by the husky pre-push hook (`.husky/pre-push`):
 
 ```bash
-pnpm test:fast   # = lint + typecheck + test:unit, no Docker required
+pnpm -r typecheck   # ~30s, runs automatically on `git push`
 ```
 
-Integration tests (`pnpm test:integration`) require Docker + Testcontainers and are **slow / resource-intensive on local machines**. They are gated by GitHub Actions on every PR (see `.github/workflows/ci.yml` job `integration-tests`), so do **not** run them in local sessions by default. Only run them locally when:
+Everything else (lint, format, commitlint, test:unit, test:integration, cdk-synth) is gated by GitHub Actions on every PR — see `.github/workflows/ci.yml`. **Do not run those locally by default.** The reasons:
 
-- you are explicitly debugging an integration-test failure that already showed up on CI, or
-- the user asks for it.
+- `test:unit` for `infrastructure/` bundles the Lambda 3 times via esbuild (~30-45s of disk-heavy I/O) and freezes Windows machines.
+- `test:integration` requires Docker + Testcontainers and is even worse.
+- Running them locally + on CI duplicates 5-7 min of work per PR cycle for negligible safety gain.
 
-After pushing a branch, watch CI status with `gh pr checks --watch` (or `gh run watch`) instead of waiting on local Docker. If CI fails, push a follow-up commit to the same branch.
+If CI fails after the push, fix and push a follow-up commit. Watch CI status with `gh pr checks --watch` (or `gh run watch`).
+
+**Optional local commands** (for debugging only, not gates):
+
+```bash
+pnpm test:fast            # lint + typecheck + test:unit — only when modifying business logic and you want a quick sanity check
+pnpm --filter <pkg> test  # narrow run while debugging a specific failure
+pnpm --filter @garageos/database test:integration   # ONLY to reproduce a CI failure or modify scaffolding
+```
+
+Never run `pnpm test:integration` (root) locally unless explicitly instructed — it spins up Docker for both database + api integration suites and will likely freeze the machine.
 
 See `docs/APPENDICE_E_TESTING.md` for the full testing strategy, including which `BR-XXX` rules require explicit tests.
 
