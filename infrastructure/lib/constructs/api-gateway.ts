@@ -59,7 +59,12 @@ export class ApiGatewayConstruct extends Construct {
       apiName: 'garageos-api',
       description: 'GarageOS backend (Fastify on Lambda via LWA)',
       corsPreflight: {
-        allowOrigins: ['https://app.garageos.it', 'https://garageos.it', 'exp://', 'garageos://'],
+        allowOrigins: [
+          'https://app.garageos.aifollyadvisor.com',
+          'https://garageos.aifollyadvisor.com',
+          'exp://',
+          'garageos://',
+        ],
         allowMethods: [
           apigw.CorsHttpMethod.GET,
           apigw.CorsHttpMethod.POST,
