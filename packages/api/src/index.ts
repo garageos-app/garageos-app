@@ -13,11 +13,12 @@ const { env } = await import('./config/env.js');
 const awsLambdaFastify = (await import('@fastify/aws-lambda')).default;
 
 const app = await buildServer();
-await app.ready();
 
-// Lambda invocations call this handler. Outside Lambda (local dev,
-// tests) the export is created but never called — the if-block below
-// instead boots a long-running HTTP server.
+// Wrap BEFORE the app starts. awsLambdaFastify decorates the request
+// object with `awsLambda`; Fastify rejects decorator additions once
+// the instance has started (FST_ERR_DEC_AFTER_START), which means we
+// cannot await app.ready() before this line. The adapter awaits
+// readiness internally on the first invocation.
 export const handler = awsLambdaFastify(app);
 
 if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
