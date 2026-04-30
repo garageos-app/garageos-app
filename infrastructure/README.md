@@ -387,3 +387,230 @@ cold-start invocations: no entries containing `self-signed certificate`,
   Repeat Step 3 with `sslmode=no-verify`. This restores connectivity
   while you debug. Open a tech-debt ticket immediately — `no-verify`
   is **not** an acceptable steady state.
+
+## Runtime DB role rotation runbook
+
+The runtime Lambda originally connected as the `postgres` superuser; this
+runbook switches it to the least-privilege role `garageos_app` introduced by
+migration `20260430120000_create_garageos_app_role`. The migration creates the
+role NOLOGIN with a placeholder password — the operator must set the real
+password and rotate the secret before the role becomes effective. DIRECT_URL
+(used by `prisma migrate deploy` from the operator's machine) stays on the
+`postgres` superuser.
+
+### When to run this runbook
+
+- **First-time enablement** (post-merge of this PR).
+- **Password rotation** of `garageos_app`: re-run Step 2 with a new password,
+  then Steps 3 → 5. Step 1 is a no-op once the role exists (migration is
+  idempotent).
+- **Re-bootstrap** in a fresh environment (staging, demo): full sequence
+  Steps 1 → 5.
+
+### Step 1 — Apply the migration
+
+From local machine, with `DIRECT_URL` set to the `postgres` superuser
+connection string in `packages/database/prisma/.env` or via `DIRECT_URL` env:
+
+```bash
+pnpm --filter @garageos/database prisma:migrate:deploy
+```
+
+Expected: `Applying migration 20260430120000_create_garageos_app_role`. Effect:
+role created `NOLOGIN` with placeholder password; grants and default
+privileges applied. Safe — `NOLOGIN` blocks any auth attempt with the
+placeholder until Step 2 flips it.
+
+### Step 2 — Set the real password
+
+Generate a strong password (32 random bytes, base64). Never commit, never log,
+never paste into chat:
+
+```bash
+openssl rand -base64 32
+# (copy the output to clipboard; do NOT echo it back to the terminal scrollback)
+```
+
+Open Supabase SQL Editor as `postgres` and run (paste the generated password):
+
+```sql
+ALTER ROLE garageos_app LOGIN PASSWORD '<paste-generated-password>';
+```
+
+Expected: `ALTER ROLE`. The role is now able to authenticate.
+
+### Step 3 — Pre-validation smoke (gate before secret rotation)
+
+In the Supabase SQL Editor, run the validation matrix below. This catches
+missing grants or REVOKEs **before** the production Lambda starts using the
+new role.
+
+**3.a — Positive (CRUD works under app context)**
+
+In a SQL Editor session, run:
+
+```sql
+SET SESSION AUTHORIZATION garageos_app;
+
+-- Wire app context to the bootstrap tenant
+SELECT set_app_context(
+  'd43caa62-3406-4bf7-97eb-2da0a5b356e5'::uuid,  -- bootstrap tenant id
+  NULL,
+  'admin'
+);
+
+-- Tenant-isolated tables: should return rows now
+SELECT id FROM vehicles  LIMIT 1;
+SELECT id FROM customers LIMIT 1;
+
+-- Permissive-SELECT tables: should return rows even without context (sanity)
+SELECT id FROM tenants LIMIT 1;
+SELECT id FROM users   LIMIT 5;
+
+-- Append: must succeed
+INSERT INTO access_logs (
+  id, user_id, tenant_id, action, resource_type, resource_id, ip_address
+) VALUES (
+  gen_random_uuid(),
+  (SELECT id FROM users WHERE tenant_id = 'd43caa62-3406-4bf7-97eb-2da0a5b356e5' LIMIT 1),
+  'd43caa62-3406-4bf7-97eb-2da0a5b356e5',
+  'view',
+  'vehicle',
+  gen_random_uuid(),
+  '127.0.0.1'
+);
+```
+
+Expected: tutti i SELECT ritornano almeno 1 riga; l'INSERT ritorna `INSERT 0 1`.
+
+**3.b — Negative (REVOKE on append-only audit tables)**
+
+Same session, run:
+
+```sql
+-- Must fail: ERROR 42501 permission denied for table access_logs
+UPDATE access_logs SET ip_address = '0.0.0.0' WHERE id = (SELECT id FROM access_logs LIMIT 1);
+
+-- Must fail: ERROR 42501 permission denied for table audit_logs
+DELETE FROM audit_logs WHERE id = (SELECT id FROM audit_logs LIMIT 1);
+
+-- Must fail: ERROR 42501 permission denied for table intervention_revisions
+UPDATE intervention_revisions SET created_at = NOW() WHERE id = (SELECT id FROM intervention_revisions LIMIT 1);
+```
+
+Expected: all three fail with `permission denied` (SQLSTATE `42501`).
+
+**3.c — Negative (RLS tenant isolation still enforced without app context)**
+
+In a **fresh tab of the SQL Editor** (new session, no prior `set_app_context`):
+
+```sql
+SET SESSION AUTHORIZATION garageos_app;
+
+-- vehicles and customers remain tenant-isolated on SELECT post-split
+SELECT * FROM vehicles  LIMIT 5;  -- expected: 0 rows
+SELECT * FROM customers LIMIT 5;  -- expected: 0 rows
+```
+
+Expected: 0 rows from both.
+
+**Gate decision:**
+
+| Result | Action |
+|--------|--------|
+| All green | Proceed to Step 4 |
+| Any test red | DO NOT proceed. Diagnose: missing GRANT? Extra REVOKE? Apply fix in SQL Editor, re-run 3.a/3.b/3.c. Only after green → Step 4. |
+
+### Step 4 — Rotate the production secret
+
+```bash
+# 1. Pull current secret value
+aws secretsmanager get-secret-value \
+  --secret-id garageos/production/app \
+  --region eu-central-1 \
+  --query SecretString --output text > /tmp/secret.json
+
+# 2. Edit /tmp/secret.json:
+#    DATABASE_URL: change the username component from `postgres` to
+#                  `garageos_app`, and replace the password with the value
+#                  generated in Step 2. Keep host, port, database name, and
+#                  all query parameters (sslmode=verify-full, etc.) unchanged.
+#    DIRECT_URL: leave unchanged (postgres superuser, used only for migrations).
+
+# 3. Push the new value
+aws secretsmanager update-secret \
+  --secret-id garageos/production/app \
+  --region eu-central-1 \
+  --secret-string file:///tmp/secret.json
+
+# 4. Cleanup local file
+shred -u /tmp/secret.json   # or `rm -P` on macOS, secure-delete equivalent on Windows
+```
+
+Force a Lambda cold start so the new secret is read. Recommended path: bump
+`SECRET_REVISION` constant in `infrastructure/lib/lambda-api.ts` and run
+`cdk deploy MainStack`. CDK preserves all other env vars. Alternative manual
+path via AWS CLI requires passing the entire env block (the
+`update-function-configuration` command **replaces** env, not merges).
+
+### Step 5 — Smoke prod
+
+```bash
+curl -sf https://api.garageos.aifollyadvisor.com/health
+# Expected: {"status":"ok","database":"ok",...}
+```
+
+Tail CloudWatch logs first 5 minutes:
+
+```bash
+aws logs tail /aws/lambda/garageos-api \
+  --since 5m \
+  --region eu-central-1 \
+  --follow \
+  | grep -iE 'permission denied|42501|password authentication failed|fatal'
+```
+
+Expected: no matches. If `permission denied` or `42501` appears: missing GRANT
+(go back to Step 3, identify which table/function, add GRANT in SQL Editor,
+re-validate). If `password authentication failed` appears: secret value wrong
+(go back to Step 4, check the DATABASE_URL).
+
+### Failure modes and fallbacks
+
+- **`permission denied for table X`** (SQLSTATE 42501)
+  Missing GRANT on table `X` for `garageos_app`. Probable cause: table
+  added by a more recent migration that didn't include explicit GRANT
+  (and DEFAULT PRIVILEGES doesn't apply to pre-existing objects).
+  Immediate fix: `GRANT SELECT, INSERT, UPDATE, DELETE ON X TO garageos_app;`
+  in SQL Editor. Open follow-up: add GRANT to the original migration of
+  `X` (retroactively) or create a patch migration.
+
+- **`permission denied for function Y`** (SQLSTATE 42501)
+  Same pattern, function side: `GRANT EXECUTE ON FUNCTION Y(...) TO garageos_app;`.
+
+- **`password authentication failed for user "garageos_app"`**
+  Secret has wrong password OR Step 2 flipped the wrong role. Verify the
+  DATABASE_URL stored in Secrets Manager has `garageos_app` as username and
+  that the password matches the one set in Step 2. Rotate again if needed.
+
+- **Last-resort rollback**
+  Revert `DATABASE_URL` in the secret to the prior `postgres` value, push
+  via `update-secret`, force cold start. RTO ~2 min. The migration stays in
+  the repo (idempotent — re-applying does nothing destructive). To remove
+  the role entirely: `DROP ROLE garageos_app` from SQL Editor as `postgres`
+  after the secret has been reverted.
+
+### Future-proofing: when adding a new audit/append-only table
+
+The `ALTER DEFAULT PRIVILEGES` clauses in the migration auto-grant blanket
+CRUD on any new table created by `postgres` later. For an append-only table
+(audit log style), the migration that introduces it MUST include:
+
+```sql
+-- After CREATE TABLE foo_log (...);
+REVOKE UPDATE, DELETE ON foo_log FROM garageos_app;
+```
+
+This mirrors the pattern used in this migration for `access_logs`, `audit_logs`,
+`intervention_revisions`. Tracked as tech debt: see
+`project_tech_debt.md` → "Future audit/append-only tables need manual REVOKE".
