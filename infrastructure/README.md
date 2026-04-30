@@ -151,14 +151,15 @@ aws secretsmanager update-secret \
 
 #### F7.5.a — Inserire un tenant seed in Supabase (SQL diretto)
 
-Eseguire dal Supabase SQL Editor o psql collegato al production project. I 3 NOT NULL senza default sono i soli obbligatori — gli altri prendono i default da `packages/database/prisma/schema.prisma` model `Tenant` (`status='active'`, `billing_status='manual'`, `plan='starter'`, `settings='{}'`, `id=gen_random_uuid()`, `created_at=now()`).
+Eseguire dal Supabase SQL Editor o psql collegato al production project. I campi obbligatori sono `business_name`, `vat_number`, `email` (3 NOT NULL senza default DB) **+ `updated_at`**: lo schema Prisma marca `updatedAt` come `@updatedAt`, ma quella è logica applicativa lato Prisma client — il raw SQL bypassa Prisma e deve fornire il valore esplicitamente, altrimenti l'INSERT fallisce con `null value in column "updated_at" of relation "tenants" violates not-null constraint`. Gli altri campi prendono i default da `packages/database/prisma/schema.prisma` model `Tenant` (`status='active'`, `billing_status='manual'`, `plan='starter'`, `settings='{}'`, `id=gen_random_uuid()`, `created_at=now()`).
 
 ```sql
-INSERT INTO tenants (business_name, vat_number, email)
+INSERT INTO tenants (business_name, vat_number, email, updated_at)
 VALUES (
   'Officina Bootstrap',
   'IT00000000001',
-  'admin@example.com'
+  'admin@example.com',
+  now()
 )
 RETURNING id;
 ```
@@ -189,6 +190,41 @@ aws cognito-idp admin-create-user \
 ```
 
 Cognito invia email automatica con il temporary password. Al primo SRP sign-in, l'utente sarà forzato a cambiare la password.
+
+#### F7.5.b.5 — Inserire la riga `users` per l'admin appena creato (SQL diretto)
+
+Cognito gestisce **solo** authentication; il DB GarageOS è la source-of-truth per identity (tenant binding, role, profile). Il middleware `tenantContext` esegue `findFirstOrThrow({cognitoSub, tenantId})` su ogni richiesta autenticata: senza una riga `users` corrispondente al `Sub` Cognito appena emesso, ogni call con bearer token ritorna 404 al user lookup e l'auth gate è effettivamente bloccato.
+
+Recuperare il `Sub` (UUID Cognito) dell'utente appena creato:
+
+```bash
+COGNITO_SUB=$(aws cognito-idp admin-get-user \
+  --user-pool-id "$OFFICINE_POOL" \
+  --username "$ADMIN_EMAIL" \
+  --region eu-central-1 \
+  --query "UserAttributes[?Name=='sub'].Value | [0]" \
+  --output text)
+echo "$COGNITO_SUB"   # UUID v4 — sanity check
+```
+
+Eseguire dal Supabase SQL Editor (sostituire i 3 placeholder con `$TENANT_ID` di F7.5.a, `$COGNITO_SUB` appena estratto e `$ADMIN_EMAIL`):
+
+```sql
+INSERT INTO users (
+  tenant_id, cognito_sub, email, first_name, last_name, role, updated_at
+) VALUES (
+  '<TENANT_ID-da-F7.5.a>',
+  '<COGNITO_SUB-da-comando-sopra>',
+  'admin@example.com',
+  'Admin',
+  'Bootstrap',
+  'super_admin',
+  now()
+)
+RETURNING id;
+```
+
+Stessa logica di F7.5.a su `updated_at`: raw SQL bypassa il `@updatedAt` Prisma, quindi il valore va fornito (`now()`) per evitare la NOT NULL violation. `id`, `created_at`, `status`, `location_id` prendono i default dello schema (`gen_random_uuid()`, `now()`, `'active'`, `NULL`). I valori `first_name='Admin'` / `last_name='Bootstrap'` devono coincidere con i `Name=given_name` / `Name=family_name` di F7.5.b.
 
 #### F7.5.c — Smoke test end-to-end auth
 
