@@ -23,9 +23,14 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- 2. Schema + connect privileges
-GRANT CONNECT ON DATABASE postgres TO garageos_app;
+-- 2. Schema usage
 GRANT USAGE ON SCHEMA public TO garageos_app;
+
+-- 2b. Connect privilege on the current database (dynamic — production uses
+--     `postgres`, the testcontainer in CI uses `garageos_test`).
+DO $$ BEGIN
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO garageos_app', current_database());
+END $$;
 
 -- 3. Blanket CRUD on existing tables in `public`
 GRANT SELECT, INSERT, UPDATE, DELETE
@@ -43,8 +48,19 @@ REVOKE UPDATE, DELETE
 --     prevent_audit_modification)
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO garageos_app;
 
--- 6. Default privileges per oggetti creati da `postgres` in migration future
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO garageos_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
-  GRANT EXECUTE ON FUNCTIONS TO garageos_app;
+-- 6. Default privileges for objects created by the migration-runner role in
+--    future migrations. session_user resolves dynamically to whoever applied
+--    this migration (`postgres` in production via DIRECT_URL, `test` in CI
+--    testcontainer). Idempotent: re-running dedupes the ACL entries.
+DO $$ BEGIN
+  EXECUTE format(
+    'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public ' ||
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO garageos_app',
+    session_user
+  );
+  EXECUTE format(
+    'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public ' ||
+    'GRANT EXECUTE ON FUNCTIONS TO garageos_app',
+    session_user
+  );
+END $$;
