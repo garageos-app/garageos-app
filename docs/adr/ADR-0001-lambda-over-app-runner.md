@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (adapter implementation amended on 2026-04-29 — see [ADR-0002](./ADR-0002-replace-lwa-with-fastify-aws-lambda-adapter.md)). The fundamental Lambda + API Gateway HTTP API v2 over App Runner decision recorded below stands.
 
 ## Date
 

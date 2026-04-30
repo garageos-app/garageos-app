@@ -34,7 +34,8 @@ Examples: choosing a runtime (Lambda vs container), choosing a database (Postgre
 
 | Number | Title | Status | Date |
 |---|---|---|---|
-| [ADR-0001](./ADR-0001-lambda-over-app-runner.md) | Adopt AWS Lambda + API Gateway HTTP API instead of AWS App Runner for backend runtime | Accepted | 2026-04-23 |
+| [ADR-0001](./ADR-0001-lambda-over-app-runner.md) | Adopt AWS Lambda + API Gateway HTTP API instead of AWS App Runner for backend runtime | Accepted (amended by ADR-0002) | 2026-04-23 |
+| [ADR-0002](./ADR-0002-replace-lwa-with-fastify-aws-lambda-adapter.md) | Replace AWS Lambda Web Adapter with `@fastify/aws-lambda` in-process adapter | Accepted | 2026-04-29 |
 
 ## References
 

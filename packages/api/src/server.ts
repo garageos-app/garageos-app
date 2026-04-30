@@ -65,7 +65,7 @@ function buildLoggerOptions() {
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(),
-    // trust X-Forwarded-* headers from API Gateway / ALB / LWA.
+    // trust X-Forwarded-* headers from API Gateway / ALB.
     trustProxy: true,
     disableRequestLogging: false,
     // APPENDICE_A §1.3: X-Request-ID is auto-generated when the client

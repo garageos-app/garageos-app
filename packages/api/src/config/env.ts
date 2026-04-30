@@ -6,9 +6,10 @@ import { z } from 'zod';
 // point in request handling.
 //
 // PORT defaults to 3100 for local dev (chosen to avoid conflicts with
-// other local services). In Lambda, LWA layer sets AWS_LWA_PORT=8080
-// and the Dockerfile exports PORT=8080 — see packages/api/Dockerfile
-// and APPENDICE_C §5.9.
+// other local services). Not read in Lambda: the @fastify/aws-lambda
+// adapter is in-process so there is no port binding (see ADR-0002 /
+// APPENDICE_C §5.9). The local Dockerfile still exports PORT=8080 for
+// container smoke tests.
 //
 // PR 7 adds Cognito auth configuration. AWS_REGION was optional in
 // PR 6 (Lambda runtime provides it automatically); it is now required

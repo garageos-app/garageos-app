@@ -242,7 +242,7 @@ Per far rileggere il secret aggiornato, invalidiamo i container Lambda warm aggi
 aws lambda update-function-configuration \
   --function-name garageos-api \
   --region eu-central-1 \
-  --environment 'Variables={NODE_ENV=production,AWS_LWA_PORT=8080,AWS_LWA_READINESS_CHECK_PATH=/health,AWS_LWA_ASYNC_INIT=true,APP_SECRETS_ARN=<incollare AppSecretsArn>,SECRET_REVISION=1}'
+  --environment 'Variables={NODE_ENV=production,APP_SECRETS_ARN=<incollare AppSecretsArn>,NODE_EXTRA_CA_CERTS=/var/task/supabase-ca.crt,SECRET_REVISION=1}'
 ```
 
 Ad ogni populate-secret successivo, incrementare `SECRET_REVISION` per forzare un nuovo cold start.

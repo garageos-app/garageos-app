@@ -1,6 +1,6 @@
 # @garageos/api
 
-GarageOS backend — Fastify + TypeScript + Pino, running on AWS Lambda via the [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter).
+GarageOS backend — Fastify + TypeScript + Pino, running on AWS Lambda via the [`@fastify/aws-lambda`](https://github.com/fastify/aws-lambda-fastify) in-process adapter (see [ADR-0002](../../docs/adr/ADR-0002-replace-lwa-with-fastify-aws-lambda-adapter.md)).
 
 ## Status
 
@@ -44,7 +44,7 @@ curl http://localhost:9000/health
 
 Port `9000` avoids conflicts with other services bound to `8080` on the host.
 
-> The current deployment strategy (APPENDICE_C §5.9) uses the AWS CDK `NodejsFunction` construct with the Lambda Web Adapter **layer**, not this container image. This Dockerfile is kept as a local tool and a future-proof deploy option.
+> The current deployment strategy (APPENDICE_C §5.9) uses the AWS CDK `NodejsFunction` construct with the in-process `@fastify/aws-lambda` adapter (ADR-0002), not this container image. This Dockerfile is kept as a local tool and a future-proof deploy option — note that the LWA bits inside it (binary at `/opt/extensions/lambda-adapter`, `AWS_LWA_*` env vars) are stale relative to the active runtime and would need to be replaced by an `aws-lambda-ric` setup if this image were ever placed on the container-image Lambda deploy path.
 
 > **Runtime note (PR 6):** the container runs `tsx src/index.ts` rather than compiling to `dist/` with `tsc` + running Node. This sidesteps two ESM quirks introduced by importing `@garageos/database` at runtime: Node 22 rejects type-stripping of `.ts` files under `node_modules`, and the Prisma 7 generated client uses Bundler-style imports (no `.js` extensions) that Node ESM does not accept. When this image moves onto the deploy path, it will add a bundler stage (esbuild / tsup) — the same approach CDK `NodejsFunction` takes.
 
@@ -106,7 +106,7 @@ The running server must have been started with the auth plugin pre-seeded with t
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/health` | Liveness + DB ping. 200 ok / 503 degraded. Consumed by LWA readiness, ALB health checks. Not versioned. |
+| GET | `/health` | Liveness + DB ping. 200 ok / 503 degraded. Consumed by ALB / external health checks. Not versioned. |
 
 **Business (require Bearer ID token, officine pool):**
 
@@ -141,7 +141,7 @@ Implemented in `src/plugins/error-handler.ts`. Prisma `P2025` (row not found via
 
 ### 2. Versioning — `/v1/` for business endpoints, root for operational
 
-Business endpoints live under `/v1/`. Operational endpoints — `/health`, future `/metrics` — stay at root because they're consumed by infra (LWA readiness probe, ALB health checks, Prometheus scrape) and are not part of the versioned public surface. The prefix constant lives in `src/config/constants.ts`.
+Business endpoints live under `/v1/`. Operational endpoints — `/health`, future `/metrics` — stay at root because they're consumed by infra (ALB health checks, Prometheus scrape) and are not part of the versioned public surface. The prefix constant lives in `src/config/constants.ts`.
 
 ### 3. `X-Request-ID` correlation
 
@@ -156,7 +156,7 @@ APPENDICE_A §1.3: every request carries an `X-Request-ID`. The server accepts a
 | Variable | Required | Default | Notes |
 |---|---|---|---|
 | `NODE_ENV` | no | `development` | `production` in Lambda, `test` in vitest |
-| `PORT` | no | `3100` | Dev only. Lambda/Docker override to `8080` (LWA default) |
+| `PORT` | no | `3100` | Dev only. Not read in Lambda (the `@fastify/aws-lambda` adapter is in-process — no port binding). The Dockerfile still pins it to `8080` for local container smoke. |
 | `LOG_LEVEL` | no | `info` | Pino levels: `trace` / `debug` / `info` / `warn` / `error` / `fatal` / `silent` |
 | `APP_VERSION` | no | `unknown` | Set by deploy pipeline (git SHA or tag); surfaced by `/health` |
 | `AWS_REGION` | **yes** | — | Promoted from optional in PR 7 — the auth plugin derives Cognito issuer + JWKS URI from it. |
