@@ -1,6 +1,6 @@
 // API versioning prefix used by business endpoints from PR 7 onward.
 // Operational endpoints (/health, /metrics) stay at root — they're
-// consumed by infra (LWA readiness, monitoring) and are not part of
+// consumed by infra (ALB / external monitoring) and are not part of
 // the versioned public API surface. See APPENDICE_A §1.1.
 export const API_VERSION_PREFIX = '/v1';
 

@@ -54,7 +54,7 @@ Dalla Sezione 5 del documento master:
 
 | Servizio | Scopo | Stack |
 |---|---|---|
-| **Lambda Functions** | Backend Fastify (via Lambda Web Adapter) | Main stack |
+| **Lambda Functions** | Backend Fastify (via `@fastify/aws-lambda` adapter — see [ADR-0002](./adr/ADR-0002-replace-lwa-with-fastify-aws-lambda-adapter.md)) | Main stack |
 | **API Gateway (HTTP API v2)** | Ingress HTTPS verso Lambda | Main stack |
 | **Cognito** | Two User Pool (officine, clienti) | Main stack |
 | **S3** | Allegati + Tag PDF | Main stack |
@@ -78,7 +78,8 @@ Dalla Sezione 5 del documento master:
 
 | Versione | Data | Modifiche principali |
 |---|---|---|
-| **v1.1** | 2026-04-23 | Runtime backend aggiornato da App Runner a **Lambda + API Gateway HTTP API v2 + Lambda Web Adapter**. Motivazione: App Runner chiuso alle nuove iscrizioni dal 2026-04-30 (AWS announcement). Lambda offre costi 10-30× inferiori al volume pilota (<1M req/mese resta in free tier), scale-to-zero nativo, future-proof AWS. Refactoring packaging backend: bundling esbuild via `aws-cdk-lib/aws-lambda-nodejs` invece di container Docker ECR. Rimosse §10.3 (custom domain manuale): ora gestito da CDK via `aws-cdk-lib/aws-apigatewayv2` `DomainName` + `ApiMapping`. Nuova §11.4 con tabella stime costi backend runtime. |
+| **v1.2** | 2026-04-29 | Sostituito AWS Lambda Web Adapter con l'in-process adapter `@fastify/aws-lambda`. Rationale e dettagli in [ADR-0002](./adr/ADR-0002-replace-lwa-with-fastify-aws-lambda-adapter.md). §5.9 aggiornata per riflettere il nuovo construct (rimosso layer LWA, rimosse env `AWS_LWA_PORT` / `AWS_LWA_READINESS_CHECK_PATH` / `AWS_LWA_ASYNC_INIT` / `AWS_LAMBDA_EXEC_WRAPPER`, aggiunto banner `createRequire` + handler `awsLambdaFastify`). La decisione fondamentale Lambda + API Gateway HTTP API v2 (v1.1) resta invariata. |
+| v1.1 | 2026-04-23 | Runtime backend aggiornato da App Runner a **Lambda + API Gateway HTTP API v2 + Lambda Web Adapter**. Motivazione: App Runner chiuso alle nuove iscrizioni dal 2026-04-30 (AWS announcement). Lambda offre costi 10-30× inferiori al volume pilota (<1M req/mese resta in free tier), scale-to-zero nativo, future-proof AWS. Refactoring packaging backend: bundling esbuild via `aws-cdk-lib/aws-lambda-nodejs` invece di container Docker ECR. Rimosse §10.3 (custom domain manuale): ora gestito da CDK via `aws-cdk-lib/aws-apigatewayv2` `DomainName` + `ApiMapping`. Nuova §11.4 con tabella stime costi backend runtime. **Nota retrospettiva (v1.2)**: la scelta di LWA è stata sostituita 6 giorni dopo — vedi ADR-0002. |
 | v1.0 | 2026-04-22 | Versione iniziale, allineata a `GarageOS-Specifiche.md` v1.5. |
 
 ---
@@ -327,7 +328,7 @@ infrastructure/
 │   │   ├── main-stack.ts        # Stack principale (tutti i servizi)
 │   │   └── oidc-stack.ts        # GitHub OIDC trust (una tantum)
 │   ├── constructs/
-│   │   ├── lambda-api.ts        # Construct Lambda backend (Fastify via LWA)
+│   │   ├── lambda-api.ts        # Construct Lambda backend (Fastify via @fastify/aws-lambda)
 │   │   ├── api-gateway.ts       # Construct API Gateway HTTP API v2
 │   │   ├── cognito-pools.ts     # Construct per i due User Pool
 │   │   ├── storage.ts           # S3 buckets
@@ -526,7 +527,7 @@ export class MainStack extends cdk.Stack {
       ? new WafConstruct(this, 'Waf', { scope: 'REGIONAL' })
       : null;
 
-    // 7. Lambda backend (Fastify via Lambda Web Adapter)
+    // 7. Lambda backend (Fastify via @fastify/aws-lambda adapter)
     const lambdaApi = new LambdaApiConstruct(this, 'LambdaApi', {
       config,
       attachmentsBucket: storage.attachmentsBucket,
@@ -940,9 +941,11 @@ export class WafConstruct extends Construct {
 }
 ```
 
-### 5.9 Construct: Lambda API (Fastify via Lambda Web Adapter)
+### 5.9 Construct: Lambda API (Fastify via `@fastify/aws-lambda` adapter)
 
-Il backend Fastify gira su AWS Lambda grazie al [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter): un layer che traduce eventi Lambda in richieste HTTP verso l'app Node.js in ascolto su `127.0.0.1:8080`. Il codice applicativo resta una Fastify app standard — nessuna modifica agli handler.
+> **Nota storica (ADR-0002)**: dal 2026-04-29 questo construct usa l'adapter in-process [`@fastify/aws-lambda`](https://github.com/fastify/aws-lambda-fastify) al posto dell'AWS Lambda Web Adapter (LWA) originariamente previsto in v1.1 di questa appendice. Razionale completo in [ADR-0002](./adr/ADR-0002-replace-lwa-with-fastify-aws-lambda-adapter.md). Sezione aggiornata di conseguenza.
+
+Il backend Fastify gira su AWS Lambda tramite [`@fastify/aws-lambda`](https://github.com/fastify/aws-lambda-fastify): l'adapter wrappa l'istanza Fastify e traduce in-process eventi APIGW HTTP API v2 ↔ richieste/risposte Fastify, senza HTTP localhost loop, senza extension layer, senza port mapping. La Fastify app resta standard — l'unica modifica al codice è il wrap `handler = awsLambdaFastify(app)` esportato da `packages/api/src/index.ts` (vedi commenti in quel file per l'ordine `wrap → ready` imposto da Fastify).
 
 **Scelte chiave:**
 - **arm64 (Graviton)**: ~20% risparmio costo, piena compatibilità Node.js 22
@@ -953,9 +956,9 @@ Il backend Fastify gira su AWS Lambda grazie al [Lambda Web Adapter](https://git
 - **Bundling esbuild**: `NodejsFunction` L2 fa tree-shaking e minify automaticamente
 - **Log retention 7 giorni**: ottimizzazione costi CloudWatch (principale voce al pilota)
 
-> ⚠️ **Versioni al momento della stesura (2026-04-23) — verificare prima del deploy:**
+> ⚠️ **Versioni al momento della stesura (2026-04-29 v1.2) — verificare prima del deploy:**
 > - `aws-cdk-lib` 2.250.0
-> - Lambda Web Adapter layer `arn:aws:lambda:${region}:753240598075:layer:LambdaAdapterLayerArm64:27`
+> - `@fastify/aws-lambda` runtime dependency in `packages/api` (no Lambda layer required)
 > - Lambda runtime `Runtime.NODEJS_22_X` (LTS fino aprile 2027)
 >
 > Se le versioni sono cambiate, aggiornare prima del primo `cdk deploy`.
@@ -1040,19 +1043,13 @@ export class LambdaApiConstruct extends Construct {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // Lambda Web Adapter layer (public ECR, published by AWS Labs)
-    // Account 753240598075, versione 27 al 2026-04-23 — verificare
-    const lwaLayer = lambda.LayerVersion.fromLayerVersionArn(
-      this,
-      'LwaLayer',
-      `arn:aws:lambda:${cdk.Stack.of(this).region}:753240598075:layer:LambdaAdapterLayerArm64:27`,
-    );
-
-    // Lambda function — bundling esbuild automatico via NodejsFunction L2
+    // Lambda function — bundling esbuild automatico via NodejsFunction L2.
+    // No Lambda layer: l'adapter `@fastify/aws-lambda` viene bundlato
+    // come dipendenza runtime di packages/api ed esegue in-process.
     const fn = new lambdaNodejs.NodejsFunction(this, 'ApiFunction', {
       functionName: 'garageos-api',
-      entry: path.join(__dirname, '../../../packages/api/src/server.ts'),
-      handler: 'handler', // Fastify app exports { handler: fastifyApp } (no-op, LWA intercepts)
+      entry: path.join(__dirname, '../../../packages/api/src/index.ts'),
+      handler: 'handler', // packages/api/src/index.ts esporta `handler = awsLambdaFastify(app)`
       runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
       memorySize: config.lambda.memoryMb,
@@ -1060,15 +1057,9 @@ export class LambdaApiConstruct extends Construct {
       reservedConcurrentExecutions: config.lambda.reservedConcurrency,
       role: executionRole,
       logGroup: this.logGroup,
-      layers: [lwaLayer],
       tracing: lambda.Tracing.ACTIVE, // X-Ray
       environment: {
         NODE_ENV: 'production',
-        // Lambda Web Adapter config — tells LWA which local port Fastify listens on
-        AWS_LWA_PORT: '8080',
-        AWS_LWA_READINESS_CHECK_PATH: '/health',
-        AWS_LWA_ASYNC_INIT: 'true',
-        // App config
         ATTACHMENTS_BUCKET: props.attachmentsBucket.bucketName,
         COGNITO_OFFICINE_POOL_ID: props.cognitoPoolOfficine.userPoolId,
         COGNITO_CLIENTI_POOL_ID: props.cognitoPoolClienti.userPoolId,
@@ -1079,10 +1070,17 @@ export class LambdaApiConstruct extends Construct {
         sourceMap: true,
         target: 'node22',
         format: lambdaNodejs.OutputFormat.ESM,
-        // Escludere SDK AWS v3 (già presente nel runtime Lambda) e Prisma client
-        // (copiato via nodeModules per includere i binari nativi)
+        // CommonJS-in-ESM compatibility shim. esbuild ESM rewrite static
+        // imports as ESM ma lascia intatti i `require()` dinamici delle
+        // transitive deps (Fastify plugins, Prisma client). Senza questo
+        // banner il Lambda crasha al boot con "Dynamic require of X is
+        // not supported".
+        banner:
+          "import{createRequire as __createRequire}from'module';const require=__createRequire(import.meta.url);",
+        // Escludere SDK AWS v3 (già presente nel runtime Lambda) e shipare
+        // @prisma/client come nodeModules per includere il binary nativo
         externalModules: ['@aws-sdk/*'],
-        nodeModules: ['@prisma/client', 'prisma'],
+        nodeModules: ['@prisma/client'],
       },
     });
 

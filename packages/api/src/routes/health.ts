@@ -3,18 +3,17 @@ import { env } from '../config/env.js';
 
 // Operational liveness/readiness probe.
 //
-// Path `/health` is required at root (no /v1 prefix) because AWS Lambda
-// Web Adapter uses it as its readiness check — see APPENDICE_C §5.9,
-// AWS_LWA_READINESS_CHECK_PATH=/health. Logging is silenced to avoid
-// cluttering logs with high-frequency probes (LWA polls during cold
-// start; future ALB/APIGW health checks will too).
+// Path `/health` is at root (no /v1 prefix) because it is consumed by
+// infra (ALB / external monitoring), not by versioned API clients. See
+// APPENDICE_C §5.9. Logging is silenced to avoid cluttering logs with
+// high-frequency probes.
 //
 // PR 6 adds a light DB ping: `SELECT 1` via Prisma with a 2 s race
 // timeout. The endpoint returns 200 / `status: ok` when the DB is
 // reachable, 503 / `status: degraded` otherwise. The underlying error
-// is logged server-side and never leaked to the response body — LWA /
-// ALB only care about the status code. `/health` is operational, not
-// part of the /v1 public API surface, so it does not use RFC 7807.
+// is logged server-side and never leaked to the response body — health
+// consumers only care about the status code. `/health` is operational,
+// not part of the /v1 public API surface, so it does not use RFC 7807.
 
 const DB_PING_TIMEOUT_MS = 2_000;
 
