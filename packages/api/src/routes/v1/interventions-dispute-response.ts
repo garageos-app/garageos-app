@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
+import { preValidateAttachmentsForDispute } from '../../lib/dispute-attachments.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -74,11 +75,12 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        if (body.attachmentIds && body.attachmentIds.length > 0) {
+        const attachmentIds = body.attachmentIds ?? [];
+        if (attachmentIds.length > 0 && !body.disputeId) {
           throw businessError(
-            'intervention.dispute.attachments_not_supported',
+            'intervention.dispute.response.attachments_require_dispute_id',
             422,
-            'Allegati non ancora supportati per le risposte officina in v1.0.',
+            'Non puoi allegare prove a una risposta multi-dispute. Specifica disputeId.',
           );
         }
 
@@ -120,6 +122,12 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
           targetIds = openTargets.map((t) => t.id);
         }
 
+        await preValidateAttachmentsForDispute(tx, {
+          attachmentIds: body.attachmentIds,
+          interventionId: id,
+          uploader: { userId: user.id, tenantId },
+        });
+
         const now = new Date();
 
         await tx.interventionDispute.updateMany({
@@ -131,6 +139,13 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
             tenantResponseUserId: user.id,
           },
         });
+
+        if (attachmentIds.length > 0 && body.disputeId) {
+          await tx.attachment.updateMany({
+            where: { id: { in: attachmentIds } },
+            data: { disputeId: body.disputeId },
+          });
+        }
 
         const respondedDisputes = await tx.interventionDispute.findMany({
           where: { id: { in: targetIds } },
@@ -181,7 +196,10 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
         });
 
         return {
-          disputes: respondedDisputes,
+          disputes: respondedDisputes.map((d) => ({
+            ...d,
+            attachment_ids: d.id === body.disputeId ? attachmentIds : [],
+          })),
           interventionStatus,
         };
       });
