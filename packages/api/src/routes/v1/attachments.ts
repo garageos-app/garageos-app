@@ -4,7 +4,12 @@ import { z } from 'zod';
 
 import { env } from '../../config/env.js';
 import { businessError } from '../../lib/business-error.js';
-import { S3UnavailableError, presignPutObject } from '../../lib/s3.js';
+import {
+  S3ObjectNotFoundError,
+  S3UnavailableError,
+  headObject,
+  presignPutObject,
+} from '../../lib/s3.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -57,10 +62,38 @@ function deriveExtension(mimeType: string): string {
   }
 }
 
+const ConfirmParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
 // AttachmentOwnerType values from the Prisma-generated enum.
 // The type is not re-exported from @garageos/database so we declare
 // it locally as a string union matching the DB enum exactly.
 type AttachmentOwnerType = 'intervention' | 'private_intervention';
+
+// serializeAttachment converts a DB attachment row to the snake_case
+// JSON wire format (see APPENDICE_A §attachments). Used in confirm responses.
+function serializeAttachment(attachment: {
+  id: string;
+  ownerType: AttachmentOwnerType;
+  ownerId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  processed: boolean;
+  createdAt: Date;
+}) {
+  return {
+    id: attachment.id,
+    owner_type: attachment.ownerType,
+    owner_id: attachment.ownerId,
+    file_name: attachment.fileName,
+    mime_type: attachment.mimeType,
+    size_bytes: attachment.sizeBytes,
+    processed: attachment.processed,
+    uploaded_at: attachment.createdAt.toISOString(),
+  };
+}
 
 const attachmentsRoutes: FastifyPluginAsync = async (app) => {
   app.post(
@@ -171,6 +204,111 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
           expires_at: expiresAt,
           callback_url: `/v1/attachments/${attachmentId}/confirm`,
         });
+      });
+    },
+  );
+
+  // POST /v1/attachments/:id/confirm (F-OFF-305, phase 2 of 2)
+  // Officina confirms that the file has been uploaded to S3.
+  // The server performs a HeadObject to verify ContentLength + ContentType
+  // match the attachment row, then flips processed: false → true.
+  // Idempotent: re-calling on an already-processed attachment returns 200
+  // without re-calling S3. Only the original uploader may confirm.
+  app.post(
+    '/v1/attachments/:id/confirm',
+    {
+      preHandler: [requireAuth, requireOfficinaPool, tenantContext],
+    },
+    async (request, reply) => {
+      const { id } = ConfirmParamsSchema.parse(request.params);
+      const tenantId = request.tenantId!;
+      const cognitoSub = request.userId!;
+
+      return app.withContext({ tenantId }, async (tx) => {
+        // Defense-in-depth post-PR #27 RLS split: bind user lookup to
+        // (cognitoSub, tenantId) to prevent cross-tenant JWT attacks.
+        const user = await tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
+          select: { id: true },
+        });
+
+        // Ownership check: ensure the attachment belongs to this tenant.
+        // P2025 (record not found) from RLS or genuinely missing → 404.
+        // Only P2025 is caught; other errors bubble to the default handler
+        // as 500 rather than being silently masked as 404.
+        let attachment;
+        try {
+          attachment = await tx.attachment.findFirstOrThrow({
+            where: { id, tenantId },
+          });
+        } catch (err) {
+          if (
+            typeof err === 'object' &&
+            err !== null &&
+            'code' in err &&
+            (err as { code: unknown }).code === 'P2025'
+          ) {
+            throw businessError(
+              'attachment.confirm.not_found',
+              404,
+              `Attachment ${id} non trovato.`,
+            );
+          }
+          throw err;
+        }
+
+        // Only the original uploader may confirm the upload.
+        if (attachment.uploadedByUserId !== user.id) {
+          throw businessError(
+            'attachment.confirm.not_uploader',
+            403,
+            'Solo chi ha richiesto upload-url può confermare.',
+          );
+        }
+
+        // Idempotent: skip S3 verify when already processed.
+        if (attachment.processed) {
+          return reply.code(200).send(serializeAttachment(attachment));
+        }
+
+        let head: { contentLength: number; contentType: string };
+        try {
+          head = await headObject(attachment.s3Bucket, attachment.s3Key);
+        } catch (err) {
+          if (err instanceof S3ObjectNotFoundError) {
+            throw businessError(
+              'attachment.confirm.upload_not_found',
+              422,
+              "File non trovato su S3 — l'upload non è atterrato o è scaduto.",
+            );
+          }
+          if (err instanceof S3UnavailableError) {
+            throw businessError(
+              'attachment.confirm.s3_unavailable',
+              502,
+              'Servizio storage temporaneamente non disponibile.',
+            );
+          }
+          throw err;
+        }
+
+        if (
+          head.contentLength !== attachment.sizeBytes ||
+          head.contentType !== attachment.mimeType
+        ) {
+          throw businessError(
+            'attachment.confirm.metadata_mismatch',
+            422,
+            `S3 metadata non matcha: size ${head.contentLength}/${attachment.sizeBytes}, type ${head.contentType}/${attachment.mimeType}.`,
+          );
+        }
+
+        const updated = await tx.attachment.update({
+          where: { id },
+          data: { processed: true },
+        });
+
+        return reply.code(200).send(serializeAttachment(updated));
       });
     },
   );

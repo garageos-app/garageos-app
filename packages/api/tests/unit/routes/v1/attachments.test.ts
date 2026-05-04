@@ -1,5 +1,11 @@
 import sensible from '@fastify/sensible';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  HeadObjectCommand,
+  NoSuchKey,
+  PutObjectCommand,
+  S3Client,
+  S3ServiceException,
+} from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -237,5 +243,163 @@ describe('POST /v1/attachments/upload-url', () => {
     });
     expect(res.statusCode).toBe(201);
     expect(mockTx.attachment.create).toHaveBeenCalled();
+  });
+});
+
+describe('POST /v1/attachments/:id/confirm', () => {
+  // UUID must satisfy Zod z.string().uuid(): version nibble [1-8], variant [89abAB].
+  const ATTACHMENT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const PROCESSED_ATTACHMENT = {
+    id: ATTACHMENT_ID,
+    ownerType: 'intervention' as const,
+    ownerId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    tenantId: 'tenant-test',
+    uploadedByUserId: USER_ID, // must match user.findFirstOrThrow mock return
+    fileName: 'foto.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: 1024,
+    s3Key: 'attachments/intervention/.../uuid.jpg',
+    s3Bucket: 'test-bucket',
+    processed: false,
+    createdAt: new Date('2026-05-04T12:00:00Z'),
+  };
+
+  it('flips processed: true and returns 200 on happy path', async () => {
+    mockTx.attachment.findFirstOrThrow = vi.fn().mockResolvedValue(PROCESSED_ATTACHMENT);
+    mockTx.attachment.update = vi.fn().mockResolvedValue({
+      ...PROCESSED_ATTACHMENT,
+      processed: true,
+    });
+    s3Mock.on(HeadObjectCommand).resolves({
+      ContentLength: 1024,
+      ContentType: 'image/jpeg',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      id: ATTACHMENT_ID,
+      processed: true,
+    });
+    expect(mockTx.attachment.update).toHaveBeenCalledWith({
+      where: { id: ATTACHMENT_ID },
+      data: { processed: true },
+    });
+  });
+
+  it('idempotent: returns 200 without S3 call when already processed', async () => {
+    mockTx.attachment.findFirstOrThrow = vi.fn().mockResolvedValue({
+      ...PROCESSED_ATTACHMENT,
+      processed: true,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(s3Mock.commandCalls(HeadObjectCommand)).toHaveLength(0);
+    expect(mockTx.attachment.update).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 attachment.confirm.not_found when attachment missing (P2025)', async () => {
+    const p2025 = Object.assign(new Error('P2025'), { code: 'P2025' });
+    mockTx.attachment.findFirstOrThrow = vi.fn().mockRejectedValue(p2025);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('attachment.confirm.not_found');
+  });
+
+  it('returns 403 attachment.confirm.not_uploader on uploader mismatch', async () => {
+    mockTx.attachment.findFirstOrThrow = vi.fn().mockResolvedValue({
+      ...PROCESSED_ATTACHMENT,
+      uploadedByUserId: 'someone-else-id',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('attachment.confirm.not_uploader');
+  });
+
+  it('returns 422 attachment.confirm.upload_not_found when S3 NoSuchKey', async () => {
+    mockTx.attachment.findFirstOrThrow = vi.fn().mockResolvedValue(PROCESSED_ATTACHMENT);
+    s3Mock
+      .on(HeadObjectCommand)
+      .rejects(new NoSuchKey({ message: 'Not Found', $metadata: { httpStatusCode: 404 } }));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('attachment.confirm.upload_not_found');
+  });
+
+  it('returns 422 attachment.confirm.metadata_mismatch on ContentLength mismatch', async () => {
+    mockTx.attachment.findFirstOrThrow = vi.fn().mockResolvedValue(PROCESSED_ATTACHMENT);
+    s3Mock.on(HeadObjectCommand).resolves({
+      ContentLength: 9999, // attachment had sizeBytes 1024
+      ContentType: 'image/jpeg',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('attachment.confirm.metadata_mismatch');
+  });
+
+  it('returns 422 attachment.confirm.metadata_mismatch on ContentType mismatch', async () => {
+    mockTx.attachment.findFirstOrThrow = vi.fn().mockResolvedValue(PROCESSED_ATTACHMENT);
+    s3Mock.on(HeadObjectCommand).resolves({
+      ContentLength: 1024,
+      ContentType: 'image/png', // attachment had mimeType image/jpeg
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('attachment.confirm.metadata_mismatch');
+  });
+
+  it('returns 502 attachment.confirm.s3_unavailable on generic S3 error', async () => {
+    mockTx.attachment.findFirstOrThrow = vi.fn().mockResolvedValue(PROCESSED_ATTACHMENT);
+    // Use S3ServiceException with 500 status (not 404 → would be ObjectNotFound).
+    s3Mock.on(HeadObjectCommand).rejects(
+      new S3ServiceException({
+        name: 'InternalError',
+        $fault: 'server',
+        $metadata: { httpStatusCode: 500 },
+        message: 'Internal Error',
+      }),
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().code).toBe('attachment.confirm.s3_unavailable');
   });
 });
