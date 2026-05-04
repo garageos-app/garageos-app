@@ -36,6 +36,7 @@ export class ApiGatewayConstruct extends Construct {
   public readonly httpApi: apigw.HttpApi;
   public readonly domainName: apigw.DomainName;
   public readonly accessLogGroup: logs.LogGroup;
+  public readonly defaultStage: apigw.IStage;
 
   constructor(scope: Construct, id: string, props: ApiGatewayConstructProps) {
     super(scope, id);
@@ -95,6 +96,10 @@ export class ApiGatewayConstruct extends Construct {
       methods: [apigw.HttpMethod.ANY],
       integration,
     });
+
+    // Stage exposed for downstream WAF association. Always non-null
+    // after addRoutes — HTTP API v2 auto-creates a $default stage.
+    this.defaultStage = this.httpApi.defaultStage!;
 
     const defaultStage = this.httpApi.defaultStage?.node.defaultChild as apigw.CfnStage | undefined;
     if (defaultStage) {
