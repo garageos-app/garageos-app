@@ -157,6 +157,7 @@ enum NotificationDeliveryStatus {
 enum AttachmentOwnerType {
   intervention
   private_intervention
+  intervention_dispute
 }
 
 enum AccessLogAction {
@@ -535,6 +536,7 @@ model InterventionDispute {
   intervention       Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
   customer           Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
   tenantResponseUser User?        @relation(fields: [tenantResponseUserId], references: [id], onDelete: SetNull)
+  attachments        Attachment[]
 
   @@index([interventionId], map: "idx_disputes_intervention")
   @@index([customerId], map: "idx_disputes_customer")
@@ -584,9 +586,13 @@ model Attachment {
   thumbnailS3Key           String?             @map("thumbnail_s3_key") @db.VarChar(500)
   createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz
   deletedAt                DateTime?           @map("deleted_at") @db.Timestamptz
+  disputeId                String?             @map("dispute_id") @db.Uuid
+
+  dispute                  InterventionDispute? @relation(fields: [disputeId], references: [id], onDelete: NoAction)
 
   @@index([ownerType, ownerId], map: "idx_attachments_owner")
   @@index([tenantId], map: "idx_attachments_tenant")
+  @@index([disputeId], map: "idx_attachments_dispute_id")
   @@map("attachments")
 }
 
