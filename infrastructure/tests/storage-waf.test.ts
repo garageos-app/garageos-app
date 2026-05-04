@@ -3,8 +3,11 @@ import { Template, Match } from 'aws-cdk-lib/assertions';
 import { describe, it } from 'vitest';
 
 import { StorageConstruct } from '../lib/constructs/storage.js';
+import { WafConstruct } from '../lib/constructs/waf.js';
 
 describe('StorageConstruct', () => {
+  // CDK Templates are immutable after fromStack — sharing across `it`
+  // blocks is safe and avoids re-synthesising the stack N times.
   function buildTemplate(): Template {
     const app = new cdk.App();
     const stack = new cdk.Stack(app, 'TestStorageStack', {
@@ -19,9 +22,9 @@ describe('StorageConstruct', () => {
     });
     return Template.fromStack(stack);
   }
+  const template = buildTemplate();
 
   it('provisions exactly one S3 bucket with the expected name', () => {
-    const template = buildTemplate();
     template.resourceCountIs('AWS::S3::Bucket', 1);
     template.hasResourceProperties('AWS::S3::Bucket', {
       BucketName: 'garageos-production-attachments',
@@ -29,7 +32,6 @@ describe('StorageConstruct', () => {
   });
 
   it('enforces server-side encryption (S3-managed AES256)', () => {
-    const template = buildTemplate();
     template.hasResourceProperties('AWS::S3::Bucket', {
       BucketEncryption: {
         ServerSideEncryptionConfiguration: Match.arrayWith([
@@ -42,7 +44,6 @@ describe('StorageConstruct', () => {
   });
 
   it('blocks all public access', () => {
-    const template = buildTemplate();
     template.hasResourceProperties('AWS::S3::Bucket', {
       PublicAccessBlockConfiguration: {
         BlockPublicAcls: true,
@@ -54,23 +55,21 @@ describe('StorageConstruct', () => {
   });
 
   it('enables object versioning', () => {
-    const template = buildTemplate();
     template.hasResourceProperties('AWS::S3::Bucket', {
       VersioningConfiguration: { Status: 'Enabled' },
     });
   });
 
   it('configures CORS with 2 allowed origins (app + apex), GET+PUT methods', () => {
-    const template = buildTemplate();
     template.hasResourceProperties('AWS::S3::Bucket', {
       CorsConfiguration: {
         CorsRules: Match.arrayWith([
           Match.objectLike({
             AllowedMethods: Match.arrayWith(['GET', 'PUT']),
-            AllowedOrigins: [
+            AllowedOrigins: Match.arrayWith([
               'https://app.garageos.aifollyadvisor.com',
               'https://garageos.aifollyadvisor.com',
-            ],
+            ]),
             AllowedHeaders: ['*'],
             MaxAge: 3000,
           }),
@@ -79,8 +78,7 @@ describe('StorageConstruct', () => {
     });
   });
 
-  it('configures lifecycle rule: transition to IA after 90 days + noncurrent expiry 30d', () => {
-    const template = buildTemplate();
+  it('configures lifecycle rule: transition to IA after 90 days', () => {
     template.hasResourceProperties('AWS::S3::Bucket', {
       LifecycleConfiguration: {
         Rules: Match.arrayWith([
@@ -93,6 +91,18 @@ describe('StorageConstruct', () => {
                 TransitionInDays: 90,
               }),
             ]),
+          }),
+        ]),
+      },
+    });
+  });
+
+  it('expires noncurrent versions after 30 days', () => {
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      LifecycleConfiguration: {
+        Rules: Match.arrayWith([
+          Match.objectLike({
+            Id: 'transition-to-ia',
             NoncurrentVersionExpiration: { NoncurrentDays: 30 },
           }),
         ]),
@@ -101,7 +111,6 @@ describe('StorageConstruct', () => {
   });
 
   it('configures lifecycle rule: abort incomplete uploads after 7 days', () => {
-    const template = buildTemplate();
     template.hasResourceProperties('AWS::S3::Bucket', {
       LifecycleConfiguration: {
         Rules: Match.arrayWith([
@@ -116,10 +125,111 @@ describe('StorageConstruct', () => {
   });
 
   it('retains the bucket on stack deletion', () => {
-    const template = buildTemplate();
     template.hasResource('AWS::S3::Bucket', {
       DeletionPolicy: 'Retain',
       UpdateReplacePolicy: 'Retain',
+    });
+  });
+});
+
+describe('WafConstruct', () => {
+  // CDK Templates are immutable after fromStack — sharing across `it`
+  // blocks is safe and avoids re-synthesising the stack N times.
+  function buildTemplate(): Template {
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'TestWafStack', {
+      env: { account: '123456789012', region: 'eu-central-1' },
+    });
+    new WafConstruct(stack, 'Waf', {
+      environment: 'production',
+      ipRequestRateLimit: 2000,
+    });
+    return Template.fromStack(stack);
+  }
+  const template = buildTemplate();
+
+  it('provisions exactly one Web ACL with REGIONAL scope and expected name', () => {
+    template.resourceCountIs('AWS::WAFv2::WebACL', 1);
+    template.hasResourceProperties('AWS::WAFv2::WebACL', {
+      Scope: 'REGIONAL',
+      Name: 'garageos-production-api-waf',
+    });
+  });
+
+  it('default action is allow', () => {
+    template.hasResourceProperties('AWS::WAFv2::WebACL', {
+      DefaultAction: { Allow: {} },
+    });
+  });
+
+  it('provisions 3 rules with expected priorities and names', () => {
+    template.hasResourceProperties('AWS::WAFv2::WebACL', {
+      Rules: [
+        Match.objectLike({ Name: 'AWS-ManagedRulesCommonRuleSet', Priority: 1 }),
+        Match.objectLike({ Name: 'AWS-ManagedRulesKnownBadInputsRuleSet', Priority: 2 }),
+        Match.objectLike({ Name: 'RateLimitIp', Priority: 3 }),
+      ],
+    });
+  });
+
+  it('applies AWS managed CommonRuleSet at priority 1 with overrideAction none', () => {
+    template.hasResourceProperties('AWS::WAFv2::WebACL', {
+      Rules: Match.arrayWith([
+        Match.objectLike({
+          Name: 'AWS-ManagedRulesCommonRuleSet',
+          OverrideAction: { None: {} },
+          Statement: {
+            ManagedRuleGroupStatement: {
+              VendorName: 'AWS',
+              Name: 'AWSManagedRulesCommonRuleSet',
+            },
+          },
+        }),
+      ]),
+    });
+  });
+
+  it('applies AWS managed KnownBadInputsRuleSet at priority 2', () => {
+    template.hasResourceProperties('AWS::WAFv2::WebACL', {
+      Rules: Match.arrayWith([
+        Match.objectLike({
+          Name: 'AWS-ManagedRulesKnownBadInputsRuleSet',
+          OverrideAction: { None: {} },
+          Statement: {
+            ManagedRuleGroupStatement: {
+              VendorName: 'AWS',
+              Name: 'AWSManagedRulesKnownBadInputsRuleSet',
+            },
+          },
+        }),
+      ]),
+    });
+  });
+
+  it('rate-limits to 2000 requests per 5min per IP at priority 3 (block action)', () => {
+    template.hasResourceProperties('AWS::WAFv2::WebACL', {
+      Rules: Match.arrayWith([
+        Match.objectLike({
+          Name: 'RateLimitIp',
+          Action: { Block: {} },
+          Statement: {
+            RateBasedStatement: {
+              Limit: 2000,
+              AggregateKeyType: 'IP',
+            },
+          },
+        }),
+      ]),
+    });
+  });
+
+  it('enables CloudWatch metrics on the ACL with metricName "GarageosWaf"', () => {
+    template.hasResourceProperties('AWS::WAFv2::WebACL', {
+      VisibilityConfig: {
+        CloudWatchMetricsEnabled: true,
+        SampledRequestsEnabled: true,
+        MetricName: 'GarageosWaf',
+      },
     });
   });
 });
