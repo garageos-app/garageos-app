@@ -1801,7 +1801,7 @@ jobs:
       # di deploy è uno zip CDK (tree-shaken, minified, ~5-15 MB).
       # Build time atteso: 30-60s vs 3-5 min del vecchio docker build.
       - name: Deploy CDK (infrastructure + Lambda code)
-        run: pnpm --filter infrastructure cdk deploy --require-approval never --all
+        run: pnpm --filter infrastructure exec cdk deploy --require-approval never --all
 
   run-migrations:
     needs: deploy-infrastructure
@@ -1945,17 +1945,17 @@ jobs:
 3. Registrare dominio `garageos.it` via Route 53
 4. Eseguire `cdk bootstrap`:
    ```bash
-   pnpm --filter infrastructure cdk bootstrap aws://ACCOUNT_ID/eu-central-1
+   pnpm --filter infrastructure exec cdk bootstrap aws://ACCOUNT_ID/eu-central-1
    ```
 5. Deploy OIDC stack (per abilitare GitHub Actions):
    ```bash
-   pnpm --filter infrastructure cdk deploy GarageosOidcStack
+   pnpm --filter infrastructure exec cdk deploy GarageosOidcStack
    ```
 6. Copiare il `DeployRoleArn` nei GitHub secrets
 7. Creare progetto Supabase (production)
 8. Eseguire primo deploy manuale dello stack principale:
    ```bash
-   pnpm --filter infrastructure cdk deploy GarageosMainStack
+   pnpm --filter infrastructure exec cdk deploy GarageosMainStack
    ```
 9. Popolare Secrets Manager con credenziali Supabase, Sentry, Expo (vedi §8)
 10. Applicare schema DB su Supabase:
@@ -1967,7 +1967,7 @@ jobs:
     ```
 11. Rilanciare `cdk deploy` dopo aver popolato i secret (CDK farà un update della Lambda con il codice applicativo aggiornato):
     ```bash
-    pnpm --filter infrastructure cdk deploy GarageosMainStack
+    pnpm --filter infrastructure exec cdk deploy GarageosMainStack
     ```
     Il custom domain `api.garageos.it` è già attivo — CDK lo ha creato in §7.3.
 12. Richiedere SES production access
@@ -2110,7 +2110,7 @@ API Gateway → Lambda alias = traffic cutover istantaneo.
 ```bash
 # Checkout del commit precedente + redeploy CDK
 git checkout <commit-precedente>
-pnpm --filter infrastructure cdk deploy GarageosMainStack
+pnpm --filter infrastructure exec cdk deploy GarageosMainStack
 ```
 
 CDK ribundleaIl codice del commit vecchio e aggiorna la Lambda. Più lento dell'opzione A ma coerente con lo stato CDK (evita drift).
@@ -2150,7 +2150,7 @@ Se una migration corrompe i dati:
 ```bash
 # Checkout del branch precedente
 git checkout <commit-precedente>
-pnpm --filter infrastructure cdk deploy --all
+pnpm --filter infrastructure exec cdk deploy --all
 ```
 
 CDK rileva le differenze e applica i cambiamenti necessari per tornare allo stato precedente.

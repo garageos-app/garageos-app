@@ -63,4 +63,4 @@ jobs:
         # On push trigger `inputs.stack` is empty — fall back to MainStack,
         # which is the only stack that changes per feature. OidcStack is
         # bootstrap-only and redeployed via workflow_dispatch when needed.
-        run: pnpm --filter infrastructure cdk deploy ${{ inputs.stack || 'GarageosMainStack' }} --require-approval never
+        run: pnpm --filter infrastructure exec cdk deploy ${{ inputs.stack || 'GarageosMainStack' }} --require-approval never
