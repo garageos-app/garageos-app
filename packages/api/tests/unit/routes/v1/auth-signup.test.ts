@@ -1,8 +1,11 @@
 import sensible from '@fastify/sensible';
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
   CognitoIdentityProviderClient,
+  InvalidPasswordException,
+  UsernameExistsException,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { mockClient } from 'aws-sdk-client-mock';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -416,5 +419,131 @@ describe('POST /v1/auth/signup — already active', () => {
     expect(update).not.toHaveBeenCalled();
     expect(auditCreate).not.toHaveBeenCalled();
     expect(cognitoMock.commandCalls(AdminCreateUserCommand)).toHaveLength(0);
+  });
+});
+
+// ─── Cognito error branches ──────────────────────────────────────────────────
+
+describe('POST /v1/auth/signup — Cognito errors', () => {
+  let cognitoErrApp: FastifyInstance;
+
+  // Standard Prisma stub: no existing customer, create succeeds.
+  // Reaches Phase 2 so Cognito mock behaviour determines the outcome.
+  async function buildReachPhase2App(): Promise<{
+    app: FastifyInstance;
+    tx: FakeTx;
+  }> {
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+    const tx = buildFakeTx();
+    const inst = await buildAppWithDb(tx);
+    return { app: inst, tx };
+  }
+
+  afterEach(async () => {
+    if (cognitoErrApp) await cognitoErrApp.close();
+  });
+
+  it('returns 422 password_policy_violation on AdminCreateUser InvalidPasswordException', async () => {
+    const { app: inst } = await buildReachPhase2App();
+    cognitoErrApp = inst;
+    cognitoMock
+      .on(AdminCreateUserCommand)
+      .rejects(
+        new InvalidPasswordException({
+          message: 'Password does not conform to policy',
+          $metadata: {},
+        }),
+      );
+
+    // Use a payload that passes Zod validation (≥8 chars) so the error
+    // originates from Cognito, not from the application-layer schema check.
+    const res = await cognitoErrApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'a@b.it',
+        password: 'weakpass',
+        firstName: 'M',
+        lastName: 'R',
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('auth.signup.password_policy_violation');
+    expect(cognitoMock.commandCalls(AdminSetUserPasswordCommand)).toHaveLength(0);
+  });
+
+  it('returns 409 email_already_active on AdminCreateUser UsernameExistsException', async () => {
+    const { app: inst } = await buildReachPhase2App();
+    cognitoErrApp = inst;
+    cognitoMock
+      .on(AdminCreateUserCommand)
+      .rejects(
+        new UsernameExistsException({ message: 'User account already exists', $metadata: {} }),
+      );
+
+    const res = await cognitoErrApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'a@b.it',
+        password: 'Secret123',
+        firstName: 'M',
+        lastName: 'R',
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('auth.signup.email_already_active');
+  });
+
+  it('rolls back Cognito user on AdminSetUserPassword failure', async () => {
+    const { app: inst } = await buildReachPhase2App();
+    cognitoErrApp = inst;
+    cognitoMock.on(AdminCreateUserCommand).resolves({
+      User: { Username: 'a@b.it', Attributes: [{ Name: 'sub', Value: 'cog-x' }] },
+    });
+    cognitoMock.on(AdminSetUserPasswordCommand).rejects(new Error('throttled'));
+    cognitoMock.on(AdminDeleteUserCommand).resolves({});
+
+    const res = await cognitoErrApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'a@b.it',
+        password: 'Secret123',
+        firstName: 'M',
+        lastName: 'R',
+      },
+    });
+
+    expect(res.statusCode).toBe(502);
+    expect(res.json().code).toBe('auth.signup.cognito_unavailable');
+    expect(cognitoMock.commandCalls(AdminDeleteUserCommand)).toHaveLength(1);
+  });
+
+  it('returns 502 cognito_unavailable on generic AdminCreateUser failure', async () => {
+    const { app: inst } = await buildReachPhase2App();
+    cognitoErrApp = inst;
+    cognitoMock.on(AdminCreateUserCommand).rejects(new Error('throttled'));
+
+    const res = await cognitoErrApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'a@b.it',
+        password: 'Secret123',
+        firstName: 'M',
+        lastName: 'R',
+      },
+    });
+
+    expect(res.statusCode).toBe(502);
+    expect(res.json().code).toBe('auth.signup.cognito_unavailable');
   });
 });
