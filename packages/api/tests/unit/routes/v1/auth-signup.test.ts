@@ -249,3 +249,172 @@ describe('POST /v1/auth/signup — CREATE happy path', () => {
     );
   });
 });
+
+// ─── PROMOTE branch — shadow customer with cognitoSub=null ──────────────────
+
+describe('POST /v1/auth/signup — promote shadow', () => {
+  let promoteApp: FastifyInstance;
+
+  beforeEach(async () => {
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+  });
+
+  afterEach(async () => {
+    await promoteApp.close();
+  });
+
+  it('promotes a shadow customer (cognito_sub=null) and returns 201', async () => {
+    const findUnique = vi.fn().mockResolvedValue({
+      id: 'shadow-uuid',
+      email: 'mario@example.it',
+      firstName: 'Mario',
+      lastName: 'R',
+      phone: null,
+      status: 'active',
+      createdAt: new Date('2026-05-04T09:00:00Z'),
+      cognitoSub: null,
+      appInstalled: false,
+    });
+    const update = vi.fn().mockResolvedValue({
+      id: 'shadow-uuid',
+      email: 'mario@example.it',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      phone: '+393331111111',
+      status: 'active',
+      createdAt: new Date('2026-05-04T09:00:00Z'),
+    });
+    const auditCreate = vi.fn().mockResolvedValue({ id: 'audit-2' });
+    const tx = {
+      customer: { findUnique, create: vi.fn(), update },
+      auditLog: { create: auditCreate },
+    };
+    const withContext = vi.fn(async (_ctx: unknown, fn: (t: typeof tx) => Promise<unknown>) =>
+      fn(tx),
+    );
+    promoteApp = Fastify({ logger: false });
+    await promoteApp.register(sensible);
+    registerErrorHandler(promoteApp);
+    await promoteApp.register(databasePlugin, {
+      prisma: {} as never,
+      withContext: withContext as never,
+    });
+    await promoteApp.register(authSignupRoutes);
+    await promoteApp.ready();
+
+    cognitoMock.on(AdminCreateUserCommand).resolves({
+      User: {
+        Username: 'mario@example.it',
+        Attributes: [{ Name: 'sub', Value: 'cog-sub-2' }],
+      },
+    });
+    cognitoMock.on(AdminSetUserPasswordCommand).resolves({});
+
+    const res = await promoteApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'mario@example.it',
+        password: 'Secret123',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        phone: '+393331111111',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'shadow-uuid' },
+        data: expect.objectContaining({
+          firstName: 'Mario',
+          lastName: 'Rossi',
+          phone: '+393331111111',
+          appInstalled: true,
+        }),
+      }),
+    );
+    expect(auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({ promoted: true }),
+        }),
+      }),
+    );
+    // AdminCreateUser called with custom:customer_id pointing at the
+    // existing shadow row, not a new uuid
+    const adminCreateCall = cognitoMock.commandCalls(AdminCreateUserCommand)[0];
+    expect(adminCreateCall?.args[0]?.input?.UserAttributes).toEqual(
+      expect.arrayContaining([{ Name: 'custom:customer_id', Value: 'shadow-uuid' }]),
+    );
+  });
+});
+
+// ─── 409 already-active — cognitoSub already set ────────────────────────────
+
+describe('POST /v1/auth/signup — already active', () => {
+  let activeApp: FastifyInstance;
+
+  beforeEach(async () => {
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+  });
+
+  afterEach(async () => {
+    await activeApp.close();
+  });
+
+  it('returns 409 auth.signup.email_already_active when customer.cognito_sub is set', async () => {
+    const findUnique = vi.fn().mockResolvedValue({
+      id: 'active-uuid',
+      email: 'mario@example.it',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      phone: null,
+      status: 'active',
+      createdAt: new Date('2026-05-04T08:00:00Z'),
+      cognitoSub: 'cog-prev',
+      appInstalled: true,
+    });
+    const create = vi.fn();
+    const update = vi.fn();
+    const auditCreate = vi.fn();
+    const tx = {
+      customer: { findUnique, create, update },
+      auditLog: { create: auditCreate },
+    };
+    const withContext = vi.fn(async (_ctx: unknown, fn: (t: typeof tx) => Promise<unknown>) =>
+      fn(tx),
+    );
+    activeApp = Fastify({ logger: false });
+    await activeApp.register(sensible);
+    registerErrorHandler(activeApp);
+    await activeApp.register(databasePlugin, {
+      prisma: {} as never,
+      withContext: withContext as never,
+    });
+    await activeApp.register(authSignupRoutes);
+    await activeApp.ready();
+
+    const res = await activeApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'mario@example.it',
+        password: 'Secret123',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('auth.signup.email_already_active');
+    expect(create).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    expect(auditCreate).not.toHaveBeenCalled();
+    expect(cognitoMock.commandCalls(AdminCreateUserCommand)).toHaveLength(0);
+  });
+});
