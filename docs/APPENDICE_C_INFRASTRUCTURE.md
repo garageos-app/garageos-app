@@ -78,6 +78,7 @@ Dalla Sezione 5 del documento master:
 
 | Versione | Data | Modifiche principali |
 |---|---|---|
+| **v1.3** | 2026-05-04 | PR 23 ship-a Storage (S3 attachments bucket) e WAF (REGIONAL Web ACL) construct in `GarageosMainStack`. §5.4 CORS `allowedOrigins` riconciliato a `garageos.aifollyadvisor.com` (dominio reale acquisito post-spec). §5.8 confermato REGIONAL scope per API Gateway HTTP API v2; CLOUDFRONT scope deferred a PR 25 (web app static + CloudFront). Lambda execution role grant pre-emptive `s3:GetObject` + `s3:PutObject` scoped al bucket arn/\* (raw policy statement, no L2 helper grantRead/grantPut). Env var Lambda `S3_ATTACHMENTS_BUCKET` per consumo F-OFF-305 (PR successivo). Tag PDF bucket deferred fino a F-OFF-104/109 ship. Prop name `WafConstructProps.ipRequestRateLimit` (non `rateLimitPer5Min` come nelle bozze pre-spec — il window 5-min è platform-fixed WAFv2). |
 | **v1.2** | 2026-04-29 | Sostituito AWS Lambda Web Adapter con l'in-process adapter `@fastify/aws-lambda`. Rationale e dettagli in [ADR-0002](./adr/ADR-0002-replace-lwa-with-fastify-aws-lambda-adapter.md). §5.9 aggiornata per riflettere il nuovo construct (rimosso layer LWA, rimosse env `AWS_LWA_PORT` / `AWS_LWA_READINESS_CHECK_PATH` / `AWS_LWA_ASYNC_INIT` / `AWS_LAMBDA_EXEC_WRAPPER`, aggiunto banner `createRequire` + handler `awsLambdaFastify`). La decisione fondamentale Lambda + API Gateway HTTP API v2 (v1.1) resta invariata. |
 | v1.1 | 2026-04-23 | Runtime backend aggiornato da App Runner a **Lambda + API Gateway HTTP API v2 + Lambda Web Adapter**. Motivazione: App Runner chiuso alle nuove iscrizioni dal 2026-04-30 (AWS announcement). Lambda offre costi 10-30× inferiori al volume pilota (<1M req/mese resta in free tier), scale-to-zero nativo, future-proof AWS. Refactoring packaging backend: bundling esbuild via `aws-cdk-lib/aws-lambda-nodejs` invece di container Docker ECR. Rimosse §10.3 (custom domain manuale): ora gestito da CDK via `aws-cdk-lib/aws-apigatewayv2` `DomainName` + `ApiMapping`. Nuova §11.4 con tabella stime costi backend runtime. **Nota retrospettiva (v1.2)**: la scelta di LWA è stata sostituita 6 giorni dopo — vedi ADR-0002. |
 | v1.0 | 2026-04-22 | Versione iniziale, allineata a `GarageOS-Specifiche.md` v1.5. |
@@ -665,7 +666,10 @@ export class StorageConstruct extends Construct {
       cors: [
         {
           allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
-          allowedOrigins: ['https://app.garageos.it', 'https://garageos.it'],
+          allowedOrigins: [
+            'https://app.garageos.aifollyadvisor.com',
+            'https://garageos.aifollyadvisor.com',
+          ],
           allowedHeaders: ['*'],
           maxAge: 3000,
         },
@@ -675,6 +679,8 @@ export class StorageConstruct extends Construct {
   }
 }
 ```
+
+**Nota retrospettiva (v1.3, 2026-05-04)**: la versione iniziale di questo construct citava `garageos.it` come dominio CORS. Il dominio reale acquisito è `garageos.aifollyadvisor.com` (vedi §7.1) — gli `allowedOrigins` sono allineati di conseguenza. Il bucket name resta `garageos-${environment}-attachments` (stringa semantic, indipendente dal dominio).
 
 ### 5.5 Construct: Cognito User Pools
 
@@ -864,6 +870,8 @@ export class SesConstruct extends Construct {
 ```
 
 ### 5.8 Construct: WAF
+
+**Nota implementativa (v1.3)**: Il `WafConstruct` in PR 23 ship-a con `scope: 'REGIONAL'` literal (non parametrizzato come nel template originale `'REGIONAL' | 'CLOUDFRONT'`) — è attached al stage default di API Gateway HTTP API v2 in eu-central-1. Quando arriverà PR 25 (web app static + CloudFront), un secondo WAF dedicato verrà ship-ato in scope CLOUDFRONT (richiede deployment in us-east-1 — cross-region). Il template dell'interface `WafProps` resta come riferimento per il design futuro multi-scope, ma il construct concreto attuale è specializzato per REGIONAL.
 
 ```typescript
 // lib/constructs/waf.ts
