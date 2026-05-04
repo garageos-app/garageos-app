@@ -1,7 +1,19 @@
-import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  AdminCreateUserCommand,
+  CognitoIdentityProviderClient,
+  InvalidPasswordException,
+  UsernameExistsException,
+} from '@aws-sdk/client-cognito-identity-provider';
+import { mockClient } from 'aws-sdk-client-mock';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { _resetCognitoClientForTests, getCognitoClient } from '../../../src/lib/cognito.js';
+import {
+  _resetCognitoClientForTests,
+  createCustomerCognitoUser,
+  getCognitoClient,
+} from '../../../src/lib/cognito.js';
+
+const cognitoMock = mockClient(CognitoIdentityProviderClient);
 
 describe('lib/cognito — getCognitoClient', () => {
   afterEach(() => {
@@ -24,5 +36,106 @@ describe('lib/cognito — getCognitoClient', () => {
     _resetCognitoClientForTests();
     const b = getCognitoClient();
     expect(a).not.toBe(b);
+  });
+});
+
+describe('lib/cognito — createCustomerCognitoUser', () => {
+  beforeEach(() => {
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+  });
+
+  it('returns the cognito sub from the User.Attributes array', async () => {
+    cognitoMock.on(AdminCreateUserCommand).resolves({
+      User: {
+        Username: 'a@b.it',
+        Attributes: [
+          { Name: 'sub', Value: 'cognito-sub-uuid-123' },
+          { Name: 'email', Value: 'a@b.it' },
+          { Name: 'custom:customer_id', Value: 'customer-uuid-456' },
+        ],
+      },
+    });
+
+    const result = await createCustomerCognitoUser({
+      poolId: 'eu-central-1_xxx',
+      email: 'a@b.it',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      customerId: 'customer-uuid-456',
+    });
+    expect(result.cognitoSub).toBe('cognito-sub-uuid-123');
+
+    const call = cognitoMock.commandCalls(AdminCreateUserCommand)[0];
+    expect(call?.args[0]?.input).toMatchObject({
+      UserPoolId: 'eu-central-1_xxx',
+      Username: 'a@b.it',
+      MessageAction: 'SUPPRESS',
+      UserAttributes: expect.arrayContaining([
+        { Name: 'email', Value: 'a@b.it' },
+        { Name: 'email_verified', Value: 'true' },
+        { Name: 'given_name', Value: 'Mario' },
+        { Name: 'family_name', Value: 'Rossi' },
+        { Name: 'custom:customer_id', Value: 'customer-uuid-456' },
+      ]),
+    });
+  });
+
+  it('throws CognitoEmailAlreadyExistsError on UsernameExistsException', async () => {
+    cognitoMock
+      .on(AdminCreateUserCommand)
+      .rejects(new UsernameExistsException({ message: 'already', $metadata: {} }));
+    await expect(
+      createCustomerCognitoUser({
+        poolId: 'p',
+        email: 'a@b.it',
+        firstName: 'M',
+        lastName: 'R',
+        customerId: 'c',
+      }),
+    ).rejects.toMatchObject({ name: 'CognitoEmailAlreadyExistsError' });
+  });
+
+  it('throws CognitoInvalidPasswordError on InvalidPasswordException', async () => {
+    cognitoMock
+      .on(AdminCreateUserCommand)
+      .rejects(new InvalidPasswordException({ message: 'weak', $metadata: {} }));
+    await expect(
+      createCustomerCognitoUser({
+        poolId: 'p',
+        email: 'a@b.it',
+        firstName: 'M',
+        lastName: 'R',
+        customerId: 'c',
+      }),
+    ).rejects.toMatchObject({ name: 'CognitoInvalidPasswordError' });
+  });
+
+  it('throws CognitoUnavailableError on generic AWS error', async () => {
+    cognitoMock.on(AdminCreateUserCommand).rejects(new Error('throttled'));
+    await expect(
+      createCustomerCognitoUser({
+        poolId: 'p',
+        email: 'a@b.it',
+        firstName: 'M',
+        lastName: 'R',
+        customerId: 'c',
+      }),
+    ).rejects.toMatchObject({ name: 'CognitoUnavailableError' });
+  });
+
+  it('throws CognitoUnavailableError when sub attribute is missing', async () => {
+    cognitoMock.on(AdminCreateUserCommand).resolves({
+      User: { Username: 'a@b.it', Attributes: [{ Name: 'email', Value: 'a@b.it' }] },
+    });
+    await expect(
+      createCustomerCognitoUser({
+        poolId: 'p',
+        email: 'a@b.it',
+        firstName: 'M',
+        lastName: 'R',
+        customerId: 'c',
+      }),
+    ).rejects.toMatchObject({ name: 'CognitoUnavailableError' });
   });
 });

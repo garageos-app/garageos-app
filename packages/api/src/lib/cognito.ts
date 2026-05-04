@@ -1,4 +1,9 @@
-import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
+import {
+  AdminCreateUserCommand,
+  CognitoIdentityProviderClient,
+  InvalidPasswordException,
+  UsernameExistsException,
+} from '@aws-sdk/client-cognito-identity-provider';
 
 import { env } from '../config/env.js';
 
@@ -18,4 +23,71 @@ export function getCognitoClient(): CognitoIdentityProviderClient {
 // Test-only reset hook. Production code never imports this.
 export function _resetCognitoClientForTests(): void {
   _client = null;
+}
+
+// Typed errors thrown by this module. The signup route catches by
+// `name` and maps each to the appropriate HTTP error code. Using the
+// `name` property keeps interop with `error-handler.ts` simple — its
+// dot-separated check sees these names plain and surfaces them as-is.
+export class CognitoEmailAlreadyExistsError extends Error {
+  override name = 'CognitoEmailAlreadyExistsError';
+}
+export class CognitoInvalidPasswordError extends Error {
+  override name = 'CognitoInvalidPasswordError';
+}
+export class CognitoUnavailableError extends Error {
+  override name = 'CognitoUnavailableError';
+  constructor(
+    message: string,
+    public readonly cause?: unknown,
+  ) {
+    super(message);
+  }
+}
+
+export async function createCustomerCognitoUser(args: {
+  poolId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  customerId: string;
+}): Promise<{ cognitoSub: string }> {
+  const client = getCognitoClient();
+  let resp;
+  try {
+    resp = await client.send(
+      new AdminCreateUserCommand({
+        UserPoolId: args.poolId,
+        Username: args.email,
+        MessageAction: 'SUPPRESS',
+        UserAttributes: [
+          { Name: 'email', Value: args.email },
+          { Name: 'email_verified', Value: 'true' },
+          { Name: 'given_name', Value: args.firstName },
+          { Name: 'family_name', Value: args.lastName },
+          { Name: 'custom:customer_id', Value: args.customerId },
+        ],
+      }),
+    );
+  } catch (err) {
+    if (err instanceof UsernameExistsException) {
+      throw new CognitoEmailAlreadyExistsError('Cognito user already exists for this email');
+    }
+    if (err instanceof InvalidPasswordException) {
+      // AdminCreateUser does not validate password (no password is set
+      // here) — but the policy applies via the pool's signup flow if the
+      // SDK ever proxies it. Guard anyway for forward compat.
+      throw new CognitoInvalidPasswordError('Cognito password policy violation');
+    }
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+
+  const sub = resp.User?.Attributes?.find((a) => a.Name === 'sub')?.Value;
+  if (!sub) {
+    throw new CognitoUnavailableError('AdminCreateUser response missing sub attribute');
+  }
+  return { cognitoSub: sub };
 }
