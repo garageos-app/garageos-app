@@ -1,9 +1,21 @@
 name: Deploy infrastructure
 
-# Manual trigger only until AWS account is bootstrapped and OIDC role
-# is wired in GitHub secrets. After the first successful deploy we
-# can flip on `push: branches: [main]` in a follow-up PR.
+# Triggers:
+#   - push to main: auto-deploy GarageosMainStack on changes that affect
+#     the deployed artifact (api/db/shared/infra source, lockfile, this
+#     workflow). The `production` environment gates with required reviewer.
+#   - workflow_dispatch: manual deploy of any stack (kept for OidcStack
+#     bootstrap and ad-hoc redeploys).
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'infrastructure/**'
+      - 'packages/api/**'
+      - 'packages/database/**'
+      - 'packages/shared/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
     inputs:
       stack:
@@ -48,4 +60,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-central-1
       - name: Deploy CDK stack
-        run: pnpm --filter infrastructure cdk deploy ${{ inputs.stack }} --require-approval never
+        # On push trigger `inputs.stack` is empty — fall back to MainStack,
+        # which is the only stack that changes per feature. OidcStack is
+        # bootstrap-only and redeployed via workflow_dispatch when needed.
+        run: pnpm --filter infrastructure cdk deploy ${{ inputs.stack || 'GarageosMainStack' }} --require-approval never

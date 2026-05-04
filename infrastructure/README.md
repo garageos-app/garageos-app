@@ -259,19 +259,20 @@ curl -sf https://api.garageos.it/health
 
 Atteso: `200 OK` con body JSON tipo `{"status":"ok","version":"unknown",...}`.
 
-### F10. Step 9 — Abilitare push trigger (PR di follow-up)
+### F10. Step 9 — Push trigger (attivo)
 
-Una volta confermato che il primo deploy manuale funziona, aprire un PR brevissimo che modifica `.github/workflows/deploy.yml` aggiungendo:
+Dal merge della PR F10 push trigger, `.github/workflows/deploy.yml` triggera automaticamente su `push: branches: [main]` con path filter sui sorgenti che impattano l'artefatto deployato (`infrastructure/**`, `packages/{api,database,shared}/**`, `pnpm-lock.yaml`, il workflow stesso).
 
-```yaml
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-    # … inputs invariati
-```
+Su push trigger viene deployato `GarageosMainStack` (il fallback hardcoded nel job step), perché OidcStack è bootstrap-only. Per redeploy di OidcStack o `--all` si continua a usare `workflow_dispatch` manuale.
 
-Dopo il merge, ogni PR mergiata in `main` triggera deploy automatico, con il gate `environment: production` che richiede approval manuale.
+Il gate `environment: production` richiede approval manuale (required reviewer = Michele Matula, configurato in GitHub Settings → Environments). Senza approval il job rimane in `Waiting`.
+
+**Prerequisiti già configurati in GitHub repo Settings (operator-driven, una tantum):**
+
+- Secret `AWS_DEPLOY_ROLE_ARN` = `arn:aws:iam::<account-id>:role/garageos-github-deploy` (output di `OidcStack`).
+- Environment `production` con required reviewer.
+
+Senza questi due settings il primo run su `main` triggera ma fallisce su missing credentials.
 
 ### F11. Troubleshooting
 
