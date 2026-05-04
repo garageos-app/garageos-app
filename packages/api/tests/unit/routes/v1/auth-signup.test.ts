@@ -447,14 +447,12 @@ describe('POST /v1/auth/signup — Cognito errors', () => {
   it('returns 422 password_policy_violation on AdminCreateUser InvalidPasswordException', async () => {
     const { app: inst } = await buildReachPhase2App();
     cognitoErrApp = inst;
-    cognitoMock
-      .on(AdminCreateUserCommand)
-      .rejects(
-        new InvalidPasswordException({
-          message: 'Password does not conform to policy',
-          $metadata: {},
-        }),
-      );
+    cognitoMock.on(AdminCreateUserCommand).rejects(
+      new InvalidPasswordException({
+        message: 'Password does not conform to policy',
+        $metadata: {},
+      }),
+    );
 
     // Use a payload that passes Zod validation (≥8 chars) so the error
     // originates from Cognito, not from the application-layer schema check.
@@ -545,5 +543,64 @@ describe('POST /v1/auth/signup — Cognito errors', () => {
 
     expect(res.statusCode).toBe(502);
     expect(res.json().code).toBe('auth.signup.cognito_unavailable');
+  });
+});
+
+// ─── Phase 3 best-effort — cognito_sub update failure non-fatal ─────────────
+
+describe('POST /v1/auth/signup — Phase 3 best-effort', () => {
+  let phase3App: FastifyInstance;
+
+  afterEach(async () => {
+    if (phase3App) await phase3App.close();
+  });
+
+  it('returns 201 even when customer.cognito_sub update fails', async () => {
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+
+    const findUnique = vi.fn().mockResolvedValue(null);
+    const create = vi.fn().mockResolvedValue({
+      id: 'c-fail',
+      email: 'a@b.it',
+      firstName: 'M',
+      lastName: 'R',
+      phone: null,
+      status: 'active' as const,
+      createdAt: new Date('2026-05-04T11:00:00Z'),
+    });
+    const auditCreate = vi.fn().mockResolvedValue({ id: 'a-2' });
+    // Phase 3 update rejects — must be non-fatal.
+    const update = vi.fn().mockRejectedValue(new Error('phase3 db hiccup'));
+
+    const tx: FakeTx = {
+      customer: { findUnique, create, update },
+      auditLog: { create: auditCreate },
+    };
+    phase3App = await buildAppWithDb(tx);
+
+    cognitoMock.on(AdminCreateUserCommand).resolves({
+      User: { Attributes: [{ Name: 'sub', Value: 'cog-fail' }] },
+    });
+    cognitoMock.on(AdminSetUserPasswordCommand).resolves({});
+
+    const res = await phase3App.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'a@b.it',
+        password: 'Secret123',
+        firstName: 'M',
+        lastName: 'R',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().customer.id).toBe('c-fail');
+    // Phase 3 update was attempted (and failed silently).
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { cognitoSub: 'cog-fail' } }),
+    );
   });
 });
