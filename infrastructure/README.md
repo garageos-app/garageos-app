@@ -292,7 +292,9 @@ Expected JSON con 2 rule:
 
 ### F-WAF. Verifica WAF Web ACL + association post-deploy
 
-Dopo il primo deploy che ship-a la `WafConstruct` (PR 23), valida i 4 punti seguenti.
+> **DEFERRED a PR 25 (2026-05-04)**: AWS WAFv2 REGIONAL scope **non supporta API Gateway HTTP API v2** — solo REST API v1, ALB, AppSync, Cognito user pool, App Runner, Verified Access. Il `WafConstruct` esiste in `lib/constructs/waf.ts` ma NON è istanziato dal `MainStack` post-fix di PR #51. PR 25 (web app + CloudFront + Cognito Hosted UI) lo istanzierà con `scope: 'CLOUDFRONT'` cross-region (us-east-1) attached al CloudFront distribution che fa edge in front di HTTP API v2. Per v1 pilota i protection layer attivi sono API Gateway throttling (200 burst / 100 rate, vedi `productionConfig.apiGateway`) + Lambda concurrency cap (100). I comandi sotto restano come riferimento per quando PR 25 ship-a il WAF.
+
+Dopo il primo deploy che ship-a la `WafConstruct` (PR 25, deferred — vedi sopra), valida i 4 punti seguenti.
 
 #### F-WAF.a — Web ACL esiste
 

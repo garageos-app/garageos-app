@@ -1,5 +1,4 @@
 import * as cdk from 'aws-cdk-lib';
-import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { Construct } from 'constructs';
 
 import { ApiGatewayConstruct } from '../constructs/api-gateway.js';
@@ -8,15 +7,25 @@ import { DnsConstruct } from '../constructs/dns.js';
 import { LambdaApiConstruct } from '../constructs/lambda-api.js';
 import { SecretsConstruct } from '../constructs/secrets.js';
 import { StorageConstruct } from '../constructs/storage.js';
-import { WafConstruct } from '../constructs/waf.js';
 import { type EnvironmentConfig } from '../config/production.js';
 
-// Single production stack hosting the seven constructs shipped through
-// PR 23 (DNS, Secrets, Cognito, Storage, Lambda API, API Gateway, WAF).
+// Single production stack hosting the six constructs shipped through
+// PR 23 (DNS, Secrets, Cognito, Storage, Lambda API, API Gateway).
+// WAF deferred a PR 25 — AWS WAFv2 REGIONAL non supporta API Gateway
+// HTTP API v2 (solo REST API v1, ALB, AppSync, Cognito, App Runner,
+// Verified Access). Pattern AWS-recommended: CloudFront in front di
+// HTTP API v2 + WAF (CLOUDFRONT scope, us-east-1) — entrambi shipped
+// in PR 25. Per v1 pilota i protection layer sono API Gateway
+// throttling (200 burst / 100 rate) + Lambda concurrency cap (100).
+//
+// `WafConstruct` resta nel codebase (`lib/constructs/waf.ts`) come
+// reusable scaffolding: PR 25 lo istanzierà con `scope: 'CLOUDFRONT'`
+// e cross-region us-east-1.
+//
 // Subsequent PRs add SES+Scheduler+Monitoring (PR 24), web app static
-// + CloudFront + Cognito Hosted UI (PR 25). Stack-split (NetworkStack +
-// ComputeStack) deferred until rollback granularity matters — currently
-// tutto-monolitico.
+// + CloudFront + WAF CLOUDFRONT + Cognito Hosted UI (PR 25). Stack-
+// split (NetworkStack + ComputeStack) deferred until rollback
+// granularity matters — currently tutto-monolitico.
 
 export interface MainStackProps extends cdk.StackProps {
   readonly config: EnvironmentConfig;
@@ -76,27 +85,6 @@ export class MainStack extends cdk.Stack {
       logRetentionDays: config.logRetentionDays,
     });
 
-    // WAF + association DOPO ApiGateway perché serve lo stage ARN.
-    // Stage ARN format AWS-side richiesto da WAFv2:
-    //   arn:<partition>:apigateway:<region>::/apis/<apiId>/stages/<stageName>
-    // Nota il LEADING SLASH prima di `apis` — caratteristica degli AWS service
-    // ARN senza account section. cdk.Stack.formatArn() non produce questo
-    // leading slash quando `account: ''` + `resource: 'apis'` (genera
-    // `::apis/...` invece di `::/apis/...`), quindi WAF rejecta con
-    // "ARN isn't valid". Workaround: building string direttamente con
-    // cdk.Aws.PARTITION/REGION (token-safe).
-    const waf = new WafConstruct(this, 'Waf', {
-      environment: config.environment,
-      ipRequestRateLimit: config.waf.ipRequestRateLimit,
-    });
-
-    const stageArn = `arn:${cdk.Aws.PARTITION}:apigateway:${cdk.Aws.REGION}::/apis/${apiGateway.httpApi.apiId}/stages/${apiGateway.defaultStage.stageName}`;
-
-    new wafv2.CfnWebACLAssociation(this, 'WafApiAssociation', {
-      resourceArn: stageArn,
-      webAclArn: waf.webAcl.attrArn,
-    });
-
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: `https://${config.apiSubdomain}.${config.domainName}`,
     });
@@ -131,10 +119,6 @@ export class MainStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AttachmentsBucketName', {
       value: storage.attachmentsBucket.bucketName,
       description: 'S3 bucket per allegati intervention/dispute (presigned URL upload F-OFF-305)',
-    });
-    new cdk.CfnOutput(this, 'WafWebAclArn', {
-      value: waf.webAcl.attrArn,
-      description: 'WAFv2 Web ACL ARN attached to API Gateway HTTP API v2 default stage',
     });
   }
 }

@@ -358,7 +358,6 @@ describe('MainStack (integration)', () => {
     template.hasOutput('CognitoClientiUserPoolId', {});
     template.hasOutput('CognitoClientiClientId', {});
     template.hasOutput('AttachmentsBucketName', {});
-    template.hasOutput('WafWebAclArn', {});
   });
 
   it('combined resource counts match scope', () => {
@@ -372,26 +371,12 @@ describe('MainStack (integration)', () => {
     // one UserPoolClient).
     template.resourceCountIs('AWS::Cognito::UserPool', 2);
     template.resourceCountIs('AWS::Cognito::UserPoolClient', 2);
-    // PR 23: S3 attachments bucket + WAF WebACL + WebACL association.
+    // PR 23: S3 attachments bucket. WAF deferred a PR 25 (CloudFront
+    // + WAF CLOUDFRONT scope) — WAFv2 REGIONAL non supporta API
+    // Gateway HTTP API v2.
     template.resourceCountIs('AWS::S3::Bucket', 1);
-    template.resourceCountIs('AWS::WAFv2::WebACL', 1);
-    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 1);
-  });
-
-  it('creates a WAF association between the WebACL and the API Gateway default stage', () => {
-    // CfnWebACLAssociation richiede ResourceArn nel formato AWS service ARN
-    // con LEADING SLASH prima di `apis`:
-    //   arn:<partition>:apigateway:<region>::/apis/<apiId>/stages/<stageName>
-    // Il leading `/` è obbligatorio per WAFv2 (vedi commento in main-stack.ts).
-    // Asserzione stringente: il join contiene `::/apis/` per catturare
-    // regression che dropasse il leading slash.
-    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 1);
-    template.hasResourceProperties('AWS::WAFv2::WebACLAssociation', {
-      ResourceArn: Match.objectLike({
-        'Fn::Join': Match.arrayWith([Match.arrayWith([Match.stringLikeRegexp('::/apis/')])]),
-      }),
-      WebACLArn: Match.anyValue(),
-    });
+    template.resourceCountIs('AWS::WAFv2::WebACL', 0);
+    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 0);
   });
 
   it('grants the Lambda execution role minimal S3 permissions on the attachments bucket', () => {
