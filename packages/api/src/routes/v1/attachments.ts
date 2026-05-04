@@ -118,7 +118,11 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = request.tenantId!;
       const cognitoSub = request.userId!;
 
-      return app.withContext({ tenantId }, async (tx) => {
+      // Capture the response payload AFTER withContext resolves (i.e. after
+      // Prisma COMMIT). Calling reply.send() inside the callback would cause
+      // inject() to resolve before COMMIT, making DB assertions in tests see
+      // pre-commit state. All other route handlers follow this same pattern.
+      const result = await app.withContext({ tenantId }, async (tx) => {
         // Defense-in-depth post-PR #27 RLS split: bind user lookup to
         // (cognitoSub, tenantId) to prevent cross-tenant JWT attacks.
         const user = await tx.user.findFirstOrThrow({
@@ -196,15 +200,17 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
 
         const expiresAt = new Date(Date.now() + PRESIGNED_URL_EXPIRY_SECONDS * 1000).toISOString();
 
-        return reply.code(201).send({
+        return {
           attachment_id: attachmentId,
           upload_url: uploadUrl,
           upload_method: 'PUT',
           upload_headers: { 'Content-Type': body.mime_type },
           expires_at: expiresAt,
           callback_url: `/v1/attachments/${attachmentId}/confirm`,
-        });
+        };
       });
+
+      return reply.code(201).send(result);
     },
   );
 
@@ -224,7 +230,11 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = request.tenantId!;
       const cognitoSub = request.userId!;
 
-      return app.withContext({ tenantId }, async (tx) => {
+      // Capture the response payload AFTER withContext resolves (i.e. after
+      // Prisma COMMIT). Calling reply.send() inside the callback would cause
+      // inject() to resolve before COMMIT, making DB assertions in tests see
+      // pre-commit state. All other route handlers follow this same pattern.
+      const result = await app.withContext({ tenantId }, async (tx) => {
         // Defense-in-depth post-PR #27 RLS split: bind user lookup to
         // (cognitoSub, tenantId) to prevent cross-tenant JWT attacks.
         const user = await tx.user.findFirstOrThrow({
@@ -268,7 +278,7 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
 
         // Idempotent: skip S3 verify when already processed.
         if (attachment.processed) {
-          return reply.code(200).send(serializeAttachment(attachment));
+          return serializeAttachment(attachment);
         }
 
         let head: { contentLength: number; contentType: string };
@@ -308,8 +318,10 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
           data: { processed: true },
         });
 
-        return reply.code(200).send(serializeAttachment(updated));
+        return serializeAttachment(updated);
       });
+
+      return reply.code(200).send(result);
     },
   );
 };

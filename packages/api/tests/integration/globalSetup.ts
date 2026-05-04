@@ -78,6 +78,11 @@ export async function setup(): Promise<void> {
   process.env.COGNITO_OFFICINE_CLIENT_ID ??= 'test-officine-client';
   process.env.COGNITO_CLIENTI_POOL_ID ??= 'eu-central-1_TESTCLIENTI';
   process.env.COGNITO_CLIENTI_CLIENT_ID ??= 'test-clienti-client';
+
+  // --- S3 (F-OFF-305 attachments) ---
+  // The real bucket is never hit in tests (aws-sdk-client-mock intercepts
+  // all S3Client calls). A placeholder satisfies the Zod schema check.
+  process.env.S3_ATTACHMENTS_BUCKET ??= 'test-attachments-bucket';
 }
 
 export async function teardown(): Promise<void> {
