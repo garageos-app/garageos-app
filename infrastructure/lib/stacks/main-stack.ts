@@ -77,21 +77,20 @@ export class MainStack extends cdk.Stack {
     });
 
     // WAF + association DOPO ApiGateway perché serve lo stage ARN.
-    // Stage ARN format AWS-side: arn:<partition>:apigateway:<region>::
-    // /apis/<apiId>/stages/<stageName>. Account section vuota perché
-    // apigateway è AWS service ARN (non per-account).
+    // Stage ARN format AWS-side richiesto da WAFv2:
+    //   arn:<partition>:apigateway:<region>::/apis/<apiId>/stages/<stageName>
+    // Nota il LEADING SLASH prima di `apis` — caratteristica degli AWS service
+    // ARN senza account section. cdk.Stack.formatArn() non produce questo
+    // leading slash quando `account: ''` + `resource: 'apis'` (genera
+    // `::apis/...` invece di `::/apis/...`), quindi WAF rejecta con
+    // "ARN isn't valid". Workaround: building string direttamente con
+    // cdk.Aws.PARTITION/REGION (token-safe).
     const waf = new WafConstruct(this, 'Waf', {
       environment: config.environment,
       ipRequestRateLimit: config.waf.ipRequestRateLimit,
     });
 
-    const stageArn = cdk.Stack.of(this).formatArn({
-      service: 'apigateway',
-      account: '',
-      resource: 'apis',
-      resourceName: `${apiGateway.httpApi.apiId}/stages/${apiGateway.defaultStage.stageName}`,
-      arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
-    });
+    const stageArn = `arn:${cdk.Aws.PARTITION}:apigateway:${cdk.Aws.REGION}::/apis/${apiGateway.httpApi.apiId}/stages/${apiGateway.defaultStage.stageName}`;
 
     new wafv2.CfnWebACLAssociation(this, 'WafApiAssociation', {
       resourceArn: stageArn,
