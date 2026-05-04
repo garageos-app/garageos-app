@@ -109,87 +109,95 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
       // ─── Phase 1 — DB transaction ───────────────────────────────────────────
       // withContext signature is { tenantId?: string; customerId?: string;
       // role?: 'admin' | 'user' } — 'system' is not a supported role.
-      // Signup is cross-tenant (no tenantId) and creates data that belongs to
-      // no tenant yet, so we pass an empty ctx object. The underlying
-      // withContext helper accepts all fields as optional, which is equivalent
-      // to passing {} — no RLS rows are filtered because no tenantId is set.
-      // This is intentional for the customer self-registration path.
-      // See §8.1 in docs/superpowers/specs/2026-05-04-api-customer-signup-design.md.
-      const { customer, promoted } = await app.withContext({}, async (tx) => {
-        const existing = await tx.customer.findUnique({
-          where: { email: body.email },
-          select: { ...customerSelfSelect, cognitoSub: true, appInstalled: true },
-        });
-
-        if (existing && existing.cognitoSub !== null) {
-          throw businessError(
-            'auth.signup.email_already_active',
-            409,
-            'Un account con questa email è già registrato. Effettua il login.',
-          );
-        }
-
-        let row;
-        let didPromote: boolean;
-        if (existing) {
-          // PROMOTE branch: shadow customer becomes claimed — see BR-221.
-          didPromote = true;
-          row = await tx.customer.update({
-            where: { id: existing.id },
-            data: {
-              firstName: body.firstName,
-              lastName: body.lastName,
-              ...(body.phone ? { phone: body.phone } : {}),
-              appInstalled: true,
-            },
-            select: customerSelfSelect,
+      // Signup is a cross-tenant public endpoint with no JWT → no tenantId
+      // to scope to. We use role: 'admin' to bypass the customers RLS
+      // _write policy (USING is_admin_role() OR EXISTS related-tenant), which
+      // would otherwise deny PROMOTE and the Phase 3 cognito_sub update for
+      // brand-new customers (no customer_tenant_relations row yet).
+      // The privacy boundary for the customer write here is application-level:
+      // the body is Zod-validated and only writes to the row identified by
+      // the unique email lookup. Mirror of the admin-role usage in
+      // routes/v1/interventions-dispute.ts for the same class of unauthenticated
+      // cross-tenant write. See spec §8.1 in
+      // docs/superpowers/specs/2026-05-04-api-customer-signup-design.md.
+      const { customer, promoted } = await app.withContext(
+        { role: 'admin' as const },
+        async (tx) => {
+          const existing = await tx.customer.findUnique({
+            where: { email: body.email },
+            select: { ...customerSelfSelect, cognitoSub: true, appInstalled: true },
           });
-        } else {
-          // CREATE branch — see BR-220.
-          didPromote = false;
-          try {
-            row = await tx.customer.create({
+
+          if (existing && existing.cognitoSub !== null) {
+            throw businessError(
+              'auth.signup.email_already_active',
+              409,
+              'Un account con questa email è già registrato. Effettua il login.',
+            );
+          }
+
+          let row;
+          let didPromote: boolean;
+          if (existing) {
+            // PROMOTE branch: shadow customer becomes claimed — see BR-221.
+            didPromote = true;
+            row = await tx.customer.update({
+              where: { id: existing.id },
               data: {
-                email: body.email,
                 firstName: body.firstName,
                 lastName: body.lastName,
                 ...(body.phone ? { phone: body.phone } : {}),
-                status: 'active',
                 appInstalled: true,
-                notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
               },
               select: customerSelfSelect,
             });
-          } catch (err) {
-            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-              // Race with concurrent signup — we cannot know whether the
-              // racing request is mid-Phase-2, so the safest response is
-              // 409 (client should redirect to login).
-              throw businessError(
-                'auth.signup.email_already_active',
-                409,
-                'Un account con questa email è già registrato. Effettua il login.',
-              );
+          } else {
+            // CREATE branch — see BR-220.
+            didPromote = false;
+            try {
+              row = await tx.customer.create({
+                data: {
+                  email: body.email,
+                  firstName: body.firstName,
+                  lastName: body.lastName,
+                  ...(body.phone ? { phone: body.phone } : {}),
+                  status: 'active',
+                  appInstalled: true,
+                  notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
+                },
+                select: customerSelfSelect,
+              });
+            } catch (err) {
+              if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+                // Race with concurrent signup — we cannot know whether the
+                // racing request is mid-Phase-2, so the safest response is
+                // 409 (client should redirect to login).
+                throw businessError(
+                  'auth.signup.email_already_active',
+                  409,
+                  'Un account con questa email è già registrato. Effettua il login.',
+                );
+              }
+              throw err;
             }
-            throw err;
           }
-        }
 
-        await tx.auditLog.create({
-          data: {
-            tenantId: null,
-            actorType: 'customer',
-            actorId: row.id,
-            action: 'customer_signup',
-            entityType: 'customer',
-            entityId: row.id,
-            metadata: { promoted: didPromote, ip: request.ip },
-            ipAddress: request.ip,
-          },
-        });
+          await tx.auditLog.create({
+            data: {
+              tenantId: null,
+              actorType: 'customer',
+              actorId: row.id,
+              action: 'customer_signup',
+              entityType: 'customer',
+              entityId: row.id,
+              metadata: { promoted: didPromote, ip: request.ip },
+              ipAddress: request.ip,
+            },
+          });
 
-        return { customer: row, promoted: didPromote };
-      });
+          return { customer: row, promoted: didPromote };
+        },
+      );
 
       // ─── Phase 2 — Cognito (DB tx is closed) ────────────────────────────────
       let cognitoSub: string;
@@ -261,7 +269,7 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
       // Non-fatal: if this fails the customer row lacks cognitoSub but the
       // Cognito custom:customer_id attribute is the authoritative link.
       await app
-        .withContext({}, async (tx) =>
+        .withContext({ role: 'admin' as const }, async (tx) =>
           tx.customer.update({
             where: { id: customer.id },
             data: { cognitoSub },
