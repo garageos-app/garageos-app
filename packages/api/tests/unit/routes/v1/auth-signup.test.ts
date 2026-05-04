@@ -1,4 +1,5 @@
 import sensible from '@fastify/sensible';
+import rateLimitPlugin from '@fastify/rate-limit';
 import {
   AdminCreateUserCommand,
   AdminDeleteUserCommand,
@@ -23,6 +24,10 @@ let app: FastifyInstance;
 
 beforeEach(async () => {
   app = Fastify({ logger: false });
+  // Register rate-limit plugin with global: false so it only fires where
+  // the route opts in via config.rateLimit. This matches server.ts behaviour.
+  // Existing tests are unaffected because none of them opt in.
+  await app.register(rateLimitPlugin, { global: false });
   registerErrorHandler(app);
   await app.register(authSignupRoutes);
   await app.ready();
@@ -138,6 +143,9 @@ async function buildAppWithDb(tx: FakeTx): Promise<FastifyInstance> {
   // Both calls get the same tx stub.
   const withContext = vi.fn(async (_ctx: unknown, fn: (t: FakeTx) => Promise<unknown>) => fn(tx));
   const appInst = Fastify({ logger: false });
+  // Register rate-limit plugin with global: false so it only fires where
+  // the route opts in via config.rateLimit. This matches server.ts behaviour.
+  await appInst.register(rateLimitPlugin, { global: false });
   await appInst.register(sensible);
   registerErrorHandler(appInst);
   await appInst.register(databasePlugin, {
@@ -602,5 +610,73 @@ describe('POST /v1/auth/signup — Phase 3 best-effort', () => {
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { cognitoSub: 'cog-fail' } }),
     );
+  });
+});
+
+// ─── Rate limit — 5 calls / 15 minutes per IP ───────────────────────────────
+
+describe('POST /v1/auth/signup — rate limit', () => {
+  let rateLimitApp: FastifyInstance;
+
+  beforeEach(async () => {
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+
+    // Use a customer with cognitoSub already set so Phase 1 always
+    // returns 409 cheaply — no Cognito calls needed for the first 5 hits.
+    const findUnique = vi.fn().mockResolvedValue({
+      id: 'a',
+      email: 'x@y.it',
+      cognitoSub: 'taken',
+      firstName: 'A',
+      lastName: 'B',
+      phone: null,
+      status: 'active',
+      createdAt: new Date(),
+    });
+    const tx = {
+      customer: { findUnique, create: vi.fn(), update: vi.fn() },
+      auditLog: { create: vi.fn() },
+    };
+    rateLimitApp = await buildAppWithDb(tx as unknown as FakeTx);
+  });
+
+  afterEach(async () => {
+    if (rateLimitApp) await rateLimitApp.close();
+  });
+
+  it('returns 429 auth.signup.rate_limited after 5 calls in 15 minutes from same IP', async () => {
+    // First 5 requests — rejected by business logic (409), not by rate limiter.
+    for (let i = 0; i < 5; i++) {
+      const r = await rateLimitApp.inject({
+        method: 'POST',
+        url: '/v1/auth/signup',
+        payload: {
+          type: 'customer',
+          email: `t${i}@y.it`,
+          password: 'Secret123',
+          firstName: 'A',
+          lastName: 'B',
+        },
+        remoteAddress: '1.2.3.4',
+      });
+      expect(r.statusCode).toBe(409);
+    }
+
+    // 6th request from the same IP must be rate-limited.
+    const sixth = await rateLimitApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 't6@y.it',
+        password: 'Secret123',
+        firstName: 'A',
+        lastName: 'B',
+      },
+      remoteAddress: '1.2.3.4',
+    });
+    expect(sixth.statusCode).toBe(429);
+    expect(sixth.json().code).toBe('auth.signup.rate_limited');
   });
 });
