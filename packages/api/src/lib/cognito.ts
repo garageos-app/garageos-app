@@ -1,9 +1,11 @@
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
   CognitoIdentityProviderClient,
   InvalidPasswordException,
   UsernameExistsException,
+  UserNotFoundException,
 } from '@aws-sdk/client-cognito-identity-provider';
 
 import { env } from '../config/env.js';
@@ -112,6 +114,23 @@ export async function setCustomerCognitoPassword(args: {
     if (err instanceof InvalidPasswordException) {
       throw new CognitoInvalidPasswordError('Cognito password policy violation');
     }
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+}
+
+// Idempotent — swallows UserNotFoundException so callers can use this in
+// rollback paths without checking whether the user was actually created.
+export async function deleteCognitoUser(args: { poolId: string; email: string }): Promise<void> {
+  const client = getCognitoClient();
+  try {
+    await client.send(
+      new AdminDeleteUserCommand({ UserPoolId: args.poolId, Username: args.email }),
+    );
+  } catch (err) {
+    if (err instanceof UserNotFoundException) return;
     throw new CognitoUnavailableError(
       err instanceof Error ? err.message : 'Cognito SDK error',
       err,

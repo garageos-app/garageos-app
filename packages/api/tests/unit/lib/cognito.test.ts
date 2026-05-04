@@ -1,9 +1,11 @@
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
   CognitoIdentityProviderClient,
   InvalidPasswordException,
   UsernameExistsException,
+  UserNotFoundException,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { mockClient } from 'aws-sdk-client-mock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -11,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   _resetCognitoClientForTests,
   createCustomerCognitoUser,
+  deleteCognitoUser,
   getCognitoClient,
   setCustomerCognitoPassword,
 } from '../../../src/lib/cognito.js';
@@ -178,5 +181,33 @@ describe('lib/cognito — setCustomerCognitoPassword', () => {
     await expect(
       setCustomerCognitoPassword({ poolId: 'p', email: 'a@b.it', password: 'x' }),
     ).rejects.toMatchObject({ name: 'CognitoUnavailableError' });
+  });
+});
+
+describe('lib/cognito — deleteCognitoUser', () => {
+  beforeEach(() => {
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+  });
+
+  it('calls AdminDeleteUser with the right input', async () => {
+    cognitoMock.on(AdminDeleteUserCommand).resolves({});
+    await deleteCognitoUser({ poolId: 'p', email: 'a@b.it' });
+    const call = cognitoMock.commandCalls(AdminDeleteUserCommand)[0];
+    expect(call?.args[0]?.input).toEqual({ UserPoolId: 'p', Username: 'a@b.it' });
+  });
+
+  it('swallows UserNotFoundException (idempotent)', async () => {
+    cognitoMock
+      .on(AdminDeleteUserCommand)
+      .rejects(new UserNotFoundException({ message: 'not found', $metadata: {} }));
+    await expect(deleteCognitoUser({ poolId: 'p', email: 'a@b.it' })).resolves.toBeUndefined();
+  });
+
+  it('rethrows generic AWS error as CognitoUnavailableError', async () => {
+    cognitoMock.on(AdminDeleteUserCommand).rejects(new Error('boom'));
+    await expect(deleteCognitoUser({ poolId: 'p', email: 'a@b.it' })).rejects.toMatchObject({
+      name: 'CognitoUnavailableError',
+    });
   });
 });
