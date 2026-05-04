@@ -33,7 +33,7 @@ const MAX_SIZE_BYTES = 26_214_400; // 25 MB
 const PRESIGNED_URL_EXPIRY_SECONDS = 900; // 15 min
 
 const UploadUrlSchema = z.object({
-  owner_type: z.enum(['intervention', 'private_intervention']),
+  owner_type: z.enum(['intervention', 'private_intervention', 'intervention_dispute']),
   owner_id: z.string().uuid(),
   file_name: z
     .string()
@@ -69,7 +69,7 @@ const ConfirmParamsSchema = z.object({
 // AttachmentOwnerType values from the Prisma-generated enum.
 // The type is not re-exported from @garageos/database so we declare
 // it locally as a string union matching the DB enum exactly.
-type AttachmentOwnerType = 'intervention' | 'private_intervention';
+type AttachmentOwnerType = 'intervention' | 'private_intervention' | 'intervention_dispute';
 
 // serializeAttachment converts a DB attachment row to the snake_case
 // JSON wire format (see APPENDICE_A §attachments). Used in confirm responses.
