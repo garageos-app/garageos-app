@@ -45,6 +45,8 @@ beforeEach(async () => {
 // ─── Happy path ──────────────────────────────────────────────────────────────
 
 describe('POST /v1/auth/signup — integration', () => {
+  const TEST_IP = '10.20.30.1';
+
   it('creates a Customer row + AuditLog row, returns 201 (BR-220)', async () => {
     // See BR-220 for the new-customer signup flow.
     cognito.on(AdminCreateUserCommand).resolves({
@@ -55,6 +57,7 @@ describe('POST /v1/auth/signup — integration', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/auth/signup',
+      remoteAddress: TEST_IP,
       payload: {
         type: 'customer',
         email: 'integration1@example.it',
@@ -119,6 +122,8 @@ describe('POST /v1/auth/signup — integration', () => {
 // ─── Promote shadow customer ─────────────────────────────────────────────────
 
 describe('POST /v1/auth/signup — promote shadow customer', () => {
+  const TEST_IP = '10.20.30.2';
+
   it('updates the shadow row + sets cognito_sub, no duplicate (BR-221)', async () => {
     // Seed a shadow customer (officina-created, no cognito_sub).
     // See BR-221 for the promote flow.
@@ -141,6 +146,7 @@ describe('POST /v1/auth/signup — promote shadow customer', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/auth/signup',
+      remoteAddress: TEST_IP,
       payload: {
         type: 'customer',
         email: 'promo@example.it',
@@ -199,6 +205,8 @@ describe('POST /v1/auth/signup — promote shadow customer', () => {
 // ─── Already active (409) ────────────────────────────────────────────────────
 
 describe('POST /v1/auth/signup — already active', () => {
+  const TEST_IP = '10.20.30.3';
+
   it('returns 409 when an active customer exists (cognitoSub set)', async () => {
     await pgAdmin.query(
       `INSERT INTO customers
@@ -212,6 +220,7 @@ describe('POST /v1/auth/signup — already active', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/auth/signup',
+      remoteAddress: TEST_IP,
       payload: {
         type: 'customer',
         email: 'already@example.it',
@@ -229,6 +238,8 @@ describe('POST /v1/auth/signup — already active', () => {
 // ─── BR-220 race condition ────────────────────────────────────────────────────
 
 describe('POST /v1/auth/signup — BR-220 race', () => {
+  const TEST_IP = '10.20.30.4';
+
   it('two concurrent signups same email: one 201, one 409, exactly one Customer row', async () => {
     // See BR-220: concurrent CREATE race must resolve to exactly one row.
     // The loser hits the P2002 catch-and-rethrow-as-409 branch.
@@ -245,8 +256,8 @@ describe('POST /v1/auth/signup — BR-220 race', () => {
       lastName: 'B',
     };
     const [a, b] = await Promise.all([
-      app.inject({ method: 'POST', url: '/v1/auth/signup', payload }),
-      app.inject({ method: 'POST', url: '/v1/auth/signup', payload }),
+      app.inject({ method: 'POST', url: '/v1/auth/signup', remoteAddress: TEST_IP, payload }),
+      app.inject({ method: 'POST', url: '/v1/auth/signup', remoteAddress: TEST_IP, payload }),
     ]);
 
     const codes = [a!.statusCode, b!.statusCode].sort((x, y) => x - y);
@@ -263,6 +274,8 @@ describe('POST /v1/auth/signup — BR-220 race', () => {
 // ─── Phase 2 rollback ────────────────────────────────────────────────────────
 
 describe('POST /v1/auth/signup — Phase 2 rollback', () => {
+  const TEST_IP = '10.20.30.5';
+
   it('on AdminSetUserPassword failure, AdminDeleteUser is invoked + 502', async () => {
     cognito.on(AdminCreateUserCommand).resolves({
       User: { Attributes: [{ Name: 'sub', Value: 'cog-rb' }] },
@@ -273,6 +286,7 @@ describe('POST /v1/auth/signup — Phase 2 rollback', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/auth/signup',
+      remoteAddress: TEST_IP,
       payload: {
         type: 'customer',
         email: 'rb@example.it',
@@ -299,6 +313,8 @@ describe('POST /v1/auth/signup — Phase 2 rollback', () => {
 // ─── Phase 3 success path ─────────────────────────────────────────────────────
 
 describe('POST /v1/auth/signup — Phase 3 success path', () => {
+  const TEST_IP = '10.20.30.6';
+
   it('writes cognito_sub on Phase 3 success', async () => {
     cognito.on(AdminCreateUserCommand).resolves({
       User: { Attributes: [{ Name: 'sub', Value: 'cog-p3' }] },
@@ -308,6 +324,7 @@ describe('POST /v1/auth/signup — Phase 3 success path', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/auth/signup',
+      remoteAddress: TEST_IP,
       payload: {
         type: 'customer',
         email: 'p3@example.it',
