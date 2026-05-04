@@ -323,7 +323,7 @@ aws cloudwatch list-metrics --namespace AWS/WAFV2 --region eu-central-1 \
   --query "Metrics[?Dimensions[?Value=='garageos-production-api-waf']].MetricName" --output text
 ```
 
-Expected output contiene almeno: `AllowedRequests`, `BlockedRequests`, `CountedRequests`, `PassedRequests`. Le metric per-rule (`AWSManagedRulesCommonRuleSet`, `AWSManagedRulesKnownBadInputsRuleSet`, `RateLimitIp`) compaiono **solo dopo che la rule è stata triggered almeno una volta**. Per smoke immediato, `AllowedRequests` basta.
+Expected output contiene almeno: `AllowedRequests`, `BlockedRequests`, `CountedRequests` (le 3 metriche ACL-level pubblicate da WAFv2). Le metric per-rule (`AWSManagedRulesCommonRuleSet`, `AWSManagedRulesKnownBadInputsRuleSet`, `RateLimitIp`) compaiono **solo dopo che la rule è stata triggered almeno una volta**. Per smoke immediato, `AllowedRequests` basta.
 
 #### F-WAF.d — Smoke negative test del rate limit (opzionale)
 
