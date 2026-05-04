@@ -158,8 +158,9 @@ describe('POST /v1/auth/signup — promote shadow customer', () => {
       phone: string;
       cognito_sub: string;
       app_installed: boolean;
+      notification_preferences: unknown;
     }>(
-      `SELECT id, last_name, phone, cognito_sub, app_installed
+      `SELECT id, last_name, phone, cognito_sub, app_installed, notification_preferences
          FROM customers
         WHERE email = $1`,
       ['promo@example.it'],
@@ -170,6 +171,10 @@ describe('POST /v1/auth/signup — promote shadow customer', () => {
     expect(all[0]!.phone).toBe('+393339999999');
     expect(all[0]!.cognito_sub).toBe('cog-int-2');
     expect(all[0]!.app_installed).toBe(true);
+    // BR-226: PROMOTE must also apply the default notification preferences —
+    // shadow rows seeded by an officina carry an empty {} prefs object.
+    const promoPrefs = all[0]!.notification_preferences as { email: { marketing: boolean } };
+    expect(promoPrefs.email.marketing).toBe(false);
 
     // AdminCreateUser was invoked with the shadow's existing id.
     const adminCreateCall = cognito.commandCalls(AdminCreateUserCommand)[0];

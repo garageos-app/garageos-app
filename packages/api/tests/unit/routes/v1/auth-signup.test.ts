@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import databasePlugin from '../../../../src/plugins/database.js';
 import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
 import { _resetCognitoClientForTests } from '../../../../src/lib/cognito.js';
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../../../src/lib/notification-preferences.js';
 import { authSignupRoutes } from '../../../../src/routes/v1/auth-signup.js';
 
 const cognitoMock = mockClient(CognitoIdentityProviderClient);
@@ -220,7 +221,8 @@ describe('POST /v1/auth/signup — CREATE happy path', () => {
     expect(body.customer.status).toBe('active');
     expect(typeof body.customer.createdAt).toBe('string');
 
-    // Phase 1: customer.create called with the right shape
+    // Phase 1: customer.create called with the right shape including
+    // BR-226 default notification preferences.
     expect(tx.customer.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -229,6 +231,7 @@ describe('POST /v1/auth/signup — CREATE happy path', () => {
           lastName: 'Rossi',
           status: 'active',
           appInstalled: true,
+          notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
         }),
       }),
     );
@@ -344,6 +347,9 @@ describe('POST /v1/auth/signup — promote shadow', () => {
           lastName: 'Rossi',
           phone: '+393331111111',
           appInstalled: true,
+          // BR-226: default notification preferences must be applied on PROMOTE
+          // too — shadow rows seeded by an officina carry empty prefs.
+          notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
         }),
       }),
     );

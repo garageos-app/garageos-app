@@ -148,6 +148,11 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
                 lastName: body.lastName,
                 ...(body.phone ? { phone: body.phone } : {}),
                 appInstalled: true,
+                // BR-226: apply default notification preferences on promote,
+                // not just on CREATE — shadow rows seeded by an officina carry
+                // an empty {} prefs object and would never get the defaults
+                // otherwise.
+                notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
               },
               select: customerSelfSelect,
             });
