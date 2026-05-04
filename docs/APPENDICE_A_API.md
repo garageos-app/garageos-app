@@ -635,21 +635,29 @@ Authorization: Bearer <officina_jwt>
 
 ---
 
-### 2.7 `POST /attachments/upload-url` — Presigned URL upload
+### 2.7 `POST /attachments/upload-url` + `POST /attachments/:id/confirm` — Workflow upload allegati
 
 **Feature:** F-OFF-305
-**Auth:** Any User
+**Auth:** Tenant User (officina pool only — clienti pool rejected con 403 finché PR D non shipped)
 
 #### Descrizione
 
-Richiede un URL firmato S3 per l'upload di un allegato. Il client poi uploada direttamente su S3 senza passare dal backend.
+Workflow a 3 step per uploadare allegati a interventi via presigned URL S3:
 
-#### Request
+1. Client chiama `POST /v1/attachments/upload-url` → server insert attachment row con `processed: false`, ritorna URL S3 PUT presigned (15 min) + metadata
+2. Client `PUT` direct su `upload_url` con il file binary (server bypassed)
+3. Client chiama `POST /v1/attachments/:id/confirm` → server verifica via S3 HeadObject, flippa `processed: false → true`
+
+In v1 supporta solo `owner_type: intervention` (officina-side). `private_intervention` rejected con 422 finché PR D ship la CRUD customer-side.
+
+---
+
+#### Request: `POST /v1/attachments/upload-url`
 
 ```http
 POST /v1/attachments/upload-url
 Content-Type: application/json
-Authorization: Bearer <any_user_jwt>
+Authorization: Bearer <officina_user_jwt>
 
 {
   "owner_type": "intervention",
@@ -660,27 +668,94 @@ Authorization: Bearer <any_user_jwt>
 }
 ```
 
+**Validation rules:**
+
+- `owner_type`: enum `intervention | private_intervention`. Solo `intervention` accettato in v1; `private_intervention` ritorna 422.
+- `owner_id`: UUID v4 dell'intervention. Server verifica che appartenga al tenant del caller (RLS scoping). Mismatch o non esistente → 404.
+- `file_name`: 1-255 chars, no null bytes o control chars. Usato solo per display, mai nel S3 key.
+- `mime_type`: enum whitelisted: `image/jpeg | image/png | image/webp | image/heic | application/pdf`.
+- `size_bytes`: int positive, max 25 MB (26_214_400 bytes).
+
 #### Response `201 Created`
 
 ```json
 {
   "attachment_id": "01HKZE...",
-  "upload_url": "https://garageos-prod-attachments.s3.eu-central-1.amazonaws.com/...",
+  "upload_url": "https://garageos-production-attachments.s3.eu-central-1.amazonaws.com/attachments/intervention/01HKXQ.../01HKZE....jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=...",
   "upload_method": "PUT",
   "upload_headers": {
     "Content-Type": "image/jpeg"
   },
-  "expires_at": "2026-04-21T14:47:05Z",
+  "expires_at": "2026-05-04T14:47:05Z",
   "callback_url": "/v1/attachments/01HKZE.../confirm"
 }
 ```
 
-#### Flusso completo upload
+**Importante:** il client DEVE fare PUT con `Content-Type` esatto matchando `mime_type` richiesto + `Content-Length` matchando `size_bytes`. AWS S3 reject l'upload se i header divergono dalle condition signed nell'URL.
 
-1. Client chiama `POST /attachments/upload-url` → riceve URL
-2. Client fa `PUT` diretto su `upload_url` con il file binary
-3. Client chiama `POST /attachments/:id/confirm` per notificare completamento
-4. Backend verifica file esistente su S3, aggiorna `processed: false`, enqueue job compressione
+#### Errori
+
+- `400 VALIDATION_ERROR` — body schema fail (Zod parsing)
+- `401 UNAUTHORIZED` — JWT mancante/invalid
+- `403 FORBIDDEN` — clienti pool JWT (deferred a PR D)
+- `404 attachment.upload.intervention_not_found` — owner_id non esiste o cross-tenant
+- `422 attachment.upload.private_intervention_not_supported` — owner_type=private_intervention
+- `502 attachment.upload.s3_unavailable` — AWS SDK signing fail
+
+---
+
+#### Request: `POST /v1/attachments/:id/confirm`
+
+```http
+POST /v1/attachments/01HKZE.../confirm
+Authorization: Bearer <officina_user_jwt>
+```
+
+(No body. `id` viene dal URL path.)
+
+#### Response `200 OK`
+
+```json
+{
+  "id": "01HKZE...",
+  "owner_type": "intervention",
+  "owner_id": "01HKXQ...",
+  "file_name": "foto-prima.jpg",
+  "mime_type": "image/jpeg",
+  "size_bytes": 2457600,
+  "processed": true,
+  "uploaded_at": "2026-05-04T14:32:10Z"
+}
+```
+
+**Behavior:**
+
+- **Idempotent**: se l'attachment è già `processed: true`, return 200 con stesso payload senza re-call S3. Permette retry sicuro lato client.
+- **Verifica server-side**: invocazione `s3:HeadObject` per leggere `Content-Length` e `Content-Type` dell'oggetto uploadato. Mismatch con `size_bytes`/`mime_type` salvati alla request upload-url → 422 `metadata_mismatch` (defense vs file-swap post-presign).
+- **Auth**: solo l'uploader originario (chi ha chiamato upload-url) può confirmare. Mismatch `uploadedByUserId` → 403.
+
+#### Errori
+
+- `400 VALIDATION_ERROR` — id non UUID
+- `401 UNAUTHORIZED`
+- `403 attachment.confirm.not_uploader` — caller diverso da uploader
+- `404 attachment.confirm.not_found` — attachment non esiste o cross-tenant
+- `422 attachment.confirm.upload_not_found` — file mai uploaded su S3 (presigned URL expirato senza PUT)
+- `422 attachment.confirm.metadata_mismatch` — ContentLength o ContentType S3 non matcha la request originale
+- `502 attachment.confirm.s3_unavailable` — AWS SDK HeadObject error generico
+
+---
+
+#### Flusso completo upload (recap)
+
+1. Client → `POST /attachments/upload-url` ricevi `{attachment_id, upload_url, upload_method: PUT, upload_headers, callback_url}`.
+2. Client → `PUT upload_url` con `Content-Type: <mime>` + `Content-Length: <size>` matching headers.
+3. Client → `POST /attachments/<id>/confirm` (callback_url).
+4. Server flippa `processed: true`.
+
+#### Compression / thumbnail (deferred)
+
+In v1 il `processed: true` flip non triggera compression/thumbnail (cluster G PR 24 con EventBridge fan-out). `thumbnailS3Key` resta `null` finché un futuro Lambda consumer non genera thumbnail post-confirm.
 
 ---
 
@@ -808,8 +883,9 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
-| POST | `/attachments/upload-url` | F-OFF-305 | Any User | **[DETTAGLIATO §2.7]** Richiedi presigned URL |
-| POST | `/attachments/:id/confirm` | F-OFF-305 | Any User | Conferma upload completato |
+| POST | `/attachments/upload-url` | F-OFF-305 | Tenant User | **[DETTAGLIATO §2.7]** Richiede presigned URL upload |
+| POST | `/attachments/:id/confirm` | F-OFF-305 | Tenant User | **[DETTAGLIATO §2.7]** Conferma upload completato |
+| GET | `/attachments/:id` | (deferred) | - | Dettaglio attachment metadata (non shipped in v1) |
 | GET | `/attachments/:id/download-url` | F-OFF-305 | Any User | Presigned URL download (15 min validity) |
 | DELETE | `/attachments/:id` | F-OFF-305 | Any User | Rimuove allegato |
 
