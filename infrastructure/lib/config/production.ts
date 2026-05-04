@@ -28,6 +28,9 @@ export interface EnvironmentConfig {
   readonly cognito: {
     readonly mfaTotpEnabled: boolean;
   };
+  readonly waf: {
+    readonly ipRequestRateLimit: number;
+  };
   readonly logRetentionDays: number;
   readonly synthMock: boolean;
 }
@@ -51,6 +54,9 @@ export const productionConfig: EnvironmentConfig = {
   },
   cognito: {
     mfaTotpEnabled: true,
+  },
+  waf: {
+    ipRequestRateLimit: 2000,
   },
   logRetentionDays: 7,
   synthMock: process.env.CDK_SYNTH_MOCK === 'true',

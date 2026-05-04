@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { Construct } from 'constructs';
 
 import { ApiGatewayConstruct } from '../constructs/api-gateway.js';
@@ -6,13 +7,16 @@ import { CognitoConstruct } from '../constructs/cognito.js';
 import { DnsConstruct } from '../constructs/dns.js';
 import { LambdaApiConstruct } from '../constructs/lambda-api.js';
 import { SecretsConstruct } from '../constructs/secrets.js';
+import { StorageConstruct } from '../constructs/storage.js';
+import { WafConstruct } from '../constructs/waf.js';
 import { type EnvironmentConfig } from '../config/production.js';
 
-// Single production stack hosting the five constructs shipped through
-// PR 22 (DNS, Secrets, Cognito, Lambda API, API Gateway). Subsequent
-// PRs add Storage+WAF (PR 23), SES+Scheduler+Monitoring (PR 24).
-// Stack-split (NetworkStack + ComputeStack) deferred until rollback
-// granularity matters — currently tutto-monolitico.
+// Single production stack hosting the seven constructs shipped through
+// PR 23 (DNS, Secrets, Cognito, Storage, Lambda API, API Gateway, WAF).
+// Subsequent PRs add SES+Scheduler+Monitoring (PR 24), web app static
+// + CloudFront + Cognito Hosted UI (PR 25). Stack-split (NetworkStack +
+// ComputeStack) deferred until rollback granularity matters — currently
+// tutto-monolitico.
 
 export interface MainStackProps extends cdk.StackProps {
   readonly config: EnvironmentConfig;
@@ -39,6 +43,16 @@ export class MainStack extends cdk.Stack {
       mfaTotpEnabled: config.cognito.mfaTotpEnabled,
     });
 
+    // Storage construct ships PRIMA del LambdaApi perché LambdaApi
+    // consuma il bucket via prop (CDK dep graph order).
+    const storage = new StorageConstruct(this, 'Storage', {
+      environment: config.environment,
+      corsAllowedOrigins: [
+        `https://${config.appSubdomain}.${config.domainName}`,
+        `https://${config.domainName}`,
+      ],
+    });
+
     const lambdaApi = new LambdaApiConstruct(this, 'LambdaApi', {
       memoryMb: config.lambda.memoryMb,
       architecture: config.lambda.architecture,
@@ -48,6 +62,7 @@ export class MainStack extends cdk.Stack {
       appSecret: secrets.appSecret,
       officineUserPoolArn: cognito.officineUserPool.userPoolArn,
       clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
+      attachmentsBucket: storage.attachmentsBucket,
     });
 
     const apiGateway = new ApiGatewayConstruct(this, 'ApiGateway', {
@@ -59,6 +74,28 @@ export class MainStack extends cdk.Stack {
       throttleBurst: config.apiGateway.throttleBurst,
       throttleRate: config.apiGateway.throttleRate,
       logRetentionDays: config.logRetentionDays,
+    });
+
+    // WAF + association DOPO ApiGateway perché serve lo stage ARN.
+    // Stage ARN format AWS-side: arn:<partition>:apigateway:<region>::
+    // /apis/<apiId>/stages/<stageName>. Account section vuota perché
+    // apigateway è AWS service ARN (non per-account).
+    const waf = new WafConstruct(this, 'Waf', {
+      environment: config.environment,
+      ipRequestRateLimit: config.waf.ipRequestRateLimit,
+    });
+
+    const stageArn = cdk.Stack.of(this).formatArn({
+      service: 'apigateway',
+      account: '',
+      resource: 'apis',
+      resourceName: `${apiGateway.httpApi.apiId}/stages/${apiGateway.defaultStage.stageName}`,
+      arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
+    });
+
+    new wafv2.CfnWebACLAssociation(this, 'WafApiAssociation', {
+      resourceArn: stageArn,
+      webAclArn: waf.webAcl.attrArn,
     });
 
     new cdk.CfnOutput(this, 'ApiUrl', {
@@ -91,6 +128,14 @@ export class MainStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'CognitoClientiClientId', {
       value: cognito.clientiClient.userPoolClientId,
       description: 'Populate into garageos/production/app secret as COGNITO_CLIENTI_CLIENT_ID',
+    });
+    new cdk.CfnOutput(this, 'AttachmentsBucketName', {
+      value: storage.attachmentsBucket.bucketName,
+      description: 'S3 bucket per allegati intervention/dispute (presigned URL upload F-OFF-305)',
+    });
+    new cdk.CfnOutput(this, 'WafWebAclArn', {
+      value: waf.webAcl.attrArn,
+      description: 'WAFv2 Web ACL ARN attached to API Gateway HTTP API v2 default stage',
     });
   }
 }

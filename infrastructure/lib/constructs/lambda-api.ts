@@ -6,6 +6,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
@@ -24,9 +25,11 @@ import { Construct } from 'constructs';
 // platform engine binaries and is only needed for `prisma migrate`,
 // which we run from operator machines / CI, never from the Lambda.
 //
-// IAM in PR 21 is intentionally minimal: only secretsmanager:GetSecretValue
-// on the appSecret ARN. S3 / Cognito / SES / Scheduler permissions
-// arrive in subsequent PRs together with the construct that needs them.
+// IAM in PR 21 was intentionally minimal: only secretsmanager:GetSecretValue
+// on the appSecret ARN. PR 22 added Cognito admin scoped to the 2 user
+// pool ARNs (pre-emptive). PR 23 adds S3 (s3:GetObject + s3:PutObject)
+// scoped to the attachments bucket arn/* (pre-emptive — F-OFF-305 PR
+// successivo userà la grant per signing presigned URLs).
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +47,11 @@ export interface LambdaApiConstructProps {
   // "construct ships its own IAM" invariant (vs. a follow-up chore PR).
   readonly officineUserPoolArn: string;
   readonly clientiUserPoolArn: string;
+  // Pre-emptive grant: F-OFF-305 presigned upload endpoint (PR successivo)
+  // userà s3:PutObject per signing PUT URLs e s3:GetObject per signed
+  // GETs su attachments di intervention/dispute. Same pattern di Cognito
+  // sopra — il PR che ship-a la risorsa ship-a anche il suo IAM.
+  readonly attachmentsBucket: s3.IBucket;
 }
 
 export class LambdaApiConstruct extends Construct {
@@ -72,6 +80,19 @@ export class LambdaApiConstruct extends Construct {
           'cognito-idp:ListUsers',
         ],
         resources: [props.officineUserPoolArn, props.clientiUserPoolArn],
+      }),
+    );
+
+    // S3 access pre-emptive grant. Raw policy (not L2 grantRead/grantPut)
+    // perché gli helper espandono ad action set più largo del necessario:
+    // grantRead aggiunge s3:List* (ListBucket esplicitamente escluso da
+    // design Q4) + s3:GetBucket*; grantPut aggiunge s3:Abort* +
+    // s3:PutObjectLegalHold/Retention/Tagging. Action minimi GetObject +
+    // PutObject scoped object-level (no bucket-level).
+    executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:GetObject', 's3:PutObject'],
+        resources: [`${props.attachmentsBucket.bucketArn}/*`],
       }),
     );
 
@@ -110,6 +131,10 @@ export class LambdaApiConstruct extends Construct {
         // /var/task/ via commandHooks.afterBundling below; see
         // infrastructure/assets/SUPABASE_CA_NOTES.md.
         NODE_EXTRA_CA_CERTS: '/var/task/supabase-ca.crt',
+        // Bucket name esposto al runtime — il PR F-OFF-305 successivo
+        // lo legge per signing presigned URL. Non-secret (visibile in
+        // CfnOutput AttachmentsBucketName).
+        S3_ATTACHMENTS_BUCKET: props.attachmentsBucket.bucketName,
       },
       bundling: {
         minify: true,

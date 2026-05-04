@@ -7,6 +7,7 @@ import { CognitoConstruct } from '../lib/constructs/cognito.js';
 import { DnsConstruct } from '../lib/constructs/dns.js';
 import { LambdaApiConstruct } from '../lib/constructs/lambda-api.js';
 import { SecretsConstruct } from '../lib/constructs/secrets.js';
+import { StorageConstruct } from '../lib/constructs/storage.js';
 import { MainStack } from '../lib/stacks/main-stack.js';
 import { OidcStack } from '../lib/stacks/oidc-stack.js';
 import { productionConfig } from '../lib/config/production.js';
@@ -138,6 +139,10 @@ describe('LambdaApiConstruct', () => {
     environment: 'production',
     mfaTotpEnabled: true,
   });
+  const storage = new StorageConstruct(stack, 'Storage', {
+    environment: 'production',
+    corsAllowedOrigins: ['https://app.garageos.it'],
+  });
   new LambdaApiConstruct(stack, 'LambdaApi', {
     memoryMb: 1024,
     architecture: 'arm64',
@@ -147,6 +152,7 @@ describe('LambdaApiConstruct', () => {
     appSecret: secrets.appSecret,
     officineUserPoolArn: cognito.officineUserPool.userPoolArn,
     clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
+    attachmentsBucket: storage.attachmentsBucket,
   });
   const template = Template.fromStack(stack);
 
@@ -170,21 +176,24 @@ describe('LambdaApiConstruct', () => {
     }
   });
 
-  it('Lambda env wires NODE_ENV + APP_SECRETS_ARN only', () => {
+  it('Lambda env wires NODE_ENV, APP_SECRETS_ARN, NODE_EXTRA_CA_CERTS, and S3_ATTACHMENTS_BUCKET', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       Environment: {
         Variables: Match.objectLike({
           NODE_ENV: 'production',
           APP_SECRETS_ARN: Match.anyValue(),
+          NODE_EXTRA_CA_CERTS: '/var/task/supabase-ca.crt',
+          S3_ATTACHMENTS_BUCKET: Match.anyValue(),
         }),
       },
     });
   });
 
-  it('execution role has secretsmanager:GetSecretValue and the 4 cognito-idp:Admin* actions, but NO s3 actions', () => {
+  it('execution role has secretsmanager:GetSecretValue, the 4 cognito-idp:Admin* actions, and s3:GetObject + s3:PutObject', () => {
     // Find the inline policy attached to the execution role and check
     // its statements. Presence: secretsmanager:GetSecretValue +
-    // 4 cognito-idp Admin/List actions. Absence: s3:* (deferred to PR 23).
+    // 4 cognito-idp Admin/List actions + s3:GetObject + s3:PutObject
+    // (pre-emptive grant added in PR 23).
     const policies = template.findResources('AWS::IAM::Policy');
     const inlineStatements = Object.values(policies).flatMap(
       (res) => res.Properties.PolicyDocument.Statement as Array<{ Action: string | string[] }>,
@@ -197,7 +206,8 @@ describe('LambdaApiConstruct', () => {
     expect(allActions).toContain('cognito-idp:AdminCreateUser');
     expect(allActions).toContain('cognito-idp:AdminUpdateUserAttributes');
     expect(allActions).toContain('cognito-idp:ListUsers');
-    expect(allActions.some((a) => a.startsWith('s3:'))).toBe(false);
+    expect(allActions).toContain('s3:GetObject');
+    expect(allActions).toContain('s3:PutObject');
   });
 
   it('cognito-idp policy is scoped to both user pool ARNs (not Resource: *)', () => {
@@ -252,6 +262,10 @@ describe('ApiGatewayConstruct', () => {
       environment: 'production',
       mfaTotpEnabled: true,
     });
+    const storage = new StorageConstruct(stack, 'Storage', {
+      environment: 'production',
+      corsAllowedOrigins: ['https://app.garageos.it'],
+    });
     const lambdaApi = new LambdaApiConstruct(stack, 'LambdaApi', {
       memoryMb: 1024,
       architecture: 'arm64',
@@ -261,6 +275,7 @@ describe('ApiGatewayConstruct', () => {
       appSecret: secrets.appSecret,
       officineUserPoolArn: cognito.officineUserPool.userPoolArn,
       clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
+      attachmentsBucket: storage.attachmentsBucket,
     });
     new ApiGatewayConstruct(stack, 'ApiGateway', {
       apiSubdomain: 'api',
@@ -342,6 +357,8 @@ describe('MainStack (integration)', () => {
     template.hasOutput('CognitoOfficineClientId', {});
     template.hasOutput('CognitoClientiUserPoolId', {});
     template.hasOutput('CognitoClientiClientId', {});
+    template.hasOutput('AttachmentsBucketName', {});
+    template.hasOutput('WafWebAclArn', {});
   });
 
   it('combined resource counts match scope', () => {
@@ -355,8 +372,38 @@ describe('MainStack (integration)', () => {
     // one UserPoolClient).
     template.resourceCountIs('AWS::Cognito::UserPool', 2);
     template.resourceCountIs('AWS::Cognito::UserPoolClient', 2);
-    // No S3, no WAF — those arrive in PR 23.
-    template.resourceCountIs('AWS::S3::Bucket', 0);
-    template.resourceCountIs('AWS::WAFv2::WebACL', 0);
+    // PR 23: S3 attachments bucket + WAF WebACL + WebACL association.
+    template.resourceCountIs('AWS::S3::Bucket', 1);
+    template.resourceCountIs('AWS::WAFv2::WebACL', 1);
+    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 1);
+  });
+
+  it('creates a WAF association between the WebACL and the API Gateway default stage', () => {
+    // CfnWebACLAssociation expects ResourceArn = API Gateway stage ARN
+    // (Fn::Join wrapping apiId + stageName). Match.objectLike +
+    // Match.arrayWith perché l'ARN è dynamically constructed via Token.
+    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 1);
+    template.hasResourceProperties('AWS::WAFv2::WebACLAssociation', {
+      ResourceArn: Match.objectLike({
+        'Fn::Join': Match.arrayWith([Match.arrayWith([Match.stringLikeRegexp('apigateway')])]),
+      }),
+      WebACLArn: Match.anyValue(),
+    });
+  });
+
+  it('grants the Lambda execution role minimal S3 permissions on the attachments bucket', () => {
+    // Verify s3:GetObject + s3:PutObject scoped al bucket arn/*.
+    // Action assertion stringent — la grant è raw addToPolicy con
+    // exactly 2 actions, niente espansione.
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Effect: 'Allow',
+            Action: ['s3:GetObject', 's3:PutObject'],
+          }),
+        ]),
+      },
+    });
   });
 });
