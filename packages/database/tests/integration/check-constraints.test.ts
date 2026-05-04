@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createTenantWithLocation, getSystemInterventionTypeId, resetDb } from './helpers.js';
@@ -180,6 +182,159 @@ describe('CHECK constraints and partial unique indexes', () => {
         [vehicleId, owner2Id],
       );
       expect(rows[0]!.id).toBeDefined();
+    });
+  });
+
+  describe('chk_attachment_owner_consistent — intervention_dispute branch', () => {
+    // Helper: create a customer (without tenant relation, just a bare customer row).
+    async function createBareCustomer(): Promise<string> {
+      const { rows } = await pgAdmin.query<{ id: string }>(
+        `INSERT INTO customers (id, email, first_name, last_name, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, 'Mario', 'Rossi', NOW(), NOW())
+         RETURNING id`,
+        [`customer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`],
+      );
+      return rows[0]!.id;
+    }
+
+    // Helper: create a user under tenantId (super_admin role).
+    async function createUserForTenant(tenantId: string, locationId: string): Promise<string> {
+      const { rows } = await pgAdmin.query<{ id: string }>(
+        `INSERT INTO users
+           (id, tenant_id, location_id, cognito_sub, email, role,
+            first_name, last_name, status, created_at, updated_at)
+         VALUES
+           (gen_random_uuid(), $1, $2, $3, $4, 'super_admin'::"UserRole",
+            'Test', 'User', 'active'::"UserStatus", NOW(), NOW())
+         RETURNING id`,
+        [
+          tenantId,
+          locationId,
+          `cog-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`,
+        ],
+      );
+      return rows[0]!.id;
+    }
+
+    it('accepts customer-uploaded dispute attachment (customer_id set, tenant_id set, uploaded_by_customer_id set)', async () => {
+      const { tenantId } = await createTenantWithLocation();
+      const customerId = await createBareCustomer();
+      const interventionId = randomUUID();
+
+      await expect(
+        pgAdmin.query(
+          `INSERT INTO attachments
+             (id, owner_type, owner_id, tenant_id, customer_id,
+              uploaded_by_customer_id, file_name, mime_type, size_bytes,
+              s3_key, s3_bucket, created_at)
+           VALUES
+             (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
+              $1, $2, $3, $3, 'foto.jpg', 'image/jpeg', 1024,
+              'attachments/intervention_dispute/' || $1::text || '/x.jpg', 'test', NOW())`,
+          [interventionId, tenantId, customerId],
+        ),
+      ).resolves.not.toThrow();
+    });
+
+    it('accepts officina-uploaded dispute attachment (customer_id NULL, tenant_id set, uploaded_by_user_id set)', async () => {
+      const { tenantId, locationId } = await createTenantWithLocation();
+      const userId = await createUserForTenant(tenantId, locationId);
+      const interventionId = randomUUID();
+
+      await expect(
+        pgAdmin.query(
+          `INSERT INTO attachments
+             (id, owner_type, owner_id, tenant_id,
+              uploaded_by_user_id, file_name, mime_type, size_bytes,
+              s3_key, s3_bucket, created_at)
+           VALUES
+             (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
+              $1, $2, $3, 'foto.jpg', 'image/jpeg', 1024,
+              'attachments/intervention_dispute/' || $1::text || '/x.jpg', 'test', NOW())`,
+          [interventionId, tenantId, userId],
+        ),
+      ).resolves.not.toThrow();
+    });
+
+    it('rejects intervention_dispute with both uploader columns set', async () => {
+      const { tenantId, locationId } = await createTenantWithLocation();
+      const userId = await createUserForTenant(tenantId, locationId);
+      const customerId = await createBareCustomer();
+      const interventionId = randomUUID();
+
+      await expect(
+        pgAdmin.query(
+          `INSERT INTO attachments
+             (id, owner_type, owner_id, tenant_id, customer_id,
+              uploaded_by_user_id, uploaded_by_customer_id,
+              file_name, mime_type, size_bytes, s3_key, s3_bucket, created_at)
+           VALUES
+             (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
+              $1, $2, $3, $4, $3, 'foto.jpg', 'image/jpeg', 1024,
+              'k', 'b', NOW())`,
+          [interventionId, tenantId, customerId, userId],
+        ),
+      ).rejects.toThrow(/chk_attachment_owner_consistent/);
+    });
+
+    it('rejects intervention_dispute customer-uploaded with customer_id NULL', async () => {
+      const { tenantId } = await createTenantWithLocation();
+      const customerId = await createBareCustomer();
+      const interventionId = randomUUID();
+
+      await expect(
+        pgAdmin.query(
+          `INSERT INTO attachments
+             (id, owner_type, owner_id, tenant_id,
+              uploaded_by_customer_id, file_name, mime_type, size_bytes,
+              s3_key, s3_bucket, created_at)
+           VALUES
+             (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
+              $1, $2, $3, 'foto.jpg', 'image/jpeg', 1024,
+              'k', 'b', NOW())`,
+          [interventionId, tenantId, customerId],
+        ),
+      ).rejects.toThrow(/chk_attachment_owner_consistent/);
+    });
+
+    it('rejects intervention_dispute officina-uploaded with customer_id set', async () => {
+      const { tenantId, locationId } = await createTenantWithLocation();
+      const userId = await createUserForTenant(tenantId, locationId);
+      const customerId = await createBareCustomer();
+      const interventionId = randomUUID();
+
+      await expect(
+        pgAdmin.query(
+          `INSERT INTO attachments
+             (id, owner_type, owner_id, tenant_id, customer_id,
+              uploaded_by_user_id, file_name, mime_type, size_bytes,
+              s3_key, s3_bucket, created_at)
+           VALUES
+             (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
+              $1, $2, $3, $4, 'foto.jpg', 'image/jpeg', 1024,
+              'k', 'b', NOW())`,
+          [interventionId, tenantId, customerId, userId],
+        ),
+      ).rejects.toThrow(/chk_attachment_owner_consistent/);
+    });
+
+    it('rejects intervention_dispute with tenant_id NULL', async () => {
+      const customerId = await createBareCustomer();
+      const interventionId = randomUUID();
+
+      await expect(
+        pgAdmin.query(
+          `INSERT INTO attachments
+             (id, owner_type, owner_id, customer_id,
+              uploaded_by_customer_id, file_name, mime_type, size_bytes,
+              s3_key, s3_bucket, created_at)
+           VALUES
+             (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
+              $1, $2, $2, 'foto.jpg', 'image/jpeg', 1024, 'k', 'b', NOW())`,
+          [interventionId, customerId],
+        ),
+      ).rejects.toThrow(/chk_attachment_owner_consistent/);
     });
   });
 });
