@@ -1,3 +1,5 @@
+import type { PrismaClient } from '@garageos/database';
+
 import { businessError } from './business-error.js';
 
 // Pre-validate + claim helpers per gli attachment legati a una dispute.
@@ -7,20 +9,10 @@ import { businessError } from './business-error.js';
 //
 // Spec: docs/superpowers/specs/2026-05-04-dispute-attachments-wiring-design.md §6.3-6.4
 
-export interface AttachmentValidatorTx {
-  attachment: {
-    findMany: (args: {
-      where: Record<string, unknown>;
-      select: Record<string, unknown>;
-    }) => Promise<
-      Array<{
-        id: string;
-        processed: boolean;
-        disputeId: string | null;
-      }>
-    >;
-  };
-}
+// Use PrismaClient directly so the Prisma type engine can infer the
+// correct row shape from the `select` literal. Tests inject a partial
+// mock via `as never` cast (same pattern as access-log.ts).
+export type AttachmentValidatorTx = PrismaClient;
 
 export type DisputeAttachmentUploader =
   | { customerId: string }

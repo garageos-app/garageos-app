@@ -23,7 +23,7 @@ describe('preValidateAttachmentsForDispute', () => {
       attachment: {
         findMany: vi.fn().mockResolvedValue(rows),
       },
-    };
+    } as never;
   }
 
   it('returns void on empty input', async () => {
