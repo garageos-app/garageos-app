@@ -42,7 +42,7 @@ export class CognitoUnavailableError extends Error {
   override name = 'CognitoUnavailableError';
   constructor(
     message: string,
-    public readonly cause?: unknown,
+    public override readonly cause?: unknown,
   ) {
     super(message);
   }
