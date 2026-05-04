@@ -24,6 +24,16 @@ process.env.COGNITO_CLIENTI_CLIENT_ID ??= 'test-clienti-client';
 // schema parse at module load — no real S3 call is ever made.
 process.env.S3_ATTACHMENTS_BUCKET ??= 'garageos-test-attachments';
 
+// F-OFF-305: presign URL signing in `lib/s3.ts` calls the AWS SDK
+// credential provider chain (separate code path from `S3Client.send`,
+// NOT intercepted by aws-sdk-client-mock). On CI runners no credentials
+// are configured, causing CredentialsProviderError. Provide fake static
+// credentials — signature math runs locally so any string is fine; the
+// signed URL is never actually used because aws-sdk-client-mock catches
+// the eventual `send`.
+process.env.AWS_ACCESS_KEY_ID ??= 'test-access-key-id';
+process.env.AWS_SECRET_ACCESS_KEY ??= 'test-secret-access-key';
+
 // Generate the RS256 key pairs used to sign test JWTs (see
 // tests/helpers/jwt.ts). Top-level await keeps the rest of the suite
 // from running before keys are ready — signTestToken / getTestKey

@@ -83,6 +83,14 @@ export async function setup(): Promise<void> {
   // The real bucket is never hit in tests (aws-sdk-client-mock intercepts
   // all S3Client calls). A placeholder satisfies the Zod schema check.
   process.env.S3_ATTACHMENTS_BUCKET ??= 'test-attachments-bucket';
+
+  // The presigner code path in lib/s3.ts calls the AWS SDK credential
+  // provider chain (NOT intercepted by aws-sdk-client-mock). CI runners
+  // have no credentials → CredentialsProviderError. Fake static creds
+  // make signature math succeed; the resulting signed URL is never used
+  // because aws-sdk-client-mock catches the eventual send.
+  process.env.AWS_ACCESS_KEY_ID ??= 'test-access-key-id';
+  process.env.AWS_SECRET_ACCESS_KEY ??= 'test-secret-access-key';
 }
 
 export async function teardown(): Promise<void> {
