@@ -284,3 +284,158 @@ describe('POST /v1/attachments/upload-url + confirm — integration', () => {
     expect(rows[0]!.tenant_id).toBe(tenantA.tenantId);
   });
 });
+
+describe('POST /v1/attachments/upload-url — intervention_dispute cross-pool', () => {
+  it('officina-pool can upload its own response attachment for an open dispute', async () => {
+    const ctx = await setupTenantWithIntervention();
+    // Create a customer dispute to satisfy the "open dispute" guard
+    const { customerId } = await createCustomer({});
+    await pgAdmin.query(
+      `INSERT INTO intervention_disputes
+         (id, intervention_id, customer_id, reason_category, customer_description,
+          status, resolved_at, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2,
+          'not_performed'::"DisputeReasonCategory",
+          'Contestazione di test lunga abbastanza.',
+          'open'::"DisputeStatus", NULL, NOW(), NOW())`,
+      [ctx.interventionId, customerId],
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: { authorization: `Bearer ${ctx.token}` },
+      payload: {
+        owner_type: 'intervention_dispute',
+        owner_id: ctx.interventionId,
+        file_name: 'risposta.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 1024,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const { attachment_id } = res.json() as { attachment_id: string };
+
+    // Verify: row has tenant_id set, customer_id NULL, uploaded_by_user_id set
+    const { rows } = await pgAdmin.query<{
+      tenant_id: string;
+      customer_id: string | null;
+      uploaded_by_user_id: string;
+      uploaded_by_customer_id: string | null;
+    }>(
+      `SELECT tenant_id, customer_id, uploaded_by_user_id, uploaded_by_customer_id
+         FROM attachments WHERE id = $1`,
+      [attachment_id],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.tenant_id).toBe(ctx.tenantId);
+    expect(rows[0]!.customer_id).toBeNull();
+    expect(rows[0]!.uploaded_by_user_id).toBe(ctx.userId);
+    expect(rows[0]!.uploaded_by_customer_id).toBeNull();
+  });
+
+  it('customer-pool can upload its own dispute attachment when current owner', async () => {
+    const ctx = await setupTenantWithIntervention();
+    const customerCognitoSub = `cust-dispute-${crypto.randomUUID().slice(0, 8)}`;
+    const { customerId } = await createCustomer({ cognitoSub: customerCognitoSub });
+    // Add an ownership for the vehicle (setupTenantWithIntervention already created one
+    // with a different customer; we need one for this specific customer)
+    // Resolve vehicleId from the intervention
+    const { rows: intRows } = await pgAdmin.query<{ vehicle_id: string }>(
+      `SELECT vehicle_id FROM interventions WHERE id = $1`,
+      [ctx.interventionId],
+    );
+    const vehicleId = intRows[0]!.vehicle_id;
+    // End the existing ownership first to be safe (BR-040 — only one active owner)
+    await pgAdmin.query(
+      `UPDATE vehicle_ownerships SET ended_at = NOW() WHERE vehicle_id = $1 AND ended_at IS NULL`,
+      [vehicleId],
+    );
+    // Insert a fresh active ownership for this customer
+    await pgAdmin.query(
+      `INSERT INTO vehicle_ownerships (id, vehicle_id, customer_id, started_at, created_at)
+       VALUES (gen_random_uuid(), $1, $2, NOW(), NOW())`,
+      [vehicleId, customerId],
+    );
+
+    const customerToken = await signTestToken({
+      pool: 'clienti',
+      sub: customerCognitoSub,
+      customerId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: { authorization: `Bearer ${customerToken}` },
+      payload: {
+        owner_type: 'intervention_dispute',
+        owner_id: ctx.interventionId,
+        file_name: 'prova.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 1024,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const { attachment_id } = res.json() as { attachment_id: string };
+
+    // Verify: row has tenant_id (intervention's tenant), customer_id (uploader),
+    // uploaded_by_customer_id (uploader)
+    const { rows } = await pgAdmin.query<{
+      tenant_id: string;
+      customer_id: string | null;
+      uploaded_by_customer_id: string | null;
+      uploaded_by_user_id: string | null;
+    }>(
+      `SELECT tenant_id, customer_id, uploaded_by_customer_id, uploaded_by_user_id
+         FROM attachments WHERE id = $1`,
+      [attachment_id],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.tenant_id).toBe(ctx.tenantId);
+    expect(rows[0]!.customer_id).toBe(customerId);
+    expect(rows[0]!.uploaded_by_customer_id).toBe(customerId);
+    expect(rows[0]!.uploaded_by_user_id).toBeNull();
+  });
+
+  it('customer-pool 403 not_owner when customer no longer owns the vehicle', async () => {
+    const ctx = await setupTenantWithIntervention();
+    const customerCognitoSub = `cust-ex-${crypto.randomUUID().slice(0, 8)}`;
+    const { customerId } = await createCustomer({ cognitoSub: customerCognitoSub });
+
+    // Resolve vehicleId and end all active ownerships (customer is already not owner)
+    const { rows: intRows } = await pgAdmin.query<{ vehicle_id: string }>(
+      `SELECT vehicle_id FROM interventions WHERE id = $1`,
+      [ctx.interventionId],
+    );
+    const vehicleId = intRows[0]!.vehicle_id;
+    await pgAdmin.query(
+      `UPDATE vehicle_ownerships SET ended_at = NOW() WHERE vehicle_id = $1 AND ended_at IS NULL`,
+      [vehicleId],
+    );
+    // This customer never owned it (no ownership row inserted)
+
+    const customerToken = await signTestToken({
+      pool: 'clienti',
+      sub: customerCognitoSub,
+      customerId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: { authorization: `Bearer ${customerToken}` },
+      payload: {
+        owner_type: 'intervention_dispute',
+        owner_id: ctx.interventionId,
+        file_name: 'prova.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 1024,
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { code: string }).code).toBe(
+      'attachment.upload.intervention_dispute_not_owner',
+    );
+  });
+});

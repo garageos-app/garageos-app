@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
+import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { mockClient } from 'aws-sdk-client-mock';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { _resetS3ClientForTests } from '../../src/lib/s3.js';
 import { buildTestServer } from './fixtures.js';
 import {
   createCustomer,
@@ -17,6 +20,8 @@ import {
 } from './helpers.js';
 import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
+
+const s3Mock = mockClient(S3Client);
 
 const VALID_RESPONSE =
   "L'intervento è stato eseguito come da preventivo firmato il 2026-04-20; foglio di lavoro disponibile.";
@@ -34,6 +39,10 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
 
   beforeEach(async () => {
     await resetDb();
+    s3Mock.reset();
+    _resetS3ClientForTests();
+    s3Mock.on(PutObjectCommand).resolves({});
+    s3Mock.on(HeadObjectCommand).resolves({ ContentLength: 1024, ContentType: 'image/jpeg' });
   });
 
   it('200 happy path single dispute: persists tenant_response, flips intervention.status to active, writes access_log row', async () => {
@@ -565,5 +574,180 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     expect(res.statusCode).toBe(409);
     const body = res.json() as { code: string };
     expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
+  });
+});
+
+describe('POST /v1/interventions/:id/dispute-response — attachments integration', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(async () => {
+    await resetDb();
+    s3Mock.reset();
+    _resetS3ClientForTests();
+    s3Mock.on(PutObjectCommand).resolves({});
+    s3Mock.on(HeadObjectCommand).resolves({ ContentLength: 1024, ContentType: 'image/jpeg' });
+  });
+
+  it('full flow: officina uploads response attachment → confirms → responds to dispute with attachmentIds', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('disp-resp-attach');
+    const cognitoSub = `office-resp-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { customerId } = await createCustomer({});
+    await createOwnership({ vehicleId, customerId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      status: 'disputed',
+    });
+    const { disputeId } = await createDispute({ interventionId, customerId, status: 'open' });
+
+    const offToken = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    // Step A: officina uploads a response attachment
+    const upload = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: { authorization: `Bearer ${offToken}` },
+      payload: {
+        owner_type: 'intervention_dispute',
+        owner_id: interventionId,
+        file_name: 'risposta.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 1024,
+      },
+    });
+    expect(upload.statusCode).toBe(201);
+    const { attachment_id, callback_url } = upload.json() as {
+      attachment_id: string;
+      callback_url: string;
+    };
+
+    // Verify: attachment row exists with correct fields
+    const { rows: preRows } = await pgAdmin.query<{
+      tenant_id: string;
+      customer_id: string | null;
+      uploaded_by_user_id: string;
+      dispute_id: string | null;
+      processed: boolean;
+    }>(
+      `SELECT tenant_id, customer_id, uploaded_by_user_id, dispute_id, processed
+         FROM attachments WHERE id = $1`,
+      [attachment_id],
+    );
+    expect(preRows).toHaveLength(1);
+    expect(preRows[0]!.tenant_id).toBe(tenantId);
+    expect(preRows[0]!.customer_id).toBeNull();
+    expect(preRows[0]!.uploaded_by_user_id).toBe(userId);
+    expect(preRows[0]!.dispute_id).toBeNull();
+    expect(preRows[0]!.processed).toBe(false);
+
+    // Step B: confirm the upload
+    const confirm = await app.inject({
+      method: 'POST',
+      url: callback_url,
+      headers: { authorization: `Bearer ${offToken}` },
+    });
+    expect(confirm.statusCode).toBe(200);
+    expect((confirm.json() as { processed: boolean }).processed).toBe(true);
+
+    // Step C: respond to the dispute with attachmentIds
+    const respond = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${interventionId}/dispute-response`,
+      headers: { authorization: `Bearer ${offToken}` },
+      payload: {
+        tenantResponse: VALID_RESPONSE,
+        disputeId,
+        attachmentIds: [attachment_id],
+      },
+    });
+    expect(respond.statusCode).toBe(200);
+    const respondBody = respond.json() as {
+      disputes: Array<{ id: string; attachment_ids: string[] }>;
+      interventionStatus: string;
+    };
+    expect(respondBody.disputes).toHaveLength(1);
+    expect(respondBody.disputes[0]!.id).toBe(disputeId);
+    expect(respondBody.disputes[0]!.attachment_ids).toEqual([attachment_id]);
+    expect(respondBody.interventionStatus).toBe('active');
+
+    // Step D: Verify attachment.dispute_id === disputeId
+    const { rows: claimedRows } = await pgAdmin.query<{ dispute_id: string | null }>(
+      `SELECT dispute_id FROM attachments WHERE id = $1`,
+      [attachment_id],
+    );
+    expect(claimedRows[0]!.dispute_id).toBe(disputeId);
+  });
+
+  it('422 no_open_dispute prevents officina upload when no dispute exists', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('disp-no-dispute');
+    const cognitoSub = `office-nodis-${randomUUID().slice(0, 8)}`;
+    const { userId: _userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      role: 'super_admin',
+      locationId,
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId: _userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+      // no dispute → status stays active
+    });
+
+    const offToken = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: { authorization: `Bearer ${offToken}` },
+      payload: {
+        owner_type: 'intervention_dispute',
+        owner_id: interventionId,
+        file_name: 'risposta.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 1024,
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect((res.json() as { code: string }).code).toBe('attachment.upload.no_open_dispute');
   });
 });
