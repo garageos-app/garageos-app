@@ -15,9 +15,11 @@
     "test:integration": "vitest run -c vitest.integration.config.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1041.0",
     "@aws-sdk/client-secrets-manager": "^3.0.0",
     "@fastify/aws-lambda": "^6.4.0",
     "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^10.3.0",
     "@fastify/sensible": "^6.0.4",
     "@garageos/database": "workspace:*",
     "aws-jwt-verify": "^5.1.1",
@@ -32,6 +34,7 @@
     "@testcontainers/postgresql": "^11.14.0",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.20.0",
+    "aws-sdk-client-mock": "^4.1.0",
     "jose": "^6.2.2",
     "pg": "^8.20.0",
     "testcontainers": "^11.14.0",

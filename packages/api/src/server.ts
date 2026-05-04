@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import rateLimitPlugin from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import Fastify, { type FastifyInstance } from 'fastify';
 
@@ -13,6 +14,7 @@ import interventionCancelRoutes from './routes/v1/interventions-cancel.js';
 import interventionDisputeRoutes from './routes/v1/interventions-dispute.js';
 import interventionDisputeResponseRoutes from './routes/v1/interventions-dispute-response.js';
 import interventionRevisionsListRoutes from './routes/v1/interventions-revisions-list.js';
+import { authSignupRoutes } from './routes/v1/auth-signup.js';
 import interventionUpdateRoutes from './routes/v1/interventions-update.js';
 import interventionRoutes from './routes/v1/interventions.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
@@ -76,6 +78,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   });
 
   await app.register(helmetPlugin);
+  // Rate-limiting plugin registered with global: false — routes opt in via
+  // config.rateLimit. In the Lambda runtime, @fastify/aws-lambda populates
+  // request.ip from x-forwarded-for[0], so no keyGenerator override is needed.
+  await app.register(rateLimitPlugin, { global: false });
   await app.register(sensible);
   registerErrorHandler(app);
   await app.register(databasePlugin, options.database ?? {});
@@ -91,6 +97,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(interventionRevisionsListRoutes);
   await app.register(interventionDisputeRoutes);
   await app.register(interventionDisputeResponseRoutes);
+  await app.register(authSignupRoutes);
   await app.register(interventionCancelRoutes);
   await app.register(meVehicleRoutes);
 

@@ -742,7 +742,7 @@ export class CognitoConstruct extends Construct {
     // --- Pool CLIENTI ---
     this.clientiUserPool = new cognito.UserPool(this, 'ClientiUserPool', {
       userPoolName: `garageos-${props.environment}-clienti`,
-      selfSignUpEnabled: true,
+      selfSignUpEnabled: false, // server-driven signup via /v1/auth/signup
       signInAliases: { email: true },
       autoVerify: { email: true },
       standardAttributes: {
@@ -779,6 +779,8 @@ export class CognitoConstruct extends Construct {
   }
 }
 ```
+
+**`selfSignUpEnabled: false`** (decisione intenzionale, 2026-05-04). Il flusso di registrazione customer è server-driven via `POST /v1/auth/signup` per garantire che `custom:customer_id` sia popolato in modo trusted al momento della creazione del Cognito user (la middleware `clientiContext` valida il claim come PK tabella `customers`). Self-signup nativo Cognito non avrebbe modo di settare `customer_id` senza un PreSignUp lambda trigger separato — costo ingegneristico più alto rispetto al beneficio. Vedi `docs/superpowers/specs/2026-05-04-api-customer-signup-design.md` §3.1.
 
 ### 5.6 Construct: Secrets Manager
 

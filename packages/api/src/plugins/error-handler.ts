@@ -130,6 +130,25 @@ export function registerErrorHandler(app: FastifyInstance): void {
     const status = error.statusCode ?? 500;
 
     if (status >= 500) {
+      // Two paths for 5xx:
+      // - Dot-separated domain code (e.g. 'auth.signup.cognito_unavailable')
+      //   → pass through verbatim. Caller deliberately chose a 5xx domain
+      //   error to signal a known-but-recoverable upstream condition (e.g.
+      //   502 from a Cognito throttle). Mirrors the 4xx domain-code path.
+      // - Anything else (generic Error, framework errors)
+      //   → strip to opaque INTERNAL_SERVER_ERROR. Don't leak internals.
+      const rawName = error.name || 'ERROR';
+      if (/[a-z]\.[a-z]/.test(rawName)) {
+        request.log.warn({ err: error, code: rawName, status }, 'domain-coded 5xx error');
+        const problem = buildProblem(
+          request,
+          rawName,
+          error.name || 'Error',
+          status,
+          error.message,
+        );
+        return sendProblem(reply, problem);
+      }
       request.log.error({ err: error }, 'unhandled error');
       const problem = buildProblem(
         request,

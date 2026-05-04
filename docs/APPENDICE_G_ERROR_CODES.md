@@ -357,6 +357,23 @@ Per fornire dati utili al client per gestire l'errore:
 | `gdpr.export.in_progress` | 409 | info | Export già in corso | |
 | `gdpr.export.not_ready` | 404 | info | Export non ancora pronto | Job async in elaborazione |
 
+### 3.15 Auth — Signup
+
+### `auth.signup.email_already_active` — HTTP 409
+Un account customer con questa email è già registrato e ha un Cognito user collegato. Il client deve mostrare "Effettua il login" (link a flow Cognito InitiateAuth USER_SRP_AUTH).
+
+### `auth.signup.tenant_signup_not_supported` — HTTP 422
+`type=tenant_admin` non è ancora supportato (v1: solo customer). Verrà supportato in PR dedicata.
+
+### `auth.signup.password_policy_violation` — HTTP 422
+La password fornita non soddisfa la policy del Cognito user pool clienti (min 8 caratteri, almeno una minuscola, almeno una cifra). Il client deve evidenziare il campo password.
+
+### `auth.signup.cognito_unavailable` — HTTP 502
+Cognito non risponde (throttle / outage). Il client deve mostrare un messaggio "riprova tra qualche istante". Auto-retry con backoff è opzionale (idempotenza non garantita: il signup potrebbe aver creato il Customer row e fallito al passo Cognito).
+
+### `auth.signup.rate_limited` — HTTP 429
+Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il client deve rispettare l'header `Retry-After` o il campo `retry_after_seconds` nel body.
+
 ---
 
 ## 4. Mapping a classi eccezione backend
