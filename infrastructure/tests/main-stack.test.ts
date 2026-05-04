@@ -379,13 +379,16 @@ describe('MainStack (integration)', () => {
   });
 
   it('creates a WAF association between the WebACL and the API Gateway default stage', () => {
-    // CfnWebACLAssociation expects ResourceArn = API Gateway stage ARN
-    // (Fn::Join wrapping apiId + stageName). Match.objectLike +
-    // Match.arrayWith perché l'ARN è dynamically constructed via Token.
+    // CfnWebACLAssociation richiede ResourceArn nel formato AWS service ARN
+    // con LEADING SLASH prima di `apis`:
+    //   arn:<partition>:apigateway:<region>::/apis/<apiId>/stages/<stageName>
+    // Il leading `/` è obbligatorio per WAFv2 (vedi commento in main-stack.ts).
+    // Asserzione stringente: il join contiene `::/apis/` per catturare
+    // regression che dropasse il leading slash.
     template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 1);
     template.hasResourceProperties('AWS::WAFv2::WebACLAssociation', {
       ResourceArn: Match.objectLike({
-        'Fn::Join': Match.arrayWith([Match.arrayWith([Match.stringLikeRegexp('apigateway')])]),
+        'Fn::Join': Match.arrayWith([Match.arrayWith([Match.stringLikeRegexp('::/apis/')])]),
       }),
       WebACLArn: Match.anyValue(),
     });
