@@ -265,11 +265,14 @@ Per fornire dati utili al client per gestire l'errore:
 | `intervention.dispute.already_exists` | 409 | info | Contestazione già aperta | Una per customer per intervention | BR-122 |
 | `intervention.dispute.not_owner` | 403 | warning | Solo il proprietario può contestare | | BR-120 |
 | `intervention.dispute.description_too_short` | 400 | info | Descrizione contestazione troppo breve | <20 caratteri | BR-124 |
-| `intervention.dispute.attachments_not_supported` | 422 | info | Allegati non supportati in v1 | `attachment_ids`/`attachmentIds` non vuoto; storage layer non shipped | |
+| `intervention.dispute.attachment_not_found` | 422 | warning | attachmentId non valido o non uploadato dal caller | Verifica che gli id siano stati uploadati con owner_type=intervention_dispute, owner_id=intervention.id, dal pool corrente |  |
+| `intervention.dispute.attachment_not_processed` | 422 | warning | attachmentId esiste ma `processed=false` | Chiama `POST /v1/attachments/<id>/confirm` prima di passarlo nella dispute |  |
+| `intervention.dispute.attachment_already_claimed` | 409 | warning | attachmentId già linked a un'altra dispute | Ottieni un nuovo upload-url e riuploada |  |
 | `intervention.dispute.response.not_your_intervention` | 403 | warning | Contestazione di altro tenant (~~reservato — sostituito da RLS-as-404 in v1~~) | | |
 | `intervention.dispute.response.description_too_short` | 400 | info | Risposta troppo breve | <20 caratteri | BR-129 |
 | `intervention.dispute.response.permission_denied` | 403 | warning | Ruolo non autorizzato a rispondere | Ruolo fuori da {super_admin, mechanic} | BR-129 |
 | `intervention.dispute.response.no_active_dispute` | 409 | info | Nessuna contestazione `open` da rispondere | Omitted dispute_id senza target oppure dispute_id su stato non `open` | BR-129 |
+| `intervention.dispute.response.attachments_require_dispute_id` | 422 | warning | Officina fanout (no dispute_id) + attachmentIds non empty | Specifica `dispute_id` nella request body |  |
 | `intervention.revisions.not_owner` | 403 | warning | Solo il proprietario può consultare lo storico modifiche | Cliente non proprietario attivo del veicolo dell'intervento | BR-064 |
 
 ### 3.7 Interventi privati
@@ -386,6 +389,10 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 | `attachment.upload.size_too_large` | 422 (oggi: 400 VALIDATION_ERROR) | `size_bytes > 26_214_400` (25 MB) | Comprimi o splitta il file. Limit attuale 25 MB per attachment. |
 | `attachment.upload.invalid_file_name` | 422 (oggi: 400 VALIDATION_ERROR) | `file_name` vuoto, troppo lungo (>255), o contiene null/control bytes | Sanitizza il nome lato client prima del POST. |
 | `attachment.upload.s3_unavailable` | 502 | AWS SDK signing fail (errori temporanei AWS) | Retry con exponential backoff. Se persistente, errore lato server. |
+| `attachment.upload.intervention_dispute_not_owner` | 403 | Customer-pool non è current owner del veicolo dell'intervention | Solo current owner può allegare prove a una dispute |
+| `attachment.upload.intervention_dispute_role_denied` | 403 | Officina-pool con role non in `[super_admin, mechanic]` | Verifica il ruolo dell'utente |
+| `attachment.upload.no_open_dispute` | 422 | Officina upload con `owner_type=intervention_dispute` ma nessuna dispute `open` esiste | Crea/verifica la dispute prima |
+| `attachment.upload.officina_only` | 403 | Clienti-pool tenta `owner_type=intervention` (officina-only) | Usa officina-pool token |
 | `attachment.confirm.not_found` | 404 | Attachment id non esiste o appartiene ad altro tenant | Verifica l'id; richiamare upload-url se l'attachment è stato pulito (deferred lifecycle). |
 | `attachment.confirm.not_uploader` | 403 | Caller diverso dall'uploader originario | Solo chi ha chiamato upload-url può confirmare. Per re-upload, ottieni un nuovo upload-url. |
 | `attachment.confirm.upload_not_found` | 422 | S3 HeadObject ritorna NoSuchKey o 404 | L'upload non è atterrato su S3 (URL expirato o PUT mai effettuato). Re-richiedi upload-url e ritenta. |
@@ -778,7 +785,11 @@ attachment.deletion.locked
 attachment.download.permission_denied
 attachment.not_found
 attachment.upload.confirmation_mismatch
+attachment.upload.intervention_dispute_not_owner
+attachment.upload.intervention_dispute_role_denied
 attachment.upload.mime_not_allowed
+attachment.upload.no_open_dispute
+attachment.upload.officina_only
 attachment.upload.too_large
 attachment.upload.too_many
 attachment.upload.url_expired
@@ -828,9 +839,12 @@ intervention.creation.odometer_decrease_warning
 intervention.creation.parts_invalid
 intervention.creation.type_not_found
 intervention.dispute.already_exists
-intervention.dispute.attachments_not_supported
+intervention.dispute.attachment_already_claimed
+intervention.dispute.attachment_not_found
+intervention.dispute.attachment_not_processed
 intervention.dispute.description_too_short
 intervention.dispute.not_owner
+intervention.dispute.response.attachments_require_dispute_id
 intervention.dispute.response.description_too_short
 intervention.dispute.response.no_active_dispute
 intervention.dispute.response.not_your_intervention
@@ -904,7 +918,7 @@ vehicle.not_found
 vehicle.pending.duplicate_vin_certified
 ```
 
-**Totale: ~120 error code documentati in v1.0.**
+**Totale: ~128 error code documentati in v1.0.**
 
 ---
 
