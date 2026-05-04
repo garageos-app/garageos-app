@@ -24,7 +24,7 @@ PR successivi: Storage+WAF (PR 23), SES+Scheduler+Monitoring (PR 24), Web app S3
 ### F2. Step 1 — CDK bootstrap (una tantum per account+region)
 
 ```bash
-pnpm --filter infrastructure cdk bootstrap aws://ACCOUNT_ID/eu-central-1
+pnpm --filter infrastructure exec cdk bootstrap aws://ACCOUNT_ID/eu-central-1
 ```
 
 Sostituire `ACCOUNT_ID` con il numero account AWS (12 cifre).
@@ -60,7 +60,7 @@ Deve restituire un `/hostedzone/Z...` non vuoto.
 ### F4. Step 3 — Deploy OidcStack
 
 ```bash
-pnpm --filter infrastructure cdk deploy GarageosOidcStack
+pnpm --filter infrastructure exec cdk deploy GarageosOidcStack
 ```
 
 Output stampa:
@@ -86,7 +86,7 @@ A questo punto il workflow `deploy.yml` può assumere il ruolo via OIDC senza ac
 
 ```bash
 rm -rf infrastructure/cdk.out infrastructure/cdk.context.json
-pnpm --filter infrastructure cdk synth GarageosMainStack
+pnpm --filter infrastructure exec cdk synth GarageosMainStack
 ```
 
 Se c'è un errore "Hosted zone for garageos.it not found", attendere qualche minuto e ripetere.
@@ -94,7 +94,7 @@ Se c'è un errore "Hosted zone for garageos.it not found", attendere qualche min
 ### F6. Step 5 — Primo deploy MainStack (con secret placeholder)
 
 ```bash
-pnpm --filter infrastructure cdk deploy GarageosMainStack
+pnpm --filter infrastructure exec cdk deploy GarageosMainStack
 ```
 
 Tempo atteso: **10-15 minuti** (la voce più lenta è la validazione DNS del certificato ACM, 5-10 min). Mantenere il terminale aperto.
@@ -303,7 +303,7 @@ Tempo totale: ~10-15 min (re-bundling Lambda + CloudFormation update).
 CDK_SYNTH_MOCK=true pnpm --filter infrastructure synth
 
 # Diff vs lo stack deployato
-pnpm --filter infrastructure cdk diff GarageosMainStack
+pnpm --filter infrastructure exec cdk diff GarageosMainStack
 
 # Test assertion sul template
 pnpm --filter infrastructure test
@@ -328,7 +328,7 @@ the Postgres TLS handshake is properly chain-validated.
 The PR merges with the cert + env var already wired. Deploy:
 
 ```bash
-pnpm --filter @garageos/infrastructure cdk deploy GarageosMainStack
+pnpm --filter @garageos/infrastructure exec cdk deploy GarageosMainStack
 ```
 
 Smoke: `curl https://api.garageos.aifollyadvisor.com/health` → 200, `database: ok`.
