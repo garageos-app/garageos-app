@@ -234,6 +234,120 @@ Stessa logica di F7.5.a su `updated_at`: raw SQL bypassa il `@updatedAt` Prisma,
 4. `curl -H "Authorization: Bearer $ID_TOKEN" https://api.garageos.it/v1/vehicles` — attendersi `200` con array vuoto, o `404`.
 5. Se ricevuto `401`: probabile mismatch issuer/audience nel JWT verifier vs pool/client ID nel secret. Verificare con la Cognito console + il secret content (`aws secretsmanager get-secret-value --secret-id garageos/production/app`).
 
+### F-Storage. Verifica S3 attachments bucket post-deploy
+
+Dopo il primo deploy che ship-a la `StorageConstruct` (PR 23), valida i 5 punti seguenti dalla shell con AWS CLI configurato per l'account production. Il bucket name è esposto come CfnOutput `AttachmentsBucketName` (anche su SSM ricavabile da CloudFormation describe-stacks).
+
+#### F-Storage.a — Bucket esiste
+
+```bash
+aws s3api head-bucket --bucket garageos-production-attachments
+```
+
+Expected: zero output, exit 0. Failure mode `404 NoSuchBucket` → CDK deploy non è atterrato. `403 Forbidden` → AWS principal manca permission (escalation IAM).
+
+#### F-Storage.b — Encryption AES256
+
+```bash
+aws s3api get-bucket-encryption --bucket garageos-production-attachments
+```
+
+Expected JSON contiene `Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm = "AES256"`.
+
+#### F-Storage.c — Versioning enabled
+
+```bash
+aws s3api get-bucket-versioning --bucket garageos-production-attachments
+```
+
+Expected `{"Status": "Enabled"}`. Non confondere con `MFADelete` (separato, non config-ato in v1).
+
+#### F-Storage.d — CORS configurato
+
+```bash
+aws s3api get-bucket-cors --bucket garageos-production-attachments
+```
+
+Expected JSON con 1 rule: `AllowedMethods: ["GET", "PUT"]`, `AllowedOrigins: ["https://app.garageos.aifollyadvisor.com", "https://garageos.aifollyadvisor.com"]`, `AllowedHeaders: ["*"]`, `MaxAgeSeconds: 3000`.
+
+Failure: se `CORSRule` array vuoto, il CDK deploy non ha applicato la CORS (cd `infrastructure/` && `cdk diff` per check).
+
+#### F-Storage.e — Lifecycle rules
+
+```bash
+aws s3api get-bucket-lifecycle-configuration --bucket garageos-production-attachments
+```
+
+Expected JSON con 2 rule:
+
+1. `Id: "transition-to-ia"`, `Transitions[0]: {Days: 90, StorageClass: "STANDARD_IA"}`, `NoncurrentVersionExpiration: {NoncurrentDays: 30}`.
+2. `Id: "abort-incomplete-uploads"`, `AbortIncompleteMultipartUpload: {DaysAfterInitiation: 7}`.
+
+#### Failure modes
+
+- **`BucketAlreadyExists`** (deploy time): name `garageos-production-attachments` è globalmente reservato da altro account AWS. Workaround: rinominare in `productionConfig` e re-deploy. Probabilità bassissima (nome semantic specifico al progetto).
+- **CORS preflight 403 da browser**: l'origine richiedente non matcha la lista. Verificare che la web app usi esattamente `https://app.garageos.aifollyadvisor.com` (no trailing slash, no `www.`).
+- **Lifecycle non scatta visibile**: AWS applica le rule entro ~24h dal trigger event. Per test rapido, set un object con `aws s3api put-object` e check manuale dopo 24h.
+- **Versioning impossibile da disabilitare**: una volta enabled, AWS permette solo Suspended (non Off). Decisione consapevole, mantenere Enabled.
+
+### F-WAF. Verifica WAF Web ACL + association post-deploy
+
+Dopo il primo deploy che ship-a la `WafConstruct` (PR 23), valida i 4 punti seguenti.
+
+#### F-WAF.a — Web ACL esiste
+
+```bash
+aws wafv2 list-web-acls --scope REGIONAL --region eu-central-1
+```
+
+Expected JSON output contiene un WebACL con `Name: "garageos-production-api-waf"`. Capture il `Id` per il prossimo step.
+
+#### F-WAF.b — Association al stage API Gateway
+
+```bash
+# Ricava lo stage ARN
+API_ID=$(aws apigatewayv2 get-apis --region eu-central-1 \
+  --query "Items[?Name=='garageos-api'].ApiId" --output text)
+STAGE_ARN="arn:aws:apigateway:eu-central-1::/apis/${API_ID}/stages/\$default"
+
+# Verifica association
+aws wafv2 get-web-acl-for-resource --resource-arn "$STAGE_ARN" --region eu-central-1
+```
+
+Expected JSON ritorna `WebACL.Name: "garageos-production-api-waf"`. Failure `WAFNonexistentItemException` → association non applicata, controllare CFN events della stack.
+
+#### F-WAF.c — CloudWatch metrics attive
+
+```bash
+aws cloudwatch list-metrics --namespace AWS/WAFV2 --region eu-central-1 \
+  --query "Metrics[?Dimensions[?Value=='garageos-production-api-waf']].MetricName" --output text
+```
+
+Expected output contiene almeno: `AllowedRequests`, `BlockedRequests`, `CountedRequests` (le 3 metriche ACL-level pubblicate da WAFv2). Le metric per-rule (`AWSManagedRulesCommonRuleSet`, `AWSManagedRulesKnownBadInputsRuleSet`, `RateLimitIp`) compaiono **solo dopo che la rule è stata triggered almeno una volta**. Per smoke immediato, `AllowedRequests` basta.
+
+#### F-WAF.d — Smoke negative test del rate limit (opzionale)
+
+Per validare che il rate limit fa block, simula 3000+ req/5min da single IP a `/health` (rate limit 2000/5min):
+
+```bash
+# Da workstation operator
+ab -n 3000 -c 100 https://api.garageos.aifollyadvisor.com/health
+```
+
+Expected: dopo ~2000 req il WAF inizia a rispondere con `403 Forbidden`. Se TUTTE le 3000 ritornano 200, controllare:
+
+1. Association presente (F-WAF.b)
+2. Rule priority 3 con action Block (`aws wafv2 get-web-acl --id <id> --scope REGIONAL --region eu-central-1`)
+
+Smoke opzionale — il rate limit è eventually consistent (sliding window 5min), può richiedere 1-2 minuti di window perché si "saturi".
+
+#### Failure modes
+
+- **Association non visibile** post-deploy: stage ARN format errato. AWS richiede `arn:aws:apigateway:<region>::/apis/<apiId>/stages/<stageName>` con account section vuota e `$default` literal (non URL-encoded).
+- **Falsi positivi CommonRuleSet** che bloccano traffico legittimo: workaround in CDK aggiungere `excludedRules` alla rule specifica nel `WafConstruct`. Ricognoscere via CloudWatch logs `AWS-WAF-Logs-<region>` (se enabled) o sampled requests in console.
+- **Rate limit non kicks in**: il counter è eventually consistent (~30s-2min lag). Per test deterministico, aumentare burst velocemente o ridurre il limit temporaneamente.
+- **CLOUDFRONT scope necessario in futuro**: PR 25 (web app + CloudFront) creerà un secondo WAF in us-east-1 — `WafConstruct` come scritto NON è cross-region, dovrà essere parametrizzato o duplicato.
+
 ### F8. Step 7 — Forza cold start della Lambda
 
 Per far rileggere il secret aggiornato, invalidiamo i container Lambda warm aggiungendo una env var arbitraria:
