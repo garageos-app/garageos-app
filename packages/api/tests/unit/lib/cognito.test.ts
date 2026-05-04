@@ -1,5 +1,6 @@
 import {
   AdminCreateUserCommand,
+  AdminSetUserPasswordCommand,
   CognitoIdentityProviderClient,
   InvalidPasswordException,
   UsernameExistsException,
@@ -11,6 +12,7 @@ import {
   _resetCognitoClientForTests,
   createCustomerCognitoUser,
   getCognitoClient,
+  setCustomerCognitoPassword,
 } from '../../../src/lib/cognito.js';
 
 const cognitoMock = mockClient(CognitoIdentityProviderClient);
@@ -136,6 +138,45 @@ describe('lib/cognito — createCustomerCognitoUser', () => {
         lastName: 'R',
         customerId: 'c',
       }),
+    ).rejects.toMatchObject({ name: 'CognitoUnavailableError' });
+  });
+});
+
+describe('lib/cognito — setCustomerCognitoPassword', () => {
+  beforeEach(() => {
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+  });
+
+  it('calls AdminSetUserPassword with Permanent=true', async () => {
+    cognitoMock.on(AdminSetUserPasswordCommand).resolves({});
+    await setCustomerCognitoPassword({
+      poolId: 'p',
+      email: 'a@b.it',
+      password: 'SuperSecret123',
+    });
+    const call = cognitoMock.commandCalls(AdminSetUserPasswordCommand)[0];
+    expect(call?.args[0]?.input).toEqual({
+      UserPoolId: 'p',
+      Username: 'a@b.it',
+      Password: 'SuperSecret123',
+      Permanent: true,
+    });
+  });
+
+  it('throws CognitoInvalidPasswordError on InvalidPasswordException', async () => {
+    cognitoMock
+      .on(AdminSetUserPasswordCommand)
+      .rejects(new InvalidPasswordException({ message: 'weak', $metadata: {} }));
+    await expect(
+      setCustomerCognitoPassword({ poolId: 'p', email: 'a@b.it', password: 'x' }),
+    ).rejects.toMatchObject({ name: 'CognitoInvalidPasswordError' });
+  });
+
+  it('throws CognitoUnavailableError on generic AWS error', async () => {
+    cognitoMock.on(AdminSetUserPasswordCommand).rejects(new Error('boom'));
+    await expect(
+      setCustomerCognitoPassword({ poolId: 'p', email: 'a@b.it', password: 'x' }),
     ).rejects.toMatchObject({ name: 'CognitoUnavailableError' });
   });
 });

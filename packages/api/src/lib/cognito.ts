@@ -1,5 +1,6 @@
 import {
   AdminCreateUserCommand,
+  AdminSetUserPasswordCommand,
   CognitoIdentityProviderClient,
   InvalidPasswordException,
   UsernameExistsException,
@@ -90,4 +91,30 @@ export async function createCustomerCognitoUser(args: {
     throw new CognitoUnavailableError('AdminCreateUser response missing sub attribute');
   }
   return { cognitoSub: sub };
+}
+
+export async function setCustomerCognitoPassword(args: {
+  poolId: string;
+  email: string;
+  password: string;
+}): Promise<void> {
+  const client = getCognitoClient();
+  try {
+    await client.send(
+      new AdminSetUserPasswordCommand({
+        UserPoolId: args.poolId,
+        Username: args.email,
+        Password: args.password,
+        Permanent: true,
+      }),
+    );
+  } catch (err) {
+    if (err instanceof InvalidPasswordException) {
+      throw new CognitoInvalidPasswordError('Cognito password policy violation');
+    }
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
 }
