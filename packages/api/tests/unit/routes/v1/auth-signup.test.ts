@@ -538,6 +538,38 @@ describe('POST /v1/auth/signup — Cognito errors', () => {
     expect(cognitoMock.commandCalls(AdminDeleteUserCommand)).toHaveLength(1);
   });
 
+  it('rolls back + returns 422 password_policy_violation on AdminSetUserPassword InvalidPasswordException', async () => {
+    // Spec §7.1 row 8: AdminSetUserPassword fails with InvalidPasswordException
+    // → 422 + AdminDeleteUser rollback.
+    // Use password 'weakpass' (8 chars) so Zod min(8) passes and the error
+    // originates from Cognito, not from the application-layer schema check.
+    const { app: inst } = await buildReachPhase2App();
+    cognitoErrApp = inst;
+    cognitoMock.on(AdminCreateUserCommand).resolves({
+      User: { Username: 'a@b.it', Attributes: [{ Name: 'sub', Value: 'cog-pwd-fail' }] },
+    });
+    cognitoMock
+      .on(AdminSetUserPasswordCommand)
+      .rejects(new InvalidPasswordException({ message: 'too weak', $metadata: {} }));
+    cognitoMock.on(AdminDeleteUserCommand).resolves({});
+
+    const res = await cognitoErrApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'a@b.it',
+        password: 'weakpass',
+        firstName: 'M',
+        lastName: 'R',
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('auth.signup.password_policy_violation');
+    expect(cognitoMock.commandCalls(AdminDeleteUserCommand)).toHaveLength(1);
+  });
+
   it('returns 502 cognito_unavailable on generic AdminCreateUser failure', async () => {
     const { app: inst } = await buildReachPhase2App();
     cognitoErrApp = inst;
