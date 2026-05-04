@@ -19,6 +19,11 @@ process.env.COGNITO_OFFICINE_CLIENT_ID ??= 'test-officine-client';
 process.env.COGNITO_CLIENTI_POOL_ID ??= 'eu-central-1_TESTCLIENTI';
 process.env.COGNITO_CLIENTI_CLIENT_ID ??= 'test-clienti-client';
 
+// F-OFF-305: S3 attachments bucket. Unit tests mock the S3Client via
+// aws-sdk-client-mock; this placeholder only needs to satisfy the Zod
+// schema parse at module load — no real S3 call is ever made.
+process.env.S3_ATTACHMENTS_BUCKET ??= 'garageos-test-attachments';
+
 // Generate the RS256 key pairs used to sign test JWTs (see
 // tests/helpers/jwt.ts). Top-level await keeps the rest of the suite
 // from running before keys are ready — signTestToken / getTestKey
