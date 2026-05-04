@@ -654,4 +654,106 @@ describe('POST /v1/attachments/:id/confirm — cross-pool', () => {
     expect(res.statusCode).toBe(403);
     expect(res.json().code).toBe('attachment.confirm.not_uploader');
   });
+
+  it('customer-pool confirm: processed=false → HeadObject → flip to processed=true', async () => {
+    const FULL_S3_ATTACHMENT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    ({ app, mockTx } = await buildApp(
+      {
+        attachment: {
+          create: vi.fn(),
+          findFirstOrThrow: vi.fn().mockResolvedValue({
+            id: FULL_S3_ATTACHMENT_ID,
+            ownerType: 'intervention_dispute',
+            ownerId: INTERVENTION_ID,
+            tenantId: TENANT_ID,
+            uploadedByCustomerId: CUSTOMER_ID,
+            uploadedByUserId: null,
+            fileName: 'foto.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: 1024,
+            s3Key: 'k',
+            s3Bucket: 'b',
+            processed: false, // <- not yet confirmed
+            createdAt: new Date(),
+          }),
+          update: vi.fn().mockResolvedValue({
+            id: FULL_S3_ATTACHMENT_ID,
+            ownerType: 'intervention_dispute',
+            ownerId: INTERVENTION_ID,
+            tenantId: TENANT_ID,
+            uploadedByCustomerId: CUSTOMER_ID,
+            uploadedByUserId: null,
+            fileName: 'foto.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: 1024,
+            s3Key: 'k',
+            s3Bucket: 'b',
+            processed: true, // <- after flip
+            createdAt: new Date(),
+          }),
+        },
+      },
+      'clienti',
+    ));
+
+    s3Mock.on(HeadObjectCommand).resolves({
+      ContentLength: 1024,
+      ContentType: 'image/jpeg',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${FULL_S3_ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.processed).toBe(true);
+    expect(mockTx.attachment.update).toHaveBeenCalledWith({
+      where: { id: FULL_S3_ATTACHMENT_ID },
+      data: { processed: true },
+    });
+  });
+
+  it('officine-pool confirm not_uploader: 403 when uploadedByUserId mismatch', async () => {
+    const OFFICINE_ATTACHMENT_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const OTHER_USER_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    ({ app, mockTx } = await buildApp(
+      {
+        user: {
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID }),
+        },
+        attachment: {
+          create: vi.fn(),
+          findFirstOrThrow: vi.fn().mockResolvedValue({
+            id: OFFICINE_ATTACHMENT_ID,
+            ownerType: 'intervention_dispute',
+            ownerId: INTERVENTION_ID,
+            tenantId: TENANT_ID,
+            uploadedByCustomerId: null,
+            uploadedByUserId: OTHER_USER_ID, // <- different user
+            fileName: 'foto.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: 1024,
+            s3Key: 'k',
+            s3Bucket: 'b',
+            processed: false,
+            createdAt: new Date(),
+          }),
+          update: vi.fn(),
+        },
+      },
+      'officine',
+    ));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${OFFICINE_ATTACHMENT_ID}/confirm`,
+      headers: { authorization: 'Bearer fake-token' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('attachment.confirm.not_uploader');
+  });
 });

@@ -1,5 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
@@ -75,6 +74,34 @@ const ConfirmParamsSchema = z.object({
 // The type is not re-exported from @garageos/database so we declare
 // it locally as a string union matching the DB enum exactly.
 type AttachmentOwnerType = 'intervention' | 'private_intervention' | 'intervention_dispute';
+
+// AttachmentRowForConfirm is the full attachment row shape expected by
+// executeConfirmFlow and serializeAttachment. Both confirm branches share
+// this type so the inline anonymous types don't need to be repeated.
+type AttachmentRowForConfirm = {
+  id: string;
+  ownerType: AttachmentOwnerType;
+  ownerId: string;
+  tenantId: string | null;
+  uploadedByCustomerId: string | null;
+  uploadedByUserId: string | null;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  s3Key: string;
+  s3Bucket: string;
+  processed: boolean;
+  createdAt: Date;
+};
+
+interface AttachmentTxWithUpdate {
+  attachment: {
+    update: (args: {
+      where: { id: string };
+      data: { processed: true };
+    }) => Promise<AttachmentRowForConfirm>;
+  };
+}
 
 // serializeAttachment converts a DB attachment row to the snake_case
 // JSON wire format (see APPENDICE_A §attachments). Used in confirm responses.
@@ -159,6 +186,53 @@ async function buildPresignedPayload(
     expires_at: expiresAt,
     callback_url: `/v1/attachments/${attachmentId}/confirm`,
   };
+}
+
+// Common idempotent flow: HeadObject verify + flip processed:true.
+// Both pool branches share this logic; only the lookup + uploader auth differ.
+async function executeConfirmFlow(
+  tx: AttachmentTxWithUpdate,
+  attachment: AttachmentRowForConfirm,
+): Promise<ReturnType<typeof serializeAttachment>> {
+  if (attachment.processed) {
+    return serializeAttachment(attachment);
+  }
+
+  let head: { contentLength: number; contentType: string };
+  try {
+    head = await headObject(attachment.s3Bucket, attachment.s3Key);
+  } catch (err) {
+    if (err instanceof S3ObjectNotFoundError) {
+      throw businessError(
+        'attachment.confirm.upload_not_found',
+        422,
+        "File non trovato su S3 — l'upload non è atterrato o è scaduto.",
+      );
+    }
+    if (err instanceof S3UnavailableError) {
+      throw businessError(
+        'attachment.confirm.s3_unavailable',
+        502,
+        'Servizio storage temporaneamente non disponibile.',
+      );
+    }
+    throw err;
+  }
+
+  if (head.contentLength !== attachment.sizeBytes || head.contentType !== attachment.mimeType) {
+    throw businessError(
+      'attachment.confirm.metadata_mismatch',
+      422,
+      `S3 metadata non matcha: size ${head.contentLength}/${attachment.sizeBytes}, type ${head.contentType}/${attachment.mimeType}.`,
+    );
+  }
+
+  const updated = await tx.attachment.update({
+    where: { id: attachment.id },
+    data: { processed: true },
+  });
+
+  return serializeAttachment(updated);
 }
 
 // handleInterventionUpload handles the existing officine-only flow for
@@ -262,6 +336,7 @@ async function handleDisputeUploadCustomer(
     // linked to the intervention.
     const ownership = await tx.vehicleOwnership.findFirst({
       where: { vehicleId: intervention.vehicleId, customerId, endedAt: null },
+      select: { id: true },
     });
     if (!ownership) {
       throw businessError(
@@ -318,6 +393,9 @@ async function handleDisputeUploadOfficina(
 
     // Only super_admin and mechanic may upload dispute attachments.
     const allowedRoles = ['super_admin', 'mechanic'] as const;
+    // user.role is typed as string from the select; the cast is safe because
+    // includes() returns false for any value outside the tuple — no runtime
+    // risk, just appeases TS narrowing.
     if (!allowedRoles.includes(user.role as (typeof allowedRoles)[number])) {
       throw businessError(
         'attachment.upload.intervention_dispute_role_denied',
@@ -460,21 +538,7 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
           // Lookup attachment by id only (no tenant filter for clienti).
           // RLS policy on attachments ensures only rows belonging to the
           // customer's context are visible.
-          let attachment: {
-            id: string;
-            ownerType: AttachmentOwnerType;
-            ownerId: string;
-            tenantId: string | null;
-            uploadedByCustomerId: string | null;
-            uploadedByUserId: string | null;
-            fileName: string;
-            mimeType: string;
-            sizeBytes: number;
-            s3Key: string;
-            s3Bucket: string;
-            processed: boolean;
-            createdAt: Date;
-          };
+          let attachment: AttachmentRowForConfirm;
           try {
             attachment = await tx.attachment.findFirstOrThrow({
               where: { id },
@@ -499,49 +563,7 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
             );
           }
 
-          // Idempotent: skip S3 verify when already processed.
-          if (attachment.processed) {
-            return serializeAttachment(attachment);
-          }
-
-          let head: { contentLength: number; contentType: string };
-          try {
-            head = await headObject(attachment.s3Bucket, attachment.s3Key);
-          } catch (err) {
-            if (err instanceof S3ObjectNotFoundError) {
-              throw businessError(
-                'attachment.confirm.upload_not_found',
-                422,
-                "File non trovato su S3 — l'upload non è atterrato o è scaduto.",
-              );
-            }
-            if (err instanceof S3UnavailableError) {
-              throw businessError(
-                'attachment.confirm.s3_unavailable',
-                502,
-                'Servizio storage temporaneamente non disponibile.',
-              );
-            }
-            throw err;
-          }
-
-          if (
-            head.contentLength !== attachment.sizeBytes ||
-            head.contentType !== attachment.mimeType
-          ) {
-            throw businessError(
-              'attachment.confirm.metadata_mismatch',
-              422,
-              `S3 metadata non matcha: size ${head.contentLength}/${attachment.sizeBytes}, type ${head.contentType}/${attachment.mimeType}.`,
-            );
-          }
-
-          const updated = await tx.attachment.update({
-            where: { id },
-            data: { processed: true },
-          });
-
-          return serializeAttachment(updated);
+          return executeConfirmFlow(tx, attachment);
         });
       } else {
         // officine pool
@@ -560,21 +582,7 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
           // P2025 (record not found) from RLS or genuinely missing → 404.
           // Only P2025 is caught; other errors bubble to the default handler
           // as 500 rather than being silently masked as 404.
-          let attachment: {
-            id: string;
-            ownerType: AttachmentOwnerType;
-            ownerId: string;
-            tenantId: string | null;
-            uploadedByCustomerId: string | null;
-            uploadedByUserId: string | null;
-            fileName: string;
-            mimeType: string;
-            sizeBytes: number;
-            s3Key: string;
-            s3Bucket: string;
-            processed: boolean;
-            createdAt: Date;
-          };
+          let attachment: AttachmentRowForConfirm;
           try {
             attachment = await tx.attachment.findFirstOrThrow({
               where: { id, tenantId },
@@ -599,49 +607,7 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
             );
           }
 
-          // Idempotent: skip S3 verify when already processed.
-          if (attachment.processed) {
-            return serializeAttachment(attachment);
-          }
-
-          let head: { contentLength: number; contentType: string };
-          try {
-            head = await headObject(attachment.s3Bucket, attachment.s3Key);
-          } catch (err) {
-            if (err instanceof S3ObjectNotFoundError) {
-              throw businessError(
-                'attachment.confirm.upload_not_found',
-                422,
-                "File non trovato su S3 — l'upload non è atterrato o è scaduto.",
-              );
-            }
-            if (err instanceof S3UnavailableError) {
-              throw businessError(
-                'attachment.confirm.s3_unavailable',
-                502,
-                'Servizio storage temporaneamente non disponibile.',
-              );
-            }
-            throw err;
-          }
-
-          if (
-            head.contentLength !== attachment.sizeBytes ||
-            head.contentType !== attachment.mimeType
-          ) {
-            throw businessError(
-              'attachment.confirm.metadata_mismatch',
-              422,
-              `S3 metadata non matcha: size ${head.contentLength}/${attachment.sizeBytes}, type ${head.contentType}/${attachment.mimeType}.`,
-            );
-          }
-
-          const updated = await tx.attachment.update({
-            where: { id },
-            data: { processed: true },
-          });
-
-          return serializeAttachment(updated);
+          return executeConfirmFlow(tx, attachment);
         });
       }
 
