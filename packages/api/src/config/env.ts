@@ -69,6 +69,13 @@ const envSchema = z.object({
   // aws-jwt-verify hydrate step hits the mock instead of AWS.
   COGNITO_OFFICINE_JWKS_URL_OVERRIDE: z.string().url().optional(),
   COGNITO_CLIENTI_JWKS_URL_OVERRIDE: z.string().url().optional(),
+
+  // --- S3 (F-OFF-305 attachments) ---
+  // The bucket that stores workshop attachment uploads. Name is injected
+  // from AWS Secrets Manager / environment at Lambda cold start.
+  // Unit tests set a placeholder in tests/unit/setup.ts; the S3 client
+  // is always mocked with aws-sdk-client-mock so no real bucket is hit.
+  S3_ATTACHMENTS_BUCKET: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

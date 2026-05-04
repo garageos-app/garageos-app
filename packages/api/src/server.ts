@@ -17,6 +17,7 @@ import interventionRevisionsListRoutes from './routes/v1/interventions-revisions
 import { authSignupRoutes } from './routes/v1/auth-signup.js';
 import interventionUpdateRoutes from './routes/v1/interventions-update.js';
 import interventionRoutes from './routes/v1/interventions.js';
+import attachmentsRoutes from './routes/v1/attachments.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
 import userRoutes from './routes/v1/users.js';
 import tenantRoutes from './routes/v1/tenants.js';
@@ -99,6 +100,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(interventionDisputeResponseRoutes);
   await app.register(authSignupRoutes);
   await app.register(interventionCancelRoutes);
+  await app.register(attachmentsRoutes);
   await app.register(meVehicleRoutes);
 
   // Echo the request id back so clients can correlate. Fastify sets

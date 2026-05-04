@@ -376,6 +376,26 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 
 ---
 
+### 3.16 Attachments (F-OFF-305)
+
+| Codice | HTTP | Trigger | Suggerimento client |
+| --- | --- | --- | --- |
+| `attachment.upload.intervention_not_found` | 404 | `owner_id` non corrisponde a un intervention del tenant del caller (RLS scoping) | Verifica che l'intervention esista e appartenga al tenant corrente; non chiamare upload-url su intervention di altri tenant. |
+| `attachment.upload.private_intervention_not_supported` | 422 | `owner_type=private_intervention` (deferred a PR D) | In v1 solo `owner_type=intervention` è supportato. Customer-side private interventions sono pianificate ma non shipped. |
+| `attachment.upload.mime_type_not_allowed` | 422 (oggi: 400 VALIDATION_ERROR) | `mime_type` fuori whitelist (`image/jpeg`, `image/png`, `image/webp`, `image/heic`, `application/pdf`) | Fai upload solo dei tipi supportati. Per altri formati (es. video), scegli un'alternativa o richiedi extension whitelist. |
+| `attachment.upload.size_too_large` | 422 (oggi: 400 VALIDATION_ERROR) | `size_bytes > 26_214_400` (25 MB) | Comprimi o splitta il file. Limit attuale 25 MB per attachment. |
+| `attachment.upload.invalid_file_name` | 422 (oggi: 400 VALIDATION_ERROR) | `file_name` vuoto, troppo lungo (>255), o contiene null/control bytes | Sanitizza il nome lato client prima del POST. |
+| `attachment.upload.s3_unavailable` | 502 | AWS SDK signing fail (errori temporanei AWS) | Retry con exponential backoff. Se persistente, errore lato server. |
+| `attachment.confirm.not_found` | 404 | Attachment id non esiste o appartiene ad altro tenant | Verifica l'id; richiamare upload-url se l'attachment è stato pulito (deferred lifecycle). |
+| `attachment.confirm.not_uploader` | 403 | Caller diverso dall'uploader originario | Solo chi ha chiamato upload-url può confirmare. Per re-upload, ottieni un nuovo upload-url. |
+| `attachment.confirm.upload_not_found` | 422 | S3 HeadObject ritorna NoSuchKey o 404 | L'upload non è atterrato su S3 (URL expirato o PUT mai effettuato). Re-richiedi upload-url e ritenta. |
+| `attachment.confirm.metadata_mismatch` | 422 | ContentLength o ContentType S3 non matcha quanto dichiarato in upload-url | Re-fai upload-url con i metadata corretti del file uploadato. Defense vs file-swap post-presign. |
+| `attachment.confirm.s3_unavailable` | 502 | AWS SDK HeadObject error generico | Retry con backoff. |
+
+**Nota validation Zod**: gli errori di validation (mime fuori whitelist, size > 25MB, file_name invalido) attualmente ritornano `400 VALIDATION_ERROR` (RFC 7807 standard via `@fastify/sensible`) — il code dot-separated specifico (`attachment.upload.mime_type_not_allowed`) è documentato qui per riferimento ma il client riceve `code: VALIDATION_ERROR` con `details` array. In una future iteration, il dot-separated code può essere mappato esplicitamente per granularità.
+
+---
+
 ## 4. Mapping a classi eccezione backend
 
 ### 4.1 Gerarchia eccezioni

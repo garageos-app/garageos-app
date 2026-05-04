@@ -14,6 +14,8 @@ const valid = {
   COGNITO_OFFICINE_CLIENT_ID: 'client-abc',
   COGNITO_CLIENTI_POOL_ID: 'eu-central-1_XYZ789',
   COGNITO_CLIENTI_CLIENT_ID: 'client-xyz',
+  // F-OFF-305: required as of S3 attachments feature.
+  S3_ATTACHMENTS_BUCKET: 'garageos-test-attachments',
 } satisfies NodeJS.ProcessEnv;
 
 describe('parseEnv', () => {
@@ -55,6 +57,18 @@ describe('parseEnv', () => {
 
   it('rejects non-postgres DATABASE_URL', () => {
     expect(() => parseEnv({ ...valid, DATABASE_URL: 'mysql://x' })).toThrow(/DATABASE_URL/);
+  });
+
+  it('rejects missing S3_ATTACHMENTS_BUCKET', () => {
+    const { S3_ATTACHMENTS_BUCKET: _removed, ...rest } = valid;
+    void _removed;
+    expect(() => parseEnv(rest as NodeJS.ProcessEnv)).toThrow(/S3_ATTACHMENTS_BUCKET/);
+  });
+
+  it('rejects empty S3_ATTACHMENTS_BUCKET', () => {
+    expect(() => parseEnv({ ...valid, S3_ATTACHMENTS_BUCKET: '' })).toThrow(
+      /S3_ATTACHMENTS_BUCKET/,
+    );
   });
 
   it('accepts optional JWKS URL overrides', () => {
