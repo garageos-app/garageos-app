@@ -6,17 +6,26 @@
 --   new owner_type branch (with anti-impersonation: officina-uploaded
 --   ⇒ customer_id IS NULL; customer-uploaded ⇒ customer_id set).
 -- attachments_read remains USING (true) — visibility application-side.
+--
+-- Production safety: ADD COLUMN nullable + no DEFAULT = metadata-only
+-- ALTER (no table rewrite). DROP/CREATE POLICY = metadata-only. The new
+-- CHECK validates legacy rows trivially (dispute_id is brand-new and
+-- always NULL on existing rows). Mirror of the pattern in migration
+-- 0003 (split RLS policies).
 -- =====================================================
 
 -- 1. Add nullable dispute_id column + index
 ALTER TABLE attachments
-    ADD COLUMN dispute_id UUID REFERENCES intervention_disputes(id);
+    ADD COLUMN dispute_id UUID REFERENCES intervention_disputes(id) ON DELETE NO ACTION;
 
 CREATE INDEX idx_attachments_dispute_id
     ON attachments(dispute_id)
     WHERE dispute_id IS NOT NULL;
 
 -- 2. Extend CHECK constraint
+-- Note: dispute_id IS NULL is REQUIRED on the intervention and
+-- private_intervention branches as a defense-in-depth invariant —
+-- only intervention_dispute rows ever carry a non-NULL dispute_id.
 ALTER TABLE attachments DROP CONSTRAINT IF EXISTS chk_attachment_owner_consistent;
 ALTER TABLE attachments ADD CONSTRAINT chk_attachment_owner_consistent CHECK (
     (owner_type = 'intervention'
