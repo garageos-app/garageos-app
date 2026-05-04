@@ -11,6 +11,7 @@
 
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
   CognitoIdentityProviderClient,
 } from '@aws-sdk/client-cognito-identity-provider';
@@ -112,5 +113,210 @@ describe('POST /v1/auth/signup — integration', () => {
     expect(auditRows[0]!.actor_type).toBe('customer');
     const meta = auditRows[0]!.metadata as { promoted: boolean };
     expect(meta.promoted).toBe(false);
+  });
+});
+
+// ─── Promote shadow customer ─────────────────────────────────────────────────
+
+describe('POST /v1/auth/signup — promote shadow customer', () => {
+  it('updates the shadow row + sets cognito_sub, no duplicate (BR-221)', async () => {
+    // Seed a shadow customer (officina-created, no cognito_sub).
+    // See BR-221 for the promote flow.
+    const { rows: seedRows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO customers
+         (id, cognito_sub, email, first_name, last_name, phone, status,
+          app_installed, notification_preferences, created_at, updated_at)
+       VALUES (gen_random_uuid(), NULL, $1, $2, $3, NULL,
+         'active'::"CustomerStatus", false, '{}', NOW(), NOW())
+       RETURNING id`,
+      ['promo@example.it', 'Mario', 'R'],
+    );
+    const shadowId = seedRows[0]!.id;
+
+    cognito.on(AdminCreateUserCommand).resolves({
+      User: { Attributes: [{ Name: 'sub', Value: 'cog-int-2' }] },
+    });
+    cognito.on(AdminSetUserPasswordCommand).resolves({});
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'promo@example.it',
+        password: 'Strong123',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        phone: '+393339999999',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+
+    const { rows: all } = await pgAdmin.query<{
+      id: string;
+      last_name: string;
+      phone: string;
+      cognito_sub: string;
+      app_installed: boolean;
+    }>(
+      `SELECT id, last_name, phone, cognito_sub, app_installed
+         FROM customers
+        WHERE email = $1`,
+      ['promo@example.it'],
+    );
+    expect(all).toHaveLength(1); // no duplicate row
+    expect(all[0]!.id).toBe(shadowId); // same row, promoted
+    expect(all[0]!.last_name).toBe('Rossi'); // overwritten by promote
+    expect(all[0]!.phone).toBe('+393339999999');
+    expect(all[0]!.cognito_sub).toBe('cog-int-2');
+    expect(all[0]!.app_installed).toBe(true);
+
+    // AdminCreateUser was invoked with the shadow's existing id.
+    const adminCreateCall = cognito.commandCalls(AdminCreateUserCommand)[0];
+    expect(adminCreateCall?.args[0]?.input?.UserAttributes).toEqual(
+      expect.arrayContaining([{ Name: 'custom:customer_id', Value: shadowId }]),
+    );
+
+    const { rows: auditRows } = await pgAdmin.query<{ metadata: unknown }>(
+      `SELECT metadata
+         FROM audit_logs
+        WHERE entity_type = 'customer'
+          AND entity_id = $1
+          AND action = 'customer_signup'`,
+      [shadowId],
+    );
+    expect(auditRows).toHaveLength(1);
+    const meta = auditRows[0]!.metadata as { promoted: boolean };
+    expect(meta.promoted).toBe(true);
+  });
+});
+
+// ─── Already active (409) ────────────────────────────────────────────────────
+
+describe('POST /v1/auth/signup — already active', () => {
+  it('returns 409 when an active customer exists (cognitoSub set)', async () => {
+    await pgAdmin.query(
+      `INSERT INTO customers
+         (id, cognito_sub, email, first_name, last_name, phone, status,
+          app_installed, notification_preferences, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, 'A', 'B', NULL,
+         'active'::"CustomerStatus", true, '{}', NOW(), NOW())`,
+      ['cog-prev', 'already@example.it'],
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'already@example.it',
+        password: 'Strong123',
+        firstName: 'A',
+        lastName: 'B',
+      },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('auth.signup.email_already_active');
+    expect(cognito.commandCalls(AdminCreateUserCommand)).toHaveLength(0);
+  });
+});
+
+// ─── BR-220 race condition ────────────────────────────────────────────────────
+
+describe('POST /v1/auth/signup — BR-220 race', () => {
+  it('two concurrent signups same email: one 201, one 409, exactly one Customer row', async () => {
+    // See BR-220: concurrent CREATE race must resolve to exactly one row.
+    // The loser hits the P2002 catch-and-rethrow-as-409 branch.
+    cognito.on(AdminCreateUserCommand).resolves({
+      User: { Attributes: [{ Name: 'sub', Value: 'cog-race-1' }] },
+    });
+    cognito.on(AdminSetUserPasswordCommand).resolves({});
+
+    const payload = {
+      type: 'customer',
+      email: 'race@example.it',
+      password: 'Strong123',
+      firstName: 'A',
+      lastName: 'B',
+    };
+    const [a, b] = await Promise.all([
+      app.inject({ method: 'POST', url: '/v1/auth/signup', payload }),
+      app.inject({ method: 'POST', url: '/v1/auth/signup', payload }),
+    ]);
+
+    const codes = [a!.statusCode, b!.statusCode].sort((x, y) => x - y);
+    expect(codes).toEqual([201, 409]);
+
+    const { rows } = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM customers WHERE email = $1`,
+      ['race@example.it'],
+    );
+    expect(Number(rows[0]!.count)).toBe(1);
+  });
+});
+
+// ─── Phase 2 rollback ────────────────────────────────────────────────────────
+
+describe('POST /v1/auth/signup — Phase 2 rollback', () => {
+  it('on AdminSetUserPassword failure, AdminDeleteUser is invoked + 502', async () => {
+    cognito.on(AdminCreateUserCommand).resolves({
+      User: { Attributes: [{ Name: 'sub', Value: 'cog-rb' }] },
+    });
+    cognito.on(AdminSetUserPasswordCommand).rejects(new Error('throttled'));
+    cognito.on(AdminDeleteUserCommand).resolves({});
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'rb@example.it',
+        password: 'Strong123',
+        firstName: 'A',
+        lastName: 'B',
+      },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().code).toBe('auth.signup.cognito_unavailable');
+    expect(cognito.commandCalls(AdminDeleteUserCommand)).toHaveLength(1);
+
+    // Customer row is retained by design — Phase 1 DB tx committed.
+    // Phase 3 never ran, so cognito_sub is still NULL.
+    const { rows } = await pgAdmin.query<{ id: string; cognito_sub: string | null }>(
+      `SELECT id, cognito_sub FROM customers WHERE email = $1`,
+      ['rb@example.it'],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.cognito_sub).toBeNull(); // Phase 3 never ran
+  });
+});
+
+// ─── Phase 3 success path ─────────────────────────────────────────────────────
+
+describe('POST /v1/auth/signup — Phase 3 success path', () => {
+  it('writes cognito_sub on Phase 3 success', async () => {
+    cognito.on(AdminCreateUserCommand).resolves({
+      User: { Attributes: [{ Name: 'sub', Value: 'cog-p3' }] },
+    });
+    cognito.on(AdminSetUserPasswordCommand).resolves({});
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'p3@example.it',
+        password: 'Strong123',
+        firstName: 'A',
+        lastName: 'B',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+
+    const { rows } = await pgAdmin.query<{ cognito_sub: string | null }>(
+      `SELECT cognito_sub FROM customers WHERE email = $1`,
+      ['p3@example.it'],
+    );
+    expect(rows[0]!.cognito_sub).toBe('cog-p3'); // Phase 3 wrote the sub
   });
 });
