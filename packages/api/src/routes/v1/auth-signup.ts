@@ -123,12 +123,35 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
       const { customer, promoted } = await app.withContext(
         { role: 'admin' as const },
         async (tx) => {
+          // BR-220 race serialization: hold an xact-scoped advisory lock keyed
+          // on `signup:<email>`. Concurrent signup tx for the same email block
+          // here until COMMIT/ROLLBACK; serializes both CREATE-CREATE and
+          // PROMOTE-PROMOTE timings. hashtext collisions (32-bit space) only
+          // cause brief contention between unrelated emails — never correctness
+          // loss; customers.email unique index remains the source of truth.
+          // See APPENDICE_F BR-220 + spec 2026-05-06-fix-auth-signup-br220-race.
+          // Cast `void` → `text` because Prisma 7 + @prisma/adapter-pg cannot
+          // deserialize a `void` column ("Unsupported native data type"). The
+          // cast yields an empty string which we discard. See
+          // feedback_pg_void_return_prisma_adapter (post-CI hotfix).
+          await tx.$queryRawUnsafe<unknown[]>(
+            `SELECT pg_advisory_xact_lock(hashtext($1))::text`,
+            `signup:${body.email}`,
+          );
+
           const existing = await tx.customer.findUnique({
             where: { email: body.email },
             select: { ...customerSelfSelect, cognitoSub: true, appInstalled: true },
           });
 
-          if (existing && existing.cognitoSub !== null) {
+          // BR-224 alignment: a row is "promotable shadow" iff cognito_sub IS
+          // NULL AND app_installed = false. The pre-fix predicate (cognitoSub
+          // IS NULL only) misclassified an in-flight or post-rollback signup
+          // (cognito_sub=NULL, app_installed=true) as shadow → BR-220 race bug.
+          // NOTE: race-loss audit emission is deliberately deferred — emitting
+          // inside this $transaction would be rolled back by the throw below.
+          // See project_tech_debt.md for the proper out-of-tx wiring follow-up.
+          if (existing && (existing.cognitoSub !== null || existing.appInstalled === true)) {
             throw businessError(
               'auth.signup.email_already_active',
               409,
