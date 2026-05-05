@@ -767,3 +767,53 @@ REVOKE UPDATE, DELETE ON foo_log FROM garageos_app;
 This mirrors the pattern used in this migration for `access_logs`, `audit_logs`,
 `intervention_revisions`. Tracked as tech debt: see
 `project_tech_debt.md` → "Future audit/append-only tables need manual REVOKE".
+
+## F-INF-WEB — Web hosting deployment (PR demo-0+)
+
+Web app statica per `https://app.garageos.aifollyadvisor.com`. Stack: S3 privato + CloudFront (Origin Access Control) + Route 53 alias + ACM cert in us-east-1. Diviso su due stack CDK: `GarageosWebStack` (eu-central-1) e `GarageosWebCertStack` (us-east-1).
+
+### Prerequisite: bootstrap us-east-1 (one-time)
+
+CDK richiede un bootstrap dedicato per ciascuna region in cui deploya. Prima del primo deploy della WebCertStack:
+
+```bash
+pnpm --filter infrastructure exec cdk bootstrap aws://${ACCOUNT_ID}/us-east-1
+```
+
+Verificare che esista il bootstrap stack `CDKToolkit` in us-east-1 nella console CloudFormation. eu-central-1 era già bootstrappato (PR #29).
+
+### First deploy (manuale, post-merge)
+
+Il push a `main` triggera `deploy.yml` che esegue `cdk deploy GarageosMainStack GarageosWebCertStack GarageosWebStack`. CDK risolve la dependency order automaticamente via `crossRegionReferences: true`. Tempo atteso: 10-20 minuti (la prima creazione di CloudFront propaga ~15 min globalmente).
+
+Eventuali fallimenti tipici:
+- **`Bucket name already exists`**: `garageos-production-web` non globalmente unico. Mitigation: cambiare `webBucketName` in `lib/config/production.ts` aggiungendo un suffix account-id.
+- **`Unable to create record set ... already exists`**: record A/AAAA su `app.<domain>` già presenti in Route 53 (creati a mano). Mitigation: rimuoverli da console pre-deploy (`aws route53 list-resource-record-sets --hosted-zone-id <id>` per ispezione).
+- **`Certificate validation timed out`**: NS del dominio non puntano alla hosted zone Route 53. Verificare con `dig +short NS garageos.aifollyadvisor.com`.
+
+### Smoke post-deploy
+
+```bash
+# 1. HTTPS root → 200 + HTML placeholder
+curl -I https://app.garageos.aifollyadvisor.com/
+
+# 2. SPA fallback → 200 + index.html body (la rotta non esiste ma la SPA error response copre)
+curl https://app.garageos.aifollyadvisor.com/random/path | grep -q '<h1>GarageOS' && echo OK
+
+# 3. HTTP redirect → 301 https
+curl -I http://app.garageos.aifollyadvisor.com/
+
+# 4. DNS resolve a CloudFront edge
+dig +short app.garageos.aifollyadvisor.com
+```
+
+Se i curl sopra falliscono entro i primi 15 minuti, attendere la propagazione CloudFront e riprovare. Per debug usare il `CloudFrontDomainName` CfnOutput (es. `d1234abcdef.cloudfront.net`) per bypassare il DNS custom.
+
+### Asset deploy (placeholder e successivi)
+
+Modifiche a `infrastructure/assets/web-placeholder/**` triggerano `deploy-web.yml`, che fa `aws s3 sync` + `cloudfront create-invalidation /*`. In PR demo-1+ il workflow sarà esteso per buildare `packages/web/` e syncare la `dist/`.
+
+### Rollback
+
+- **Frontend asset**: `aws s3 cp` di una copia precedente del bundle + invalidation. (Versioning sul bucket è disabilitato: il rollback si fa via re-deploy dal commit precedente sull'asset.)
+- **Stack CDK**: `aws cloudformation cancel-update-stack --stack-name GarageosWebStack` durante un deploy in corso, oppure deploy del commit precedente. `removalPolicy: RETAIN` sul bucket protegge i dati.
