@@ -240,34 +240,113 @@ describe('POST /v1/auth/signup — already active', () => {
 describe('POST /v1/auth/signup — BR-220 race', () => {
   const TEST_IP = '10.20.30.4';
 
-  it('two concurrent signups same email: one 201, one 409, exactly one Customer row', async () => {
-    // See BR-220: concurrent CREATE race must resolve to exactly one row.
-    // The loser hits the P2002 catch-and-rethrow-as-409 branch.
+  it('10× concurrent signups same email always resolve to [201, 409]', async () => {
+    // BR-220 race regression: pre-fix this hit [201, 201] ~30-50% of the
+    // time on CI. Post-fix the advisory lock + BR-224 predicate make the
+    // outcome deterministic. Each iteration uses a distinct email to
+    // avoid the rate-limit (5/15min per IP).
+    for (let i = 0; i < 10; i++) {
+      await resetDb();
+      cognito.reset();
+      cognito.on(AdminCreateUserCommand).resolves({
+        User: { Attributes: [{ Name: 'sub', Value: `cog-race-${i}` }] },
+      });
+      cognito.on(AdminSetUserPasswordCommand).resolves({});
+
+      const email = `race${i}@example.it`;
+      const payload = {
+        type: 'customer',
+        email,
+        password: 'Strong123',
+        firstName: 'A',
+        lastName: 'B',
+      };
+      const [a, b] = await Promise.all([
+        app.inject({
+          method: 'POST',
+          url: '/v1/auth/signup',
+          remoteAddress: TEST_IP,
+          payload,
+        }),
+        app.inject({
+          method: 'POST',
+          url: '/v1/auth/signup',
+          remoteAddress: TEST_IP,
+          payload,
+        }),
+      ]);
+
+      const codes = [a.statusCode, b.statusCode].sort((x, y) => x - y);
+      expect(codes, `iteration ${i}`).toEqual([201, 409]);
+
+      const { rows } = await pgAdmin.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM customers WHERE email = $1`,
+        [email],
+      );
+      expect(Number(rows[0]!.count), `iteration ${i}`).toBe(1);
+    }
+  }, 30_000); // override default — 10× round-trip Testcontainers
+});
+
+// ─── BR-220 race against existing shadow row ─────────────────────────────────
+
+describe('POST /v1/auth/signup — BR-220 PROMOTE race', () => {
+  const TEST_IP = '10.20.30.7';
+
+  it('two concurrent signups against same shadow row: one 201, one 409', async () => {
+    // BR-220 + BR-221: race serialization extends to PROMOTE branch
+    // (two concurrent signups against an officina-seeded shadow row).
+    // Pre-fix: both signups would observe the shadow + UPDATE it +
+    // proceed to Phase 2 → both 201 in test (Cognito mock uniform).
+    // Post-fix: advisory lock serializes; loser's findUnique sees the
+    // freshly-promoted row (app_installed=true) → 409 (race-loss audit
+    // emission deferred to a follow-up PR — see project_tech_debt.md).
+    await pgAdmin.query(
+      `INSERT INTO customers
+         (id, cognito_sub, email, first_name, last_name, phone, status,
+          app_installed, notification_preferences, created_at, updated_at)
+       VALUES (gen_random_uuid(), NULL, $1, 'Shadow', 'Row', NULL,
+         'active'::"CustomerStatus", false, '{}', NOW(), NOW())`,
+      ['promo-race@example.it'],
+    );
+
     cognito.on(AdminCreateUserCommand).resolves({
-      User: { Attributes: [{ Name: 'sub', Value: 'cog-race-1' }] },
+      User: { Attributes: [{ Name: 'sub', Value: 'cog-promo-race' }] },
     });
     cognito.on(AdminSetUserPasswordCommand).resolves({});
 
     const payload = {
       type: 'customer',
-      email: 'race@example.it',
+      email: 'promo-race@example.it',
       password: 'Strong123',
       firstName: 'A',
       lastName: 'B',
     };
     const [a, b] = await Promise.all([
-      app.inject({ method: 'POST', url: '/v1/auth/signup', remoteAddress: TEST_IP, payload }),
-      app.inject({ method: 'POST', url: '/v1/auth/signup', remoteAddress: TEST_IP, payload }),
+      app.inject({
+        method: 'POST',
+        url: '/v1/auth/signup',
+        remoteAddress: TEST_IP,
+        payload,
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/v1/auth/signup',
+        remoteAddress: TEST_IP,
+        payload,
+      }),
     ]);
 
-    const codes = [a!.statusCode, b!.statusCode].sort((x, y) => x - y);
+    const codes = [a.statusCode, b.statusCode].sort((x, y) => x - y);
     expect(codes).toEqual([201, 409]);
 
-    const { rows } = await pgAdmin.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM customers WHERE email = $1`,
-      ['race@example.it'],
+    const { rows } = await pgAdmin.query<{ count: string; cognito_sub: string | null }>(
+      `SELECT COUNT(*)::text AS count, MAX(cognito_sub) AS cognito_sub
+         FROM customers WHERE email = $1`,
+      ['promo-race@example.it'],
     );
-    expect(Number(rows[0]!.count)).toBe(1);
+    expect(Number(rows[0]!.count)).toBe(1); // exactly one row
+    expect(rows[0]!.cognito_sub).toBe('cog-promo-race'); // winner promoted
   });
 });
 
@@ -301,6 +380,11 @@ describe('POST /v1/auth/signup — Phase 2 rollback', () => {
 
     // Customer row is retained by design — Phase 1 DB tx committed.
     // Phase 3 never ran, so cognito_sub is still NULL.
+    // NOTE post-fix BR-220: a retry signup against this row will now return
+    // 409 (operator reconcile path) because the BR-224 predicate treats
+    // app_installed=true as non-shadow. The retained row + cognito_sub=NULL
+    // retention is unchanged. See spec 2026-05-06-fix-auth-signup-br220-race
+    // §8 "Backward compat".
     const { rows } = await pgAdmin.query<{ id: string; cognito_sub: string | null }>(
       `SELECT id, cognito_sub FROM customers WHERE email = $1`,
       ['rb@example.it'],
