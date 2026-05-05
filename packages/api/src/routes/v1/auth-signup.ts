@@ -144,25 +144,10 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
           // NULL AND app_installed = false. The pre-fix predicate (cognitoSub
           // IS NULL only) misclassified an in-flight or post-rollback signup
           // (cognito_sub=NULL, app_installed=true) as shadow → BR-220 race bug.
+          // NOTE: race-loss audit emission is deliberately deferred — emitting
+          // inside this $transaction would be rolled back by the throw below.
+          // See project_tech_debt.md for the proper out-of-tx wiring follow-up.
           if (existing && (existing.cognitoSub !== null || existing.appInstalled === true)) {
-            // Audit the race-loss for observability — separate action so a future
-            // dashboard can plot signup_race_lost_count over time. Free-form
-            // VARCHAR(100) action column ⇒ no schema migration required.
-            await tx.auditLog.create({
-              data: {
-                tenantId: null,
-                actorType: 'customer',
-                actorId: existing.id,
-                action: 'customer_signup_race_lost',
-                entityType: 'customer',
-                entityId: existing.id,
-                metadata: {
-                  reason: existing.cognitoSub !== null ? 'already_active' : 'in_flight',
-                  ip: request.ip,
-                },
-                ipAddress: request.ip,
-              },
-            });
             throw businessError(
               'auth.signup.email_already_active',
               409,

@@ -473,15 +473,7 @@ describe('POST /v1/auth/signup — already active', () => {
     expect(res.json().code).toBe('auth.signup.email_already_active');
     expect(create).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
-    // Race-loss audit emitted with reason='already_active' (BR-220 fix).
-    expect(auditCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          action: 'customer_signup_race_lost',
-          metadata: expect.objectContaining({ reason: 'already_active' }),
-        }),
-      }),
-    );
+    expect(auditCreate).not.toHaveBeenCalled();
     expect(cognitoMock.commandCalls(AdminCreateUserCommand)).toHaveLength(0);
   });
 });
@@ -500,12 +492,12 @@ describe('POST /v1/auth/signup — in-flight signup (BR-224)', () => {
     await inFlightApp.close();
   });
 
-  it('returns 409 + audits race-loss when existing.appInstalled=true with cognitoSub=null', async () => {
+  it('returns 409 when existing.appInstalled=true with cognitoSub=null', async () => {
     // BR-224 predicate alignment: a "promotable shadow" requires both
     // cognito_sub IS NULL AND app_installed = false. A row with
     // app_installed=true and cognito_sub=null represents a signup that
     // committed Phase 1 elsewhere (in-flight) or rolled back from Phase 2/3
-    // — NOT a shadow. The handler must reject with 409 and audit the event.
+    // — NOT a shadow. The handler must reject with 409.
     const findUnique = vi.fn().mockResolvedValue({
       id: 'in-flight-uuid',
       email: 'mario@example.it',
@@ -556,19 +548,10 @@ describe('POST /v1/auth/signup — in-flight signup (BR-224)', () => {
     expect(update).not.toHaveBeenCalled();
     expect(cognitoMock.commandCalls(AdminCreateUserCommand)).toHaveLength(0);
 
-    // Race-loss audit emitted with reason='in_flight'
-    expect(auditCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          actorType: 'customer',
-          actorId: 'in-flight-uuid',
-          action: 'customer_signup_race_lost',
-          entityType: 'customer',
-          entityId: 'in-flight-uuid',
-          metadata: expect.objectContaining({ reason: 'in_flight' }),
-        }),
-      }),
-    );
+    // No audit on 409 race-loss — emission is deferred to a separate PR
+    // where it can be wired outside the rollback boundary. See route
+    // comment + project_tech_debt.md.
+    expect(auditCreate).not.toHaveBeenCalled();
   });
 });
 
