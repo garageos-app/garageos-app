@@ -1,0 +1,69 @@
+name: Deploy web asset
+
+# Asset-only deploy: builds nothing in PR demo-0 (placeholder is a static
+# HTML file). Future PRs (demo-1+) will add a `pnpm --filter web build`
+# step before the s3 sync. Pipeline kept separate from deploy.yml so
+# frontend iterations don't trigger CDK deploys.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infrastructure/assets/web-placeholder/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-web-asset
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: sync to s3 + cloudfront invalidation
+    runs-on: ubuntu-latest
+    environment: production # mirror deploy.yml; required reviewer if env protection is configured.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inject build metadata into placeholder
+        run: |
+          sed -i "s/__BUILD_SHA__/${GITHUB_SHA::7}/g" infrastructure/assets/web-placeholder/index.html
+          sed -i "s/__BUILD_TIMESTAMP__/$(date -u +%Y-%m-%dT%H:%M:%SZ)/g" infrastructure/assets/web-placeholder/index.html
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-central-1
+
+      - name: Resolve stack outputs
+        id: outputs
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name GarageosWebStack \
+            --query "Stacks[0].Outputs[?OutputKey=='WebBucketName'].OutputValue" \
+            --output text)
+          DIST=$(aws cloudformation describe-stacks \
+            --stack-name GarageosWebStack \
+            --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
+            --output text)
+          if [ -z "$BUCKET" ] || [ -z "$DIST" ]; then
+            echo "::error::GarageosWebStack outputs missing — has the CDK deploy run yet?"
+            exit 1
+          fi
+          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
+          echo "dist=$DIST" >> "$GITHUB_OUTPUT"
+
+      - name: Sync to S3
+        run: |
+          aws s3 sync infrastructure/assets/web-placeholder/ \
+            s3://${{ steps.outputs.outputs.bucket }}/ \
+            --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.outputs.outputs.dist }} \
+            --paths '/*'
