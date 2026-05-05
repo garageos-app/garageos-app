@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
+import cors from '@fastify/cors';
 import rateLimitPlugin from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import Fastify, { type FastifyInstance } from 'fastify';
 
+import { ALLOWED_ORIGINS } from './config/constants.js';
 import { env } from './config/env.js';
 import authPlugin, { type AuthPluginOptions } from './plugins/auth.js';
 import databasePlugin, { type DatabasePluginOptions } from './plugins/database.js';
@@ -60,11 +62,16 @@ function buildLoggerOptions() {
 //   1. helmet   — security headers must wrap every response including
 //                  errors, so it goes FIRST (its onSend hook covers
 //                  Problem Details responses too).
-//   2. sensible — HTTP error helpers used by the error handler.
-//   3. error    — error handler installed before any route.
-//   4. database — decorates prisma + withContext; routes depend on it.
-//   5. auth     — decorates jwtVerifier; routes + middleware depend on it.
-//   6. routes   — operational (/health) at root, business under /v1.
+//   2. cors     — CORS handlers must run before rate-limit so preflight
+//                  OPTIONS requests aren't accidentally throttled, and
+//                  before routes so disallowed origins never reach the
+//                  business logic.
+//   3. rate-limit — global: false; routes opt in via config.rateLimit.
+//   4. sensible — HTTP error helpers used by the error handler.
+//   5. error    — error handler installed before any route.
+//   6. database — decorates prisma + withContext; routes depend on it.
+//   7. auth     — decorates jwtVerifier; routes + middleware depend on it.
+//   8. routes   — operational (/health) at root, business under /v1.
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(),
@@ -79,6 +86,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   });
 
   await app.register(helmetPlugin);
+  // CORS: allow the production officine web origins; in dev, also accept
+  // Vite's localhost:5173. credentials: false because we use Authorization
+  // header (Bearer) rather than cookies — see PR demo-1 spec §CORS.
+  await app.register(cors, {
+    origin:
+      env.NODE_ENV === 'development'
+        ? [...ALLOWED_ORIGINS, 'http://localhost:5173']
+        : [...ALLOWED_ORIGINS],
+    credentials: false,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Request-ID'],
+    exposedHeaders: ['X-Request-ID'],
+    maxAge: 600,
+  });
   // Rate-limiting plugin registered with global: false — routes opt in via
   // config.rateLimit. In the Lambda runtime, @fastify/aws-lambda populates
   // request.ip from x-forwarded-for[0], so no keyGenerator override is needed.
