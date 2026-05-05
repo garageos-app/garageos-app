@@ -222,6 +222,7 @@ describe('CHECK constraints and partial unique indexes', () => {
       const customerId = await createBareCustomer();
       const interventionId = randomUUID();
 
+      const s3Key = `attachments/intervention_dispute/${interventionId}/x.jpg`;
       await expect(
         pgAdmin.query(
           `INSERT INTO attachments
@@ -231,8 +232,8 @@ describe('CHECK constraints and partial unique indexes', () => {
            VALUES
              (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
               $1, $2, $3, $3, 'foto.jpg', 'image/jpeg', 1024,
-              'attachments/intervention_dispute/' || $1::text || '/x.jpg', 'test', NOW())`,
-          [interventionId, tenantId, customerId],
+              $4, 'test', NOW())`,
+          [interventionId, tenantId, customerId, s3Key],
         ),
       ).resolves.not.toThrow();
     });
@@ -242,6 +243,7 @@ describe('CHECK constraints and partial unique indexes', () => {
       const userId = await createUserForTenant(tenantId, locationId);
       const interventionId = randomUUID();
 
+      const s3Key = `attachments/intervention_dispute/${interventionId}/x.jpg`;
       await expect(
         pgAdmin.query(
           `INSERT INTO attachments
@@ -251,8 +253,8 @@ describe('CHECK constraints and partial unique indexes', () => {
            VALUES
              (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
               $1, $2, $3, 'foto.jpg', 'image/jpeg', 1024,
-              'attachments/intervention_dispute/' || $1::text || '/x.jpg', 'test', NOW())`,
-          [interventionId, tenantId, userId],
+              $4, 'test', NOW())`,
+          [interventionId, tenantId, userId, s3Key],
         ),
       ).resolves.not.toThrow();
     });
