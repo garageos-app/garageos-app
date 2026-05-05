@@ -117,6 +117,10 @@ interface FakeTx {
     update: ReturnType<typeof vi.fn>;
   };
   auditLog: { create: ReturnType<typeof vi.fn> };
+  // Phase 1 acquires pg_advisory_xact_lock via $queryRawUnsafe before
+  // findUnique. Stub returns [] (lock SELECT yields zero rows of result
+  // data — Postgres returns void as a single-row empty result).
+  $queryRawUnsafe: ReturnType<typeof vi.fn>;
 }
 
 function buildFakeTx(overrides: Partial<FakeTx> = {}): FakeTx {
@@ -135,6 +139,7 @@ function buildFakeTx(overrides: Partial<FakeTx> = {}): FakeTx {
       update: vi.fn().mockResolvedValue({ id: CUSTOMER_ID }),
     },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
+    $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -303,6 +308,7 @@ describe('POST /v1/auth/signup — promote shadow', () => {
     const tx = {
       customer: { findUnique, create: vi.fn(), update },
       auditLog: { create: auditCreate },
+      $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     };
     const withContext = vi.fn(async (_ctx: unknown, fn: (t: typeof tx) => Promise<unknown>) =>
       fn(tx),
@@ -401,6 +407,7 @@ describe('POST /v1/auth/signup — already active', () => {
     const tx = {
       customer: { findUnique, create, update },
       auditLog: { create: auditCreate },
+      $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     };
     const withContext = vi.fn(async (_ctx: unknown, fn: (t: typeof tx) => Promise<unknown>) =>
       fn(tx),
@@ -622,6 +629,7 @@ describe('POST /v1/auth/signup — Phase 3 best-effort', () => {
     const tx: FakeTx = {
       customer: { findUnique, create, update },
       auditLog: { create: auditCreate },
+      $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     };
     phase3App = await buildAppWithDb(tx);
 
@@ -675,6 +683,7 @@ describe('POST /v1/auth/signup — rate limit', () => {
     const tx = {
       customer: { findUnique, create: vi.fn(), update: vi.fn() },
       auditLog: { create: vi.fn() },
+      $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     };
     rateLimitApp = await buildAppWithDb(tx as unknown as FakeTx);
   });
