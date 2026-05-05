@@ -28,7 +28,6 @@ on:
           - GarageosMainStack
           - GarageosWebCertStack
           - GarageosWebStack
-          - --all
 
 permissions:
   id-token: write
