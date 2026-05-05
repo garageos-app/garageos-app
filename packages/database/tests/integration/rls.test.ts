@@ -715,3 +715,255 @@ describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)'
     expect(created.id).toBeDefined();
   });
 });
+
+describe('RLS — attachments intervention_dispute branch (post-migration 0010)', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  // Set up: 2 tenants, 1 customer per tenant relation, 1 vehicle owned by customerA,
+  // 1 intervention by tenantA on the vehicle, 1 dispute open by customerA on it.
+  async function seedDisputeContext(): Promise<{
+    tenantAId: string;
+    tenantBId: string;
+    locationAId: string;
+    userAId: string;
+    customerAId: string;
+    customerBId: string;
+    interventionId: string;
+    disputeId: string;
+  }> {
+    const { rows: tA } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
+       VALUES (gen_random_uuid(), 'Off A', '11111111111', 'a@t.it', NOW(), NOW()) RETURNING id`,
+    );
+    const { rows: tB } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
+       VALUES (gen_random_uuid(), 'Off B', '22222222222', 'b@t.it', NOW(), NOW()) RETURNING id`,
+    );
+    const tenantAId = tA[0]!.id;
+    const tenantBId = tB[0]!.id;
+
+    const { rows: lA } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO locations
+         (id, tenant_id, name, address_line, city, province, postal_code,
+          country, is_primary, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, 'Sede', 'Via 1', 'Milano', 'MI', '20100',
+          'IT', true, 'active'::"LocationStatus", NOW(), NOW())
+       RETURNING id`,
+      [tenantAId],
+    );
+    const locationAId = lA[0]!.id;
+
+    const { rows: uA } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO users
+         (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+          role, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, $3, 'mech@a.it', 'M', 'A',
+          'mechanic'::"UserRole", 'active'::"UserStatus", NOW(), NOW())
+       RETURNING id`,
+      [tenantAId, locationAId, `sub-rls-dispute-${Date.now()}`],
+    );
+    const userAId = uA[0]!.id;
+
+    const { rows: cA } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO customers (id, email, first_name, last_name, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, 'CustA', 'A', NOW(), NOW())
+       RETURNING id`,
+      [`custA-${Date.now()}@t.it`],
+    );
+    const { rows: cB } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO customers (id, email, first_name, last_name, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, 'CustB', 'B', NOW(), NOW())
+       RETURNING id`,
+      [`custB-${Date.now()}@t.it`],
+    );
+    const customerAId = cA[0]!.id;
+    const customerBId = cB[0]!.id;
+
+    const { rows: veh } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO vehicles
+         (id, vin, plate, plate_country, make, model, year, vehicle_type, fuel_type,
+          status, created_by_tenant_id, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, 'AA000BB', 'IT', 'Fiat', 'Panda', 2021,
+          'car'::"VehicleType", 'petrol'::"FuelType",
+          'pending'::"VehicleStatus", $2, NOW(), NOW())
+       RETURNING id`,
+      [`VIN${Date.now()}${Math.floor(Math.random() * 1e6)}`.slice(0, 17), tenantAId],
+    );
+    const vehicleId = veh[0]!.id;
+
+    await pgAdmin.query(
+      `INSERT INTO vehicle_ownerships
+         (id, vehicle_id, customer_id, started_at, created_at)
+       VALUES (gen_random_uuid(), $1, $2, NOW(), NOW())`,
+      [vehicleId, customerAId],
+    );
+
+    const { rows: it } = await pgAdmin.query<{ id: string }>(
+      `SELECT id FROM intervention_types WHERE tenant_id IS NULL AND code = 'TAGLIANDO' LIMIT 1`,
+    );
+    const interventionTypeId = it[0]!.id;
+
+    const { rows: iv } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO interventions
+         (id, tenant_id, location_id, user_id, vehicle_id, intervention_type_id,
+          intervention_date, odometer_km, title, description, parts_replaced,
+          status, km_anomaly, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, $3, $4, $5, '2026-04-15'::date, 45000,
+          'Tagliando', 'Test', '[]'::jsonb, 'active'::"InterventionStatus",
+          false, NOW(), NOW())
+       RETURNING id`,
+      [tenantAId, locationAId, userAId, vehicleId, interventionTypeId],
+    );
+    const interventionId = iv[0]!.id;
+
+    const { rows: disp } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO intervention_disputes
+         (id, intervention_id, customer_id, reason_category, customer_description,
+          status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, 'not_performed'::"DisputeReasonCategory",
+          'Customer description per il test RLS dispute attachments.',
+          'open'::"DisputeStatus", NOW(), NOW())
+       RETURNING id`,
+      [interventionId, customerAId],
+    );
+    const disputeId = disp[0]!.id;
+
+    return {
+      tenantAId,
+      tenantBId,
+      locationAId,
+      userAId,
+      customerAId,
+      customerBId,
+      interventionId,
+      disputeId,
+    };
+  }
+
+  it('customer-uploaded INSERT happy: customer A inserts attachment with own customer_id', async () => {
+    const { tenantAId, customerAId, interventionId } = await seedDisputeContext();
+
+    await expect(
+      withContext({ customerId: customerAId }, (tx) =>
+        tx.attachment.create({
+          data: {
+            ownerType: 'intervention_dispute',
+            ownerId: interventionId,
+            tenantId: tenantAId,
+            customerId: customerAId,
+            uploadedByCustomerId: customerAId,
+            fileName: 'foto.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: 1024,
+            s3Key: `attachments/intervention_dispute/${interventionId}/x.jpg`,
+            s3Bucket: 'test',
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({ ownerId: interventionId });
+  });
+
+  it('customer-uploaded INSERT cross-customer DENIED (impersonation)', async () => {
+    const { tenantAId, customerAId, customerBId, interventionId } = await seedDisputeContext();
+
+    // Customer B tries to insert attachment claiming customer_id = customerAId.
+    // The WITH CHECK clause requires customer_id = current_customer_id(), so RLS rejects.
+    await expect(
+      withContext({ customerId: customerBId }, (tx) =>
+        tx.attachment.create({
+          data: {
+            ownerType: 'intervention_dispute',
+            ownerId: interventionId,
+            tenantId: tenantAId,
+            customerId: customerAId, // claims A's id
+            uploadedByCustomerId: customerAId,
+            fileName: 'evil.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: 1024,
+            s3Key: 'k',
+            s3Bucket: 'b',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/row-level security|new row violates/i);
+  });
+
+  it('officina-uploaded INSERT happy: tenant A inserts attachment with own tenant_id, customer_id NULL', async () => {
+    const { tenantAId, userAId, interventionId } = await seedDisputeContext();
+
+    await expect(
+      withContext({ tenantId: tenantAId }, (tx) =>
+        tx.attachment.create({
+          data: {
+            ownerType: 'intervention_dispute',
+            ownerId: interventionId,
+            tenantId: tenantAId,
+            uploadedByUserId: userAId,
+            fileName: 'response.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: 1024,
+            s3Key: `attachments/intervention_dispute/${interventionId}/r.jpg`,
+            s3Bucket: 'test',
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({ ownerId: interventionId, customerId: null });
+  });
+
+  it('officina-uploaded INSERT impersonation DENIED (customer_id set should fail)', async () => {
+    const { tenantAId, userAId, customerAId, interventionId } = await seedDisputeContext();
+
+    // Tenant A tries to insert attachment with customer_id set (impersonating
+    // a customer-uploaded row). RLS WITH CHECK requires customer_id IS NULL
+    // for the tenant-uploaded branch.
+    await expect(
+      withContext({ tenantId: tenantAId }, (tx) =>
+        tx.attachment.create({
+          data: {
+            ownerType: 'intervention_dispute',
+            ownerId: interventionId,
+            tenantId: tenantAId,
+            customerId: customerAId, // illegal: officina branch requires NULL
+            uploadedByUserId: userAId,
+            fileName: 'sneaky.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: 1024,
+            s3Key: 'k',
+            s3Bucket: 'b',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/row-level security|new row violates|chk_attachment_owner_consistent/i);
+  });
+
+  it('cross-tenant INSERT on intervention_dispute attachment is blocked', async () => {
+    const { tenantAId, tenantBId, userAId, interventionId } = await seedDisputeContext();
+
+    // Tenant B tries to insert an officina-uploaded dispute attachment claiming tenantAId.
+    // WITH CHECK requires tenant_id = current_tenant_id().
+    await expect(
+      withContext({ tenantId: tenantBId }, (tx) =>
+        tx.attachment.create({
+          data: {
+            ownerType: 'intervention_dispute',
+            ownerId: interventionId,
+            tenantId: tenantAId, // claims A
+            uploadedByUserId: userAId,
+            fileName: 'cross.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: 1024,
+            s3Key: 'k',
+            s3Bucket: 'b',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/row-level security|new row violates/i);
+  });
+});

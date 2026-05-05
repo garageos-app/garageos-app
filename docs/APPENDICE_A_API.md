@@ -544,11 +544,24 @@ Authorization: Bearer <customer_jwt>
     "reason_category": "not_performed",
     "customer_description": "...",
     "status": "open",
-    "created_at": "2026-04-22T09:15:00Z"
+    "created_at": "2026-04-22T09:15:00Z",
+    "attachment_ids": ["01HKZA..."]
   },
   "intervention_status": "disputed"
 }
 ```
+
+#### Validazione `attachment_ids`
+
+Gli `attachment_ids` devono essere stati pre-uploadati via `POST /v1/attachments/upload-url` con `owner_type=intervention_dispute` e `owner_id=<intervention_id>` (vedi §3.9 / §2.7). Devono essere `processed=true` (callback `confirm` chiamato) e non già associati ad altre dispute.
+
+**Errori di validazione:**
+
+- `422 intervention.dispute.attachment_not_found` — uno degli id non esiste, non è dispute attachment, o non è stato uploadato dal customer corrente.
+- `422 intervention.dispute.attachment_not_processed` — un id esiste ma `processed=false` (manca il callback confirm).
+- `409 intervention.dispute.attachment_already_claimed` — un id è già associato a un'altra dispute.
+
+Il limite è 10 attachment per dispute (BR-180).
 
 #### Note
 
@@ -604,7 +617,8 @@ Authorization: Bearer <officina_jwt>
       "tenant_response_user_id": "01HKUS...",
       "status": "responded",
       "resolved_at": null,
-      "created_at": "2026-04-22T09:15:00Z"
+      "created_at": "2026-04-22T09:15:00Z",
+      "attachment_ids": ["01HKZD..."]
     }
   ],
   "intervention_status": "active"
@@ -613,6 +627,14 @@ Authorization: Bearer <officina_jwt>
 
 `disputes` è sempre array (length 1 con `disputeId`, ≥1 col fanout).
 `intervention_status` è `"active"` se 0 `open` residue post-update; `"disputed"` altrimenti.
+
+**Allegati nelle risposte officina:**
+
+L'array `attachment_ids` viene popolato solo per la dispute target (passata via `dispute_id` nella request body). Per le altre dispute toccate via fanout, l'array è vuoto (`[]`).
+
+**Vincolo fanout + attachments:**
+
+Quando si fa fanout (richiesta SENZA `dispute_id`) E `attachment_ids` non è vuoto → 422 `intervention.dispute.response.attachments_require_dispute_id`. Per allegare prove, specificare esplicitamente `dispute_id`.
 
 #### Errori
 
@@ -624,7 +646,7 @@ Authorization: Bearer <officina_jwt>
 | 403 | `intervention.dispute.response.permission_denied` | Ruolo non in allow-list |
 | 404 | `not_found` | Intervention con id inesistente; `dispute_id` non trovato o di altro tenant |
 | 409 | `intervention.dispute.response.no_active_dispute` | Nessuna `open` da rispondere; OPPURE intervention di altro tenant (vedi Note RLS) |
-| 422 | `intervention.dispute.attachments_not_supported` | `attachment_ids` non vuoto |
+| 422 | `intervention.dispute.response.attachments_require_dispute_id` | Fanout + attachmentIds non vuoto |
 
 #### Note
 
@@ -888,6 +910,16 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | GET | `/attachments/:id` | (deferred) | - | Dettaglio attachment metadata (non shipped in v1) |
 | GET | `/attachments/:id/download-url` | F-OFF-305 | Any User | Presigned URL download (15 min validity) |
 | DELETE | `/attachments/:id` | F-OFF-305 | Any User | Rimuove allegato |
+
+**Cross-pool note (`owner_type=intervention_dispute`):**
+
+L'`owner_type=intervention_dispute` è cross-pool: customer-pool per allegati alla contestazione (§2.6), officina-pool per allegati alla risposta (§2.6.1). In entrambi i casi `owner_id` è l'`intervention.id` del genitore. Il binding alla `dispute.id` avviene atomicamente al momento del create della dispute o della risposta.
+
+Auth gating per `owner_type=intervention_dispute`:
+- Customer-pool: il caller deve essere current owner del veicolo (BR-120).
+- Officina-pool: il caller deve essere `super_admin` o `mechanic` E deve esistere almeno una dispute `open` sull'intervention.
+
+L'`owner_type=intervention` resta officina-only.
 
 ### 3.10 Transfers
 
