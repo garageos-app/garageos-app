@@ -238,13 +238,16 @@ describe('POST /v1/auth/signup — already active', () => {
 // ─── BR-220 race condition ────────────────────────────────────────────────────
 
 describe('POST /v1/auth/signup — BR-220 race', () => {
-  const TEST_IP = '10.20.30.4';
+  // Each iteration uses its own IP (10.20.30.100..10.20.30.109) so the
+  // 5/15min rate-limit bucket resets per iteration. Within one iteration
+  // both concurrent requests share the same IP — that is the realistic
+  // scenario the race serialization must defend against. See also
+  // feedback_integration_test_rate_limit_isolation.md.
 
   it('10× concurrent signups same email always resolve to [201, 409]', async () => {
     // BR-220 race regression: pre-fix this hit [201, 201] ~30-50% of the
     // time on CI. Post-fix the advisory lock + BR-224 predicate make the
-    // outcome deterministic. Each iteration uses a distinct email to
-    // avoid the rate-limit (5/15min per IP).
+    // outcome deterministic.
     for (let i = 0; i < 10; i++) {
       await resetDb();
       cognito.reset();
@@ -254,6 +257,7 @@ describe('POST /v1/auth/signup — BR-220 race', () => {
       cognito.on(AdminSetUserPasswordCommand).resolves({});
 
       const email = `race${i}@example.it`;
+      const remoteAddress = `10.20.30.${100 + i}`;
       const payload = {
         type: 'customer',
         email,
@@ -265,13 +269,13 @@ describe('POST /v1/auth/signup — BR-220 race', () => {
         app.inject({
           method: 'POST',
           url: '/v1/auth/signup',
-          remoteAddress: TEST_IP,
+          remoteAddress,
           payload,
         }),
         app.inject({
           method: 'POST',
           url: '/v1/auth/signup',
-          remoteAddress: TEST_IP,
+          remoteAddress,
           payload,
         }),
       ]);
