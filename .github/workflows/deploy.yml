@@ -26,6 +26,8 @@ on:
         options:
           - GarageosOidcStack
           - GarageosMainStack
+          - GarageosWebCertStack
+          - GarageosWebStack
           - --all
 
 permissions:
@@ -60,7 +62,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-central-1
       - name: Deploy CDK stack
-        # On push trigger `inputs.stack` is empty — fall back to MainStack,
-        # which is the only stack that changes per feature. OidcStack is
-        # bootstrap-only and redeployed via workflow_dispatch when needed.
-        run: pnpm --filter infrastructure exec cdk deploy ${{ inputs.stack || 'GarageosMainStack' }} --require-approval never
+        # On push trigger `inputs.stack` is empty — fall back to the
+        # production trio (Main + WebCert + Web). OidcStack stays on
+        # workflow_dispatch (bootstrap-only). CDK resolves dependency
+        # order across regions via crossRegionReferences.
+        run: |
+          pnpm --filter infrastructure exec cdk deploy \
+            ${{ inputs.stack || 'GarageosMainStack GarageosWebCertStack GarageosWebStack' }} \
+            --require-approval never
