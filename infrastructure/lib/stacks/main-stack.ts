@@ -11,20 +11,20 @@ import { type EnvironmentConfig } from '../config/production.js';
 
 // Single production stack hosting the six constructs shipped through
 // PR 23 (DNS, Secrets, Cognito, Storage, Lambda API, API Gateway).
-// WAF deferred a PR 25 — AWS WAFv2 REGIONAL non supporta API Gateway
-// HTTP API v2 (solo REST API v1, ALB, AppSync, Cognito, App Runner,
-// Verified Access). Pattern AWS-recommended: CloudFront in front di
-// HTTP API v2 + WAF (CLOUDFRONT scope, us-east-1) — entrambi shipped
-// in PR 25. Per v1 pilota i protection layer sono API Gateway
+//
+// Web hosting (S3 + CloudFront + Route53 alias for app.<domain>) lives
+// in a dedicated WebStack (eu-central-1) plus a WebCertStack
+// (us-east-1) for the ACM certificate — see PR demo-0. Cross-region
+// reference is wired via `crossRegionReferences: true`.
+//
+// WAF CLOUDFRONT (us-east-1) is deferred — see
+// memory/project_waf_cloudfront_deferred.md for the trigger criteria
+// and the plan to add it. Current protection layer for the API:
 // throttling (200 burst / 100 rate) + Lambda concurrency cap (100).
+// `WafConstruct` (lib/constructs/waf.ts) stays in the codebase as
+// reusable scaffolding for that future PR.
 //
-// `WafConstruct` resta nel codebase (`lib/constructs/waf.ts`) come
-// reusable scaffolding: PR 25 lo istanzierà con `scope: 'CLOUDFRONT'`
-// e cross-region us-east-1.
-//
-// Subsequent PRs add SES+Scheduler+Monitoring (PR 24), web app static
-// + CloudFront + WAF CLOUDFRONT + Cognito Hosted UI (PR 25). Stack-
-// split (NetworkStack + ComputeStack) deferred until rollback
+// Stack split (NetworkStack + ComputeStack) deferred until rollback
 // granularity matters — currently tutto-monolitico.
 
 export interface MainStackProps extends cdk.StackProps {

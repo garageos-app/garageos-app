@@ -872,7 +872,7 @@ export class SesConstruct extends Construct {
 
 ### 5.8 Construct: WAF
 
-**Nota implementativa (v1.3 → CORRETTA in v1.4, 2026-05-04)**: Il design originale di PR 23 prevedeva `WafConstruct` con `scope: 'REGIONAL'` attached al stage default di API Gateway HTTP API v2. **Discovered durante deploy production che AWS WAFv2 REGIONAL non supporta HTTP API v2** — solo REST API v1, ALB, AppSync, Cognito user pool, App Runner, Verified Access ([WAFv2 docs](https://docs.aws.amazon.com/waf/latest/developerguide/aws-waf.html)). Pattern AWS-recommended: CloudFront in front di HTTP API v2 + WAF (CLOUDFRONT scope, us-east-1). Conseguenza pratica: `WafConstruct` esiste in `lib/constructs/waf.ts` come reusable scaffolding ma **NOT istanziato** dal `MainStack` in PR 23 post-#51 fix. PR 25 (web app static + CloudFront + Cognito Hosted UI) lo istanzierà con `scope: 'CLOUDFRONT'` cross-region (deploy in us-east-1) attached al CloudFront distribution. Per v1 pilota i protection layer attivi sono API Gateway throttling (200 burst / 100 rate) + Lambda concurrency cap (100). Il template dell'interface `WafConstructProps` resta come riferimento per multi-scope futuro.
+**Nota implementativa (v1.3 → CORRETTA in v1.4, 2026-05-04)**: Il design originale di PR 23 prevedeva `WafConstruct` con `scope: 'REGIONAL'` attached al stage default di API Gateway HTTP API v2. **Discovered durante deploy production che AWS WAFv2 REGIONAL non supporta HTTP API v2** — solo REST API v1, ALB, AppSync, Cognito user pool, App Runner, Verified Access ([WAFv2 docs](https://docs.aws.amazon.com/waf/latest/developerguide/aws-waf.html)). Pattern AWS-recommended: CloudFront in front di HTTP API v2 + WAF (CLOUDFRONT scope, us-east-1). Conseguenza pratica: `WafConstruct` esiste in `lib/constructs/waf.ts` come reusable scaffolding ma **NOT istanziato** dal `MainStack` in PR 23 post-#51 fix. PR demo-0 (web app static + CloudFront) lo istanzierà con `scope: 'CLOUDFRONT'` cross-region (deploy in us-east-1) attached al CloudFront distribution. Per v1 pilota i protection layer attivi sono API Gateway throttling (200 burst / 100 rate) + Lambda concurrency cap (100). Il template dell'interface `WafConstructProps` resta come riferimento per multi-scope futuro.
 
 ```typescript
 // lib/constructs/waf.ts
@@ -1587,6 +1587,33 @@ export class OidcStack extends cdk.Stack {
   }
 }
 ```
+
+### 5.13 Web hosting
+
+Le risorse di hosting sono in due stack dedicati:
+
+- **`GarageosWebCertStack`** (us-east-1): un singolo certificato ACM
+  per `app.garageos.aifollyadvisor.com`, validato via DNS contro la
+  hosted zone Route 53. CloudFront accetta certificati solo da
+  us-east-1, da qui il deploy cross-region. Il certificato è esposto
+  cross-region via `crossRegionReferences: true` e consumato dalla
+  `GarageosWebStack`.
+- **`GarageosWebStack`** (eu-central-1): bucket S3 privato
+  (`garageos-production-web`, `BlockPublicAccess.BLOCK_ALL`,
+  encryption SSE-S3), distribuzione CloudFront con Origin Access
+  Control (OAC) verso il bucket, `viewerProtocolPolicy:
+  REDIRECT_TO_HTTPS`, SPA fallback (403/404 → 200 `/index.html`),
+  PriceClass_100 (Europe + Nord America). Route 53 espone i record
+  alias A + AAAA che puntano alla distribuzione.
+
+WAF CLOUDFRONT è **deferred** — vedi `memory/project_waf_cloudfront_deferred.md`
+per i trigger di attivazione (pilot beta 10+ officine, compliance
+review, attacco rilevato, customer ask). Il `WafConstruct` esistente
+(`infrastructure/lib/constructs/waf.ts`) sarà istanziato in PR
+dedicata con scope `CLOUDFRONT` e cross-region us-east-1.
+
+Cognito Hosted UI **non** è in roadmap — l'app web userà direttamente
+gli SDK Cognito client-side per il flusso di login.
 
 ---
 
