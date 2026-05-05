@@ -473,8 +473,102 @@ describe('POST /v1/auth/signup — already active', () => {
     expect(res.json().code).toBe('auth.signup.email_already_active');
     expect(create).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
-    expect(auditCreate).not.toHaveBeenCalled();
+    // Race-loss audit emitted with reason='already_active' (BR-220 fix).
+    expect(auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'customer_signup_race_lost',
+          metadata: expect.objectContaining({ reason: 'already_active' }),
+        }),
+      }),
+    );
     expect(cognitoMock.commandCalls(AdminCreateUserCommand)).toHaveLength(0);
+  });
+});
+
+// ─── 409 in-flight signup (BR-224 alignment) ────────────────────────────────
+
+describe('POST /v1/auth/signup — in-flight signup (BR-224)', () => {
+  let inFlightApp: FastifyInstance;
+
+  beforeEach(async () => {
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+  });
+
+  afterEach(async () => {
+    await inFlightApp.close();
+  });
+
+  it('returns 409 + audits race-loss when existing.appInstalled=true with cognitoSub=null', async () => {
+    // BR-224 predicate alignment: a "promotable shadow" requires both
+    // cognito_sub IS NULL AND app_installed = false. A row with
+    // app_installed=true and cognito_sub=null represents a signup that
+    // committed Phase 1 elsewhere (in-flight) or rolled back from Phase 2/3
+    // — NOT a shadow. The handler must reject with 409 and audit the event.
+    const findUnique = vi.fn().mockResolvedValue({
+      id: 'in-flight-uuid',
+      email: 'mario@example.it',
+      firstName: 'Mario',
+      lastName: 'R',
+      phone: null,
+      status: 'active',
+      createdAt: new Date('2026-05-06T10:00:00Z'),
+      cognitoSub: null, // Phase 3 not yet committed (in-flight)
+      appInstalled: true, // Phase 1 already committed
+    });
+    const create = vi.fn();
+    const update = vi.fn();
+    const auditCreate = vi.fn().mockResolvedValue({ id: 'audit-race' });
+    const tx = {
+      customer: { findUnique, create, update },
+      auditLog: { create: auditCreate },
+      $queryRawUnsafe: vi.fn().mockResolvedValue([]),
+    };
+    const withContext = vi.fn(async (_ctx: unknown, fn: (t: typeof tx) => Promise<unknown>) =>
+      fn(tx),
+    );
+    inFlightApp = Fastify({ logger: false });
+    await inFlightApp.register(sensible);
+    registerErrorHandler(inFlightApp);
+    await inFlightApp.register(databasePlugin, {
+      prisma: {} as never,
+      withContext: withContext as never,
+    });
+    await inFlightApp.register(authSignupRoutes);
+    await inFlightApp.ready();
+
+    const res = await inFlightApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'mario@example.it',
+        password: 'Secret123',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('auth.signup.email_already_active');
+    expect(create).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    expect(cognitoMock.commandCalls(AdminCreateUserCommand)).toHaveLength(0);
+
+    // Race-loss audit emitted with reason='in_flight'
+    expect(auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorType: 'customer',
+          actorId: 'in-flight-uuid',
+          action: 'customer_signup_race_lost',
+          entityType: 'customer',
+          entityId: 'in-flight-uuid',
+          metadata: expect.objectContaining({ reason: 'in_flight' }),
+        }),
+      }),
+    );
   });
 });
 
