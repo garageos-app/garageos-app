@@ -817,3 +817,57 @@ Modifiche a `infrastructure/assets/web-placeholder/**` triggerano `deploy-web.ym
 
 - **Frontend asset**: `aws s3 cp` di una copia precedente del bundle + invalidation. (Versioning sul bucket è disabilitato: il rollback si fa via re-deploy dal commit precedente sull'asset.)
 - **Stack CDK**: `aws cloudformation cancel-update-stack --stack-name GarageosWebStack` durante un deploy in corso, oppure deploy del commit precedente. `removalPolicy: RETAIN` sul bucket protegge i dati.
+
+## F-WEB-VARS — GitHub Actions Variables for the web build
+
+The `deploy-web.yml` workflow reads four `vars.VITE_*` to inject Cognito and
+API config into the Vite bundle at build time. These are public (extractable
+from the bundle) — store them as repository **Variables** (not Secrets).
+
+### Required variables
+
+| Variable | Source |
+|---|---|
+| `VITE_COGNITO_OFFICINE_POOL_ID` | CloudFormation output `CognitoOfficineUserPoolId` of `GarageosMainStack` |
+| `VITE_COGNITO_OFFICINE_CLIENT_ID` | CloudFormation output `CognitoOfficineClientId` of `GarageosMainStack` |
+| `VITE_COGNITO_REGION` | `eu-central-1` |
+| `VITE_API_BASE_URL` | `https://api.garageos.aifollyadvisor.com` |
+
+### Resolve the Cognito IDs
+
+```bash
+aws cloudformation describe-stacks --stack-name GarageosMainStack \
+  --query "Stacks[0].Outputs[?OutputKey=='CognitoOfficineUserPoolId' || OutputKey=='CognitoOfficineClientId']" \
+  --output table
+```
+
+### Set the variables (one-time, ~5 min)
+
+Repository Settings → Variables → Actions → New repository variable, four times.
+Or via `gh`:
+
+```bash
+gh variable set VITE_COGNITO_OFFICINE_POOL_ID    --body 'eu-central-1_xxxxx'
+gh variable set VITE_COGNITO_OFFICINE_CLIENT_ID  --body 'xxxxxxxxxxxxxxxxxxxxxxxxxx'
+gh variable set VITE_COGNITO_REGION              --body 'eu-central-1'
+gh variable set VITE_API_BASE_URL                --body 'https://api.garageos.aifollyadvisor.com'
+```
+
+Verify:
+
+```bash
+gh variable list
+```
+
+### DR fallback
+
+If the build pipeline is broken and the operator needs to roll back the web
+asset urgently, sync the legacy placeholder directly:
+
+```bash
+aws s3 sync infrastructure/assets/web-placeholder/ \
+  s3://<bucket>/ --delete
+aws cloudfront create-invalidation --distribution-id <dist> --paths '/*'
+```
+
+The placeholder is kept in the repo for exactly this scenario.
