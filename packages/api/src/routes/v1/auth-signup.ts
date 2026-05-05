@@ -123,6 +123,18 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
       const { customer, promoted } = await app.withContext(
         { role: 'admin' as const },
         async (tx) => {
+          // BR-220 race serialization: hold an xact-scoped advisory lock keyed
+          // on `signup:<email>`. Concurrent signup tx for the same email block
+          // here until COMMIT/ROLLBACK; serializes both CREATE-CREATE and
+          // PROMOTE-PROMOTE timings. hashtext collisions (32-bit space) only
+          // cause brief contention between unrelated emails — never correctness
+          // loss; customers.email unique index remains the source of truth.
+          // See APPENDICE_F BR-220 + spec 2026-05-06-fix-auth-signup-br220-race.
+          await tx.$queryRawUnsafe<unknown[]>(
+            `SELECT pg_advisory_xact_lock(hashtext($1))`,
+            `signup:${body.email}`,
+          );
+
           const existing = await tx.customer.findUnique({
             where: { email: body.email },
             select: { ...customerSelfSelect, cognitoSub: true, appInstalled: true },

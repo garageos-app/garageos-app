@@ -118,8 +118,9 @@ interface FakeTx {
   };
   auditLog: { create: ReturnType<typeof vi.fn> };
   // Phase 1 acquires pg_advisory_xact_lock via $queryRawUnsafe before
-  // findUnique. Stub returns [] (lock SELECT yields zero rows of result
-  // data — Postgres returns void as a single-row empty result).
+  // findUnique. The route awaits the call and discards the result, so
+  // any settled value works; [] is the cheapest fixture matching the
+  // route's <unknown[]> generic.
   $queryRawUnsafe: ReturnType<typeof vi.fn>;
 }
 
@@ -266,6 +267,40 @@ describe('POST /v1/auth/signup — CREATE happy path', () => {
         data: { cognitoSub: COGNITO_SUB },
       }),
     );
+  });
+
+  it('acquires pg_advisory_xact_lock(hashtext(signup:<email>)) before findUnique (BR-220)', async () => {
+    // BR-220 race serialization: Phase 1 must hold an xact-scoped advisory
+    // lock keyed on lower(email) BEFORE the findUnique-then-decide read.
+    // Without this, two concurrent signups for the same email can both
+    // observe a NULL row, both proceed to PROMOTE/CREATE, and produce two
+    // 201 responses where one should be 409.
+    const res = await happyApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'mario.rossi@example.com',
+        password: 'Secret123',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+
+    // SQL shape — exact string match on the lock statement.
+    expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      'signup:mario.rossi@example.com',
+    );
+
+    // Ordering: lock MUST be acquired before findUnique. invocationCallOrder
+    // gives a global monotonic sequence across all vi.fn calls in the test.
+    const lockOrder = tx.$queryRawUnsafe.mock.invocationCallOrder[0];
+    const findOrder = tx.customer.findUnique.mock.invocationCallOrder[0];
+    expect(lockOrder).toBeDefined();
+    expect(findOrder).toBeDefined();
+    expect(lockOrder!).toBeLessThan(findOrder!);
   });
 });
 
