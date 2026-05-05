@@ -1,13 +1,14 @@
 name: Deploy web asset
 
-# Asset-only deploy: builds nothing in PR demo-0 (placeholder is a static
-# HTML file). Future PRs (demo-1+) will add a `pnpm --filter web build`
-# step before the s3 sync. Pipeline kept separate from deploy.yml so
-# frontend iterations don't trigger CDK deploys.
+# Builds packages/web with Vite and syncs the resulting dist/ to the
+# CloudFront-fronted S3 bucket. Triggered by changes to the web app
+# itself, the workflow file, or — as a DR fallback — the legacy
+# placeholder directory.
 on:
   push:
     branches: [main]
     paths:
+      - 'packages/web/**'
       - 'infrastructure/assets/web-placeholder/**'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
@@ -22,16 +23,31 @@ concurrency:
 
 jobs:
   deploy:
-    name: sync to s3 + cloudfront invalidation
+    name: build web + sync to s3 + cloudfront invalidation
     runs-on: ubuntu-latest
-    environment: production # mirror deploy.yml; required reviewer if env protection is configured.
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
-      - name: Inject build metadata into placeholder
-        run: |
-          sed -i "s/__BUILD_SHA__/${GITHUB_SHA::7}/g" infrastructure/assets/web-placeholder/index.html
-          sed -i "s/__BUILD_TIMESTAMP__/$(date -u +%Y-%m-%dT%H:%M:%SZ)/g" infrastructure/assets/web-placeholder/index.html
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web app
+        run: pnpm --filter @garageos/web build
+        env:
+          VITE_COGNITO_OFFICINE_POOL_ID: ${{ vars.VITE_COGNITO_OFFICINE_POOL_ID }}
+          VITE_COGNITO_OFFICINE_CLIENT_ID: ${{ vars.VITE_COGNITO_OFFICINE_CLIENT_ID }}
+          VITE_COGNITO_REGION: ${{ vars.VITE_COGNITO_REGION }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -58,7 +74,7 @@ jobs:
 
       - name: Sync to S3
         run: |
-          aws s3 sync infrastructure/assets/web-placeholder/ \
+          aws s3 sync packages/web/dist/ \
             s3://${{ steps.outputs.outputs.bucket }}/ \
             --delete
 
