@@ -130,8 +130,12 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
           // cause brief contention between unrelated emails — never correctness
           // loss; customers.email unique index remains the source of truth.
           // See APPENDICE_F BR-220 + spec 2026-05-06-fix-auth-signup-br220-race.
+          // Cast `void` → `text` because Prisma 7 + @prisma/adapter-pg cannot
+          // deserialize a `void` column ("Unsupported native data type"). The
+          // cast yields an empty string which we discard. See
+          // feedback_pg_void_return_prisma_adapter (post-CI hotfix).
           await tx.$queryRawUnsafe<unknown[]>(
-            `SELECT pg_advisory_xact_lock(hashtext($1))`,
+            `SELECT pg_advisory_xact_lock(hashtext($1))::text`,
             `signup:${body.email}`,
           );
 

@@ -290,7 +290,7 @@ describe('POST /v1/auth/signup — CREATE happy path', () => {
 
     // SQL shape — exact string match on the lock statement.
     expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(
-      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      'SELECT pg_advisory_xact_lock(hashtext($1))::text',
       'signup:mario.rossi@example.com',
     );
 
