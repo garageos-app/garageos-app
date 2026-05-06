@@ -86,3 +86,6 @@ temp/
 # Local-only assets (per-developer, e.g. downloaded TLS CA cert
 # for prod pooler verification — see packages/api/.env.example).
 .local/
+
+# Superpowers brainstorming companion (per-session mockups + state)
+.superpowers/
