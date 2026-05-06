@@ -1,3 +1,6 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { PrismaPg } from '@prisma/adapter-pg';
 
 import { SYSTEM_INTERVENTION_TYPES } from '../../src/seed-data.js';
@@ -198,8 +201,11 @@ export async function runPilotDemoSeed(opts: RunOptions): Promise<void> {
   }
 }
 
-// CLI entrypoint
-if (import.meta.url === `file://${process.argv[1]}`) {
+// CLI entrypoint — cross-platform main-module check (Windows-safe).
+const invokedAsMain =
+  process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedAsMain) {
   const sub = process.env.PILOT_DEMO_SUB;
   if (!sub) {
     console.error(

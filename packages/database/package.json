@@ -25,6 +25,7 @@
     "db:migrate:status": "prisma migrate status",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "seed:pilot-demo": "tsx prisma/seeds/pilot-demo.ts",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:integration": "vitest run -c vitest.integration.config.ts"
