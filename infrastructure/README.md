@@ -888,3 +888,50 @@ After GitHub Actions `deploy-web.yml` succeeds on the demo-2 PR squash:
 10. Refresh `/` while unauthenticated → redirect `/login`
 
 All 10 PASS = demo-2 LIVE.
+
+## F-PILOT-DEMO — Pilot demo seed (production)
+
+Popola il DB di produzione con dati realistici per la demo Persona A "Giuseppe": 1 officina + 3 customers + 5 vehicles + 20 interventi storici (BR-068 km monotonici per veicolo). Lo script è idempotente — re-run sicuro.
+
+### Prerequisiti
+
+- F-7.5 completato per l'officina pilota (Cognito user `super_admin` Giuseppe creato + riga `users` seedata via il flusso bootstrap manuale).
+- Variabile `PILOT_DEMO_SUB` = `sub` Cognito di Giuseppe (visibile in Cognito console o via `aws cognito-idp admin-get-user`).
+- `DATABASE_URL` = Supabase pooler URL produzione (lo stesso usato dall'API). Il caller può estrarlo da Secrets Manager (`garageos-app/api/database`) e tenerlo solo nello shell, mai committato.
+
+### Run
+
+```bash
+# DATABASE_URL = pooler URI estratto da Secrets Manager (garageos-app/api/database).
+# Mantieni il valore solo nello shell session — non committarlo né stamparlo in scrollback.
+export DATABASE_URL="<supabase_pooler_uri>"
+export PILOT_DEMO_SUB="<sub_giuseppe>"
+
+pnpm --filter @garageos/database seed:pilot-demo
+```
+
+Output atteso:
+
+```
+[pilot-demo seed] OK — tenant Officina Giuseppe Bianchi (IT00000000000), 3 customers, 5 vehicles, 20 interventions
+```
+
+### Note
+
+- Il seed esegue write su `tenants`/`users`/`interventions` che hanno RLS attiva. Prisma in produzione gira come `garageos_app` (NOBYPASSRLS) — il seed funziona perché la upsert chain resta visibile alle policy del role `garageos_app` (le policy `is_admin_role()` vs scope-tenant sono superate dalla configurazione `app.role` settata application-side, qui assente). **Per il primo run, eseguire come superuser** se il role applicativo blocca: temporaneamente sostituire `DATABASE_URL` con `DIRECT_URL` (postgres superuser, BYPASSRLS) e re-runnare.
+- Re-run su DB già popolato è no-op per le righe esistenti (tenant by `vat_number`, customer by `email`, vehicle by `vin`, intervention triple) e non cancella dati live creati durante la demo.
+
+## F-WEB-DEMO3 — Smoke checklist post-deploy demo-3 (form crea intervento)
+
+After F-PILOT-DEMO eseguito, validazione manuale end-to-end. Tempo stimato ~10 minuti.
+
+1. Open `https://app.garageos.aifollyadvisor.com/`, login con credenziali Giuseppe → Dashboard renders.
+2. Type `Fiat` → Enter (or click `Cerca →`) → SearchResults card "Fiat Panda" `AB123CD`.
+3. Click card → VehicleDetail mostra dati tecnici (Fiat Panda 1.2 8V, anno 2018), customer mascherato (Mario R.), badge stato `Certificato`. Annota dalla timeline il km dell'intervento più recente (`MAX`).
+4. Click CTA `Registra intervento` (header) → atterra `/vehicles/<id>/interventions/new`. Form mostra 4 campi obbligatori a vista; sezioni opzionali collassate.
+5. Happy path: data oggi, tipo `Tagliando`, km = `MAX + 5000`, descrizione "Tagliando smoke demo-3" → `Salva` → toast verde "Intervento registrato", redirect scheda, nuovo intervento in cima alla timeline.
+6. 409 path: torna su CTA, data oggi, tipo `Cambio olio`, **km = `MAX - 10000`** (sotto al massimo storico ora aggiornato a `MAX + 5000`), descrizione "Smoke 409" → `Salva` → modal "Km inferiori allo storico" con messaggio backend e 2 CTA `Correggi` / `Conferma e salva`.
+7. Click `Conferma e salva` → modal chiude, toast verde, redirect, nuovo intervento in timeline (con `kmAnomaly=true` server-side, visibile via API ma non strettamente necessario in UI).
+8. TopBar dropdown → `Esci` → redirect `/login`. Reload `/vehicles/<id>` → redirect `/login` (protected route).
+
+All 8 PASS = demo-3 LIVE definitivo. Aggiornare `project_resume_checkpoint.md` con esito.
