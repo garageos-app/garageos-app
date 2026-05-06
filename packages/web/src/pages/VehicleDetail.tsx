@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { useVehicleDetail } from '@/queries/vehicleDetail';
 import { useVehicleTimeline } from '@/queries/vehicleTimeline';
 import { ApiError } from '@/lib/api-client';
-import { fallback, formatCurrency, formatDate, formatKm } from '@/lib/format';
+import { fallback, formatDate, formatKm } from '@/lib/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -157,23 +157,31 @@ export function VehicleDetail() {
         {timeline.isSuccess && timelineItems.length > 0 && (
           <>
             <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
-              {timelineItems.map((item) => (
-                <div key={item.id} className="px-4 py-3 flex items-center gap-4">
-                  <div className="text-xs text-slate-500 w-24">
-                    {formatDate(item.interventionDate)}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">{fallback(item.interventionTypeName)}</div>
-                    <div className="text-xs text-slate-500">
-                      {fallback(item.performedByTenant?.businessName)} ·{' '}
-                      {formatKm(item.kmAtIntervention)} · {formatCurrency(item.totalCost)}
+              {timelineItems.map((item) => {
+                const isShop = item.kind === 'shop_intervention';
+                const title = isShop
+                  ? (item.title ?? item.type.name_it)
+                  : (item.custom_type ?? 'Intervento privato');
+                const subtitle = isShop
+                  ? `${item.tenant.business_name}${item.tenant.location_city ? ' · ' + item.tenant.location_city : ''}`
+                  : 'Cliente';
+                return (
+                  <div key={item.id} className="px-4 py-3 flex items-center gap-4">
+                    <div className="text-xs text-slate-500 w-24">
+                      {formatDate(item.intervention_date)}
                     </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">{fallback(title)}</div>
+                      <div className="text-xs text-slate-500">
+                        {subtitle} · {formatKm(item.odometer_km)}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">
+                      {isShop ? 'Officina' : 'Privato'}
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className="text-[10px]">
-                    {item.kind === 'shop' ? 'Officina' : 'Privato'}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
             {timeline.hasNextPage && (
               <div className="pt-4">
