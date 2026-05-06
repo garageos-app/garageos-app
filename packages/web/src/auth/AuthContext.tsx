@@ -1,4 +1,4 @@
-import { createContext, useEffect, useReducer, type ReactNode } from 'react';
+import { createContext, useCallback, useEffect, useReducer, type ReactNode } from 'react';
 import {
   AuthenticationDetails,
   CognitoUser,
@@ -57,6 +57,7 @@ export interface AuthContextValue {
   state: AuthState;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
+  getIdToken: () => Promise<string | null>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -122,5 +123,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SIGNOUT' });
   };
 
-  return <AuthContext.Provider value={{ state, signIn, signOut }}>{children}</AuthContext.Provider>;
+  const getIdToken = useCallback(async (): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const current = officineUserPool.getCurrentUser();
+      if (!current) return resolve(null);
+      current.getSession((err: Error | null, session: CognitoUserSession | null) => {
+        if (err || !session || !session.isValid()) return resolve(null);
+        resolve(session.getIdToken().getJwtToken());
+      });
+    });
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ state, signIn, signOut, getIdToken }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
