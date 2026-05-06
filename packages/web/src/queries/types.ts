@@ -81,3 +81,50 @@ export interface TimelineResponse {
   data: TimelineItem[];
   meta: { has_more: boolean; cursor?: string };
 }
+
+export type InterventionTypeCategory =
+  | 'maintenance'
+  | 'tires'
+  | 'repair'
+  | 'inspection'
+  | 'body'
+  | 'other';
+
+export interface InterventionType {
+  id: string;
+  code: string;
+  nameIt: string;
+  description: string;
+  icon: string;
+  category: InterventionTypeCategory;
+  suggestsDeadline: boolean;
+  defaultDeadlineMonths: number | null;
+  defaultDeadlineKm: number | null;
+  custom: boolean;
+}
+
+export interface InterventionTypesResponse {
+  data: InterventionType[];
+}
+
+export interface CreateInterventionResponse {
+  intervention: {
+    id: string;
+    vehicleId: string;
+    interventionTypeId: string;
+    interventionDate: string;
+    odometerKm: number;
+    title: string | null;
+    description: string;
+    status: string;
+    kmAnomaly: boolean;
+    interventionType: { id: string; code: string; nameIt: string };
+  };
+  deadline: {
+    id: string;
+    dueDate: string | null;
+    dueOdometerKm: number | null;
+    interventionTypeId: string;
+    status: string;
+  } | null;
+}
