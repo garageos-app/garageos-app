@@ -60,9 +60,10 @@ describe('GET /v1/intervention-types (integration)', () => {
     const { tenantId } = await createTenantWithLocation('itypes-custom');
     await pgAdmin.query(
       `INSERT INTO intervention_types
-        (id, tenant_id, code, name_it, description, icon, category, suggests_deadline)
+        (id, tenant_id, code, name_it, description, icon, category, suggests_deadline,
+         created_at, updated_at)
        VALUES (gen_random_uuid(), $1, 'CUSTOM_FOO', 'Custom Foo', 'Test', 'wrench',
-        'other'::"InterventionTypeCategory", false)`,
+        'other'::"InterventionTypeCategory", false, NOW(), NOW())`,
       [tenantId],
     );
     const res = await authedRequest(tenantId);
@@ -78,9 +79,10 @@ describe('GET /v1/intervention-types (integration)', () => {
     const { tenantId: tenantB } = await createTenantWithLocation('itypes-b');
     await pgAdmin.query(
       `INSERT INTO intervention_types
-        (id, tenant_id, code, name_it, description, icon, category, suggests_deadline)
+        (id, tenant_id, code, name_it, description, icon, category, suggests_deadline,
+         created_at, updated_at)
        VALUES (gen_random_uuid(), $1, 'TENANT_A_ONLY', 'A only', 'X', 'wrench',
-        'other'::"InterventionTypeCategory", false)`,
+        'other'::"InterventionTypeCategory", false, NOW(), NOW())`,
       [tenantA],
     );
     const res = await authedRequest(tenantB);
