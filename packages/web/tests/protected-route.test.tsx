@@ -14,13 +14,13 @@ function withAuthState(state: AuthState) {
   };
 }
 
-function renderWithStateAndPath(state: AuthState, initialPath = '/dashboard') {
+function renderWithStateAndPath(state: AuthState, initialPath = '/vehicles/test-uuid') {
   return render(
     <AuthContext.Provider value={withAuthState(state)}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
           <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard" element={<div>protected content</div>} />
+            <Route path="/vehicles/:id" element={<div>protected content</div>} />
           </Route>
           <Route path="/login" element={<div>login page</div>} />
         </Routes>

@@ -19,9 +19,9 @@ const statusMeta: Record<string, { label: string; cls: string; Icon: typeof Chec
     Icon: CheckCircle2,
   },
   pending: { label: 'Pending', cls: 'bg-amber-50 text-amber-700 border-amber-200', Icon: Clock },
-  disputed: {
-    label: 'Contestato',
-    cls: 'bg-red-50 text-red-700 border-red-200',
+  archived: {
+    label: 'Archiviato',
+    cls: 'bg-slate-50 text-slate-700 border-slate-200',
     Icon: AlertTriangle,
   },
 };
@@ -90,9 +90,17 @@ export function VehicleDetail() {
               <span className="font-mono">{v.plate}</span> · {v.year} · {v.fuelType}
             </div>
           </div>
-          <Badge variant="outline" className={sb.cls}>
-            <sb.Icon size={14} className="mr-1" /> {sb.label}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className={sb.cls}>
+              <sb.Icon size={14} className="mr-1" /> {sb.label}
+            </Badge>
+            <Button
+              onClick={() => navigate(`/vehicles/${id}/interventions/new`)}
+              disabled={v.status === 'archived'}
+            >
+              Registra intervento
+            </Button>
+          </div>
         </div>
       </div>
 

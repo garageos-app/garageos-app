@@ -13,9 +13,9 @@ const statusBadge: Record<
     Icon: CheckCircle2,
   },
   pending: { label: 'Pending', cls: 'bg-amber-50 text-amber-700 border-amber-200', Icon: Clock },
-  disputed: {
-    label: 'Contestato',
-    cls: 'bg-red-50 text-red-700 border-red-200',
+  archived: {
+    label: 'Archiviato',
+    cls: 'bg-slate-50 text-slate-700 border-slate-200',
     Icon: AlertTriangle,
   },
 };

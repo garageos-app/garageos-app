@@ -1,4 +1,4 @@
-import { createContext, useCallback, useEffect, useReducer, type ReactNode } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useReducer, type ReactNode } from 'react';
 import {
   AuthenticationDetails,
   CognitoUser,
@@ -87,41 +87,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const signIn = (email: string, password: string) =>
-    new Promise<void>((resolve) => {
-      dispatch({ type: 'SIGNIN_START' });
-      const cognitoUser = new CognitoUser({ Username: email, Pool: officineUserPool });
-      const details = new AuthenticationDetails({ Username: email, Password: password });
-      cognitoUser.authenticateUser(details, {
-        onSuccess: (session) => {
-          dispatch({ type: 'SIGNIN_OK', user: userFromIdToken(session.getIdToken()) });
-          resolve();
-        },
-        onFailure: (err) => {
-          dispatch({ type: 'SIGNIN_ERROR', message: mapCognitoError(err) });
-          resolve();
-        },
-        mfaRequired: () => {
-          dispatch({
-            type: 'SIGNIN_ERROR',
-            message: 'Utente con MFA non supportato in questa versione. Contatta il supporto.',
-          });
-          resolve();
-        },
-        newPasswordRequired: () => {
-          dispatch({
-            type: 'SIGNIN_ERROR',
-            message: 'Devi reimpostare la password. Contatta il supporto.',
-          });
-          resolve();
-        },
-      });
-    });
+  const signIn = useCallback(
+    (email: string, password: string) =>
+      new Promise<void>((resolve) => {
+        dispatch({ type: 'SIGNIN_START' });
+        const cognitoUser = new CognitoUser({ Username: email, Pool: officineUserPool });
+        const details = new AuthenticationDetails({ Username: email, Password: password });
+        cognitoUser.authenticateUser(details, {
+          onSuccess: (session) => {
+            dispatch({ type: 'SIGNIN_OK', user: userFromIdToken(session.getIdToken()) });
+            resolve();
+          },
+          onFailure: (err) => {
+            dispatch({ type: 'SIGNIN_ERROR', message: mapCognitoError(err) });
+            resolve();
+          },
+          mfaRequired: () => {
+            dispatch({
+              type: 'SIGNIN_ERROR',
+              message: 'Utente con MFA non supportato in questa versione. Contatta il supporto.',
+            });
+            resolve();
+          },
+          newPasswordRequired: () => {
+            dispatch({
+              type: 'SIGNIN_ERROR',
+              message: 'Devi reimpostare la password. Contatta il supporto.',
+            });
+            resolve();
+          },
+        });
+      }),
+    [],
+  );
 
-  const signOut = () => {
+  const signOut = useCallback(() => {
     officineUserPool.getCurrentUser()?.signOut();
     dispatch({ type: 'SIGNOUT' });
-  };
+  }, []);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {
     return new Promise((resolve) => {
@@ -134,9 +137,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ state, signIn, signOut, getIdToken }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthContextValue>(
+    () => ({ state, signIn, signOut, getIdToken }),
+    [state, signIn, signOut, getIdToken],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
