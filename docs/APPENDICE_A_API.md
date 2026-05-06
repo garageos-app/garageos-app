@@ -220,6 +220,59 @@ Altri campi nel root:
 
 ---
 
+### 2.1bis `GET /v1/intervention-types` — Lista tipi intervento
+
+**Feature:** F-OFF-302
+**Auth:** Officine pool (mechanic / super_admin)
+
+#### Descrizione
+
+Ritorna l'unione di tipi system-wide (12 righe predefinite, `tenant_id IS NULL`) e tipi custom dell'officina autenticata. Usato dal form crea intervento per popolare il dropdown "Tipo intervento".
+
+#### Request
+
+```http
+GET /v1/intervention-types
+Authorization: Bearer <officine_user_jwt>
+```
+
+Nessun body, nessun query param.
+
+#### Response `200 OK`
+
+```jsonc
+{
+  "data": [
+    {
+      "id": "01HSYS...",
+      "code": "TAGLIANDO",
+      "nameIt": "Tagliando",
+      "description": "Tagliando periodico completo secondo piano manutenzione",
+      "icon": "wrench",
+      "category": "maintenance",
+      "suggestsDeadline": true,
+      "defaultDeadlineMonths": 12,
+      "defaultDeadlineKm": 15000,
+      "custom": false
+    }
+    // … altri tipi system + tenant custom
+  ]
+}
+```
+
+- `category` enum: `maintenance | tires | repair | inspection | body | other`
+- `custom: true` per righe del tenant, `custom: false` per system rows
+- Ordinamento server-side: `(category ASC, nameIt ASC)`
+
+#### Errori
+
+| Status | Codice | Scenario |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Token assente o invalido |
+| 403 | `FORBIDDEN` | Token clienti pool |
+
+---
+
 ### 2.2 `POST /vehicles/:id/interventions` — Registrazione intervento
 
 **Feature:** F-OFF-301, F-OFF-308
@@ -235,64 +288,63 @@ Registra un nuovo intervento officina su un veicolo. Può opzionalmente creare u
 ```http
 POST /v1/vehicles/01HKXN5.../interventions
 Content-Type: application/json
-Authorization: Bearer <tenant_user_jwt>
+Authorization: Bearer <officine_user_jwt>
 
 {
-  "intervention_type_id": "01HSYS...",
-  "intervention_date": "2026-04-21",
-  "odometer_km": 45000,
+  "interventionTypeId": "01HSYS...",
+  "interventionDate": "2026-04-21",
+  "odometerKm": 45000,
   "title": "Tagliando completo",
-  "description": "Sostituzione olio motore 5W30, filtro olio, filtro aria, filtro abitacolo. Controllo livelli e usura pastiglie freni. Rotazione pneumatici.",
-  "parts_replaced": [
+  "description": "Sostituzione olio motore 5W30, filtro olio, filtro aria, filtro abitacolo. Controllo livelli e usura pastiglie freni.",
+  "partsReplaced": [
     { "name": "Olio motore Selenia 5W30", "code": "SEL-5W30-4L", "quantity": 4, "notes": "Litri" },
-    { "name": "Filtro olio", "code": "UFI-23.145.02", "quantity": 1 },
-    { "name": "Filtro aria", "code": "MANN-C28068", "quantity": 1 },
-    { "name": "Filtro abitacolo", "code": "MANN-CU2422", "quantity": 1 }
+    { "name": "Filtro olio", "code": "UFI-23.145.02", "quantity": 1 }
   ],
-  "internal_notes": "Cliente segnala leggero rumore sospensione anteriore sx, verificare al prossimo intervento",
-  "create_deadline": {
+  "internalNotes": "Cliente segnala leggero rumore sospensione anteriore sx",
+  "createDeadline": {
     "enabled": true,
-    "months_from_now": 12,
-    "km_increment": 15000
-  }
+    "monthsFromNow": 12,
+    "kmIncrement": 15000
+  },
+  "forceKmDecrease": false
 }
 ```
 
 #### Response `201 Created`
 
-```json
+```jsonc
 {
   "intervention": {
     "id": "01HKXQ...",
-    "tenant_id": "01HKXL0...",
-    "location_id": "01HKXP3...",
-    "user_id": "01HKXP8...",
-    "vehicle_id": "01HKXN5...",
-    "intervention_type": {
+    "tenantId": "01HKXL0...",
+    "locationId": "01HKXP3...",
+    "userId": "01HKXP8...",
+    "vehicleId": "01HKXN5...",
+    "interventionTypeId": "01HSYS...",
+    "interventionType": {
       "id": "01HSYS...",
       "code": "TAGLIANDO",
-      "name_it": "Tagliando"
+      "nameIt": "Tagliando"
     },
-    "intervention_date": "2026-04-21",
-    "odometer_km": 45000,
+    "interventionDate": "2026-04-21",
+    "odometerKm": 45000,
     "title": "Tagliando completo",
     "description": "...",
-    "parts_replaced": [...],
+    "partsReplaced": [...],
+    "internalNotes": "...",
     "status": "active",
-    "wiki_locked_at": "2026-04-23T14:32:05Z",
-    "created_at": "2026-04-21T14:32:05Z"
+    "kmAnomaly": false,
+    "wikiLockedAt": null,
+    "createdAt": "2026-04-21T14:32:05Z"
   },
   "deadline": {
     "id": "01HKXR...",
-    "due_date": "2027-04-21",
-    "due_odometer_km": 60000,
-    "intervention_type_id": "01HSYS...",
+    "dueDate": "2027-04-21",
+    "dueOdometerKm": 60000,
+    "interventionTypeId": "01HSYS...",
     "status": "open"
-  },
-  "notifications_scheduled": [
-    { "type": "push_customer", "target": "mario.rossi@example.com", "status": "queued" },
-    { "type": "email_customer", "target": "mario.rossi@example.com", "status": "queued" }
-  ]
+  }
+  // notifications_scheduled[] — DEFERRED v1.1 (BR-064/066/129 pending)
 }
 ```
 
@@ -300,11 +352,15 @@ Authorization: Bearer <tenant_user_jwt>
 
 | Status | Codice | Scenario |
 |---|---|---|
-| 403 | `vehicle_access_denied` | Il tenant non ha accesso al veicolo (raro, solo se veicolo in stato particolare) |
-| 404 | `vehicle_not_found` | |
-| 404 | `intervention_type_not_found` | |
-| 422 | `odometer_km_decrease` | km inferiori all'ultimo intervento registrato (warning, richiede `force: true`) |
-| 422 | `intervention_date_future` | Data futura non consentita |
+| 400 | `VALIDATION_ERROR` | Body Zod validation fail (errors[] dettagliato) |
+| 400 | `intervention.creation.date_future` | Data futura non consentita (BR-069) |
+| 400 | `intervention.creation.date_before_registration` | Data precedente all'immatricolazione del veicolo (BR-070) |
+| 401 | `UNAUTHORIZED` | Token assente o invalido |
+| 403 | `FORBIDDEN` | Token clienti pool su route officine |
+| 404 | `NOT_FOUND` | Veicolo o tipo intervento non trovato/non accessibile |
+| 409 | `intervention.creation.odometer_decrease_warning` | Km inferiori al massimo storico (BR-068) — recoverable: re-POST con `forceKmDecrease=true` |
+| 422 | `intervention.creation.user_no_location` | Utente autenticato senza locationId |
+| 422 | `vehicle.modification.archived` | Veicolo in stato `archived` (BR-061) |
 
 ---
 
