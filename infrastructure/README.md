@@ -902,7 +902,7 @@ Popola il DB di produzione con dati realistici per la demo Persona A "Giuseppe":
 ### Run
 
 ```bash
-# DATABASE_URL = pooler URI estratto da Secrets Manager (garageos-app/api/database).
+# DATABASE_URL = pooler URI estratto da Secrets Manager (garageos/production/app, key DATABASE_URL).
 # Mantieni il valore solo nello shell session — non committarlo né stamparlo in scrollback.
 export DATABASE_URL="<supabase_pooler_uri>"
 export PILOT_DEMO_SUB="<sub_giuseppe>"
@@ -918,7 +918,7 @@ Output atteso:
 
 ### Note
 
-- Il seed esegue write su `tenants`/`users`/`interventions` che hanno RLS attiva. Prisma in produzione gira come `garageos_app` (NOBYPASSRLS) — il seed funziona perché la upsert chain resta visibile alle policy del role `garageos_app` (le policy `is_admin_role()` vs scope-tenant sono superate dalla configurazione `app.role` settata application-side, qui assente). **Per il primo run, eseguire come superuser** se il role applicativo blocca: temporaneamente sostituire `DATABASE_URL` con `DIRECT_URL` (postgres superuser, BYPASSRLS) e re-runnare.
+- Il seed esegue write su `tenants`/`users`/`interventions` che hanno RLS attiva. Le policy RLS richiedono `set_app_context()` (chiamata dall'API server) per autorizzare le write tenant-scoped — il seed gira fuori dal server applicativo e quindi quel context è assente, perciò il role applicativo `garageos_app` (NOBYPASSRLS) non riesce a scrivere. **Per il primo run, usare il `DIRECT_URL` superuser** estratto dallo stesso secret `garageos/production/app` (key `DIRECT_URL`): `postgres` ha BYPASSRLS automatico e il seed completa senza configurazione di context.
 - Re-run su DB già popolato è no-op per le righe esistenti (tenant by `vat_number`, customer by `email`, vehicle by `vin`, intervention triple) e non cancella dati live creati durante la demo.
 
 ## F-WEB-DEMO3 — Smoke checklist post-deploy demo-3 (form crea intervento)
