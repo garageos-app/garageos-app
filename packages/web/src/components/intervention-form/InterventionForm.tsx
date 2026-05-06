@@ -28,6 +28,21 @@ interface Props {
   submitting: boolean;
 }
 
+function collectErrorMessages(errors: unknown): string[] {
+  const out: string[] = [];
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const obj = node as Record<string, unknown>;
+    if (typeof obj.message === 'string' && obj.message.length > 0) {
+      out.push(obj.message);
+      return;
+    }
+    for (const v of Object.values(obj)) visit(v);
+  };
+  visit(errors);
+  return out;
+}
+
 export function InterventionForm({
   interventionTypes,
   registrationDate,
@@ -55,9 +70,29 @@ export function InterventionForm({
   const [showNotes, setShowNotes] = useState(false);
   const [showDeadline, setShowDeadline] = useState(false);
 
+  // Surface every Zod validation error in a top-level Alert. Without this, an
+  // invalid field nested inside a collapsed optional section (e.g. an empty
+  // PartsRepeater row, or a NaN month in DeadlineSection) silently blocks the
+  // submit and leaves the user with no feedback because the per-field error
+  // <p> tag is not rendered when the section is collapsed.
+  const allErrorMessages = collectErrorMessages(methods.formState.errors);
+
   return (
     <FormProvider {...methods}>
       <form onSubmit={methods.handleSubmit(onSubmit)} noValidate className="space-y-6 max-w-2xl">
+        {allErrorMessages.length > 0 && (
+          <div
+            className="border border-red-300 bg-red-50 text-red-800 rounded-md p-3 text-sm"
+            role="alert"
+          >
+            <div className="font-medium mb-1">Correggi i campi seguenti prima di salvare:</div>
+            <ul className="list-disc list-inside space-y-0.5">
+              {allErrorMessages.map((m, i) => (
+                <li key={i}>{m}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {/* Required fields */}
         <div className="space-y-4">
           <div className="text-xs uppercase tracking-wider text-slate-500">Obbligatori</div>
