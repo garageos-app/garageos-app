@@ -362,6 +362,22 @@ const SYSTEM_TYPE_FALLBACKS: Record<string, SystemInterventionTypeSeed> = {
     defaultDeadlineMonths: 12,
     defaultDeadlineKm: 15000,
   },
+  CAMBIO_OLIO: {
+    code: 'CAMBIO_OLIO',
+    nameIt: 'Cambio olio',
+    category: 'maintenance',
+    suggestsDeadline: true,
+    defaultDeadlineMonths: 12,
+    defaultDeadlineKm: 15000,
+  },
+  REVISIONE: {
+    code: 'REVISIONE',
+    nameIt: 'Revisione ministeriale',
+    category: 'inspection',
+    suggestsDeadline: true,
+    defaultDeadlineMonths: 24,
+    defaultDeadlineKm: null,
+  },
 };
 
 // Idempotent fetch: returns the seeded row if still present, otherwise

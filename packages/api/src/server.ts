@@ -19,6 +19,7 @@ import interventionRevisionsListRoutes from './routes/v1/interventions-revisions
 import { authSignupRoutes } from './routes/v1/auth-signup.js';
 import interventionUpdateRoutes from './routes/v1/interventions-update.js';
 import interventionRoutes from './routes/v1/interventions.js';
+import interventionTypesRoutes from './routes/v1/intervention-types.js';
 import attachmentsRoutes from './routes/v1/attachments.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
 import userRoutes from './routes/v1/users.js';
@@ -115,6 +116,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(vehicleUpdateRoutes);
   await app.register(vehicleTimelineRoutes);
   await app.register(interventionRoutes);
+  await app.register(interventionTypesRoutes);
   await app.register(interventionUpdateRoutes);
   await app.register(interventionRevisionsListRoutes);
   await app.register(interventionDisputeRoutes);
