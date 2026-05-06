@@ -871,3 +871,20 @@ aws cloudfront create-invalidation --distribution-id <dist> --paths '/*'
 ```
 
 The placeholder is kept in the repo for exactly this scenario.
+
+## F-WEB-DEMO2 — Smoke checklist post-deploy demo-2
+
+After GitHub Actions `deploy-web.yml` succeeds on the demo-2 PR squash:
+
+1. `curl -I https://app.garageos.aifollyadvisor.com/` → 200, `content-type: text/html`
+2. Open URL in browser → automatic redirect `/login` (no `/dashboard` placeholder)
+3. Sign in with `matulamichele@gmail.com` / production password → redirect `/`
+4. Dashboard renders: Sidebar (slate-900, "Cerca veicolo" active) + TopBar (email + dropdown) + SearchHero (h1 "Cerca un veicolo")
+5. Type `AB123CD` → live hint "→ ricerca per targa" appears below input
+6. Click "Cerca →" → URL becomes `/search?q=AB123CD&t=plate`
+7. SearchResults page shows empty state ("Nessun veicolo trovato") — expected, prod DB has no demo vehicles
+8. Manual nav: paste `/vehicles/00000000-0000-0000-0000-000000000000` → toast "Veicolo non trovato" + redirect `/`
+9. Click TopBar dropdown → "Esci" → redirect `/login`, browser localStorage `CognitoIdentityServiceProvider.*` cleared
+10. Refresh `/` while unauthenticated → redirect `/login`
+
+All 10 PASS = demo-2 LIVE.
