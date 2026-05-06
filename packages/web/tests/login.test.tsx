@@ -7,11 +7,11 @@ import { Login } from '@/pages/Login';
 
 function renderLogin(state: AuthState, signIn = vi.fn()) {
   return render(
-    <AuthContext.Provider value={{ state, signIn, signOut: vi.fn() }}>
+    <AuthContext.Provider value={{ state, signIn, signOut: vi.fn(), getIdToken: vi.fn() }}>
       <MemoryRouter initialEntries={['/login']}>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/dashboard" element={<div>dashboard</div>} />
+          <Route path="/" element={<div>dashboard</div>} />
         </Routes>
       </MemoryRouter>
     </AuthContext.Provider>,
@@ -70,7 +70,7 @@ describe('Login page', () => {
     expect(submit).toBeDisabled();
   });
 
-  it('redirects to /dashboard once status flips to authenticated', async () => {
+  it('redirects to / once status flips to authenticated', async () => {
     renderLogin({
       status: 'authenticated',
       user: { email: 'giuseppe@officina-bianchi.it' },

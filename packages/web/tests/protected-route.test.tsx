@@ -10,6 +10,7 @@ function withAuthState(state: AuthState) {
     state,
     signIn: vi.fn(),
     signOut: vi.fn(),
+    getIdToken: vi.fn(),
   };
 }
 
