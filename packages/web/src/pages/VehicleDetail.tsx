@@ -33,11 +33,7 @@ export function VehicleDetail() {
   const timeline = useVehicleTimeline(id);
 
   useEffect(() => {
-    if (
-      detail.isError &&
-      detail.error instanceof ApiError &&
-      detail.error.code === 'vehicle.not_found'
-    ) {
+    if (detail.isError && detail.error instanceof ApiError && detail.error.status === 404) {
       toast.error('Veicolo non trovato');
       navigate('/', { replace: true });
     }

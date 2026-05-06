@@ -47,13 +47,26 @@ export function createApiFetch(deps: ApiClientDeps) {
       throw new ApiError('auth.expired', 401, 'Sessione scaduta');
     }
 
-    const body = (await res.json().catch(() => ({}))) as { name?: unknown; message?: unknown };
+    const body = (await res.json().catch(() => ({}))) as {
+      code?: unknown;
+      detail?: unknown;
+      // Legacy/non-RFC-7807 fallbacks
+      name?: unknown;
+      message?: unknown;
+    };
     if (!res.ok) {
-      const code = typeof body?.name === 'string' ? body.name : `http.${res.status}`;
+      const code =
+        typeof body?.code === 'string'
+          ? body.code
+          : typeof body?.name === 'string'
+            ? body.name
+            : `http.${res.status}`;
       const message =
-        typeof body?.message === 'string'
-          ? body.message
-          : `Errore ${res.status}: servizio temporaneamente non disponibile`;
+        typeof body?.detail === 'string'
+          ? body.detail
+          : typeof body?.message === 'string'
+            ? body.message
+            : `Errore ${res.status}: servizio temporaneamente non disponibile`;
       throw new ApiError(code, res.status, message);
     }
     return body as T;

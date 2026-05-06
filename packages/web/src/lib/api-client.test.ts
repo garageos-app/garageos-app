@@ -43,17 +43,40 @@ describe('createApiFetch', () => {
     expect(deps.onAuthExpired).toHaveBeenCalledOnce();
   });
 
-  it('404 with body: throws ApiError with code+message from server', async () => {
+  it('404 with RFC 7807 body: parses code+detail from server', async () => {
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify({ name: 'vehicle.not_found', message: 'Veicolo non trovato.' }), {
-        status: 404,
-      }),
+      new Response(
+        JSON.stringify({
+          type: 'https://api.garageos.it/errors/NOT_FOUND',
+          title: 'Resource not found',
+          status: 404,
+          code: 'NOT_FOUND',
+          detail: 'The requested resource does not exist or is not accessible.',
+          instance: '/v1/vehicles/abc',
+          request_id: 'req-1',
+        }),
+        { status: 404 },
+      ),
     );
     const apiFetch = createApiFetch(baseDeps());
     await expect(apiFetch('/v1/vehicles/abc')).rejects.toMatchObject({
-      code: 'vehicle.not_found',
+      code: 'NOT_FOUND',
       status: 404,
-      message: 'Veicolo non trovato.',
+      message: 'The requested resource does not exist or is not accessible.',
+    });
+  });
+
+  it('4xx with legacy name+message body: falls back to those fields', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ name: 'legacy.code', message: 'Legacy message.' }), {
+        status: 422,
+      }),
+    );
+    const apiFetch = createApiFetch(baseDeps());
+    await expect(apiFetch('/v1/test')).rejects.toMatchObject({
+      code: 'legacy.code',
+      status: 422,
+      message: 'Legacy message.',
     });
   });
 
