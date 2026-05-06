@@ -93,7 +93,9 @@ export function InterventionCreate() {
     } catch (e) {
       if (e instanceof ApiError) {
         toast.error(translateError(e.code, e.message));
+        return;
       }
+      throw e;
     }
   }
 

@@ -20,7 +20,8 @@ export function PartsRepeater() {
             <Input
               type="number"
               placeholder="Quantità"
-              step="any"
+              step="1"
+              min={1}
               {...register(`partsReplaced.${i}.quantity`, { valueAsNumber: true })}
             />
             <Button

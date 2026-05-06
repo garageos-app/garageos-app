@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FormProvider, useForm } from 'react-hook-form';
+import { FormProvider, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,8 @@ export function InterventionForm({
     },
   });
 
+  const interventionTypeId = useWatch({ control: methods.control, name: 'interventionTypeId' });
+
   const [showTitle, setShowTitle] = useState(false);
   const [showParts, setShowParts] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
@@ -55,7 +57,7 @@ export function InterventionForm({
 
   return (
     <FormProvider {...methods}>
-      <form onSubmit={methods.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl">
+      <form onSubmit={methods.handleSubmit(onSubmit)} noValidate className="space-y-6 max-w-2xl">
         {/* Required fields */}
         <div className="space-y-4">
           <div className="text-xs uppercase tracking-wider text-slate-500">Obbligatori</div>
@@ -82,7 +84,7 @@ export function InterventionForm({
               onValueChange={(v) =>
                 methods.setValue('interventionTypeId', v, { shouldValidate: true })
               }
-              value={methods.watch('interventionTypeId')}
+              value={interventionTypeId ?? ''}
             >
               <SelectTrigger id="type">
                 <SelectValue placeholder="Seleziona…" />

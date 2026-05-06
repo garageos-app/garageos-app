@@ -7,11 +7,9 @@ import { InterventionCreate } from './InterventionCreate';
 import { ApiError } from '@/lib/api-client';
 import type { CreateInterventionFormValues } from '@/lib/validators/intervention';
 
-const { mockApiFetch, mockToastError, capturedOnSubmit } = vi.hoisted(() => ({
+const { mockApiFetch, mockToastError } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
   mockToastError: vi.fn(),
-  // Captures the onSubmit prop passed to InterventionForm so tests can call it directly
-  capturedOnSubmit: { current: null as ((v: CreateInterventionFormValues) => void) | null },
 }));
 
 vi.mock('@/lib/api-client', async () => {
@@ -29,7 +27,6 @@ vi.mock('@/components/intervention-form/InterventionForm', () => ({
     onSubmit: (v: CreateInterventionFormValues) => void;
     submitting: boolean;
   }) => {
-    capturedOnSubmit.current = onSubmit;
     return (
       <div>
         <label htmlFor="desc">Descrizione</label>
