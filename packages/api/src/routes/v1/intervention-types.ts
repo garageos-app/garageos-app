@@ -13,7 +13,14 @@ const interventionTypesRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const tenantId = request.tenantId!;
       return app.withContext({ tenantId }, async (tx) => {
+        // RLS on intervention_types is permissive (SELECT USING true) so the
+        // cross-tenant intervention timeline can resolve foreign-tenant type
+        // names. The catalog endpoint must therefore scope at the application
+        // layer to system-wide rows + the caller's own custom rows.
         const rows = await tx.interventionType.findMany({
+          where: {
+            OR: [{ tenantId: null }, { tenantId }],
+          },
           orderBy: [{ category: 'asc' }, { nameIt: 'asc' }],
           select: {
             id: true,

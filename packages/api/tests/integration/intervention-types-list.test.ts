@@ -90,18 +90,23 @@ describe('GET /v1/intervention-types (integration)', () => {
     expect(json.data.find((r) => r.code === 'TENANT_A_ONLY')).toBeUndefined();
   });
 
-  it('orders by category ASC then nameIt ASC', async () => {
+  it('orders by category enum-order ASC then nameIt ASC', async () => {
     const { tenantId } = await createTenantWithLocation('itypes-order');
     const res = await authedRequest(tenantId);
     const json = res.json() as { data: Array<{ category: string; nameIt: string }> };
+    // Prisma `orderBy: { category: 'asc' }` on a Postgres enum column orders by
+    // enum *definition* order, not alphabetical. Mirror the InterventionTypeCategory
+    // enum order here so the assertion matches the implementation reality.
+    const ENUM_ORDER = ['maintenance', 'tires', 'repair', 'inspection', 'body', 'other'];
     for (let i = 1; i < json.data.length; i++) {
       const prev = json.data[i - 1]!;
       const curr = json.data[i]!;
-      const cmp = prev.category.localeCompare(curr.category);
-      if (cmp === 0) {
+      const prevIdx = ENUM_ORDER.indexOf(prev.category);
+      const currIdx = ENUM_ORDER.indexOf(curr.category);
+      expect(prevIdx).toBeGreaterThanOrEqual(0);
+      expect(prevIdx).toBeLessThanOrEqual(currIdx);
+      if (prevIdx === currIdx) {
         expect(prev.nameIt.localeCompare(curr.nameIt)).toBeLessThanOrEqual(0);
-      } else {
-        expect(cmp).toBeLessThanOrEqual(0);
       }
     }
   });
