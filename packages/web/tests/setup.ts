@@ -1,3 +1,4 @@
+/// <reference types="vitest/globals" />
 import { vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
@@ -8,7 +9,7 @@ class MockResizeObserver {
   disconnect() {}
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-global.ResizeObserver = MockResizeObserver as any;
+(globalThis as any).ResizeObserver = MockResizeObserver;
 
 // Stub Cognito env vars so packages/web/src/lib/cognito.ts module-init
 // does not throw when test files import code that depends on it. These

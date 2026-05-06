@@ -21,7 +21,7 @@ export function PartsRepeater() {
               type="number"
               placeholder="Quantità"
               step="any"
-              {...register(`partsReplaced.${i}.quantity`)}
+              {...register(`partsReplaced.${i}.quantity`, { valueAsNumber: true })}
             />
             <Button
               type="button"

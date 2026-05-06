@@ -24,11 +24,19 @@ export function DeadlineSection() {
         <div className="grid grid-cols-2 gap-3 pl-8">
           <div>
             <Label htmlFor="months">Mesi da oggi</Label>
-            <Input id="months" type="number" {...register('createDeadline.monthsFromNow')} />
+            <Input
+              id="months"
+              type="number"
+              {...register('createDeadline.monthsFromNow', { valueAsNumber: true })}
+            />
           </div>
           <div>
             <Label htmlFor="kmIncrement">Incremento km</Label>
-            <Input id="kmIncrement" type="number" {...register('createDeadline.kmIncrement')} />
+            <Input
+              id="kmIncrement"
+              type="number"
+              {...register('createDeadline.kmIncrement', { valueAsNumber: true })}
+            />
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-export type VehicleStatus = 'pending' | 'certified' | 'disputed';
+export type VehicleStatus = 'pending' | 'certified' | 'archived';
 export type VehicleType = 'auto' | 'moto' | 'commercial' | 'agricultural';
 export type FuelType = 'gasoline' | 'diesel' | 'lpg' | 'cng' | 'electric' | 'hybrid';
 

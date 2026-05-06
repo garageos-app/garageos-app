@@ -7,9 +7,13 @@ import type { CreateInterventionFormValues } from '@/lib/validators/intervention
 function Wrap({ suggestsDeadline }: { suggestsDeadline: boolean }) {
   const methods = useForm<CreateInterventionFormValues>({
     defaultValues: {
+      interventionTypeId: '00000000-0000-0000-0000-000000000000',
+      interventionDate: '2025-12-01',
+      odometerKm: 100000,
+      description: 'Test intervention',
       partsReplaced: [],
       createDeadline: { enabled: suggestsDeadline, monthsFromNow: 12, kmIncrement: 15000 },
-    } as CreateInterventionFormValues,
+    },
   });
   return (
     <FormProvider {...methods}>

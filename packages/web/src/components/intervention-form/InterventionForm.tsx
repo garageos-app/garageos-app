@@ -104,7 +104,12 @@ export function InterventionForm({
 
           <div>
             <Label htmlFor="km">Km al momento *</Label>
-            <Input id="km" type="number" min={0} {...methods.register('odometerKm')} />
+            <Input
+              id="km"
+              type="number"
+              min={0}
+              {...methods.register('odometerKm', { valueAsNumber: true })}
+            />
             {methods.formState.errors.odometerKm && (
               <p className="text-sm text-red-600 mt-1">
                 {methods.formState.errors.odometerKm.message}

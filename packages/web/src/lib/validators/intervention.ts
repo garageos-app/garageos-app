@@ -3,23 +3,23 @@ import { z } from 'zod';
 const PartReplacedFormSchema = z.object({
   name: z.string().min(1, 'Nome richiesto').max(200),
   code: z.string().max(50).optional().or(z.literal('')),
-  quantity: z.coerce.number().positive('Quantità > 0'),
+  quantity: z.number().int().positive('Quantità > 0'),
   notes: z.string().max(200).optional().or(z.literal('')),
 });
 
 export const CreateInterventionFormSchema = z.object({
-  interventionTypeId: z.uuid('Seleziona un tipo intervento'),
+  interventionTypeId: z.string().uuid('Seleziona un tipo intervento'),
   interventionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data richiesta (YYYY-MM-DD)'),
-  odometerKm: z.coerce.number().int().min(0, 'Km ≥ 0'),
+  odometerKm: z.number().int().min(0, 'Km ≥ 0'),
   description: z.string().min(1, 'Descrizione richiesta').max(5000),
   title: z.string().max(200).optional().or(z.literal('')),
   internalNotes: z.string().max(5000).optional().or(z.literal('')),
-  partsReplaced: z.array(PartReplacedFormSchema).default([]),
+  partsReplaced: z.array(PartReplacedFormSchema),
   createDeadline: z
     .object({
       enabled: z.boolean(),
-      monthsFromNow: z.coerce.number().int().positive().optional(),
-      kmIncrement: z.coerce.number().int().positive().optional(),
+      monthsFromNow: z.number().int().positive().optional(),
+      kmIncrement: z.number().int().positive().optional(),
     })
     .optional(),
 });
