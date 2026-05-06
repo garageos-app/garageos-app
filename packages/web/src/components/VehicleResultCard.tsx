@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Clock, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { fallback } from '@/lib/format';
 import type { VehicleSearchItem } from '@/queries/types';
 
 const statusBadge: Record<
@@ -23,9 +22,11 @@ const statusBadge: Record<
 
 export function VehicleResultCard({ vehicle }: { vehicle: VehicleSearchItem }) {
   const navigate = useNavigate();
-  const customerName = vehicle.currentOwnership?.customer
-    ? `${fallback(vehicle.currentOwnership.customer.firstName)} ${fallback(vehicle.currentOwnership.customer.lastName)}`.trim()
-    : '—';
+  const customer = vehicle.currentOwnership?.customer;
+  const customerName =
+    customer && customer.firstName && customer.lastName
+      ? `${customer.firstName} ${customer.lastName}`
+      : '—';
   const sb = statusBadge[vehicle.status];
 
   return (
@@ -44,8 +45,8 @@ export function VehicleResultCard({ vehicle }: { vehicle: VehicleSearchItem }) {
             · {vehicle.plate} · {vehicle.year} · {vehicle.fuelType}
           </span>
         </div>
-        <div className="text-xs text-slate-500 mt-1.5">
-          👤 {customerName === '— —' ? '—' : customerName}
+        <div className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+          <User size={12} /> {customerName}
         </div>
       </div>
       <Badge variant="outline" className={sb.cls}>

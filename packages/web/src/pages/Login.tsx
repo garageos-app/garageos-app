@@ -35,7 +35,7 @@ export function Login() {
 
   useEffect(() => {
     if (state.status === 'authenticated') {
-      navigate('/dashboard', { replace: true });
+      navigate('/', { replace: true });
     }
   }, [state.status, navigate]);
 

@@ -58,6 +58,6 @@ describe('VehicleResultCard', () => {
         <VehicleResultCard vehicle={masked} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/👤/)).toHaveTextContent('—');
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 });

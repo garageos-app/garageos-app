@@ -72,9 +72,10 @@ export function VehicleDetail() {
   const v = detail.data.vehicle;
   const customer = detail.data.currentOwnership?.customer;
   const sb = statusMeta[v.status] ?? statusMeta.pending;
-  const customerName = customer
-    ? `${fallback(customer.firstName)} ${fallback(customer.lastName)}`.trim()
-    : '—';
+  const customerName =
+    customer && customer.firstName && customer.lastName
+      ? `${customer.firstName} ${customer.lastName}`
+      : '—';
 
   const timelineItems = timeline.data?.pages.flatMap((p) => p.data) ?? [];
 
@@ -116,9 +117,7 @@ export function VehicleDetail() {
         </div>
         <div className="bg-white border border-slate-200 rounded-lg p-3">
           <div className="text-[10px] uppercase tracking-wider text-slate-500">Cliente</div>
-          <div className="font-semibold mt-1 truncate">
-            {customerName === '— —' ? '—' : customerName}
-          </div>
+          <div className="font-semibold mt-1 truncate">{customerName}</div>
         </div>
       </div>
 
