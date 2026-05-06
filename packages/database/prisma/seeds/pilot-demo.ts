@@ -24,6 +24,47 @@ function createClient(): PrismaClient {
   return new PrismaClient({ adapter, log: ['error'] });
 }
 
+const MAX_GARAGE_CODE_ATTEMPTS = 3;
+const PG_UNIQUE_VIOLATION = '23505';
+
+async function certifyVehicle(
+  prisma: PrismaClient,
+  vehicleId: string,
+  tenantId: string,
+): Promise<void> {
+  for (let attempt = 1; attempt <= MAX_GARAGE_CODE_ATTEMPTS; attempt++) {
+    const rows = await prisma.$queryRaw<
+      Array<{ code: string }>
+    >`SELECT generate_garage_code() AS code`;
+    const candidate = rows[0]?.code;
+    if (!candidate) throw new Error('generate_garage_code returned no rows');
+
+    try {
+      const affected = await prisma.$executeRaw`
+        UPDATE vehicles
+        SET garage_code = ${candidate},
+            status = 'certified',
+            certified_at = NOW(),
+            certified_by_tenant_id = ${tenantId}::uuid
+        WHERE id = ${vehicleId}::uuid AND garage_code IS NULL
+      `;
+      if (affected === 1) return;
+      if (affected === 0) {
+        // Concurrent writer or row missing — neither expected for a single-process seed.
+        throw new Error(`certifyVehicle: 0 rows updated for vehicle ${vehicleId}`);
+      }
+      throw new Error(`certifyVehicle: unexpected affected count ${affected}`);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code !== PG_UNIQUE_VIOLATION) throw err;
+      // unique_violation on garage_code → retry with a fresh candidate.
+    }
+  }
+  throw new Error(
+    `certifyVehicle: could not assign a unique garage_code after ${MAX_GARAGE_CODE_ATTEMPTS} attempts`,
+  );
+}
+
 export async function runPilotDemoSeed(opts: RunOptions): Promise<void> {
   const prisma = opts.prisma ?? createClient();
   const ownClient = !opts.prisma;
@@ -97,6 +138,14 @@ export async function runPilotDemoSeed(opts: RunOptions): Promise<void> {
     }
 
     // 5. Vehicles (unique by vin) + active VehicleOwnership.
+    //
+    // BR-003 (chk_certified_consistency): status='certified' implies
+    // garage_code+certified_at+certified_by_tenant_id are all NOT NULL,
+    // and chk_pending_consistency: status='pending' implies garage_code
+    // IS NULL. So we cannot create the row directly as certified — we
+    // upsert as pending, then atomically promote to certified with
+    // generated garage_code, retrying on the (astronomically rare)
+    // unique_violation. Mirrors api/lib/garage-code.ts:certifyVehicleWithGarageCode.
     const vehicleByVin = new Map<string, string>();
     for (const v of VEHICLES) {
       const ownerId = customerByEmail.get(v.ownerEmail);
@@ -107,8 +156,6 @@ export async function runPilotDemoSeed(opts: RunOptions): Promise<void> {
         update: {},
         create: {
           createdByTenantId: tenant.id,
-          certifiedByTenantId: tenant.id,
-          certifiedAt: new Date(),
           vin: v.vin,
           plate: v.plate,
           plateCountry: 'IT',
@@ -119,10 +166,14 @@ export async function runPilotDemoSeed(opts: RunOptions): Promise<void> {
           fuelType: v.fuelType,
           vehicleType: v.vehicleType,
           registrationDate: v.registrationDate,
-          status: 'certified',
+          status: 'pending',
         },
       });
       vehicleByVin.set(v.vin, vehicle.id);
+
+      if (!vehicle.garageCode) {
+        await certifyVehicle(prisma, vehicle.id, tenant.id);
+      }
 
       // Active ownership — at most one open per vehicle. Idempotent via findFirst+create.
       const existingOwnership = await prisma.vehicleOwnership.findFirst({
