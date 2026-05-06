@@ -72,7 +72,11 @@ describe('InterventionForm', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /salva intervento/i }));
-    expect(await screen.findByText(/data richiesta/i)).toBeInTheDocument();
+    // The message now appears in the per-field <p> and in the top-level Alert
+    // that surfaces every validation error.
+    const matches = await screen.findAllByText(/data richiesta/i);
+    expect(matches.length).toBeGreaterThanOrEqual(1);
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/correggi i campi/i);
   });
 });
