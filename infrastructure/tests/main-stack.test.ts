@@ -110,7 +110,9 @@ describe('SecretsConstruct', () => {
 
   it('provisions the garageos/production/app secret', () => {
     const template = buildTemplate();
-    template.resourceCountIs('AWS::SecretsManager::Secret', 1);
+    // Two secrets: appSecret (runtime credentials) + eventbridgeHmacSecret
+    // (HMAC for EventBridge Scheduler -> Lambda HTTP callbacks).
+    template.resourceCountIs('AWS::SecretsManager::Secret', 2);
     template.hasResourceProperties('AWS::SecretsManager::Secret', {
       Name: 'garageos/production/app',
     });
@@ -378,7 +380,10 @@ describe('MainStack (integration)', () => {
     template.resourceCountIs('AWS::Lambda::Function', 1);
     template.resourceCountIs('AWS::ApiGatewayV2::Api', 1);
     template.resourceCountIs('AWS::ApiGatewayV2::DomainName', 1);
-    template.resourceCountIs('AWS::SecretsManager::Secret', 1);
+    // PR G2: appSecret + eventbridgeHmacSecret (HMAC for EventBridge
+    // Scheduler -> Lambda HTTP callbacks; consumed by SchedulerConstruct
+    // in Task 2).
+    template.resourceCountIs('AWS::SecretsManager::Secret', 2);
     template.resourceCountIs('AWS::CertificateManager::Certificate', 1);
     // PR G1: SES domain identity wires DKIM via ses.Identity.publicHostedZone,
     // which auto-publishes 3 RSA_2048 EASY_DKIM CNAMEs into the hosted zone.
@@ -413,5 +418,20 @@ describe('MainStack (integration)', () => {
         ]),
       },
     });
+  });
+
+  it('provisions an eventbridge-hmac secret with random 64-char generation', () => {
+    template.hasResourceProperties(
+      'AWS::SecretsManager::Secret',
+      Match.objectLike({
+        Name: 'garageos/production/eventbridge-hmac',
+        Description: Match.stringLikeRegexp('HMAC secret for EventBridge Scheduler'),
+        GenerateSecretString: Match.objectLike({
+          PasswordLength: 64,
+          ExcludePunctuation: true,
+          ExcludeCharacters: '"\\\'',
+        }),
+      }),
+    );
   });
 });
