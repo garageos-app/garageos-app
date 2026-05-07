@@ -15,13 +15,17 @@ import { Button } from '@/components/ui/button';
 const statusMeta: Record<string, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
   certified: {
     label: 'Certificato',
-    cls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    cls: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
     Icon: CheckCircle2,
   },
-  pending: { label: 'Pending', cls: 'bg-amber-50 text-amber-700 border-amber-200', Icon: Clock },
+  pending: {
+    label: 'Pending',
+    cls: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900',
+    Icon: Clock,
+  },
   archived: {
     label: 'Archiviato',
-    cls: 'bg-slate-50 text-slate-700 border-slate-200',
+    cls: 'bg-muted text-muted-foreground border-border',
     Icon: AlertTriangle,
   },
 };
@@ -78,14 +82,16 @@ export function VehicleDetail() {
   return (
     <div className="p-8 space-y-8">
       <div>
-        <div className="font-mono text-xs text-slate-500 tracking-wider mb-1">{v.garageCode}</div>
+        <div className="font-mono text-xs text-muted-foreground tracking-wider mb-1">
+          {v.garageCode}
+        </div>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
               {v.make} {v.model}{' '}
-              {v.version ? <span className="text-slate-500">{v.version}</span> : null}
+              {v.version ? <span className="text-muted-foreground">{v.version}</span> : null}
             </h1>
-            <div className="text-sm text-slate-600 mt-1">
+            <div className="text-sm text-muted-foreground mt-1">
               VIN <span className="font-mono">{v.vin}</span> · Targa{' '}
               <span className="font-mono">{v.plate}</span> · {v.year} · {v.fuelType}
             </div>
@@ -105,28 +111,30 @@ export function VehicleDetail() {
       </div>
 
       <div className="grid grid-cols-4 gap-3">
-        <div className="bg-white border border-slate-200 rounded-lg p-3">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">Cilindrata</div>
+        <div className="bg-card border border-border rounded-lg p-3">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Cilindrata
+          </div>
           <div className="font-semibold mt-1">
             {v.engineDisplacement != null ? `${v.engineDisplacement} cc` : '—'}
           </div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-3">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">Potenza</div>
+        <div className="bg-card border border-border rounded-lg p-3">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Potenza</div>
           <div className="font-semibold mt-1">{v.powerKw != null ? `${v.powerKw} kW` : '—'}</div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-3">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">Colore</div>
+        <div className="bg-card border border-border rounded-lg p-3">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Colore</div>
           <div className="font-semibold mt-1">{fallback(v.color)}</div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-3">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">Cliente</div>
+        <div className="bg-card border border-border rounded-lg p-3">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cliente</div>
           <div className="font-semibold mt-1 truncate">{customerName}</div>
         </div>
       </div>
 
       <section>
-        <h2 className="text-xs uppercase tracking-wider font-semibold text-slate-500 mb-3">
+        <h2 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-3">
           Timeline interventi
         </h2>
 
@@ -149,14 +157,14 @@ export function VehicleDetail() {
         )}
 
         {timeline.isSuccess && timelineItems.length === 0 && (
-          <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
+          <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground">
             Nessun intervento registrato per questo veicolo.
           </div>
         )}
 
         {timeline.isSuccess && timelineItems.length > 0 && (
           <>
-            <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+            <div className="bg-card border border-border rounded-lg divide-y divide-border">
               {timelineItems.map((item) => {
                 const isShop = item.kind === 'shop_intervention';
                 const title = isShop
@@ -167,12 +175,12 @@ export function VehicleDetail() {
                   : 'Cliente';
                 return (
                   <div key={item.id} className="px-4 py-3 flex items-center gap-4">
-                    <div className="text-xs text-slate-500 w-24">
+                    <div className="text-xs text-muted-foreground w-24">
                       {formatDate(item.intervention_date)}
                     </div>
                     <div className="flex-1">
                       <div className="font-medium text-sm">{fallback(title)}</div>
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs text-muted-foreground">
                         {subtitle} · {formatKm(item.odometer_km)}
                       </div>
                     </div>
