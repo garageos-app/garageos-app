@@ -8,6 +8,7 @@ import {
   InvalidPasswordException,
   UsernameExistsException,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { mockClient } from 'aws-sdk-client-mock';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,10 +16,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import databasePlugin from '../../../../src/plugins/database.js';
 import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
 import { _resetCognitoClientForTests } from '../../../../src/lib/cognito.js';
+import { _resetSesClientForTests } from '../../../../src/lib/ses-client.js';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../../../src/lib/notification-preferences.js';
 import { authSignupRoutes } from '../../../../src/routes/v1/auth-signup.js';
 
 const cognitoMock = mockClient(CognitoIdentityProviderClient);
+const sesMock = mockClient(SESv2Client);
+
+// SES env vars required by sendVerificationEmail. Set unconditionally for
+// every test in this file so the best-effort SES send branch in auth-signup
+// can resolve. Individual describe blocks can override via process.env.
+process.env.SES_FROM_ADDRESS ??= 'noreply@garageos.test';
+process.env.SES_CONFIGURATION_SET ??= 'test-config-set';
 
 // ─── Minimal app factory used by validation/auth tests (no DB needed) ──────
 let app: FastifyInstance;
@@ -117,6 +126,9 @@ interface FakeTx {
     update: ReturnType<typeof vi.fn>;
   };
   auditLog: { create: ReturnType<typeof vi.fn> };
+  // Phase 1 also persists the verify-email token hash in the same tx as
+  // the customer row. See spec §4.2 + §6.1 (cluster G SES wiring).
+  emailVerification: { create: ReturnType<typeof vi.fn> };
   // Phase 1 acquires pg_advisory_xact_lock via $queryRawUnsafe before
   // findUnique. The route awaits the call and discards the result, so
   // any settled value works; [] is the cheapest fixture matching the
@@ -140,6 +152,7 @@ function buildFakeTx(overrides: Partial<FakeTx> = {}): FakeTx {
       update: vi.fn().mockResolvedValue({ id: CUSTOMER_ID }),
     },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
+    emailVerification: { create: vi.fn().mockResolvedValue({ id: 'ev-1' }) },
     $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
@@ -171,6 +184,9 @@ describe('POST /v1/auth/signup — CREATE happy path', () => {
   beforeEach(async () => {
     cognitoMock.reset();
     _resetCognitoClientForTests();
+    sesMock.reset();
+    _resetSesClientForTests();
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'mid-default' });
 
     // Phase 2: AdminCreateUser → returns sub; AdminSetUserPassword → ok.
     cognitoMock.on(AdminCreateUserCommand).resolves({
@@ -269,6 +285,85 @@ describe('POST /v1/auth/signup — CREATE happy path', () => {
     );
   });
 
+  it('inserts an email_verifications row in the same DB tx as the customer', async () => {
+    // Cluster G SES wiring: Phase 1 must persist a verify-email token hash
+    // alongside the customer row. The plaintext is held in a closure for the
+    // post-tx SES send. Hash format: SHA-256 hex (64 chars).
+    const res = await happyApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'mario.rossi@example.com',
+        password: 'Secret123',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+
+    expect(tx.emailVerification.create).toHaveBeenCalledTimes(1);
+    expect(tx.emailVerification.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerId: CUSTOMER_ID,
+          tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          expiresAt: expect.any(Date),
+        }),
+      }),
+    );
+
+    // Ordering inside the tx: emailVerification.create must happen AFTER
+    // auditLog.create (last-step pattern, before the tx returns).
+    const auditOrder = tx.auditLog.create.mock.invocationCallOrder[0];
+    const evOrder = tx.emailVerification.create.mock.invocationCallOrder[0];
+    expect(auditOrder).toBeDefined();
+    expect(evOrder).toBeDefined();
+    expect(auditOrder!).toBeLessThan(evOrder!);
+  });
+
+  it('calls sendVerificationEmail after the DB commit (post-tx)', async () => {
+    const res = await happyApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'mario.rossi@example.com',
+        password: 'Secret123',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+
+    const sendCalls = sesMock.commandCalls(SendEmailCommand);
+    expect(sendCalls).toHaveLength(1);
+    const input = sendCalls[0]!.args[0]!.input as {
+      Destination?: { ToAddresses?: string[] };
+    };
+    expect(input.Destination?.ToAddresses).toEqual(['mario.rossi@example.com']);
+  });
+
+  it('does NOT fail signup when SES throws (best-effort)', async () => {
+    sesMock.reset();
+    sesMock.on(SendEmailCommand).rejects(new Error('SES throttled'));
+
+    const res = await happyApp.inject({
+      method: 'POST',
+      url: '/v1/auth/signup',
+      payload: {
+        type: 'customer',
+        email: 'mario.rossi@example.com',
+        password: 'Secret123',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+      },
+    });
+    // Token persists in DB regardless; resend route recovers.
+    expect(res.statusCode).toBe(201);
+    expect(tx.emailVerification.create).toHaveBeenCalledTimes(1);
+  });
+
   it('acquires pg_advisory_xact_lock(hashtext(signup:<email>)) before findUnique (BR-220)', async () => {
     // BR-220 race serialization: Phase 1 must hold an xact-scoped advisory
     // lock keyed on lower(email) BEFORE the findUnique-then-decide read.
@@ -312,6 +407,9 @@ describe('POST /v1/auth/signup — promote shadow', () => {
   beforeEach(async () => {
     cognitoMock.reset();
     _resetCognitoClientForTests();
+    sesMock.reset();
+    _resetSesClientForTests();
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'mid-promote' });
   });
 
   afterEach(async () => {
@@ -343,6 +441,7 @@ describe('POST /v1/auth/signup — promote shadow', () => {
     const tx = {
       customer: { findUnique, create: vi.fn(), update },
       auditLog: { create: auditCreate },
+      emailVerification: { create: vi.fn().mockResolvedValue({ id: 'ev-promote' }) },
       $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     };
     const withContext = vi.fn(async (_ctx: unknown, fn: (t: typeof tx) => Promise<unknown>) =>
@@ -442,6 +541,7 @@ describe('POST /v1/auth/signup — already active', () => {
     const tx = {
       customer: { findUnique, create, update },
       auditLog: { create: auditCreate },
+      emailVerification: { create: vi.fn() },
       $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     };
     const withContext = vi.fn(async (_ctx: unknown, fn: (t: typeof tx) => Promise<unknown>) =>
@@ -515,6 +615,7 @@ describe('POST /v1/auth/signup — in-flight signup (BR-224)', () => {
     const tx = {
       customer: { findUnique, create, update },
       auditLog: { create: auditCreate },
+      emailVerification: { create: vi.fn() },
       $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     };
     const withContext = vi.fn(async (_ctx: unknown, fn: (t: typeof tx) => Promise<unknown>) =>
@@ -723,6 +824,9 @@ describe('POST /v1/auth/signup — Phase 3 best-effort', () => {
   it('returns 201 even when customer.cognito_sub update fails', async () => {
     cognitoMock.reset();
     _resetCognitoClientForTests();
+    sesMock.reset();
+    _resetSesClientForTests();
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'mid-phase3' });
 
     const findUnique = vi.fn().mockResolvedValue(null);
     const create = vi.fn().mockResolvedValue({
@@ -741,6 +845,7 @@ describe('POST /v1/auth/signup — Phase 3 best-effort', () => {
     const tx: FakeTx = {
       customer: { findUnique, create, update },
       auditLog: { create: auditCreate },
+      emailVerification: { create: vi.fn().mockResolvedValue({ id: 'ev-phase3' }) },
       $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     };
     phase3App = await buildAppWithDb(tx);
@@ -779,6 +884,8 @@ describe('POST /v1/auth/signup — rate limit', () => {
   beforeEach(async () => {
     cognitoMock.reset();
     _resetCognitoClientForTests();
+    sesMock.reset();
+    _resetSesClientForTests();
 
     // Use a customer with cognitoSub already set so Phase 1 always
     // returns 409 cheaply — no Cognito calls needed for the first 5 hits.
@@ -795,6 +902,7 @@ describe('POST /v1/auth/signup — rate limit', () => {
     const tx = {
       customer: { findUnique, create: vi.fn(), update: vi.fn() },
       auditLog: { create: vi.fn() },
+      emailVerification: { create: vi.fn() },
       $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     };
     rateLimitApp = await buildAppWithDb(tx as unknown as FakeTx);

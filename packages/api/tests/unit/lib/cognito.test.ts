@@ -78,7 +78,9 @@ describe('lib/cognito — createCustomerCognitoUser', () => {
       MessageAction: 'SUPPRESS',
       UserAttributes: expect.arrayContaining([
         { Name: 'email', Value: 'a@b.it' },
-        { Name: 'email_verified', Value: 'true' },
+        // BR-220: customer self-signup starts unverified — the verify-email
+        // flow flips this attribute to 'true' after the user confirms.
+        { Name: 'email_verified', Value: 'false' },
         { Name: 'given_name', Value: 'Mario' },
         { Name: 'family_name', Value: 'Rossi' },
         { Name: 'custom:customer_id', Value: 'customer-uuid-456' },

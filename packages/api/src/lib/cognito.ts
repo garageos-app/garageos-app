@@ -65,7 +65,10 @@ export async function createCustomerCognitoUser(args: {
         MessageAction: 'SUPPRESS',
         UserAttributes: [
           { Name: 'email', Value: args.email },
-          { Name: 'email_verified', Value: 'true' },
+          // BR-220: customer self-signup starts unverified. The verify-email
+          // flow (auth-verify-email.ts) flips this to true after the user
+          // confirms via the link.
+          { Name: 'email_verified', Value: 'false' },
           { Name: 'given_name', Value: args.firstName },
           { Name: 'family_name', Value: args.lastName },
           { Name: 'custom:customer_id', Value: args.customerId },
