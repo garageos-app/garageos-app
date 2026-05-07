@@ -306,6 +306,7 @@ model Customer {
   postalCode             String?        @map("postal_code") @db.VarChar(10)
   appInstalled           Boolean        @default(false) @map("app_installed")
   notificationPreferences Json          @default("{}") @map("notification_preferences")
+  emailVerified           Boolean        @default(false) @map("email_verified")
   status                 CustomerStatus @default(active)
   createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt              DateTime       @updatedAt @map("updated_at") @db.Timestamptz
@@ -319,6 +320,7 @@ model Customer {
   transfersFrom       VehicleTransfer[] @relation("TransferFrom")
   transfersTo         VehicleTransfer[] @relation("TransferTo")
   createdVehicles     Vehicle[] @relation("CreatedByCustomer")
+  emailVerifications  EmailVerification[]
 
   @@index([cognitoSub], map: "idx_customers_cognito_sub")
   @@index([email], map: "idx_customers_email")
@@ -344,6 +346,20 @@ model CustomerTenantRelation {
   @@unique([tenantId, customerId], map: "uq_customer_tenant")
   @@index([customerId], map: "idx_customer_tenant_customer")
   @@map("customer_tenant_relations")
+}
+
+model EmailVerification {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId  String    @map("customer_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt  DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId], map: "email_verifications_customer_id_consumed_idx")
+  @@map("email_verifications")
 }
 
 // ---------------------------------------------------
