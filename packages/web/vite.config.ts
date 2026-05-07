@@ -6,6 +6,11 @@ import react from '@vitejs/plugin-react';
 // via import.meta.env. Build is triggered by deploy-web.yml with vars.VITE_*
 // passed in the env block (see .github/workflows/deploy-web.yml).
 export default defineConfig({
+  // amazon-cognito-identity-js (transitive `buffer` dep) references Node's
+  // `global` at module init. Browsers don't define it, so map it to globalThis.
+  define: {
+    global: 'globalThis',
+  },
   plugins: [react()],
   resolve: {
     alias: {
