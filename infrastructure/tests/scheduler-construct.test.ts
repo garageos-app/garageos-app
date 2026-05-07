@@ -68,9 +68,17 @@ describe('SchedulerConstruct', () => {
     const { stack } = buildStack();
     const template = Template.fromStack(stack);
     const policies = template.findResources('AWS::IAM::Role');
-    const schedulerRole = Object.values(policies).find((r) =>
-      JSON.stringify(r.Properties.AssumeRolePolicyDocument).includes('scheduler.amazonaws.com'),
-    );
+    const schedulerRole = Object.values(policies).find((r) => {
+      // Match the AssumeRolePolicy by Principal.Service field (structural,
+      // not substring) — avoids CodeQL js/incomplete-url-substring-sanitization
+      // false positive on the synthesized policy document.
+      const stmts = (
+        r.Properties.AssumeRolePolicyDocument as {
+          Statement: Array<{ Principal?: { Service?: string } }>;
+        }
+      ).Statement;
+      return stmts.some((s) => s.Principal?.Service === 'scheduler.amazonaws.com');
+    });
     expect(schedulerRole).toBeDefined();
     const inlinePolicies = schedulerRole!.Properties.Policies as Array<{
       PolicyDocument: {
@@ -91,9 +99,14 @@ describe('SchedulerConstruct', () => {
     const { stack } = buildStack();
     const template = Template.fromStack(stack);
     const policies = template.findResources('AWS::IAM::Role');
-    const schedulerRole = Object.values(policies).find((r) =>
-      JSON.stringify(r.Properties.AssumeRolePolicyDocument).includes('scheduler.amazonaws.com'),
-    );
+    const schedulerRole = Object.values(policies).find((r) => {
+      const stmts = (
+        r.Properties.AssumeRolePolicyDocument as {
+          Statement: Array<{ Principal?: { Service?: string } }>;
+        }
+      ).Statement;
+      return stmts.some((s) => s.Principal?.Service === 'scheduler.amazonaws.com');
+    });
     const inlinePolicies = schedulerRole!.Properties.Policies as Array<{
       PolicyDocument: {
         Statement: Array<{ Action: string | string[]; Resource: string | string[] }>;
@@ -113,9 +126,14 @@ describe('SchedulerConstruct', () => {
     const { stack } = buildStack();
     const template = Template.fromStack(stack);
     const policies = template.findResources('AWS::IAM::Role');
-    const schedulerRole = Object.values(policies).find((r) =>
-      JSON.stringify(r.Properties.AssumeRolePolicyDocument).includes('scheduler.amazonaws.com'),
-    );
+    const schedulerRole = Object.values(policies).find((r) => {
+      const stmts = (
+        r.Properties.AssumeRolePolicyDocument as {
+          Statement: Array<{ Principal?: { Service?: string } }>;
+        }
+      ).Statement;
+      return stmts.some((s) => s.Principal?.Service === 'scheduler.amazonaws.com');
+    });
     const inlinePolicies = schedulerRole!.Properties.Policies as Array<{
       PolicyDocument: {
         Statement: Array<{ Action: string | string[]; Resource: string | string[] }>;
