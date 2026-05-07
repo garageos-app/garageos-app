@@ -2,6 +2,7 @@ import {
   AdminCreateUserCommand,
   AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
+  AdminUpdateUserAttributesCommand,
   CognitoIdentityProviderClient,
   InvalidPasswordException,
   UsernameExistsException,
@@ -122,6 +123,22 @@ export async function setCustomerCognitoPassword(args: {
       err,
     );
   }
+}
+
+/** Flip Cognito user's email_verified attribute to true. Called from
+ *  the verify-email route after the DB tx has consumed the token. */
+export async function markCustomerEmailVerified(args: {
+  poolId: string;
+  email: string;
+}): Promise<void> {
+  const client = getCognitoClient();
+  await client.send(
+    new AdminUpdateUserAttributesCommand({
+      UserPoolId: args.poolId,
+      Username: args.email,
+      UserAttributes: [{ Name: 'email_verified', Value: 'true' }],
+    }),
+  );
 }
 
 // Idempotent — swallows UserNotFoundException so callers can use this in
