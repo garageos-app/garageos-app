@@ -172,7 +172,7 @@ export function InterventionForm({
           {!showTitle ? (
             <button
               type="button"
-              className="text-sm text-foreground hover:text-foreground block"
+              className="text-sm text-muted-foreground hover:text-foreground block"
               onClick={() => setShowTitle(true)}
             >
               ▸ Aggiungi titolo
@@ -187,7 +187,7 @@ export function InterventionForm({
           {!showParts ? (
             <button
               type="button"
-              className="text-sm text-foreground hover:text-foreground block"
+              className="text-sm text-muted-foreground hover:text-foreground block"
               onClick={() => setShowParts(true)}
             >
               ▸ Pezzi sostituiti
@@ -202,7 +202,7 @@ export function InterventionForm({
           {!showNotes ? (
             <button
               type="button"
-              className="text-sm text-foreground hover:text-foreground block"
+              className="text-sm text-muted-foreground hover:text-foreground block"
               onClick={() => setShowNotes(true)}
             >
               ▸ Note interne
@@ -217,7 +217,7 @@ export function InterventionForm({
           {!showDeadline ? (
             <button
               type="button"
-              className="text-sm text-foreground hover:text-foreground block"
+              className="text-sm text-muted-foreground hover:text-foreground block"
               onClick={() => setShowDeadline(true)}
             >
               ▸ Programma scadenza

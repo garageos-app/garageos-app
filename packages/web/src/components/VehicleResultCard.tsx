@@ -19,7 +19,7 @@ const statusBadge: Record<
   },
   archived: {
     label: 'Archiviato',
-    cls: 'bg-muted text-foreground border-border',
+    cls: 'bg-muted text-muted-foreground border-border',
     Icon: AlertTriangle,
   },
 };

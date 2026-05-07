@@ -115,21 +115,23 @@ export function VehicleDetail() {
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
             Cilindrata
           </div>
-          <div className="font-semibold mt-1">
+          <div className="font-semibold mt-1 text-foreground">
             {v.engineDisplacement != null ? `${v.engineDisplacement} cc` : '—'}
           </div>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Potenza</div>
-          <div className="font-semibold mt-1">{v.powerKw != null ? `${v.powerKw} kW` : '—'}</div>
+          <div className="font-semibold mt-1 text-foreground">
+            {v.powerKw != null ? `${v.powerKw} kW` : '—'}
+          </div>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Colore</div>
-          <div className="font-semibold mt-1">{fallback(v.color)}</div>
+          <div className="font-semibold mt-1 text-foreground">{fallback(v.color)}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cliente</div>
-          <div className="font-semibold mt-1 truncate">{customerName}</div>
+          <div className="font-semibold mt-1 truncate text-foreground">{customerName}</div>
         </div>
       </div>
 
@@ -179,7 +181,7 @@ export function VehicleDetail() {
                       {formatDate(item.intervention_date)}
                     </div>
                     <div className="flex-1">
-                      <div className="font-medium text-sm">{fallback(title)}</div>
+                      <div className="font-medium text-sm text-foreground">{fallback(title)}</div>
                       <div className="text-xs text-muted-foreground">
                         {subtitle} · {formatKm(item.odometer_km)}
                       </div>
