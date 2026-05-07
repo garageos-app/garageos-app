@@ -940,6 +940,25 @@ All 8 PASS = demo-3 LIVE definitivo. Aggiornare `project_resume_checkpoint.md` c
 
 After `cdk deploy MainStack` ships the SES construct, follow these steps to enable the verify-email flow end-to-end.
 
+### F13.0 — Apply the DB migration to Supabase production (PREREQUISITE)
+
+⚠️ **Required before any signup / verify-email curl.** The `cdk deploy` workflow ships the Lambda + SES infra but does NOT apply Prisma migrations to the production database. Without this step, all 3 routes (`/v1/auth/signup`, `/v1/auth/verify-email`, `/v1/auth/resend-verification`) return 500 with `relation "public.email_verifications" does not exist`.
+
+```bash
+# From operator workstation, with DATABASE_URL_DIRECT pointing to Supabase prod:
+pnpm --filter @garageos/database db:migrate:deploy
+# Expect: "X migrations applied" — the new migration `20260507120000_add_email_verifications`
+```
+
+Verify post-apply:
+```bash
+psql "$DATABASE_URL_DIRECT" -c "\dt public.email_verifications"
+psql "$DATABASE_URL_DIRECT" -c "SELECT COUNT(*) FROM customers WHERE email_verified IS NOT NULL;"
+# Expect: column exists, all existing rows backfilled to email_verified=true
+```
+
+This step applies to all future PRs that ship migrations — it's an existing operator-driven gap (no CI auto-apply) that this section now documents explicitly.
+
 ### F13.1 — Verify the domain identity in SES
 
 1. AWS Console → SES (eu-central-1) → Verified identities.
