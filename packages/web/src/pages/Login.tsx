@@ -52,6 +52,8 @@ export function Login() {
             <img
               src="/garageos-logo.png"
               alt="GarageOS — Digital Maintenance Logs"
+              width={1376}
+              height={768}
               className="max-w-[200px] md:max-w-[260px] h-auto"
             />
             <p className="text-slate-300 text-base md:text-lg text-center md:text-left max-w-md">
@@ -128,6 +130,8 @@ export function Login() {
         <img
           src="/aifolly-logo.png"
           alt="Powered by AI Folly"
+          width={1376}
+          height={768}
           className="max-w-[60px] h-auto opacity-75"
         />
         <p className="text-slate-500 text-xs">
