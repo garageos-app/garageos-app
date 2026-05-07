@@ -27,6 +27,7 @@ function buildStack(opts: { warmingEnabled?: boolean } = {}) {
   );
   const construct = new SchedulerConstruct(stack, 'Scheduler', {
     lambdaFunction,
+    lambdaFunctionName: 'garageos-api',
     hmacSecret,
     warmingEnabled: opts.warmingEnabled ?? true,
     warmingScheduleName: 'garageos-api-warming',

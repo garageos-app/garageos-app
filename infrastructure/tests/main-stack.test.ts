@@ -434,4 +434,89 @@ describe('MainStack (integration)', () => {
       }),
     );
   });
+
+  it('SchedulerConstruct provisions exactly one ScheduleGroup and one Schedule', () => {
+    template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
+    template.resourceCountIs('AWS::Scheduler::Schedule', 1);
+  });
+
+  it('Lambda env vars include SCHEDULER_GROUP_NAME, SCHEDULER_ROLE_ARN, SCHEDULER_HMAC_SECRET_ARN', () => {
+    template.hasResourceProperties(
+      'AWS::Lambda::Function',
+      Match.objectLike({
+        Environment: {
+          Variables: Match.objectLike({
+            SCHEDULER_GROUP_NAME: 'garageos-deadlines',
+            SCHEDULER_ROLE_ARN: Match.anyValue(),
+            SCHEDULER_HMAC_SECRET_ARN: Match.anyValue(),
+          }),
+        },
+      }),
+    );
+  });
+
+  it('Lambda IAM policy includes scheduler:Create|Update|Delete|GetSchedule on group-scoped resources', () => {
+    const policies = template.findResources('AWS::IAM::Policy');
+    const lambdaPolicy = Object.values(policies).find((p) =>
+      JSON.stringify(p.Properties.PolicyDocument).includes('scheduler:CreateSchedule'),
+    );
+    expect(lambdaPolicy).toBeDefined();
+    const stmts = (
+      lambdaPolicy!.Properties.PolicyDocument as {
+        Statement: Array<{ Action: string | string[]; Resource: string | string[] }>;
+      }
+    ).Statement;
+    const schedStmt = stmts.find(
+      (s) => Array.isArray(s.Action) && s.Action.includes('scheduler:CreateSchedule'),
+    );
+    expect(schedStmt).toBeDefined();
+    expect(schedStmt!.Action).toEqual(
+      expect.arrayContaining([
+        'scheduler:CreateSchedule',
+        'scheduler:UpdateSchedule',
+        'scheduler:DeleteSchedule',
+        'scheduler:GetSchedule',
+      ]),
+    );
+    expect(JSON.stringify(schedStmt!.Resource)).toContain('schedule/garageos-deadlines/*');
+  });
+
+  it('Lambda IAM policy includes iam:PassRole with scheduler.amazonaws.com condition', () => {
+    const policies = template.findResources('AWS::IAM::Policy');
+    const lambdaPolicy = Object.values(policies).find((p) =>
+      JSON.stringify(p.Properties.PolicyDocument).includes('iam:PassRole'),
+    );
+    expect(lambdaPolicy).toBeDefined();
+    const stmts = (
+      lambdaPolicy!.Properties.PolicyDocument as {
+        Statement: Array<{
+          Action: string | string[];
+          Condition?: { StringEquals?: Record<string, string> };
+        }>;
+      }
+    ).Statement;
+    const passRoleStmt = stmts.find(
+      (s) =>
+        s.Action === 'iam:PassRole' ||
+        (Array.isArray(s.Action) && s.Action.includes('iam:PassRole')),
+    );
+    expect(passRoleStmt).toBeDefined();
+    expect(passRoleStmt!.Condition?.StringEquals?.['iam:PassedToService']).toBe(
+      'scheduler.amazonaws.com',
+    );
+  });
+
+  it('Lambda IAM policy includes secretsmanager:GetSecretValue scoped to eventbridge-hmac arn', () => {
+    const policies = template.findResources('AWS::IAM::Policy');
+    // The Lambda role accumulates several GetSecretValue statements (appSecret +
+    // hmac secret). The synthesized policy references the secret via a Ref to
+    // its CFN logical ID (built from the construct id 'EventBridgeHmac'), not
+    // by the secret name string. Find at least one policy that grants
+    // GetSecretValue and references the EventBridgeHmac logical ID.
+    const matched = Object.values(policies).some((p) => {
+      const json = JSON.stringify(p.Properties.PolicyDocument);
+      return json.includes('secretsmanager:GetSecretValue') && json.includes('EventBridgeHmac');
+    });
+    expect(matched).toBe(true);
+  });
 });

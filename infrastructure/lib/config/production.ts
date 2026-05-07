@@ -33,6 +33,11 @@ export interface EnvironmentConfig {
   readonly waf: {
     readonly ipRequestRateLimit: number;
   };
+  readonly scheduler: {
+    readonly warmingEnabled: boolean;
+    readonly warmingScheduleName: string;
+    readonly deadlineGroupName: string;
+  };
   readonly logRetentionDays: number;
   readonly synthMock: boolean;
 }
@@ -61,6 +66,11 @@ export const productionConfig: EnvironmentConfig = {
   },
   waf: {
     ipRequestRateLimit: 2000,
+  },
+  scheduler: {
+    warmingEnabled: true,
+    warmingScheduleName: 'garageos-api-warming',
+    deadlineGroupName: 'garageos-deadlines',
   },
   logRetentionDays: 7,
   synthMock: process.env.CDK_SYNTH_MOCK === 'true',

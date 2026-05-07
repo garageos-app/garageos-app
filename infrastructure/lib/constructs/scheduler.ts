@@ -1,3 +1,4 @@
+import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as scheduler from 'aws-cdk-lib/aws-scheduler';
@@ -27,6 +28,15 @@ import { Construct } from 'constructs';
 
 export interface SchedulerConstructProps {
   readonly lambdaFunction: lambda.IFunction;
+  /**
+   * Plain (non-token) function name used to build the Lambda ARN inside the
+   * SchedulerRole's InvokeLambda inline policy. Passing the raw string
+   * (rather than reading lambdaFunction.functionName, which is a CDK Ref
+   * token) breaks an otherwise unavoidable dependency cycle:
+   * LambdaRolePolicy -> SchedulerRole -> LambdaFunction -> LambdaRolePolicy
+   * created by attachSchedulerPolicies' iam:PassRole grant.
+   */
+  readonly lambdaFunctionName: string;
   readonly hmacSecret: secretsmanager.ISecret;
   readonly warmingEnabled: boolean;
   readonly warmingScheduleName: string;
@@ -47,6 +57,17 @@ export class SchedulerConstruct extends Construct {
     this.scheduleGroup = new scheduler.CfnScheduleGroup(this, 'DeadlineGroup', {
       name: props.deadlineGroupName,
     });
+
+    // Build the Lambda ARN by hand (function name is fixed: 'garageos-api')
+    // instead of referencing props.lambdaFunction.functionArn. Using the L2
+    // token would create a SchedulerRole -> LambdaFunction CFN dependency,
+    // which combined with attachSchedulerPolicies (Lambda role policy ->
+    // SchedulerRole via iam:PassRole) and Lambda -> LambdaPolicy yields a
+    // 3-node dependency cycle. Constructing the ARN string-side breaks the
+    // SchedulerRole -> LambdaFunction edge without affecting runtime
+    // behaviour: the ARN resolves identically.
+    const stack = cdk.Stack.of(this);
+    const lambdaArn = `arn:${cdk.Aws.PARTITION}:lambda:${stack.region}:${stack.account}:function:${props.lambdaFunctionName}`;
 
     this.schedulerRole = new iam.Role(this, 'SchedulerRole', {
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
@@ -70,7 +91,7 @@ export class SchedulerConstruct extends Construct {
           statements: [
             new iam.PolicyStatement({
               actions: ['lambda:InvokeFunction'],
-              resources: [props.lambdaFunction.functionArn],
+              resources: [lambdaArn],
             }),
           ],
         }),
