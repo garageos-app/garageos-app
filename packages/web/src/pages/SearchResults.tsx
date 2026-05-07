@@ -41,10 +41,10 @@ export function SearchResults() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <div className="text-sm text-slate-500 mb-2">
+        <div className="text-sm text-muted-foreground mb-2">
           Ricerca per <Badge variant="outline">{typeLabel[t]}</Badge>
         </div>
-        <div className="font-mono text-lg font-semibold text-slate-900">{q}</div>
+        <div className="font-mono text-lg font-semibold text-foreground">{q}</div>
       </div>
 
       {query.isPending && (
@@ -67,16 +67,16 @@ export function SearchResults() {
       )}
 
       {query.isSuccess && items.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <SearchX size={48} className="mb-3" />
-          <div className="font-medium text-slate-700">Nessun veicolo trovato.</div>
+          <div className="font-medium text-foreground">Nessun veicolo trovato.</div>
           <div className="text-sm">Verifica il dato inserito.</div>
         </div>
       )}
 
       {query.isSuccess && items.length > 0 && (
         <>
-          <div className="text-sm text-slate-500">
+          <div className="text-sm text-muted-foreground">
             {items.length} risultat{items.length === 1 ? 'o' : 'i'}
           </div>
           <div className="space-y-3">

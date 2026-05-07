@@ -9,13 +9,17 @@ const statusBadge: Record<
 > = {
   certified: {
     label: 'Certificato',
-    cls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    cls: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
     Icon: CheckCircle2,
   },
-  pending: { label: 'Pending', cls: 'bg-amber-50 text-amber-700 border-amber-200', Icon: Clock },
+  pending: {
+    label: 'Pending',
+    cls: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900',
+    Icon: Clock,
+  },
   archived: {
     label: 'Archiviato',
-    cls: 'bg-slate-50 text-slate-700 border-slate-200',
+    cls: 'bg-muted text-muted-foreground border-border',
     Icon: AlertTriangle,
   },
 };
@@ -33,19 +37,19 @@ export function VehicleResultCard({ vehicle }: { vehicle: VehicleSearchItem }) {
     <button
       type="button"
       onClick={() => navigate(`/vehicles/${vehicle.id}`)}
-      className="w-full text-left bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-between hover:border-blue-400 hover:bg-blue-50/30 transition"
+      className="w-full text-left bg-card border border-border rounded-lg p-4 flex items-center justify-between hover:border-blue-400 hover:bg-blue-50/30 dark:hover:bg-blue-950/30 dark:hover:border-blue-700 transition"
     >
       <div className="flex-1">
-        <div className="font-mono text-sm font-semibold text-slate-900 tracking-wider">
+        <div className="font-mono text-sm font-semibold text-foreground tracking-wider">
           {vehicle.garageCode}
         </div>
         <div className="text-base mt-1">
           {vehicle.make} {vehicle.model}{' '}
-          <span className="text-slate-500">
+          <span className="text-muted-foreground">
             · {vehicle.plate} · {vehicle.year} · {vehicle.fuelType}
           </span>
         </div>
-        <div className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+        <div className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
           <User size={12} /> {customerName}
         </div>
       </div>

@@ -6,9 +6,9 @@ function FullPageSpinner() {
     <div
       role="status"
       aria-label="Caricamento"
-      className="min-h-screen grid place-items-center bg-slate-50"
+      className="min-h-screen grid place-items-center bg-background"
     >
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-slate-900" />
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-foreground" />
     </div>
   );
 }
