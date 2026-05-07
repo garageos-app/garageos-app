@@ -91,6 +91,16 @@ export async function setup(): Promise<void> {
   // because aws-sdk-client-mock catches the eventual send.
   process.env.AWS_ACCESS_KEY_ID ??= 'test-access-key-id';
   process.env.AWS_SECRET_ACCESS_KEY ??= 'test-secret-access-key';
+
+  // --- SES (cluster G — verify-email) ---
+  // sendVerificationEmail() reads these directly via process.env (not the
+  // validated env singleton). Fake values are sufficient because
+  // aws-sdk-client-mock intercepts SESv2Client.send before any network
+  // call. VERIFY_EMAIL_BASE_URL is consumed by the signup + resend routes
+  // to build the link embedded in the email body.
+  process.env.SES_FROM_ADDRESS ??= 'noreply@garageos.test';
+  process.env.SES_CONFIGURATION_SET ??= 'test-config-set';
+  process.env.VERIFY_EMAIL_BASE_URL ??= 'https://app.test/verify-email';
 }
 
 export async function teardown(): Promise<void> {

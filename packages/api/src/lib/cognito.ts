@@ -2,6 +2,7 @@ import {
   AdminCreateUserCommand,
   AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
+  AdminUpdateUserAttributesCommand,
   CognitoIdentityProviderClient,
   InvalidPasswordException,
   UsernameExistsException,
@@ -65,7 +66,10 @@ export async function createCustomerCognitoUser(args: {
         MessageAction: 'SUPPRESS',
         UserAttributes: [
           { Name: 'email', Value: args.email },
-          { Name: 'email_verified', Value: 'true' },
+          // BR-220: customer self-signup starts unverified. The verify-email
+          // flow (auth-verify-email.ts) flips this to true after the user
+          // confirms via the link.
+          { Name: 'email_verified', Value: 'false' },
           { Name: 'given_name', Value: args.firstName },
           { Name: 'family_name', Value: args.lastName },
           { Name: 'custom:customer_id', Value: args.customerId },
@@ -119,6 +123,22 @@ export async function setCustomerCognitoPassword(args: {
       err,
     );
   }
+}
+
+/** Flip Cognito user's email_verified attribute to true. Called from
+ *  the verify-email route after the DB tx has consumed the token. */
+export async function markCustomerEmailVerified(args: {
+  poolId: string;
+  email: string;
+}): Promise<void> {
+  const client = getCognitoClient();
+  await client.send(
+    new AdminUpdateUserAttributesCommand({
+      UserPoolId: args.poolId,
+      Username: args.email,
+      UserAttributes: [{ Name: 'email_verified', Value: 'true' }],
+    }),
+  );
 }
 
 // Idempotent — swallows UserNotFoundException so callers can use this in

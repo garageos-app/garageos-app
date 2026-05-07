@@ -13,17 +13,26 @@ import {
 } from '../../lib/cognito.js';
 import { customerSelfSelect, projectCustomerSelf } from '../../lib/customer-shared.js';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../lib/notification-preferences.js';
+import {
+  generateVerificationToken,
+  buildVerificationUrl,
+  VERIFICATION_TOKEN_TTL_MS,
+} from '../../lib/email-verification.js';
+import { sendVerificationEmail } from '../../lib/ses-client.js';
 
 // POST /v1/auth/signup (F-CLI-001) — public endpoint, no auth pre-handler.
 // Customer-only in v1: tenant_admin signup is rejected with 422 and will
 // ship in a separate PR (see docs/superpowers/specs/2026-05-04-api-customer-signup-design.md
-// §11). Email verification is deferred to the SES wiring PR (cluster G);
-// signup sets email_verified=true on the Cognito user as a v1 pragma.
+// §11). Email verification (cluster G SES wiring) is now wired: Phase 1
+// persists the token hash in `email_verifications` and Phase 4 sends the
+// email best-effort. Cognito `email_verified` starts at 'false' and flips
+// to 'true' once the customer follows the verify-email link.
 //
 // 3-phase handler:
-//   Phase 1 — DB tx: find/promote/create Customer + AuditLog
+//   Phase 1 — DB tx: find/promote/create Customer + AuditLog + verify-email token
 //   Phase 2 — Cognito: AdminCreateUser → AdminSetUserPassword
 //   Phase 3 — best-effort Customer.cognito_sub update
+//   Phase 4 — best-effort SES send of the verify-email link
 //
 // See APPENDICE_A §3.1, APPENDICE_F BR-220/221/224/225/226, APPENDICE_C §5.5.
 
@@ -120,7 +129,7 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
       // routes/v1/interventions-dispute.ts for the same class of unauthenticated
       // cross-tenant write. See spec §8.1 in
       // docs/superpowers/specs/2026-05-04-api-customer-signup-design.md.
-      const { customer, promoted } = await app.withContext(
+      const { customer, promoted, verifyToken } = await app.withContext(
         { role: 'admin' as const },
         async (tx) => {
           // BR-220 race serialization: hold an xact-scoped advisory lock keyed
@@ -223,7 +232,19 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
             },
           });
 
-          return { customer: row, promoted: didPromote };
+          // Generate verify-email token + persist hash. Plaintext is held in
+          // a closure variable to be sent via SES post-commit. Single-use,
+          // 24h TTL, hash-only storage. See spec §4.2 + §6.1.
+          const { plaintext: verifyToken, hash: verifyTokenHash } = generateVerificationToken();
+          await tx.emailVerification.create({
+            data: {
+              customerId: row.id,
+              tokenHash: verifyTokenHash,
+              expiresAt: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
+            },
+          });
+
+          return { customer: row, promoted: didPromote, verifyToken };
         },
       );
 
@@ -309,6 +330,26 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
             'phase 3 update of customer.cognito_sub failed — non-fatal, JWT lookup uses claim',
           );
         });
+
+      // Best-effort verify-email SES send. Token persists in DB regardless;
+      // resend route recovers if SES fails (transient error / sandbox not
+      // yet exited). Sentry captures via app log.error → CloudWatch.
+      const verifyUrl = buildVerificationUrl(
+        process.env.VERIFY_EMAIL_BASE_URL ?? 'https://app.garageos.aifollyadvisor.com/verify-email',
+        verifyToken,
+      );
+      try {
+        await sendVerificationEmail({
+          toAddress: body.email,
+          customerName: body.firstName,
+          verificationUrl: verifyUrl,
+        });
+      } catch (err) {
+        request.log.error(
+          { err, customerId: customer.id },
+          'verify-email SES send failed (best-effort, token persisted in DB)',
+        );
+      }
 
       void promoted; // already in audit metadata; reserved for future telemetry
       return reply.code(201).send({ customer: projectCustomerSelf(customer) });

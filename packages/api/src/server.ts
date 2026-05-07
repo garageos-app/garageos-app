@@ -17,6 +17,8 @@ import interventionDisputeRoutes from './routes/v1/interventions-dispute.js';
 import interventionDisputeResponseRoutes from './routes/v1/interventions-dispute-response.js';
 import interventionRevisionsListRoutes from './routes/v1/interventions-revisions-list.js';
 import { authSignupRoutes } from './routes/v1/auth-signup.js';
+import { authVerifyEmailRoutes } from './routes/v1/auth-verify-email.js';
+import { authResendVerificationRoutes } from './routes/v1/auth-resend-verification.js';
 import interventionUpdateRoutes from './routes/v1/interventions-update.js';
 import interventionRoutes from './routes/v1/interventions.js';
 import interventionTypesRoutes from './routes/v1/intervention-types.js';
@@ -122,6 +124,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(interventionDisputeRoutes);
   await app.register(interventionDisputeResponseRoutes);
   await app.register(authSignupRoutes);
+  await app.register(authVerifyEmailRoutes);
+  await app.register(authResendVerificationRoutes);
   await app.register(interventionCancelRoutes);
   await app.register(attachmentsRoutes);
   await app.register(meVehicleRoutes);

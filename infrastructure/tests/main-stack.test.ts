@@ -153,6 +153,12 @@ describe('LambdaApiConstruct', () => {
     officineUserPoolArn: cognito.officineUserPool.userPoolArn,
     clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
     attachmentsBucket: storage.attachmentsBucket,
+    sesIdentityArn: 'arn:aws:ses:eu-central-1:123456789012:identity/garageos.it',
+    sesConfigurationSetArn:
+      'arn:aws:ses:eu-central-1:123456789012:configuration-set/garageos-production',
+    sesFromAddress: 'noreply@garageos.it',
+    sesConfigurationSetName: 'garageos-production',
+    verifyEmailBaseUrl: 'https://app.garageos.it/verify-email',
   });
   const template = Template.fromStack(stack);
 
@@ -276,6 +282,12 @@ describe('ApiGatewayConstruct', () => {
       officineUserPoolArn: cognito.officineUserPool.userPoolArn,
       clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
       attachmentsBucket: storage.attachmentsBucket,
+      sesIdentityArn: 'arn:aws:ses:eu-central-1:123456789012:identity/garageos.it',
+      sesConfigurationSetArn:
+        'arn:aws:ses:eu-central-1:123456789012:configuration-set/garageos-production',
+      sesFromAddress: 'noreply@garageos.it',
+      sesConfigurationSetName: 'garageos-production',
+      verifyEmailBaseUrl: 'https://app.garageos.it/verify-email',
     });
     new ApiGatewayConstruct(stack, 'ApiGateway', {
       apiSubdomain: 'api',
@@ -358,6 +370,8 @@ describe('MainStack (integration)', () => {
     template.hasOutput('CognitoClientiUserPoolId', {});
     template.hasOutput('CognitoClientiClientId', {});
     template.hasOutput('AttachmentsBucketName', {});
+    template.hasOutput('SesEmailIdentityArn', {});
+    template.hasOutput('SesConfigurationSetName', {});
   });
 
   it('combined resource counts match scope', () => {
@@ -366,7 +380,10 @@ describe('MainStack (integration)', () => {
     template.resourceCountIs('AWS::ApiGatewayV2::DomainName', 1);
     template.resourceCountIs('AWS::SecretsManager::Secret', 1);
     template.resourceCountIs('AWS::CertificateManager::Certificate', 1);
-    template.resourceCountIs('AWS::Route53::RecordSet', 1);
+    // PR G1: SES domain identity wires DKIM via ses.Identity.publicHostedZone,
+    // which auto-publishes 3 RSA_2048 EASY_DKIM CNAMEs into the hosted zone.
+    // Total Route53 records: 1 API alias + 3 SES DKIM CNAMEs = 4.
+    template.resourceCountIs('AWS::Route53::RecordSet', 4);
     // PR 22: Cognito officine + clienti pools (each pool also produces
     // one UserPoolClient).
     template.resourceCountIs('AWS::Cognito::UserPool', 2);
@@ -377,6 +394,9 @@ describe('MainStack (integration)', () => {
     template.resourceCountIs('AWS::S3::Bucket', 1);
     template.resourceCountIs('AWS::WAFv2::WebACL', 0);
     template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 0);
+    // PR G1: SES domain identity + configuration set.
+    template.resourceCountIs('AWS::SES::EmailIdentity', 1);
+    template.resourceCountIs('AWS::SES::ConfigurationSet', 1);
   });
 
   it('grants the Lambda execution role minimal S3 permissions on the attachments bucket', () => {
