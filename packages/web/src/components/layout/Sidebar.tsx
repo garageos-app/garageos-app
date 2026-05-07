@@ -20,7 +20,7 @@ export function Sidebar() {
   const { signOut } = useAuth();
 
   return (
-    <aside className="w-[220px] bg-slate-900 text-white flex flex-col p-4">
+    <aside className="w-[220px] bg-slate-900 dark:bg-slate-950 text-white flex flex-col p-4 border-r border-slate-800 dark:border-slate-900">
       <div className="font-bold text-lg tracking-tight mb-6 flex items-center gap-2">
         <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">G</div>
         GarageOS
