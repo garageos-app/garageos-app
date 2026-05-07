@@ -11,7 +11,7 @@ export function PartsRepeater() {
   return (
     <div className="space-y-2">
       {fields.length === 0 ? (
-        <p className="text-sm text-slate-500">Nessun pezzo registrato.</p>
+        <p className="text-sm text-muted-foreground">Nessun pezzo registrato.</p>
       ) : (
         fields.map((f, i) => (
           <div key={f.id} className="grid grid-cols-[1fr_120px_80px_36px] gap-2 items-start">

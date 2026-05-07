@@ -104,13 +104,13 @@ export function InterventionCreate() {
       <div className="mb-6">
         <button
           type="button"
-          className="text-sm text-slate-600 hover:text-slate-900"
+          className="text-sm text-muted-foreground hover:text-foreground"
           onClick={() => navigate(`/vehicles/${id}`)}
         >
           ← Torna alla scheda
         </button>
         <h1 className="text-2xl font-bold mt-2">Registra intervento</h1>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted-foreground">
           {v.make} {v.model} · {v.plate} · <span className="font-mono">{v.garageCode}</span>
         </p>
       </div>

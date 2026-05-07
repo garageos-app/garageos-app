@@ -82,7 +82,7 @@ export function InterventionForm({
       <form onSubmit={methods.handleSubmit(onSubmit)} noValidate className="space-y-6 max-w-2xl">
         {allErrorMessages.length > 0 && (
           <div
-            className="border border-red-300 bg-red-50 text-red-800 rounded-md p-3 text-sm"
+            className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm"
             role="alert"
           >
             <div className="font-medium mb-1">Correggi i campi seguenti prima di salvare:</div>
@@ -95,7 +95,7 @@ export function InterventionForm({
         )}
         {/* Required fields */}
         <div className="space-y-4">
-          <div className="text-xs uppercase tracking-wider text-slate-500">Obbligatori</div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Obbligatori</div>
 
           <div>
             <Label htmlFor="date">Data intervento *</Label>
@@ -107,7 +107,7 @@ export function InterventionForm({
               {...methods.register('interventionDate')}
             />
             {methods.formState.errors.interventionDate && (
-              <p className="text-sm text-red-600 mt-1">
+              <p className="text-sm text-red-600 dark:text-red-300 mt-1">
                 {methods.formState.errors.interventionDate.message}
               </p>
             )}
@@ -133,7 +133,7 @@ export function InterventionForm({
               </SelectContent>
             </Select>
             {methods.formState.errors.interventionTypeId && (
-              <p className="text-sm text-red-600 mt-1">
+              <p className="text-sm text-red-600 dark:text-red-300 mt-1">
                 {methods.formState.errors.interventionTypeId.message}
               </p>
             )}
@@ -148,7 +148,7 @@ export function InterventionForm({
               {...methods.register('odometerKm', { valueAsNumber: true })}
             />
             {methods.formState.errors.odometerKm && (
-              <p className="text-sm text-red-600 mt-1">
+              <p className="text-sm text-red-600 dark:text-red-300 mt-1">
                 {methods.formState.errors.odometerKm.message}
               </p>
             )}
@@ -158,7 +158,7 @@ export function InterventionForm({
             <Label htmlFor="desc">Descrizione *</Label>
             <Textarea id="desc" rows={4} {...methods.register('description')} />
             {methods.formState.errors.description && (
-              <p className="text-sm text-red-600 mt-1">
+              <p className="text-sm text-red-600 dark:text-red-300 mt-1">
                 {methods.formState.errors.description.message}
               </p>
             )}
@@ -167,12 +167,12 @@ export function InterventionForm({
 
         {/* Optional collapsible sections */}
         <div className="space-y-2">
-          <div className="text-xs uppercase tracking-wider text-slate-500">Opzionali</div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Opzionali</div>
 
           {!showTitle ? (
             <button
               type="button"
-              className="text-sm text-slate-700 hover:text-slate-900 block"
+              className="text-sm text-foreground hover:text-foreground block"
               onClick={() => setShowTitle(true)}
             >
               ▸ Aggiungi titolo
@@ -187,7 +187,7 @@ export function InterventionForm({
           {!showParts ? (
             <button
               type="button"
-              className="text-sm text-slate-700 hover:text-slate-900 block"
+              className="text-sm text-foreground hover:text-foreground block"
               onClick={() => setShowParts(true)}
             >
               ▸ Pezzi sostituiti
@@ -202,7 +202,7 @@ export function InterventionForm({
           {!showNotes ? (
             <button
               type="button"
-              className="text-sm text-slate-700 hover:text-slate-900 block"
+              className="text-sm text-foreground hover:text-foreground block"
               onClick={() => setShowNotes(true)}
             >
               ▸ Note interne
@@ -217,7 +217,7 @@ export function InterventionForm({
           {!showDeadline ? (
             <button
               type="button"
-              className="text-sm text-slate-700 hover:text-slate-900 block"
+              className="text-sm text-foreground hover:text-foreground block"
               onClick={() => setShowDeadline(true)}
             >
               ▸ Programma scadenza
