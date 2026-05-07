@@ -9,6 +9,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { SearchResults } from '@/pages/SearchResults';
 import { VehicleDetail } from '@/pages/VehicleDetail';
 import { InterventionCreate } from '@/pages/InterventionCreate';
+import VerifyEmailPage from '@/pages/VerifyEmailPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ export function App() {
           <QueryClientProvider client={queryClient}>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<Dashboard />} />
