@@ -6,6 +6,7 @@ import { CognitoConstruct } from '../constructs/cognito.js';
 import { DnsConstruct } from '../constructs/dns.js';
 import { LambdaApiConstruct } from '../constructs/lambda-api.js';
 import { SecretsConstruct } from '../constructs/secrets.js';
+import { SesConstruct } from '../constructs/ses.js';
 import { StorageConstruct } from '../constructs/storage.js';
 import { type EnvironmentConfig } from '../config/production.js';
 
@@ -62,6 +63,14 @@ export class MainStack extends cdk.Stack {
       ],
     });
 
+    // SES domain identity + config set + IAM grant. Operator post-merge
+    // submits AWS production-access ticket (sandbox is account-level).
+    const sesConstruct = new SesConstruct(this, 'Ses', {
+      hostedZone: dns.hostedZone,
+      emailFromDomain: config.emailFromDomain,
+      configurationSetName: config.sesConfigurationSetName,
+    });
+
     const lambdaApi = new LambdaApiConstruct(this, 'LambdaApi', {
       memoryMb: config.lambda.memoryMb,
       architecture: config.lambda.architecture,
@@ -72,6 +81,11 @@ export class MainStack extends cdk.Stack {
       officineUserPoolArn: cognito.officineUserPool.userPoolArn,
       clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
       attachmentsBucket: storage.attachmentsBucket,
+      sesIdentityArn: sesConstruct.identityArn,
+      sesConfigurationSetArn: sesConstruct.configurationSetArn,
+      sesFromAddress: config.emailFromAddress,
+      sesConfigurationSetName: config.sesConfigurationSetName,
+      verifyEmailBaseUrl: `https://${config.appSubdomain}.${config.domainName}/verify-email`,
     });
 
     const apiGateway = new ApiGatewayConstruct(this, 'ApiGateway', {
@@ -119,6 +133,14 @@ export class MainStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AttachmentsBucketName', {
       value: storage.attachmentsBucket.bucketName,
       description: 'S3 bucket per allegati intervention/dispute (presigned URL upload F-OFF-305)',
+    });
+    new cdk.CfnOutput(this, 'SesEmailIdentityArn', {
+      value: sesConstruct.identityArn,
+      description:
+        'SES domain identity (verify on AWS console post-deploy; DKIM CNAMEs propagate 5-15 min)',
+    });
+    new cdk.CfnOutput(this, 'SesConfigurationSetName', {
+      value: sesConstruct.configurationSet.configurationSetName,
     });
   }
 }

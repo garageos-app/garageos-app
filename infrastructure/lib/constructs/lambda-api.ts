@@ -52,6 +52,14 @@ export interface LambdaApiConstructProps {
   // GETs su attachments di intervention/dispute. Same pattern di Cognito
   // sopra — il PR che ship-a la risorsa ship-a anche il suo IAM.
   readonly attachmentsBucket: s3.IBucket;
+  // Pre-emptive grant + env wiring: the api in PR G1 calls SES SendEmailCommand
+  // for verify-email transactional flow. Same pattern as Cognito + S3 above —
+  // construct ships its IAM and env wiring.
+  readonly sesIdentityArn: string;
+  readonly sesConfigurationSetArn: string;
+  readonly sesFromAddress: string;
+  readonly sesConfigurationSetName: string;
+  readonly verifyEmailBaseUrl: string;
 }
 
 export class LambdaApiConstruct extends Construct {
@@ -96,6 +104,15 @@ export class LambdaApiConstruct extends Construct {
       }),
     );
 
+    // SES send (verify-email + future BR-064/066/129 notifications).
+    // Scoped to identity + config set ARN (least privilege).
+    executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+        resources: [props.sesIdentityArn, props.sesConfigurationSetArn],
+      }),
+    );
+
     this.logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
       logGroupName: '/aws/lambda/garageos-api',
       retention: this.mapRetention(props.logRetentionDays),
@@ -135,6 +152,10 @@ export class LambdaApiConstruct extends Construct {
         // lo legge per signing presigned URL. Non-secret (visibile in
         // CfnOutput AttachmentsBucketName).
         S3_ATTACHMENTS_BUCKET: props.attachmentsBucket.bucketName,
+        // SES wiring (PR G1). All non-secret — no SecretsManager entries needed.
+        SES_FROM_ADDRESS: props.sesFromAddress,
+        SES_CONFIGURATION_SET: props.sesConfigurationSetName,
+        VERIFY_EMAIL_BASE_URL: props.verifyEmailBaseUrl,
       },
       bundling: {
         minify: true,

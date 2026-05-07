@@ -15,6 +15,7 @@ export interface EnvironmentConfig {
   readonly appSubdomain: string;
   readonly emailFromDomain: string;
   readonly emailFromAddress: string;
+  readonly sesConfigurationSetName: string;
   readonly webBucketName: string;
   readonly lambda: {
     readonly memoryMb: number;
@@ -43,6 +44,7 @@ export const productionConfig: EnvironmentConfig = {
   appSubdomain: 'app',
   emailFromDomain: 'garageos.aifollyadvisor.com',
   emailFromAddress: 'noreply@garageos.aifollyadvisor.com',
+  sesConfigurationSetName: 'garageos-production',
   webBucketName: 'garageos-production-web',
   lambda: {
     memoryMb: 1024,
