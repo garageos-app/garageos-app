@@ -1,5 +1,6 @@
 import { ChevronDown, LogOut } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
+import { ThemeToggle } from '@/theme/ThemeToggle';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,17 +17,20 @@ export function TopBar() {
       <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">
         Officina Bootstrap
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger className="flex items-center gap-2 text-sm text-slate-700 hover:text-slate-900 transition">
-          <span>{email}</span>
-          <ChevronDown size={14} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={signOut}>
-            <LogOut size={14} className="mr-2" /> Esci
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex items-center gap-2 text-sm text-slate-700 hover:text-slate-900 transition">
+            <span>{email}</span>
+            <ChevronDown size={14} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={signOut}>
+              <LogOut size={14} className="mr-2" /> Esci
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </header>
   );
 }
