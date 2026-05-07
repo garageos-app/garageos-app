@@ -935,3 +935,72 @@ After F-PILOT-DEMO eseguito, validazione manuale end-to-end. Tempo stimato ~10 m
 8. TopBar dropdown → `Esci` → redirect `/login`. Reload `/vehicles/<id>` → redirect `/login` (protected route).
 
 All 8 PASS = demo-3 LIVE definitivo. Aggiornare `project_resume_checkpoint.md` con esito.
+
+## F13 — SES verify-email post-deploy runbook (G1)
+
+After `cdk deploy MainStack` ships the SES construct, follow these steps to enable the verify-email flow end-to-end.
+
+### F13.1 — Verify the domain identity in SES
+
+1. AWS Console → SES (eu-central-1) → Verified identities.
+2. Locate `garageos.aifollyadvisor.com`. Status should transition to **Verified** within 5-15 minutes (DKIM CNAMEs propagate via Route 53). If still pending after 30 min, check Route 53 → `garageos.aifollyadvisor.com` hosted zone → confirm the 3 `*._domainkey.garageos.aifollyadvisor.com` CNAME records exist.
+
+### F13.2 — Sandbox vs production access
+
+SES accounts start in **sandbox mode** (send only to verified recipient addresses). To exit sandbox:
+
+1. AWS Console → SES → Account dashboard → "Request production access".
+2. Use case: `Transactional` (NOT marketing).
+3. Mail type: Transactional.
+4. Volume: 100 emails/day v1, < 10/day average.
+5. Compliance: confirm we don't send unsolicited / marketing email.
+6. Wait 1-3 business days for AWS approval.
+
+While waiting, manually verify recipient email addresses you need for smoke (SES Console → Verified identities → "Create identity" → Email).
+
+### F13.3 — Smoke gate — full E2E
+
+Once domain identity is verified and at least one recipient email is sandbox-approved (or prod access granted):
+
+```bash
+# 1. Trigger signup with a verified-recipient email
+curl -X POST https://api.garageos.aifollyadvisor.com/v1/auth/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"customer","email":"matulamichele+verify1@gmail.com","password":"Password1","firstName":"Test","lastName":"User"}'
+# Expect 201
+
+# 2. Email arrives in inbox within ~30s
+# 3. Click the link in the email → opens https://app.garageos.aifollyadvisor.com/verify-email?token=...
+# 4. Page shows "Email verificata" within ~1s
+# 5. Verify in DB:
+psql "$DATABASE_URL" -c \
+  "SELECT email, email_verified FROM customers WHERE email='matulamichele+verify1@gmail.com';"
+# Expect email_verified=t
+psql "$DATABASE_URL" -c \
+  "SELECT consumed_at FROM email_verifications WHERE customer_id=(SELECT id FROM customers WHERE email='matulamichele+verify1@gmail.com');"
+# Expect consumed_at NOT NULL
+```
+
+### F13.4 — Resend smoke
+
+```bash
+curl -X POST https://api.garageos.aifollyadvisor.com/v1/auth/resend-verification \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"matulamichele+verify1@gmail.com"}'
+# Expect 200 { "sent": true }
+
+# Anti-enum check: same response for unknown email
+curl -X POST https://api.garageos.aifollyadvisor.com/v1/auth/resend-verification \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"definitely-does-not-exist@example.com"}'
+# Expect 200 { "sent": true }
+```
+
+### F13.5 — Bounce / complaint handling
+
+NOT wired in v1. Volume is too low to justify SNS bounce-notification topic + handler Lambda. Add when:
+
+- Daily volume > 100 emails/day, OR
+- SES reputation dashboard shows > 1% bounce rate.
+
+Tracked in `project_tech_debt.md`.
