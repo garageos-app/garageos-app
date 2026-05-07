@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GarageOS — Officine</title>
+    <script>
+      // Apply theme class before React mounts to avoid FOUC.
+      // Mirrors the storage key + read logic in src/theme/ThemeContext.tsx.
+      (function () {
+        try {
+          var t = localStorage.getItem('garageos-theme');
+          if (t === 'dark') document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
