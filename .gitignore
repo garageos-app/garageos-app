@@ -89,3 +89,6 @@ temp/
 
 # Superpowers brainstorming companion (per-session mockups + state)
 .superpowers/
+
+# Claude Code per-developer settings (plugin enable/disable, local prefs)
+.claude/settings.local.json
