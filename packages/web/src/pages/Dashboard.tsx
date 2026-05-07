@@ -35,16 +35,16 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-8">
-      <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">
+      <h1 className="text-4xl font-extrabold tracking-tight text-foreground mb-2">
         Cerca un veicolo
       </h1>
-      <p className="text-slate-600 mb-8">VIN, targa o codice GarageOS</p>
+      <p className="text-muted-foreground mb-8">VIN, targa o codice GarageOS</p>
       <form onSubmit={onSubmit} noValidate className="w-full max-w-2xl space-y-3">
         <div className="flex gap-3">
           <div className="relative flex-1">
             <Search
               size={18}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
             />
             <Input
               type="text"
@@ -62,7 +62,7 @@ export function Dashboard() {
             Cerca →
           </Button>
         </div>
-        {hint && <div className="text-xs text-slate-500 pl-1">{hint}</div>}
+        {hint && <div className="text-xs text-muted-foreground pl-1">{hint}</div>}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
