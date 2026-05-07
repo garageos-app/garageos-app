@@ -77,4 +77,19 @@ describe('Login page', () => {
     });
     expect(await screen.findByText('dashboard')).toBeInTheDocument();
   });
+
+  it('renders GarageOS brand logo', () => {
+    renderLogin({ status: 'unauthenticated' });
+    expect(screen.getByAltText(/garageos/i)).toBeInTheDocument();
+  });
+
+  it('renders AI Folly footer logo', () => {
+    renderLogin({ status: 'unauthenticated' });
+    expect(screen.getByAltText(/ai folly/i)).toBeInTheDocument();
+  });
+
+  it('renders product tagline', () => {
+    renderLogin({ status: 'unauthenticated' });
+    expect(screen.getByText(/libretto di manutenzione/i)).toBeInTheDocument();
+  });
 });
