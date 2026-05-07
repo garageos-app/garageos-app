@@ -48,15 +48,15 @@ export function Login() {
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-6xl mx-auto md:grid md:grid-cols-2 md:gap-12 md:items-center">
           {/* Branding panel — top on mobile, left on desktop */}
-          <div className="flex flex-col items-center md:items-start gap-4 mb-8 md:mb-0">
+          <div className="flex flex-col items-center gap-4 mb-8 md:mb-0">
             <img
               src="/garageos-logo.png"
               alt="GarageOS — Digital Maintenance Logs"
-              width={1376}
-              height={768}
+              width={644}
+              height={644}
               className="max-w-[200px] md:max-w-[260px] h-auto"
             />
-            <p className="text-slate-300 text-base md:text-lg text-center md:text-left max-w-md">
+            <p className="text-slate-300 text-base md:text-lg text-center max-w-md">
               Il libretto di manutenzione digitale per la tua officina
             </p>
           </div>
