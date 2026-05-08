@@ -32,14 +32,31 @@ interface FakePrisma {
     findFirst: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
   };
+  // BR-066 H1 dispatch: cancel handler calls resolveCurrentOwner →
+  // tx.vehicleOwnership.findFirst on every cancel. Default null
+  // mimics "no active owner" so dispatch is skipped and existing
+  // unit tests don't need to mock SES or tenant lookups.
+  vehicleOwnership: { findFirst: ReturnType<typeof vi.fn> };
 }
 
 function buildUserRow(role: 'super_admin' | 'mechanic' = 'super_admin'): {
   id: string;
   role: 'super_admin' | 'mechanic';
   locationId: string;
+  firstName: string | null;
+  lastName: string | null;
 } {
-  return { id: USER_ID, role, locationId: LOCATION_ID };
+  // firstName/lastName feed the BR-066 cancellation email cancelledBy
+  // display name. The unit suite doesn't trigger the dispatch path
+  // (vehicleOwnership.findFirst defaults to null), but the route now
+  // selects these columns so the fixture must shape-match.
+  return {
+    id: USER_ID,
+    role,
+    locationId: LOCATION_ID,
+    firstName: 'Anna',
+    lastName: 'Bianchi',
+  };
 }
 
 function buildExistingRow(
@@ -111,6 +128,9 @@ function buildFakePrisma(
     accessLog: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue(undefined),
+    },
+    vehicleOwnership: {
+      findFirst: vi.fn().mockResolvedValue(null),
     },
   };
 }
