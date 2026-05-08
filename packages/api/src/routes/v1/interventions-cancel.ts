@@ -39,17 +39,9 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
 
       const result = await app.withContext({ tenantId }, async (tx) => {
         // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
-        // firstName/lastName are also selected for the BR-066 cancellation
-        // email body (cancelledBy display name).
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: {
-            id: true,
-            role: true,
-            locationId: true,
-            firstName: true,
-            lastName: true,
-          },
+          select: { id: true, role: true, locationId: true },
         });
 
         // Cross-tenant masked by interventions_update RLS (USING +
@@ -181,7 +173,7 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        return { intervention: reloaded, resolvedDisputes, recipient, tenantRow, user };
+        return { intervention: reloaded, resolvedDisputes, recipient, tenantRow };
       });
 
       // BR-066 dispatch runs AFTER the transaction commits. It is
@@ -202,10 +194,6 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
               cancelledReason: result.intervention.cancelledReason,
             },
             tenant: result.tenantRow,
-            cancelledBy: {
-              firstName: result.user.firstName,
-              lastName: result.user.lastName,
-            },
           },
           recipient: result.recipient,
           logger: request.log,

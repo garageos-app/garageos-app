@@ -8,7 +8,6 @@ import type {
   CustomerForNotification,
   InterventionForEmail,
   TenantForEmail,
-  UserDisplayName,
 } from '../../../../../src/lib/notifications/types.js';
 
 const recipient: CustomerForNotification = {
@@ -31,7 +30,6 @@ const intervention: InterventionForEmail = {
 };
 
 const tenant: TenantForEmail = { id: 'ten-1', businessName: 'Officina Mario S.r.l.' };
-const cancelledBy: UserDisplayName = { firstName: 'Luigi', lastName: 'Bianchi' };
 
 describe('intervention-cancelled template', () => {
   it('subject contains "annullato"', () => {
@@ -39,7 +37,7 @@ describe('intervention-cancelled template', () => {
   });
 
   it('html includes recipient name, tenant, cancelled reason, vehicle link', () => {
-    const html = renderCancellationEmailHtml({ recipient, intervention, tenant, cancelledBy });
+    const html = renderCancellationEmailHtml({ recipient, intervention, tenant });
     expect(html).toContain('Mario');
     expect(html).toContain('Officina Mario S.r.l.');
     expect(html).toContain('Errore di trascrizione VIN');
@@ -47,7 +45,7 @@ describe('intervention-cancelled template', () => {
   });
 
   it('text mirrors html content', () => {
-    const text = renderCancellationEmailText({ recipient, intervention, tenant, cancelledBy });
+    const text = renderCancellationEmailText({ recipient, intervention, tenant });
     expect(text).toContain('Mario');
     expect(text).toContain('Officina Mario S.r.l.');
     expect(text).toContain('Errore di trascrizione VIN');
@@ -58,7 +56,6 @@ describe('intervention-cancelled template', () => {
       recipient,
       intervention: { ...intervention, cancelledReason: null },
       tenant,
-      cancelledBy,
     });
     // Word-boundary anchored to avoid matching "annullato" (BR-066 Italian).
     expect(html).not.toMatch(/\bnull\b|\bundefined\b/i);

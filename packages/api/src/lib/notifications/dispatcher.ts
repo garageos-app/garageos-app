@@ -68,13 +68,11 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
         recipient,
         intervention: event.intervention,
         tenant: event.tenant,
-        cancelledBy: event.cancelledBy,
       });
       text = renderCancellationEmailText({
         recipient,
         intervention: event.intervention,
         tenant: event.tenant,
-        cancelledBy: event.cancelledBy,
       });
       break;
   }

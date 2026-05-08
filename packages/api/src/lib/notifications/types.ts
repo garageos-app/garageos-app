@@ -26,11 +26,6 @@ export interface TenantForEmail {
   businessName: string;
 }
 
-export interface UserDisplayName {
-  firstName: string | null;
-  lastName: string | null;
-}
-
 export type NotificationEvent =
   | {
       type: 'intervention.revised';
@@ -42,7 +37,6 @@ export type NotificationEvent =
       type: 'intervention.cancelled';
       intervention: InterventionForEmail;
       tenant: TenantForEmail;
-      cancelledBy: UserDisplayName;
     };
 
 export type EmailEnabledKey =

@@ -53,7 +53,6 @@ const cancelledEvent: NotificationEvent = {
     cancelledReason: 'errore VIN',
   },
   tenant: { id: 'ten-1', businessName: 'Officina Mario S.r.l.' },
-  cancelledBy: { firstName: 'Luigi', lastName: 'Bianchi' },
 };
 
 const fakeLogger = {

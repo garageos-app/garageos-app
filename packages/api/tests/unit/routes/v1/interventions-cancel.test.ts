@@ -43,20 +43,8 @@ function buildUserRow(role: 'super_admin' | 'mechanic' = 'super_admin'): {
   id: string;
   role: 'super_admin' | 'mechanic';
   locationId: string;
-  firstName: string | null;
-  lastName: string | null;
 } {
-  // firstName/lastName feed the BR-066 cancellation email cancelledBy
-  // display name. The unit suite doesn't trigger the dispatch path
-  // (vehicleOwnership.findFirst defaults to null), but the route now
-  // selects these columns so the fixture must shape-match.
-  return {
-    id: USER_ID,
-    role,
-    locationId: LOCATION_ID,
-    firstName: 'Anna',
-    lastName: 'Bianchi',
-  };
+  return { id: USER_ID, role, locationId: LOCATION_ID };
 }
 
 function buildExistingRow(

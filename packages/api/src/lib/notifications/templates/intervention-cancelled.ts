@@ -1,9 +1,4 @@
-import type {
-  CustomerForNotification,
-  InterventionForEmail,
-  TenantForEmail,
-  UserDisplayName,
-} from '../types.js';
+import type { CustomerForNotification, InterventionForEmail, TenantForEmail } from '../types.js';
 
 export const CANCELLATION_EMAIL_SUBJECT = 'Un intervento sul tuo veicolo è stato annullato';
 
@@ -11,7 +6,6 @@ interface CancellationTemplateInput {
   recipient: CustomerForNotification;
   intervention: InterventionForEmail;
   tenant: TenantForEmail;
-  cancelledBy: UserDisplayName;
 }
 
 function getRecipientDisplayName(c: CustomerForNotification): string {

@@ -57,7 +57,7 @@ describe('resolveCurrentOwner', () => {
     expect(result).toBeNull();
   });
 
-  it('returns null when email looks like deleted-hash placeholder (BR-220)', async () => {
+  it('returns null when email looks like deleted-hash placeholder (BR-158)', async () => {
     const stub = vi.fn().mockResolvedValue({
       customer: {
         id: 'cust-1',

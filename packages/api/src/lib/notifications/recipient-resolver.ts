@@ -7,7 +7,7 @@ import type { CustomerForNotification } from './types.js';
 type PrismaTxLike = Pick<PrismaClient, 'vehicleOwnership'>;
 
 // BR-040: at most one ownership row per vehicle has ended_at IS NULL.
-// BR-220: deleted customers have email rewritten to deleted-<hash>@garageos.it
+// BR-158: deleted customers have email rewritten to deleted-<hash>@garageos.it
 // — skip the notification rather than spam an alias.
 export async function resolveCurrentOwner(
   tx: PrismaTxLike,
