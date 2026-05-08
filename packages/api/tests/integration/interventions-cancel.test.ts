@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import { mockClient } from 'aws-sdk-client-mock';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -24,6 +26,16 @@ const VALID_REASON =
 describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   let app: FastifyInstance;
 
+  // BR-066 SES dispatch tests share this mock with the wider describe; the
+  // pre-existing tests don't trigger SES (no active owner is seeded, so
+  // resolveCurrentOwner returns null and dispatch is skipped). The
+  // dedicated IP keeps the rate-limit bucket isolated from concurrent
+  // integration suites.
+  const TEST_IP_CANCEL = '10.20.30.43';
+  process.env.AWS_ACCESS_KEY_ID ??= 'test';
+  process.env.AWS_SECRET_ACCESS_KEY ??= 'test';
+  const sesMock = mockClient(SESv2Client);
+
   beforeAll(async () => {
     app = await buildTestServer();
   });
@@ -34,6 +46,9 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
 
   beforeEach(async () => {
     await resetDb();
+    sesMock.reset();
+    process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
+    process.env.SES_CONFIGURATION_SET = 'test-config-set';
   });
 
   it('200 happy path: super_admin cancels an active intervention with no disputes', async () => {
@@ -763,5 +778,105 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       payload: { reason: VALID_REASON, cancelledByUserId: userId },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  describe('BR-066 — cancellation email dispatch', () => {
+    async function setupCancellableScenario(
+      opts: { customerPrefs?: object } = {},
+    ): Promise<{ token: string; interventionId: string }> {
+      const { tenantId, locationId } = await createTenantWithLocation();
+      const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+      const { userId } = await createUser({
+        tenantId,
+        cognitoSub,
+        role: 'super_admin',
+        locationId,
+      });
+      const type = await ensureSystemInterventionType('TAGLIANDO');
+      const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+
+      const { customerId } = await createCustomer({
+        email: 'owner@test.it',
+        firstName: 'Mario',
+        notificationPreferences: opts.customerPrefs ?? { email: { intervention_updates: true } },
+      });
+      await createOwnership({ vehicleId, customerId });
+
+      const { interventionId } = await createIntervention({
+        tenantId,
+        locationId,
+        userId,
+        vehicleId,
+        interventionTypeId: type.id,
+        interventionDate: '2026-04-25',
+        odometerKm: 50000,
+        description: 'Tagliando con sostituzione olio',
+      });
+
+      const token = await signTestToken({
+        pool: 'officine',
+        sub: cognitoSub,
+        tenantId,
+        role: 'super_admin',
+        locationId,
+      });
+
+      return { token, interventionId };
+    }
+
+    it('BR-066 — sends cancellation email to current owner', async () => {
+      sesMock.on(SendEmailCommand).resolves({ MessageId: 'm1' });
+      const { token, interventionId } = await setupCancellableScenario();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/interventions/${interventionId}/cancel`,
+        headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_CANCEL },
+        payload: { reason: VALID_REASON },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const calls = sesMock.commandCalls(SendEmailCommand);
+      expect(calls).toHaveLength(1);
+      const input = calls[0]!.args[0]!.input as {
+        Destination?: { ToAddresses?: string[] };
+        Content?: { Simple?: { Subject?: { Data?: string } } };
+      };
+      expect(input.Destination?.ToAddresses).toEqual(['owner@test.it']);
+      expect(input.Content?.Simple?.Subject?.Data).toMatch(/annullat/i);
+    });
+
+    it('BR-066 — pref off blocks email but cancellation succeeds', async () => {
+      sesMock.on(SendEmailCommand).resolves({ MessageId: 'm1' });
+      const { token, interventionId } = await setupCancellableScenario({
+        customerPrefs: { email: { intervention_updates: false } },
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/interventions/${interventionId}/cancel`,
+        headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_CANCEL },
+        payload: { reason: VALID_REASON },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+    });
+
+    it('BR-066 — SES throws: cancel still 200 (best-effort post-commit)', async () => {
+      sesMock.on(SendEmailCommand).rejects(new Error('Throttling'));
+      const { token, interventionId } = await setupCancellableScenario();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/interventions/${interventionId}/cancel`,
+        headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_CANCEL },
+        payload: { reason: VALID_REASON },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { intervention: { status: string } };
+      expect(body.intervention.status).toBe('cancelled');
+    });
   });
 });

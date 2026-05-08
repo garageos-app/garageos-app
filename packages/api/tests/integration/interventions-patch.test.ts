@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
 
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import { mockClient } from 'aws-sdk-client-mock';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
 import {
+  createCustomer,
   createIntervention,
+  createOwnership,
   createTenantWithLocation,
   createUser,
   createVehicle,
@@ -18,6 +22,16 @@ import { signTestToken } from '../helpers/jwt.js';
 describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   let app: FastifyInstance;
 
+  // BR-064 SES dispatch tests share this mock with the wider describe; the
+  // pre-existing tests don't trigger SES (pre-lock edits skip the
+  // recipient resolution + dispatcher entirely), so the mock is harmless
+  // for them. The dedicated IP keeps the rate-limit bucket isolated from
+  // other integration suites running concurrently.
+  const TEST_IP_BR064 = '10.20.30.42';
+  process.env.AWS_ACCESS_KEY_ID ??= 'test';
+  process.env.AWS_SECRET_ACCESS_KEY ??= 'test';
+  const sesMock = mockClient(SESv2Client);
+
   beforeAll(async () => {
     app = await buildTestServer();
   });
@@ -28,6 +42,9 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
 
   beforeEach(async () => {
     await resetDb();
+    sesMock.reset();
+    process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
+    process.env.SES_CONFIGURATION_SET = 'test-config-set';
   });
 
   it('200 wiki window: edits description without creating a revision', async () => {
@@ -675,5 +692,135 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     ]);
     expect(logs.rows.length).toBeGreaterThanOrEqual(1);
     expect(logs.rows.some((r) => r.action === 'update')).toBe(true);
+  });
+
+  describe('BR-064 — revision email dispatch', () => {
+    async function setupWikiLockedScenario(
+      opts: { customerPrefs?: object; withOwnership?: boolean } = {},
+    ): Promise<{ token: string; interventionId: string }> {
+      const { tenantId, locationId } = await createTenantWithLocation();
+      const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+      const { userId } = await createUser({
+        tenantId,
+        cognitoSub,
+        role: 'super_admin',
+        locationId,
+      });
+      const type = await ensureSystemInterventionType('TAGLIANDO');
+      const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+
+      if (opts.withOwnership !== false) {
+        const { customerId } = await createCustomer({
+          email: 'owner@test.it',
+          firstName: 'Mario',
+          notificationPreferences: opts.customerPrefs ?? {},
+        });
+        await createOwnership({ vehicleId, customerId });
+      }
+
+      // Create intervention with createdAt 49h ago — wiki window already
+      // closed by age (BR-062). The PATCH writes wiki_locked_at + a
+      // revision row in the same transaction.
+      const oldDate = new Date(Date.now() - 49 * 60 * 60 * 1000);
+      const { interventionId } = await createIntervention({
+        tenantId,
+        locationId,
+        userId,
+        vehicleId,
+        interventionTypeId: type.id,
+        interventionDate: '2026-04-25',
+        odometerKm: 50000,
+        description: 'Tagliando con sostituzione olio',
+        createdAt: oldDate,
+      });
+
+      const token = await signTestToken({
+        pool: 'officine',
+        sub: cognitoSub,
+        tenantId,
+        role: 'super_admin',
+        locationId,
+      });
+
+      return { token, interventionId };
+    }
+
+    it('BR-064 — sends revision email to current owner when intervention_updates pref enabled', async () => {
+      sesMock.on(SendEmailCommand).resolves({ MessageId: 'm1' });
+      const { token, interventionId } = await setupWikiLockedScenario({
+        customerPrefs: { email: { intervention_updates: true } },
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/interventions/${interventionId}`,
+        headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_BR064 },
+        payload: {
+          description: 'Tagliando con sostituzione olio e filtro aria',
+          reason: 'Aggiunta filtro aria sostituito',
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const calls = sesMock.commandCalls(SendEmailCommand);
+      expect(calls).toHaveLength(1);
+      const input = calls[0]!.args[0]!.input as {
+        Destination?: { ToAddresses?: string[] };
+        Content?: { Simple?: { Subject?: { Data?: string } } };
+      };
+      expect(input.Destination?.ToAddresses).toEqual(['owner@test.it']);
+      expect(input.Content?.Simple?.Subject?.Data).toMatch(/modificat/i);
+    });
+
+    it('BR-064 — pref off blocks email but PATCH succeeds', async () => {
+      sesMock.on(SendEmailCommand).resolves({ MessageId: 'm1' });
+      const { token, interventionId } = await setupWikiLockedScenario({
+        customerPrefs: { email: { intervention_updates: false } },
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/interventions/${interventionId}`,
+        headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_BR064 },
+        payload: { description: 'modifica', reason: 'motivo abbastanza lungo per BR-064' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+    });
+
+    it('BR-064 — no active owner: PATCH succeeds, SES not invoked', async () => {
+      sesMock.on(SendEmailCommand).resolves({ MessageId: 'm1' });
+      const { token, interventionId } = await setupWikiLockedScenario({ withOwnership: false });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/interventions/${interventionId}`,
+        headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_BR064 },
+        payload: { description: 'modifica', reason: 'motivo abbastanza lungo per BR-064' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+    });
+
+    it('BR-064 — SES throws: PATCH still 200 (best-effort post-commit)', async () => {
+      sesMock.on(SendEmailCommand).rejects(new Error('Throttling'));
+      const { token, interventionId } = await setupWikiLockedScenario({
+        customerPrefs: { email: { intervention_updates: true } },
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/v1/interventions/${interventionId}`,
+        headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_BR064 },
+        payload: { description: 'modifica', reason: 'motivo abbastanza lungo per BR-064' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      // intervention_revisions row still written despite SES failure
+      const body = res.json() as { revision?: { id: string } | null };
+      expect(body.revision?.id).toBeDefined();
+    });
   });
 });

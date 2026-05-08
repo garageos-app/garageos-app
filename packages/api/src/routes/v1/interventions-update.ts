@@ -3,6 +3,9 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
+import { dispatchNotification } from '../../lib/notifications/dispatcher.js';
+import { resolveCurrentOwner } from '../../lib/notifications/recipient-resolver.js';
+import type { CustomerForNotification } from '../../lib/notifications/types.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -91,7 +94,7 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = request.tenantId!;
       const cognitoSub = request.userId!;
 
-      return app.withContext({ tenantId }, async (tx) => {
+      const result = await app.withContext({ tenantId }, async (tx) => {
         // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
@@ -206,8 +209,20 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
-        // TODO post-lock: notifica push + email cliente sulla revision
-        // (BR-064). Push tokens infra + SES non shipped — placeholder.
+        // H1 / BR-064: resolve recipient and tenant for post-commit
+        // notification. Only when wiki window is closed AND a revision row
+        // was actually written. Pre-lock = wiki window, no notify.
+        let recipient: CustomerForNotification | null = null;
+        let tenantRow: { id: string; businessName: string } | null = null;
+        if (lockState.isLocked && revision) {
+          recipient = await resolveCurrentOwner(tx, existing.vehicleId);
+          if (recipient) {
+            tenantRow = await tx.tenant.findUniqueOrThrow({
+              where: { id: tenantId },
+              select: { id: true, businessName: true },
+            });
+          }
+        }
 
         await recordVehicleAccess({
           tx,
@@ -247,8 +262,40 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        return { intervention: reloaded, revision };
+        return { intervention: reloaded, revision, recipient, tenantRow };
       });
+
+      // BR-064 dispatch runs AFTER the transaction commits. It is
+      // best-effort: dispatchNotification never throws (see contract in
+      // dispatcher.ts), so a SES failure here cannot roll back the
+      // revision row or the intervention update. The guard skips dispatch
+      // when there is no revision (pre-lock edit) or no resolvable
+      // recipient (no active owner / deleted customer).
+      if (result.revision && result.recipient && result.tenantRow) {
+        await dispatchNotification({
+          event: {
+            type: 'intervention.revised',
+            intervention: {
+              id: result.intervention.id,
+              vehicleId: result.intervention.vehicleId,
+              title: result.intervention.title,
+              description: result.intervention.description,
+              cancelledReason: null,
+            },
+            revision: {
+              id: result.revision.id,
+              revisedAt: result.revision.revisedAt,
+              reason: result.revision.reason,
+              changes: result.revision.changes,
+            },
+            tenant: result.tenantRow,
+          },
+          recipient: result.recipient,
+          logger: request.log,
+        });
+      }
+
+      return { intervention: result.intervention, revision: result.revision };
     },
   );
 };

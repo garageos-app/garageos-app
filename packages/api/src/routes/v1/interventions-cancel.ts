@@ -3,6 +3,9 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
+import { dispatchNotification } from '../../lib/notifications/dispatcher.js';
+import { resolveCurrentOwner } from '../../lib/notifications/recipient-resolver.js';
+import type { CustomerForNotification } from '../../lib/notifications/types.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -34,7 +37,7 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = request.tenantId!;
       const cognitoSub = request.userId!;
 
-      return app.withContext({ tenantId }, async (tx) => {
+      const result = await app.withContext({ tenantId }, async (tx) => {
         // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
@@ -124,6 +127,22 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
           log: request.log,
         });
 
+        // H1 / BR-066: resolve recipient and tenant for post-commit
+        // notification. Gate the tenant fetch behind a non-null recipient
+        // — if there is no active owner (or owner is deleted/anon), we
+        // skip the dispatch entirely and don't pay for an extra round-trip.
+        const recipient: CustomerForNotification | null = await resolveCurrentOwner(
+          tx,
+          existing.vehicleId,
+        );
+        let tenantRow: { id: string; businessName: string } | null = null;
+        if (recipient) {
+          tenantRow = await tx.tenant.findUniqueOrThrow({
+            where: { id: tenantId },
+            select: { id: true, businessName: true },
+          });
+        }
+
         const reloaded = await tx.intervention.findUniqueOrThrow({
           where: { id },
           select: {
@@ -154,8 +173,34 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        return { intervention: reloaded, resolvedDisputes };
+        return { intervention: reloaded, resolvedDisputes, recipient, tenantRow };
       });
+
+      // BR-066 dispatch runs AFTER the transaction commits. It is
+      // best-effort: dispatchNotification never throws (see contract in
+      // dispatcher.ts), so a SES failure here cannot roll back the
+      // cancellation or the dispute resolution. The guard skips dispatch
+      // when there is no resolvable recipient (no active owner / deleted
+      // / anonymized customer) — tenantRow is gated by recipient too.
+      if (result.recipient && result.tenantRow) {
+        await dispatchNotification({
+          event: {
+            type: 'intervention.cancelled',
+            intervention: {
+              id: result.intervention.id,
+              vehicleId: result.intervention.vehicleId,
+              title: result.intervention.title,
+              description: result.intervention.description,
+              cancelledReason: result.intervention.cancelledReason,
+            },
+            tenant: result.tenantRow,
+          },
+          recipient: result.recipient,
+          logger: request.log,
+        });
+      }
+
+      return { intervention: result.intervention, resolvedDisputes: result.resolvedDisputes };
     },
   );
 };
