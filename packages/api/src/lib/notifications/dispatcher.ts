@@ -3,6 +3,11 @@ import type { FastifyBaseLogger } from 'fastify';
 import { sendEmail } from './email-channel.js';
 import { isEmailEnabled } from './preferences.js';
 import {
+  renderDeadlineReminderHtml,
+  renderDeadlineReminderSubject,
+  renderDeadlineReminderText,
+} from './templates/deadline-reminder.js';
+import {
   CANCELLATION_EMAIL_SUBJECT,
   renderCancellationEmailHtml,
   renderCancellationEmailText,
@@ -12,7 +17,12 @@ import {
   renderRevisionEmailHtml,
   renderRevisionEmailText,
 } from './templates/intervention-revised.js';
-import type { CustomerForNotification, DispatchResult, NotificationEvent } from './types.js';
+import type {
+  CustomerForNotification,
+  DispatchResult,
+  EmailEnabledKey,
+  NotificationEvent,
+} from './types.js';
 
 interface DispatchInput {
   event: NotificationEvent;
@@ -20,7 +30,21 @@ interface DispatchInput {
   logger: FastifyBaseLogger;
 }
 
-// Single entry point for all H1 notifications. Channel-agnostic shape:
+// Maps each event type to the corresponding notification preference key.
+// intervention.* events are gated by intervention_updates; deadline
+// reminders are gated by deadline_reminder (both keys exist in EmailEnabledKey
+// since H1 forward-planning).
+function preferenceKeyForEvent(event: NotificationEvent): EmailEnabledKey {
+  switch (event.type) {
+    case 'intervention.revised':
+    case 'intervention.cancelled':
+      return 'intervention_updates';
+    case 'deadline.reminder':
+      return 'deadline_reminder';
+  }
+}
+
+// Single entry point for all H1/H3 notifications. Channel-agnostic shape:
 // H2 will extend this to fan out to push + email; the handler call site
 // stays unchanged.
 //
@@ -30,7 +54,8 @@ interface DispatchInput {
 export async function dispatchNotification(input: DispatchInput): Promise<DispatchResult> {
   const { event, recipient, logger } = input;
 
-  if (!isEmailEnabled(recipient, 'intervention_updates')) {
+  const prefKey = preferenceKeyForEvent(event);
+  if (!isEmailEnabled(recipient, prefKey)) {
     logger.info({
       notification: {
         event: event.type,
@@ -74,6 +99,11 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
         intervention: event.intervention,
         tenant: event.tenant,
       });
+      break;
+    case 'deadline.reminder':
+      subject = renderDeadlineReminderSubject(event);
+      html = renderDeadlineReminderHtml({ recipient, event });
+      text = renderDeadlineReminderText({ recipient, event });
       break;
   }
 
