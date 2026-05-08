@@ -7,6 +7,8 @@ import {
 } from '@aws-sdk/client-scheduler';
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 
+import { _resetSchedulerClientForTests } from '../../../src/lib/scheduler-client.js';
+
 beforeAll(() => {
   process.env.AWS_ACCESS_KEY_ID ??= 'test-key';
   process.env.AWS_SECRET_ACCESS_KEY ??= 'test-secret';
@@ -21,6 +23,7 @@ const schedulerMock = mockClient(SchedulerClient);
 
 beforeEach(() => {
   schedulerMock.reset();
+  _resetSchedulerClientForTests();
 });
 
 describe('createReminderSchedule', () => {
@@ -74,15 +77,13 @@ describe('deleteReminderSchedule', () => {
   });
 
   it('swallows ResourceNotFoundException (idempotent)', async () => {
-    schedulerMock
-      .on(DeleteScheduleCommand)
-      .rejects(
-        new ResourceNotFoundException({
-          message: 'not found',
-          Message: 'not found',
-          $metadata: {},
-        }),
-      );
+    schedulerMock.on(DeleteScheduleCommand).rejects(
+      new ResourceNotFoundException({
+        message: 'not found',
+        Message: 'not found',
+        $metadata: {},
+      }),
+    );
     const { deleteReminderSchedule } = await import('../../../src/lib/scheduler-client.js');
     await expect(deleteReminderSchedule('deadline-missing')).resolves.toBeUndefined();
   });
