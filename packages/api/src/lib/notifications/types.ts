@@ -23,7 +23,7 @@ export interface RevisionForEmail {
 
 export interface TenantForEmail {
   id: string;
-  nameLegal: string;
+  businessName: string;
 }
 
 export interface UserDisplayName {

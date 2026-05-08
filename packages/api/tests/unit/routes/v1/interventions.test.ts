@@ -110,7 +110,7 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
       findFirst: vi.fn().mockResolvedValue(null),
     },
     tenant: {
-      findUniqueOrThrow: vi.fn().mockResolvedValue({ id: TENANT_ID, nameLegal: 'Test Tenant' }),
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ id: TENANT_ID, businessName: 'Test Tenant' }),
     },
     interventionType: {
       findUniqueOrThrow: vi.fn().mockResolvedValue(buildInterventionTypeRow()),

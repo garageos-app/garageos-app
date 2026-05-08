@@ -30,7 +30,7 @@ const intervention: InterventionForEmail = {
   cancelledReason: 'Errore di trascrizione VIN — la riga è stata reinserita corretta.',
 };
 
-const tenant: TenantForEmail = { id: 'ten-1', nameLegal: 'Officina Mario S.r.l.' };
+const tenant: TenantForEmail = { id: 'ten-1', businessName: 'Officina Mario S.r.l.' };
 const cancelledBy: UserDisplayName = { firstName: 'Luigi', lastName: 'Bianchi' };
 
 describe('intervention-cancelled template', () => {

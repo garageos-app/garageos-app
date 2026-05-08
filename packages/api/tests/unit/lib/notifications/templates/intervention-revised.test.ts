@@ -37,7 +37,7 @@ const revision: RevisionForEmail = {
   changes: { odometerKm: { from: 50000, to: 51000 } },
 };
 
-const tenant: TenantForEmail = { id: 'ten-1', nameLegal: 'Officina Mario S.r.l.' };
+const tenant: TenantForEmail = { id: 'ten-1', businessName: 'Officina Mario S.r.l.' };
 
 describe('intervention-revised template', () => {
   it('subject contains "modificato"', () => {

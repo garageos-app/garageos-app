@@ -209,18 +209,20 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
-        // H1 / BR-064: resolve recipient for post-commit notification.
-        // Only when wiki window is closed AND a revision row was actually
-        // written. Pre-lock = wiki window, no notify.
+        // H1 / BR-064: resolve recipient and tenant for post-commit
+        // notification. Only when wiki window is closed AND a revision row
+        // was actually written. Pre-lock = wiki window, no notify.
         let recipient: CustomerForNotification | null = null;
+        let tenantRow: { id: string; businessName: string } | null = null;
         if (lockState.isLocked && revision) {
           recipient = await resolveCurrentOwner(tx, existing.vehicleId);
+          if (recipient) {
+            tenantRow = await tx.tenant.findUniqueOrThrow({
+              where: { id: tenantId },
+              select: { id: true, businessName: true },
+            });
+          }
         }
-
-        const tenantRow = await tx.tenant.findUniqueOrThrow({
-          where: { id: tenantId },
-          select: { id: true, nameLegal: true },
-        });
 
         await recordVehicleAccess({
           tx,
@@ -269,7 +271,7 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
       // revision row or the intervention update. The guard skips dispatch
       // when there is no revision (pre-lock edit) or no resolvable
       // recipient (no active owner / deleted customer).
-      if (result.revision && result.recipient) {
+      if (result.revision && result.recipient && result.tenantRow) {
         await dispatchNotification({
           event: {
             type: 'intervention.revised',

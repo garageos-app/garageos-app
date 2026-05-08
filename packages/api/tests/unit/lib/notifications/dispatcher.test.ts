@@ -40,7 +40,7 @@ const revisedEvent: NotificationEvent = {
     reason: 'Correzione km',
     changes: {},
   },
-  tenant: { id: 'ten-1', nameLegal: 'Officina Mario S.r.l.' },
+  tenant: { id: 'ten-1', businessName: 'Officina Mario S.r.l.' },
 };
 
 const cancelledEvent: NotificationEvent = {
@@ -52,7 +52,7 @@ const cancelledEvent: NotificationEvent = {
     description: 'olio',
     cancelledReason: 'errore VIN',
   },
-  tenant: { id: 'ten-1', nameLegal: 'Officina Mario S.r.l.' },
+  tenant: { id: 'ten-1', businessName: 'Officina Mario S.r.l.' },
   cancelledBy: { firstName: 'Luigi', lastName: 'Bianchi' },
 };
 
