@@ -63,8 +63,10 @@ export async function processSchedulerInvocation(input: {
 }): Promise<SchedulerInvocationResult> {
   const { app, detail } = input;
 
-  // See BR-XXX: all DB access runs under the admin role context so
-  // RLS cross-tenant reads/writes succeed without a tenant-scoped JWT.
+  // EventBridge Scheduler invocations carry no JWT, so DB access runs
+  // under role=admin to satisfy RLS without a tenant scope. Setting an
+  // empty context object would silently deny RLS-protected writes —
+  // see feedback_withcontext_empty_blocks_rls_writes.md.
   return app.withContext({ role: 'admin' }, async (tx) => {
     const row = await tx.deadlineNotification.findUnique({
       where: { id: detail.deadlineNotificationId },
