@@ -65,7 +65,7 @@ const baseRow = {
     dueOdometerKm: null,
     description: 'rev',
     interventionType: { nameIt: 'Revisione' },
-    vehicle: { id: 'v', licensePlate: 'AB123CD' },
+    vehicle: { id: 'v', plate: 'AB123CD' },
   },
 };
 
