@@ -134,6 +134,45 @@ export const CreateDeadlineSchema = z
     },
   );
 
+// BR-100..BR-109 — PATCH /v1/deadlines/:id payload (F-OFF-401).
+// Partial-update semantics: every field is optional, but the request body
+// must contain at least one field (a refine guard surfaces an empty body
+// as a 400 VALIDATION_ERROR via the shared error-handler).
+//
+// dueDate carries the same forward-only guard as CreateDeadlineSchema
+// (BR-103: reminders are forward-looking; rescheduling to the past is a
+// non-sensical operation — to reschedule into the past, cancel + create
+// a new historical record via POST /interventions).
+//
+// isRecurring → recurringMonths/recurringKm cross-field guard is NOT
+// re-applied here. PATCH consumers may send `isRecurring: true` alone
+// and update cadence in a follow-up call; the integrity check belongs
+// at create time. If the row was created with a valid cadence, the
+// update path may set `isRecurring=false` on its own without forcing the
+// cadence fields back to null.
+export const UpdateDeadlineSchema = z
+  .object({
+    dueDate: z.coerce
+      .date()
+      .refine(
+        (d) => {
+          const today = new Date();
+          today.setUTCHours(0, 0, 0, 0);
+          return d.getTime() >= today.getTime();
+        },
+        { message: 'dueDate must be today or in the future' },
+      )
+      .optional(),
+    dueOdometerKm: z.number().int().min(0).max(10_000_000).nullable().optional(),
+    description: z.string().max(500).nullable().optional(),
+    isRecurring: z.boolean().optional(),
+    recurringMonths: z.number().int().min(1).max(120).nullable().optional(),
+    recurringKm: z.number().int().min(1).max(10_000_000).nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: 'request body cannot be empty',
+  });
+
 export type PartReplaced = z.infer<typeof PartReplacedSchema>;
 export type CreateInterventionInput = z.infer<typeof CreateInterventionSchema>;
 export type CreateDisputeInput = z.infer<typeof CreateDisputeSchema>;
@@ -141,3 +180,4 @@ export type UpdateInterventionInput = z.infer<typeof UpdateInterventionSchema>;
 export type CancelInterventionInput = z.infer<typeof CancelInterventionSchema>;
 export type RespondToDisputeInput = z.infer<typeof RespondToDisputeSchema>;
 export type CreateDeadlineInput = z.infer<typeof CreateDeadlineSchema>;
+export type UpdateDeadlineInput = z.infer<typeof UpdateDeadlineSchema>;
