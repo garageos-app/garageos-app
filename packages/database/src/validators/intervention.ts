@@ -173,6 +173,14 @@ export const UpdateDeadlineSchema = z
     message: 'request body cannot be empty',
   });
 
+// BR-100..BR-109 — POST /v1/deadlines/:id/complete payload (F-OFF-405).
+// Single optional field: completedByInterventionId chains the intervention
+// that closed the deadline. Cross-vehicle / cross-tenant validation is
+// handler-side (422 deadline.complete.intervention_invalid).
+export const CompleteDeadlineSchema = z.object({
+  completedByInterventionId: z.uuid().nullish(),
+});
+
 export type PartReplaced = z.infer<typeof PartReplacedSchema>;
 export type CreateInterventionInput = z.infer<typeof CreateInterventionSchema>;
 export type CreateDisputeInput = z.infer<typeof CreateDisputeSchema>;
@@ -181,3 +189,4 @@ export type CancelInterventionInput = z.infer<typeof CancelInterventionSchema>;
 export type RespondToDisputeInput = z.infer<typeof RespondToDisputeSchema>;
 export type CreateDeadlineInput = z.infer<typeof CreateDeadlineSchema>;
 export type UpdateDeadlineInput = z.infer<typeof UpdateDeadlineSchema>;
+export type CompleteDeadlineInput = z.infer<typeof CompleteDeadlineSchema>;

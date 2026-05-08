@@ -12,6 +12,7 @@ import databasePlugin, { type DatabasePluginOptions } from './plugins/database.j
 import { registerErrorHandler } from './plugins/error-handler.js';
 import helmetPlugin from './plugins/helmet.js';
 import healthRoutes from './routes/health.js';
+import deadlinesCompleteRoutes from './routes/v1/deadlines-complete.js';
 import deadlinesCreateRoutes from './routes/v1/deadlines-create.js';
 import deadlinesDeleteRoutes from './routes/v1/deadlines-delete.js';
 import deadlinesListVehicleRoutes from './routes/v1/deadlines-list-vehicle.js';
@@ -135,6 +136,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(deadlinesListVehicleRoutes);
   await app.register(deadlinesUpdateRoutes);
   await app.register(deadlinesDeleteRoutes);
+  await app.register(deadlinesCompleteRoutes);
   await app.register(attachmentsRoutes);
   await app.register(meVehicleRoutes);
 
