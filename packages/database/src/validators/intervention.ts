@@ -94,9 +94,50 @@ export const RespondToDisputeSchema = z
   })
   .strict();
 
+// BR-100..BR-109 — POST /v1/vehicles/:vehicleId/deadlines payload (F-OFF-401).
+// dueDate is coerced from ISO string to Date so the handler can hand it
+// straight to Prisma + the Scheduler computation. The "today or future"
+// guard is enforced in the schema (Zod refine) because BR-103 reminders
+// are forward-looking — retroactive logging belongs in POST /interventions.
+//
+// isRecurring → recurringMonths/recurringKm cross-field constraint:
+// at least one of the two cadence fields must be present when isRecurring=true.
+// recurringKm-only is accepted at this layer for forward-compat (km-driven
+// reminders are not yet wired in scheduling.ts but the row persists for
+// future infrastructure — see compute-reminders.ts comment on `km_reached`).
+export const CreateDeadlineSchema = z
+  .object({
+    interventionTypeId: z.uuid(),
+    dueDate: z.coerce.date().refine(
+      (d) => {
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        return d.getTime() >= today.getTime();
+      },
+      { message: 'dueDate must be today or in the future' },
+    ),
+    dueOdometerKm: z.number().int().min(0).max(10_000_000).nullish(),
+    description: z.string().max(500).nullish(),
+    isRecurring: z.boolean().default(false),
+    recurringMonths: z.number().int().min(1).max(120).nullish(),
+    recurringKm: z.number().int().min(1).max(10_000_000).nullish(),
+    sourceInterventionId: z.uuid().nullish(),
+  })
+  .refine(
+    (v) =>
+      !v.isRecurring ||
+      (v.recurringMonths != null && v.recurringMonths > 0) ||
+      (v.recurringKm != null && v.recurringKm > 0),
+    {
+      message: 'isRecurring requires at least one of recurringMonths or recurringKm',
+      path: ['recurringMonths'],
+    },
+  );
+
 export type PartReplaced = z.infer<typeof PartReplacedSchema>;
 export type CreateInterventionInput = z.infer<typeof CreateInterventionSchema>;
 export type CreateDisputeInput = z.infer<typeof CreateDisputeSchema>;
 export type UpdateInterventionInput = z.infer<typeof UpdateInterventionSchema>;
 export type CancelInterventionInput = z.infer<typeof CancelInterventionSchema>;
 export type RespondToDisputeInput = z.infer<typeof RespondToDisputeSchema>;
+export type CreateDeadlineInput = z.infer<typeof CreateDeadlineSchema>;
