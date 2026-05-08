@@ -8,14 +8,14 @@
 // list will grow (e.g. SMS in v1.1).
 export const DEFAULT_NOTIFICATION_PREFERENCES = {
   email: {
-    new_intervention: true,
+    intervention_updates: true,
     deadline_reminder: true,
     transfer_invitation: true,
     dispute_response: true,
     marketing: false,
   },
   push: {
-    new_intervention: true,
+    intervention_updates: true,
     deadline_reminder: true,
     transfer_invitation: true,
     dispute_response: true,
