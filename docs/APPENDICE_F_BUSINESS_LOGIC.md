@@ -845,20 +845,22 @@ Alla creazione, un customer ha queste preferenze notifiche di default:
 ```json
 {
   "email": {
-    "new_intervention": true,
+    "intervention_updates": true,
     "deadline_reminder": true,
     "transfer_invitation": true,
     "dispute_response": true,
     "marketing": false
   },
   "push": {
-    "new_intervention": true,
+    "intervention_updates": true,
     "deadline_reminder": true,
     "transfer_invitation": true,
     "dispute_response": true
   }
 }
 ```
+
+> **v1.3 (2026-05-08):** chiave `email.new_intervention` rinominata a `email.intervention_updates` (idem per `push`). Il toggle ora governa l'intero lifecycle dell'intervention (BR-040 create + BR-064 revise + BR-066 cancel) anziché la sola creazione. Migration data-only `20260508120000_rename_new_intervention_to_intervention_updates`.
 
 Il customer può modificare queste preferenze via F-CLI-005.
 
