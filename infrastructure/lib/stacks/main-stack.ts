@@ -4,7 +4,8 @@ import { Construct } from 'constructs';
 import { ApiGatewayConstruct } from '../constructs/api-gateway.js';
 import { CognitoConstruct } from '../constructs/cognito.js';
 import { DnsConstruct } from '../constructs/dns.js';
-import { LambdaApiConstruct } from '../constructs/lambda-api.js';
+import { LAMBDA_FUNCTION_NAME, LambdaApiConstruct } from '../constructs/lambda-api.js';
+import { MonitoringConstruct } from '../constructs/monitoring.js';
 import { SchedulerConstruct } from '../constructs/scheduler.js';
 import { SecretsConstruct } from '../constructs/secrets.js';
 import { SesConstruct } from '../constructs/ses.js';
@@ -109,7 +110,7 @@ export class MainStack extends cdk.Stack {
       // Plain string (matches LambdaApiConstruct's hardcoded functionName).
       // Passing the L2 token instead would re-introduce the cyclic dep
       // between SchedulerRole, LambdaFunction and the Lambda role policy.
-      lambdaFunctionName: 'garageos-api',
+      lambdaFunctionName: LAMBDA_FUNCTION_NAME,
       hmacSecret: secrets.eventbridgeHmacSecret,
       warmingEnabled: config.scheduler.warmingEnabled,
       warmingScheduleName: config.scheduler.warmingScheduleName,
@@ -130,6 +131,11 @@ export class MainStack extends cdk.Stack {
       scheduleGroupName: schedulerConstruct.scheduleGroupName,
       schedulerRoleArn: schedulerConstruct.schedulerRole.roleArn,
       hmacSecret: secrets.eventbridgeHmacSecret,
+    });
+
+    const monitoring = new MonitoringConstruct(this, 'Monitoring', {
+      lambdaFunctionName: LAMBDA_FUNCTION_NAME,
+      httpApi: apiGateway.httpApi,
     });
 
     new cdk.CfnOutput(this, 'ApiUrl', {
@@ -186,6 +192,15 @@ export class MainStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'EventBridgeHmacSecretArn', {
       value: secrets.eventbridgeHmacSecret.secretArn,
       description: 'HMAC secret ARN for EventBridge Scheduler -> Lambda HTTP callbacks',
+    });
+    new cdk.CfnOutput(this, 'MonitoringAlertTopicArn', {
+      value: monitoring.alertTopic.topicArn,
+      description:
+        'SNS AlertTopic ARN — operator subscribes email post-deploy via aws sns subscribe (F15.1)',
+    });
+    new cdk.CfnOutput(this, 'MonitoringDashboardUrl', {
+      value: `https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#dashboards:name=${monitoring.dashboard.dashboardName}`,
+      description: 'CloudWatch dashboard URL (F15.4 verify post-deploy)',
     });
   }
 }

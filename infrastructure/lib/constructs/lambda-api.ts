@@ -10,6 +10,12 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
+// Hardcoded function name shared between LambdaApiConstruct (Lambda + log group),
+// SchedulerConstruct (string-built ARN to break dep cycle) and MonitoringConstruct
+// (CloudWatch metric dimension). Single source of truth: changing this value here
+// updates all three call sites in MainStack.
+export const LAMBDA_FUNCTION_NAME = 'garageos-api';
+
 // AWS Lambda function running the Fastify backend via the
 // @fastify/aws-lambda adapter. The api package's index.ts wraps the
 // Fastify instance and exports a Lambda handler that translates
@@ -114,7 +120,7 @@ export class LambdaApiConstruct extends Construct {
     );
 
     this.logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
-      logGroupName: '/aws/lambda/garageos-api',
+      logGroupName: `/aws/lambda/${LAMBDA_FUNCTION_NAME}`,
       retention: this.mapRetention(props.logRetentionDays),
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
@@ -127,7 +133,7 @@ export class LambdaApiConstruct extends Construct {
     const entryPath = path.join(__dirname, '..', '..', '..', 'packages', 'api', 'src', 'index.ts');
 
     this.function = new lambdaNodejs.NodejsFunction(this, 'ApiFunction', {
-      functionName: 'garageos-api',
+      functionName: LAMBDA_FUNCTION_NAME,
       entry: entryPath,
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,

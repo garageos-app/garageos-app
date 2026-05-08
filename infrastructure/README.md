@@ -1077,10 +1077,10 @@ After waiting ≥5 min during business hours (Mon–Sat 08:00–20:00 Europe/Rom
 aws logs tail /aws/lambda/garageos-api \
   --since 10m \
   --region eu-central-1 \
-  --filter-pattern '"warming"'
+  --filter-pattern '"source":"warming"'
 ```
 
-Expected: ≥1 line containing `{"source":"warming"}`. If none appear, check F14.1 state and confirm current time falls inside the cron window.
+Expected: ≥1 line per 5-min business-hour window with shape `{"source":"warming","ts":"<ISO timestamp>"}`. If none appear, check F14.1 state and confirm current time falls inside the cron window.
 
 ### F14.5 Verify Lambda env vars populated
 
@@ -1094,3 +1094,98 @@ aws lambda get-function-configuration \
 Expected: all three populated, no placeholder. `Group` should be `garageos-deadlines`, `RoleArn` and `HmacArn` should be valid ARNs.
 
 If any check fails, do NOT proceed with H notifications PR. Investigate via CloudFormation events on `MainStack` and the SchedulerConstruct logical IDs.
+
+## F15 — Monitoring smoke runbook (post-deploy verification)
+
+Run these checks after the PR auto-deploy ships MonitoringConstruct (cluster G3).
+All checks are read-only except F15.1 (creates an SNS subscription) and F15.3 (toggles alarm state).
+
+### F15.1 Subscribe operator email to AlertTopic
+
+```bash
+aws sns subscribe \
+  --topic-arn $(aws cloudformation describe-stacks \
+                --stack-name GarageosMainStack --region eu-central-1 \
+                --query 'Stacks[0].Outputs[?OutputKey==`MonitoringAlertTopicArn`].OutputValue' \
+                --output text) \
+  --protocol email \
+  --notification-endpoint matulamichele@gmail.com \
+  --region eu-central-1
+```
+
+Expected: SubscriptionArn returned (initially `pending confirmation`). Operator confirms by clicking the link in the AWS confirmation email (token expiry: 3 days). If the email lands in spam, whitelist `no-reply@sns.amazonaws.com`.
+
+### F15.2 Verify CloudWatch alarms created
+
+```bash
+aws cloudwatch describe-alarms \
+  --region eu-central-1 \
+  --alarm-name-prefix garageos-api- \
+  --query 'MetricAlarms[].{Name:AlarmName, State:StateValue}'
+```
+
+Expected: 4 alarms in state `INSUFFICIENT_DATA` (or `OK` once metrics start flowing):
+- `garageos-api-lambda-errors`
+- `garageos-api-lambda-duration`
+- `garageos-api-lambda-throttles`
+- `garageos-api-apigw-5xx`
+
+### F15.3 Test alarm path end-to-end
+
+Force one alarm to ALARM state to validate email delivery:
+
+```bash
+# Force ALARM
+aws cloudwatch set-alarm-state --region eu-central-1 \
+  --alarm-name garageos-api-lambda-throttles \
+  --state-value ALARM \
+  --state-reason "F15.3 smoke test"
+
+# Email "ALARM: garageos-api-lambda-throttles in EU (Frankfurt)" expected within 2 minutes
+# Reset OK
+aws cloudwatch set-alarm-state --region eu-central-1 \
+  --alarm-name garageos-api-lambda-throttles \
+  --state-value OK \
+  --state-reason "F15.3 smoke complete"
+```
+
+Expected: email arrives at the subscribed address within ~2 minutes. Reset puts the alarm back to `OK` so the dashboard does not show stale ALARM state.
+
+### F15.4 Verify Dashboard
+
+URL (also exposed via CfnOutput `MonitoringDashboardUrl`):
+
+```
+https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#dashboards:name=GarageOS-Production
+```
+
+Open in browser, verify 4 widgets visible:
+- API Requests (Invocations)
+- Lambda Duration (p50/p95/p99 series)
+- API Gateway Errors (4xx/5xx)
+- Lambda Concurrency & Throttles
+
+If widgets show "No data" at first access (Lambda zero-traffic in the prior 15 min), generate traffic with:
+
+```bash
+curl https://api.garageos.aifollyadvisor.com/health
+```
+
+Wait 1-2 min (CW metrics 1-min ingestion delay) and refresh.
+
+### F15.5 Cold-start observability via X-Ray (no widget, query ad-hoc)
+
+X-Ray Tracing is `ACTIVE` on Lambda + APIGW (since PR #29). Service map shows p99 of `Initialization` segment.
+
+For derived cold-start% via CloudWatch Logs Insights (saved query "GarageOS Cold Start %"):
+
+```
+filter @type = "REPORT"
+| stats count(*) as invocations,
+        count(@initDuration) as coldStarts,
+        (count(@initDuration) * 100 / count(*)) as coldStartPct by bin(5m)
+```
+
+Expected at pilot scale: <5% cold-start% with WarmingSchedule active (PR #70 G2). If ≥10% sustained, investigate Lambda init time regression or warming schedule failure.
+
+If any check fails, investigate via CloudFormation events on `MainStack` and the MonitoringConstruct logical IDs.

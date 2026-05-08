@@ -519,4 +519,36 @@ describe('MainStack (integration)', () => {
     });
     expect(matched).toBe(true);
   });
+
+  it('MainStack instantiates MonitoringConstruct with 4 alarms', () => {
+    // Wire-through assertion: spec-compliant alarm names exist in the synthesized stack.
+    const alarms = template.findResources('AWS::CloudWatch::Alarm');
+    const alarmNames = Object.values(alarms).map((a) => a.Properties.AlarmName as string);
+    expect(alarmNames).toEqual(
+      expect.arrayContaining([
+        'garageos-api-lambda-errors',
+        'garageos-api-lambda-duration',
+        'garageos-api-lambda-throttles',
+        'garageos-api-apigw-5xx',
+      ]),
+    );
+  });
+
+  it('MainStack exports MonitoringAlertTopicArn CfnOutput', () => {
+    template.hasOutput('MonitoringAlertTopicArn', {});
+  });
+
+  it('MainStack exports MonitoringDashboardUrl CfnOutput pointing to eu-central-1', () => {
+    const outputs = template.findOutputs('MonitoringDashboardUrl');
+    expect(outputs.MonitoringDashboardUrl).toBeDefined();
+    const value = outputs.MonitoringDashboardUrl!.Value;
+    // The CfnOutput value is a Fn::Join because the dashboard dashboardName is a
+    // CDK token resolved via Ref. Assert the URL prefix (literal string segment)
+    // is present, and separately confirm the Dashboard resource carries the
+    // expected name (GarageOS-Production).
+    expect(JSON.stringify(value)).toContain('eu-central-1.console.aws.amazon.com/cloudwatch');
+    template.hasResourceProperties('AWS::CloudWatch::Dashboard', {
+      DashboardName: 'GarageOS-Production',
+    });
+  });
 });
