@@ -106,6 +106,10 @@ export async function createCustomer(params: {
   // clienti pool. Mirrors the cognito_sub linkage flow at signup
   // (BR-130 — customer Cognito → Customer row mapping).
   cognitoSub?: string | null;
+  // BR-226 channel × event toggles. Defaults to `{}` so the
+  // application-side fallback (DEFAULT_NOTIFICATION_PREFERENCES) kicks
+  // in — matches signup behavior.
+  notificationPreferences?: object;
 }): Promise<{ customerId: string; email: string }> {
   const {
     email = `cust-${Math.random().toString(36).slice(2, 10)}@test.it`,
@@ -113,15 +117,16 @@ export async function createCustomer(params: {
     lastName = 'Rossi',
     phone = '+39 333 1234567',
     cognitoSub = null,
+    notificationPreferences = {},
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO customers
        (id, cognito_sub, email, first_name, last_name, phone, status,
-        created_at, updated_at)
+        notification_preferences, created_at, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5,
-        'active'::"CustomerStatus", NOW(), NOW())
+        'active'::"CustomerStatus", $6::jsonb, NOW(), NOW())
      RETURNING id`,
-    [cognitoSub, email, firstName, lastName, phone],
+    [cognitoSub, email, firstName, lastName, phone, JSON.stringify(notificationPreferences)],
   );
   return { customerId: rows[0]!.id, email };
 }

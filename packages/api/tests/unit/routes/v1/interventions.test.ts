@@ -21,6 +21,8 @@ const DEADLINE_ID = '99999999-9999-4999-8999-999999999999';
 interface FakePrisma {
   user: { findFirstOrThrow: ReturnType<typeof vi.fn> };
   vehicle: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
+  vehicleOwnership: { findFirst: ReturnType<typeof vi.fn> };
+  tenant: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
   interventionType: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
   intervention: {
     aggregate: ReturnType<typeof vi.fn>;
@@ -100,6 +102,15 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     },
     vehicle: {
       findUniqueOrThrow: vi.fn().mockResolvedValue(buildVehicleRow()),
+    },
+    vehicleOwnership: {
+      // BR-064 dispatcher resolver: default to "no active owner" so the
+      // dispatcher early-returns with no SES side effect in unit tests
+      // that don't explicitly seed an owner.
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    tenant: {
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ id: TENANT_ID, nameLegal: 'Test Tenant' }),
     },
     interventionType: {
       findUniqueOrThrow: vi.fn().mockResolvedValue(buildInterventionTypeRow()),
