@@ -1077,10 +1077,12 @@ After waiting ≥5 min during business hours (Mon–Sat 08:00–20:00 Europe/Rom
 aws logs tail /aws/lambda/garageos-api \
   --since 10m \
   --region eu-central-1 \
-  --filter-pattern '"source":"warming"'
+  --filter-pattern '{ $.source = "warming" }'
 ```
 
 Expected: ≥1 line per 5-min business-hour window with shape `{"source":"warming","ts":"<ISO timestamp>"}`. If none appear, check F14.1 state and confirm current time falls inside the cron window.
+
+> **PowerShell note**: the filter pattern uses CloudWatch JSON event syntax (`{ $.source = "warming" }`) — this works cross-shell. The token-style pattern `'"source":"warming"'` is rejected by CloudWatch's parser (`:` is not allowed in unquoted terms) when invoked from PowerShell.
 
 ### F14.5 Verify Lambda env vars populated
 
