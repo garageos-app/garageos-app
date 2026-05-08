@@ -1,3 +1,4 @@
+import { withWarmingGuard } from './lambda-warming.js';
 import { loadSecretsIntoEnv } from './config/secrets.js';
 
 // Step 1 of cold-start boot: hydrate process.env from Secrets Manager
@@ -19,7 +20,7 @@ const app = await buildServer();
 // the instance has started (FST_ERR_DEC_AFTER_START), which means we
 // cannot await app.ready() before this line. The adapter awaits
 // readiness internally on the first invocation.
-export const handler = awsLambdaFastify(app);
+export const handler = withWarmingGuard(awsLambdaFastify(app));
 
 if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
   const shutdown = async (signal: string): Promise<void> => {

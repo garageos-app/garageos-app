@@ -5,6 +5,7 @@ import { ApiGatewayConstruct } from '../constructs/api-gateway.js';
 import { CognitoConstruct } from '../constructs/cognito.js';
 import { DnsConstruct } from '../constructs/dns.js';
 import { LambdaApiConstruct } from '../constructs/lambda-api.js';
+import { SchedulerConstruct } from '../constructs/scheduler.js';
 import { SecretsConstruct } from '../constructs/secrets.js';
 import { SesConstruct } from '../constructs/ses.js';
 import { StorageConstruct } from '../constructs/storage.js';
@@ -99,6 +100,38 @@ export class MainStack extends cdk.Stack {
       logRetentionDays: config.logRetentionDays,
     });
 
+    // EventBridge Scheduler infrastructure: warming cron + landing zone for
+    // future runtime-created deadline schedules. Wires post-construction so
+    // both LambdaApi and Scheduler reference each other without a cyclic
+    // construct prop dependency.
+    const schedulerConstruct = new SchedulerConstruct(this, 'Scheduler', {
+      lambdaFunction: lambdaApi.function,
+      // Plain string (matches LambdaApiConstruct's hardcoded functionName).
+      // Passing the L2 token instead would re-introduce the cyclic dep
+      // between SchedulerRole, LambdaFunction and the Lambda role policy.
+      lambdaFunctionName: 'garageos-api',
+      hmacSecret: secrets.eventbridgeHmacSecret,
+      warmingEnabled: config.scheduler.warmingEnabled,
+      warmingScheduleName: config.scheduler.warmingScheduleName,
+      deadlineGroupName: config.scheduler.deadlineGroupName,
+    });
+
+    lambdaApi.function.addEnvironment('SCHEDULER_GROUP_NAME', schedulerConstruct.scheduleGroupName);
+    lambdaApi.function.addEnvironment(
+      'SCHEDULER_ROLE_ARN',
+      schedulerConstruct.schedulerRole.roleArn,
+    );
+    lambdaApi.function.addEnvironment(
+      'SCHEDULER_HMAC_SECRET_ARN',
+      secrets.eventbridgeHmacSecret.secretArn,
+    );
+
+    lambdaApi.attachSchedulerPolicies({
+      scheduleGroupName: schedulerConstruct.scheduleGroupName,
+      schedulerRoleArn: schedulerConstruct.schedulerRole.roleArn,
+      hmacSecret: secrets.eventbridgeHmacSecret,
+    });
+
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: `https://${config.apiSubdomain}.${config.domainName}`,
     });
@@ -141,6 +174,18 @@ export class MainStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, 'SesConfigurationSetName', {
       value: sesConstruct.configurationSet.configurationSetName,
+    });
+    new cdk.CfnOutput(this, 'SchedulerWarmingScheduleName', {
+      value: schedulerConstruct.warmingSchedule.name!,
+      description: 'EventBridge Scheduler warming cron schedule name (verify F14.1 runbook)',
+    });
+    new cdk.CfnOutput(this, 'SchedulerDeadlineGroupName', {
+      value: schedulerConstruct.scheduleGroupName,
+      description: 'EventBridge Scheduler group reserved for runtime-created deadline schedules',
+    });
+    new cdk.CfnOutput(this, 'EventBridgeHmacSecretArn', {
+      value: secrets.eventbridgeHmacSecret.secretArn,
+      description: 'HMAC secret ARN for EventBridge Scheduler -> Lambda HTTP callbacks',
     });
   }
 }

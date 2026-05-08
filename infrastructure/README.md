@@ -1023,3 +1023,74 @@ NOT wired in v1. Volume is too low to justify SNS bounce-notification topic + ha
 - SES reputation dashboard shows > 1% bounce rate.
 
 Tracked in `project_tech_debt.md`.
+
+## F14 — Scheduler smoke runbook (post-deploy verification)
+
+Run these checks after the PR auto-deploy ships SchedulerConstruct (cluster G2).
+All checks are read-only — they do not mutate state.
+
+### F14.1 Verify WarmingSchedule active
+
+```bash
+aws scheduler get-schedule \
+  --name garageos-api-warming \
+  --group-name default \
+  --region eu-central-1 \
+  --query "{State:State, Expression:ScheduleExpression, Tz:ScheduleExpressionTimezone}"
+```
+
+Expected: `State=ENABLED`, `Expression=cron(*/5 8-20 ? * MON-SAT *)`, `Tz=Europe/Rome`.
+
+### F14.2 Verify DeadlineGroup created (empty at deploy time)
+
+```bash
+aws scheduler get-schedule-group \
+  --name garageos-deadlines \
+  --region eu-central-1 \
+  --query "{State:State, Arn:Arn}"
+```
+
+Expected: `State=ACTIVE`. The group will remain empty until H notifications PR ships and the app starts creating runtime schedules.
+
+### F14.3 Verify HMAC secret populated (no placeholder)
+
+```bash
+aws secretsmanager describe-secret \
+  --secret-id garageos/production/eventbridge-hmac \
+  --region eu-central-1 \
+  --query "{Name:Name, Description:Description, ARN:ARN}"
+
+# Length sanity check (stdout includes 2 quote characters around the JSON string)
+aws secretsmanager get-secret-value \
+  --secret-id garageos/production/eventbridge-hmac \
+  --region eu-central-1 \
+  --query "SecretString" | wc -c
+```
+
+Expected: descriptive `Name`, `Description` matches construct, `ARN` populated. `wc -c` returns ≈66 (64 chars + 2 quotes + newline; exact value depends on shell).
+
+### F14.4 Smoke warming hits Lambda
+
+After waiting ≥5 min during business hours (Mon–Sat 08:00–20:00 Europe/Rome):
+
+```bash
+aws logs tail /aws/lambda/garageos-api \
+  --since 10m \
+  --region eu-central-1 \
+  --filter-pattern '"warming"'
+```
+
+Expected: ≥1 line containing `{"source":"warming"}`. If none appear, check F14.1 state and confirm current time falls inside the cron window.
+
+### F14.5 Verify Lambda env vars populated
+
+```bash
+aws lambda get-function-configuration \
+  --function-name garageos-api \
+  --region eu-central-1 \
+  --query "Environment.Variables.{Group:SCHEDULER_GROUP_NAME, RoleArn:SCHEDULER_ROLE_ARN, HmacArn:SCHEDULER_HMAC_SECRET_ARN}"
+```
+
+Expected: all three populated, no placeholder. `Group` should be `garageos-deadlines`, `RoleArn` and `HmacArn` should be valid ARNs.
+
+If any check fails, do NOT proceed with H notifications PR. Investigate via CloudFormation events on `MainStack` and the SchedulerConstruct logical IDs.

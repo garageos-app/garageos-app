@@ -202,6 +202,59 @@ export class LambdaApiConstruct extends Construct {
     });
   }
 
+  /**
+   * Attach EventBridge Scheduler runtime CRUD permissions to the Lambda's
+   * execution role. Called from MainStack post-construction to break the
+   * cyclic prop dependency between LambdaApiConstruct and SchedulerConstruct
+   * (Lambda needs role+secret ARNs as env, Scheduler needs Lambda function
+   * ARN). Same pattern as ses.grantSendEmail(lambdaApi.function).
+   *
+   * Resources are scoped to the deadline group + the role we PassRole to.
+   * Even if the Lambda is compromised, it cannot CRUD schedules outside
+   * its own group or escalate via PassRole on other AWS services.
+   */
+  public attachSchedulerPolicies(props: {
+    scheduleGroupName: string;
+    schedulerRoleArn: string;
+    hmacSecret: secretsmanager.ISecret;
+  }): void {
+    const stack = cdk.Stack.of(this);
+
+    this.function.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'scheduler:CreateSchedule',
+          'scheduler:UpdateSchedule',
+          'scheduler:DeleteSchedule',
+          'scheduler:GetSchedule',
+        ],
+        resources: [
+          `arn:aws:scheduler:${stack.region}:${stack.account}:schedule/${props.scheduleGroupName}/*`,
+        ],
+      }),
+    );
+
+    // PassRole is mandatory: scheduler:CreateSchedule passes the
+    // SchedulerRole ARN as the schedule's executor. Without this
+    // statement every CreateSchedule fails with AccessDenied.
+    // Condition iam:PassedToService scopes the grant so the Lambda
+    // cannot reuse the role for non-Scheduler privilege escalation.
+    this.function.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['iam:PassRole'],
+        resources: [props.schedulerRoleArn],
+        conditions: {
+          StringEquals: { 'iam:PassedToService': 'scheduler.amazonaws.com' },
+        },
+      }),
+    );
+
+    // HMAC secret read for signing future deadline HTTP callbacks.
+    // grantRead handles both secretsmanager:GetSecretValue and
+    // automatic KMS Decrypt when the secret uses a customer KMS key.
+    props.hmacSecret.grantRead(this.function);
+  }
+
   private mapRetention(days: number): logs.RetentionDays {
     switch (days) {
       case 7:
