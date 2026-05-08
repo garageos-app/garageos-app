@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { withContext } from '../../src/index.js';
@@ -60,7 +62,7 @@ describe('RLS — deadlines customer SELECT (post-migration H3)', () => {
           'car'::"VehicleType", 'petrol'::"FuelType",
           'pending'::"VehicleStatus", $2, NOW(), NOW())
        RETURNING id`,
-      [`VIN${Date.now()}${Math.floor(Math.random() * 1e6)}`.slice(0, 17), tenantId],
+      [randomUUID().replace(/-/g, '').slice(0, 17).toUpperCase(), tenantId],
     );
     const vehicleId = vRows[0]!.id;
 
@@ -194,7 +196,9 @@ describe('RLS — deadlines customer SELECT (post-migration H3)', () => {
           },
         }),
       ),
-    ).rejects.toThrow(/row-level security|new row violates/i);
+    ).rejects.toThrow(
+      /(?=.*\bdeadlines?\b)(?=.*(row-level security|policy|permission denied|denied))/i,
+    );
   });
 
   // -----------------------------------------------------------------------
