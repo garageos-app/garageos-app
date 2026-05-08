@@ -197,6 +197,25 @@ describe('LambdaApiConstruct', () => {
     });
   });
 
+  it('Lambda env includes LAMBDA_FUNCTION_ARN referencing garageos-api function', () => {
+    // The SchedulerClient runtime wrapper (H3 Task 2) reads
+    // process.env.LAMBDA_FUNCTION_ARN to register EventBridge Scheduler
+    // targets that invoke the same Lambda. Built via template-literal ARN
+    // using cdk.Aws.* pseudo-params + LAMBDA_FUNCTION_NAME constant to
+    // avoid the CDK assertions-library cycle checker (which rejects
+    // Fn::GetAtt self-reference even though CloudFormation handles it).
+    // The synthesized value is a Fn::Join string containing the function name.
+    const vars = template.findResources('AWS::Lambda::Function');
+    const fnResource = Object.values(vars)[0] as {
+      Properties: { Environment: { Variables: Record<string, unknown> } };
+    };
+    const arnValue = fnResource.Properties.Environment.Variables['LAMBDA_FUNCTION_ARN'];
+    // The ARN is synthesized as a Fn::Join (CDK joins partition/region/account
+    // pseudo-parameters with the literal function name). Verify the raw JSON
+    // includes the function name so the runtime resolves the correct target.
+    expect(JSON.stringify(arnValue)).toContain('garageos-api');
+  });
+
   it('execution role has secretsmanager:GetSecretValue, the 4 cognito-idp:Admin* actions, and s3:GetObject + s3:PutObject', () => {
     // Find the inline policy attached to the execution role and check
     // its statements. Presence: secretsmanager:GetSecretValue +

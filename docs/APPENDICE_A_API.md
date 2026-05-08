@@ -1029,14 +1029,21 @@ L'`owner_type=intervention` resta officina-only.
 
 ### 3.14 Scheduler callbacks (interni)
 
-Endpoint chiamati solo da EventBridge/sistemi interni. Protetti con firma HMAC.
+Endpoint chiamati solo da EventBridge/sistemi interni. Protetti con firma HMAC
+(ad eccezione di `deadline-reminder`, vedi nota post-H3 sotto).
 
 | Metodo | Path | Descrizione |
 |---|---|---|
-| POST | `/internal/scheduler/deadline-reminder` | Trigger invio promemoria scadenza |
 | POST | `/internal/scheduler/transfer-expiration` | Chiusura trasferimenti scaduti |
 | POST | `/internal/scheduler/invitation-expiration` | Cleanup inviti scaduti |
 | POST | `/internal/s3/attachment-uploaded` | Callback S3 event per processing allegato |
+
+> **Note (post-H3):** The original spec called for a `POST /internal/scheduler/deadline-reminder`
+> HTTP endpoint protected by HMAC. H3 (PR shipped 2026-05-08) replaced this with direct Lambda
+> invocation by EventBridge Scheduler — the Scheduler role calls `lambda:InvokeFunction` on the
+> api Lambda with payload `{ source: 'aws.scheduler', detail: { deadlineNotificationId, reminderType } }`,
+> which is short-circuited before Fastify by `withSchedulerGuard` (mirroring G2's `withWarmingGuard`).
+> IAM-grade auth replaces HMAC; no internal HTTP surface exists for scheduler callbacks of this kind.
 
 ---
 
