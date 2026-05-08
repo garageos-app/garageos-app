@@ -4,7 +4,7 @@ import { Construct } from 'constructs';
 import { ApiGatewayConstruct } from '../constructs/api-gateway.js';
 import { CognitoConstruct } from '../constructs/cognito.js';
 import { DnsConstruct } from '../constructs/dns.js';
-import { LambdaApiConstruct } from '../constructs/lambda-api.js';
+import { LAMBDA_FUNCTION_NAME, LambdaApiConstruct } from '../constructs/lambda-api.js';
 import { SchedulerConstruct } from '../constructs/scheduler.js';
 import { SecretsConstruct } from '../constructs/secrets.js';
 import { SesConstruct } from '../constructs/ses.js';
@@ -109,7 +109,7 @@ export class MainStack extends cdk.Stack {
       // Plain string (matches LambdaApiConstruct's hardcoded functionName).
       // Passing the L2 token instead would re-introduce the cyclic dep
       // between SchedulerRole, LambdaFunction and the Lambda role policy.
-      lambdaFunctionName: 'garageos-api',
+      lambdaFunctionName: LAMBDA_FUNCTION_NAME,
       hmacSecret: secrets.eventbridgeHmacSecret,
       warmingEnabled: config.scheduler.warmingEnabled,
       warmingScheduleName: config.scheduler.warmingScheduleName,
