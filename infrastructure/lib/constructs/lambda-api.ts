@@ -206,6 +206,22 @@ export class LambdaApiConstruct extends Construct {
         },
       },
     });
+
+    // Inject the Lambda's own ARN so the H3 SchedulerClient runtime
+    // wrapper (packages/api/src/lib/scheduler-client.ts) can register
+    // EventBridge Scheduler targets that invoke this same function.
+    //
+    // We build the ARN via a template literal using cdk.Aws.* pseudo-
+    // parameters and the shared LAMBDA_FUNCTION_NAME constant rather
+    // than this.function.functionArn (Fn::GetAtt on self). The CDK
+    // assertions library's cycle checker rejects self-referential
+    // Fn::GetAtt even though real CloudFormation resolves it fine.
+    // Template-literal ARN avoids the self-ref and matches the pattern
+    // established by SchedulerConstruct (memory:
+    // feedback_cdk_construct_dependency_cycle_fix.md).
+    const stack = cdk.Stack.of(this);
+    const selfArn = `arn:${stack.partition}:lambda:${stack.region}:${stack.account}:function:${LAMBDA_FUNCTION_NAME}`;
+    this.function.addEnvironment('LAMBDA_FUNCTION_ARN', selfArn);
   }
 
   /**
