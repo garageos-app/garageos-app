@@ -5,7 +5,7 @@ import {
   DeleteScheduleCommand,
   ResourceNotFoundException,
 } from '@aws-sdk/client-scheduler';
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
 
 import { _resetSchedulerClientForTests } from '../../../src/lib/scheduler-client.js';
 
@@ -92,5 +92,53 @@ describe('deleteReminderSchedule', () => {
     schedulerMock.on(DeleteScheduleCommand).rejects(new Error('unexpected'));
     const { deleteReminderSchedule } = await import('../../../src/lib/scheduler-client.js');
     await expect(deleteReminderSchedule('deadline-x')).rejects.toThrow('unexpected');
+  });
+});
+
+describe('env var validation', () => {
+  let savedGroup: string | undefined;
+  let savedRole: string | undefined;
+  let savedArn: string | undefined;
+
+  beforeEach(() => {
+    savedGroup = process.env.SCHEDULER_GROUP_NAME;
+    savedRole = process.env.SCHEDULER_ROLE_ARN;
+    savedArn = process.env.LAMBDA_FUNCTION_ARN;
+  });
+
+  afterEach(() => {
+    if (savedGroup === undefined) {
+      delete process.env.SCHEDULER_GROUP_NAME;
+    } else {
+      process.env.SCHEDULER_GROUP_NAME = savedGroup;
+    }
+    if (savedRole === undefined) {
+      delete process.env.SCHEDULER_ROLE_ARN;
+    } else {
+      process.env.SCHEDULER_ROLE_ARN = savedRole;
+    }
+    if (savedArn === undefined) {
+      delete process.env.LAMBDA_FUNCTION_ARN;
+    } else {
+      process.env.LAMBDA_FUNCTION_ARN = savedArn;
+    }
+  });
+
+  it('createReminderSchedule throws when SCHEDULER_GROUP_NAME is missing', async () => {
+    delete process.env.SCHEDULER_GROUP_NAME;
+    const { createReminderSchedule } = await import('../../../src/lib/scheduler-client.js');
+    await expect(
+      createReminderSchedule({
+        scheduleName: 'deadline-x',
+        scheduledFor: new Date('2027-01-01T00:00:00Z'),
+        payload: { deadlineNotificationId: 'x', reminderType: 't_minus_30' },
+      }),
+    ).rejects.toThrow(/SCHEDULER_GROUP_NAME.*SCHEDULER_ROLE_ARN.*LAMBDA_FUNCTION_ARN/);
+  });
+
+  it('deleteReminderSchedule throws when SCHEDULER_GROUP_NAME is missing', async () => {
+    delete process.env.SCHEDULER_GROUP_NAME;
+    const { deleteReminderSchedule } = await import('../../../src/lib/scheduler-client.js');
+    await expect(deleteReminderSchedule('deadline-x')).rejects.toThrow(/SCHEDULER_GROUP_NAME/);
   });
 });

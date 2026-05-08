@@ -43,7 +43,10 @@ export interface ReminderScheduleParams {
  */
 function formatAtExpression(date: Date): string {
   const iso = date.toISOString();
-  const trimmed = iso.replace(/\.\d{3}Z$/, '');
+  // toISOString always emits .NNNZ; strip both, plus a standalone Z as defense
+  // against any future code path that emits second-precision ISO without ms.
+  // AWS Scheduler at() syntax rejects both ms and Z suffix.
+  const trimmed = iso.replace(/\.\d{3}Z$/, '').replace(/Z$/, '');
   return `at(${trimmed})`;
 }
 
