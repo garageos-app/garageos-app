@@ -113,9 +113,9 @@ async function seedNotification(params: {
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO deadline_notifications
        (id, deadline_id, scheduled_for, reminder_type,
-        eventbridge_schedule_arn, delivery_status, created_at, updated_at)
+        eventbridge_schedule_arn, delivery_status, created_at)
      VALUES (gen_random_uuid(), $1, $2, $3::"DeadlineReminderType",
-        $4, $5::"NotificationDeliveryStatus", NOW(), NOW())
+        $4, $5::"NotificationDeliveryStatus", NOW())
      RETURNING id`,
     [deadlineId, scheduledFor, reminderType, eventbridgeScheduleArn, deliveryStatus],
   );
@@ -599,11 +599,11 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       `INSERT INTO deadline_notifications
          (id, deadline_id, scheduled_for, reminder_type,
           eventbridge_schedule_arn, sent_at, delivery_status,
-          created_at, updated_at)
+          created_at)
        VALUES (gen_random_uuid(), $1, NOW() - INTERVAL '1 day',
           't_minus_30'::"DeadlineReminderType",
           'arn:aws:scheduler:::schedule/group/deadline-sent-1',
-          $2, 'sent'::"NotificationDeliveryStatus", NOW(), NOW())
+          $2, 'sent'::"NotificationDeliveryStatus", NOW())
        RETURNING id`,
       [deadlineId, sentAt],
     );
