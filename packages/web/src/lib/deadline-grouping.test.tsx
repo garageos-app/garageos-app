@@ -120,4 +120,22 @@ describe('groupByDueBucket', () => {
     expect(buckets.thisMonth.map((x) => x.id)).toEqual(['month1']);
     expect(buckets.threeMonths.map((x) => x.id)).toEqual(['three1']);
   });
+
+  it('handles bucket boundary days correctly (0, 7, 8, 30, 31, 90, 91 from today)', () => {
+    const items = [
+      makeDeadline({ id: 'today0', dueDate: '2025-06-15T00:00:00Z' }),
+      makeDeadline({ id: 'day7', dueDate: '2025-06-22T00:00:00Z' }),
+      makeDeadline({ id: 'day8', dueDate: '2025-06-23T00:00:00Z' }),
+      makeDeadline({ id: 'day30', dueDate: '2025-07-15T00:00:00Z' }),
+      makeDeadline({ id: 'day31', dueDate: '2025-07-16T00:00:00Z' }),
+      makeDeadline({ id: 'day90', dueDate: '2025-09-13T00:00:00Z' }),
+      makeDeadline({ id: 'day91', dueDate: '2025-09-14T00:00:00Z' }),
+    ];
+    const buckets = groupByDueBucket(items, TODAY);
+    expect(buckets.thisWeek.map((x) => x.id).sort()).toEqual(['day7', 'today0']);
+    expect(buckets.thisMonth.map((x) => x.id).sort()).toEqual(['day30', 'day8']);
+    expect(buckets.threeMonths.map((x) => x.id).sort()).toEqual(['day31', 'day90']);
+    // day91 (>90d) is excluded from all buckets
+    expect(buckets.overdue).toEqual([]);
+  });
 });

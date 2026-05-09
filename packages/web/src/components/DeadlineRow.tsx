@@ -38,6 +38,9 @@ export function DeadlineRow({ item }: Props) {
         <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
           <span>{item.interventionType.nameIt}</span>
           <span className="flex items-center gap-1">
+            {/* BR-101: when both dueDate and dueOdometerKm are set, the row */}
+            {/* shows only the date. The km criterion is implicit and visible */}
+            {/* on the vehicle detail page. */}
             {item.dueDate ? (
               <>
                 <Calendar size={12} /> {formatDate(item.dueDate)}
