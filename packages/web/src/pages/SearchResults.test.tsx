@@ -39,10 +39,41 @@ const VEHICLE_FIXTURE = {
 describe('SearchResults — t=customer branch', () => {
   it('renders the vehicles list when ?customer=<uuid>&t=customer', async () => {
     apiFetchMock.mockReset();
-    apiFetchMock.mockResolvedValueOnce({
-      data: [VEHICLE_FIXTURE],
-      meta: { has_more: false },
-    } satisfies VehicleSearchResponse);
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/v1/vehicles/search')) {
+        return Promise.resolve({
+          data: [VEHICLE_FIXTURE],
+          meta: { has_more: false },
+        } satisfies VehicleSearchResponse);
+      }
+      if (url.startsWith('/v1/customers/')) {
+        return Promise.resolve({
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'mario@example.it',
+          firstName: 'Mario',
+          lastName: 'Rossi',
+          phone: null,
+          taxCode: null,
+          isBusiness: false,
+          businessName: null,
+          vatNumber: null,
+          addressLine: null,
+          city: null,
+          province: null,
+          postalCode: null,
+          status: 'active',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          tenantRelation: {
+            tenantNotes: null,
+            interventionCount: 0,
+            firstInterventionAt: null,
+            lastInterventionAt: null,
+          },
+          vehicles: [],
+        });
+      }
+      return Promise.reject(new Error('unexpected url'));
+    });
 
     const path = '/search?customer=11111111-1111-4111-8111-111111111111&t=customer';
     render(
@@ -57,6 +88,55 @@ describe('SearchResults — t=customer branch', () => {
       expect.stringContaining('/v1/vehicles/search?customer=11111111-1111-4111-8111-111111111111'),
     );
     expect(screen.getByText(/Veicoli del/i)).toBeInTheDocument();
+  });
+
+  it('header customer name links to /customers/:id (closes followup #78)', async () => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/v1/vehicles/search')) {
+        return Promise.resolve({
+          data: [],
+          meta: { has_more: false },
+        } satisfies VehicleSearchResponse);
+      }
+      if (url.startsWith('/v1/customers/')) {
+        return Promise.resolve({
+          id: '22222222-2222-4222-8222-222222222222',
+          email: 'mario@example.it',
+          firstName: 'Mario',
+          lastName: 'Rossi',
+          phone: null,
+          taxCode: null,
+          isBusiness: false,
+          businessName: null,
+          vatNumber: null,
+          addressLine: null,
+          city: null,
+          province: null,
+          postalCode: null,
+          status: 'active',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          tenantRelation: {
+            tenantNotes: null,
+            interventionCount: 0,
+            firstInterventionAt: null,
+            lastInterventionAt: null,
+          },
+          vehicles: [],
+        });
+      }
+      return Promise.reject(new Error('unexpected url'));
+    });
+
+    render(
+      wrap({
+        initialPath: '/search?customer=22222222-2222-4222-8222-222222222222&t=customer',
+        children: <SearchResults />,
+      }),
+    );
+
+    const link = await screen.findByRole('link', { name: /Mario Rossi/ });
+    expect(link).toHaveAttribute('href', '/customers/22222222-2222-4222-8222-222222222222');
   });
 
   it('shows the invalid-params alert when customer is not a UUID', () => {
