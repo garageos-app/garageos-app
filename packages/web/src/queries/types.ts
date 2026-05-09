@@ -153,3 +153,23 @@ export interface CreateInterventionResponse {
     status: string;
   } | null;
 }
+
+// Returned by /v1/customers/search (PR #77). Tenant-scoped: every row
+// is by construction related to the calling tenant, so PII is fully
+// visible (no `redacted` discriminator like MaskedCustomer).
+export interface Customer {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  isBusiness: boolean;
+  businessName: string | null;
+  vatNumber: string | null;
+  status: 'active';
+}
+
+export interface CustomerSearchResponse {
+  data: Customer[];
+  meta: { has_more: boolean; cursor?: string };
+}

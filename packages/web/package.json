@@ -26,6 +26,7 @@
     "amazon-cognito-identity-js": "^6.3.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.0.4",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.460.0",
     "react": "^19.0.0",
