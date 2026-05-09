@@ -13,7 +13,9 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 // PII gating happens in WHERE here).
 //
 // q matches firstName / lastName / businessName only. email / taxCode /
-// vatNumber are intentionally NOT searchable to keep PII surface low.
+// vatNumber are intentionally NOT matchable via q to keep PII exposure
+// from the search surface low; email is still returned in the DTO because
+// the calling tenant is by construction related to every returned customer.
 
 const searchQuerySchema = z.object({
   q: z.string().min(2).max(60),
@@ -30,7 +32,7 @@ const customerSearchSelect = {
   isBusiness: true,
   businessName: true,
   vatNumber: true,
-  status: true,
+  status: true, // always 'active' — WHERE above filters anything else out
 } as const;
 
 const customerRoutes: FastifyPluginAsync = async (app) => {
