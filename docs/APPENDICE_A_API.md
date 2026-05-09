@@ -835,6 +835,68 @@ Authorization: Bearer <officina_user_jwt>
 
 In v1 il `processed: true` flip non triggera compression/thumbnail (cluster G PR 24 con EventBridge fan-out). `thumbnailS3Key` resta `null` finché un futuro Lambda consumer non genera thumbnail post-confirm.
 
+### 2.8 `GET /v1/customers/search` — Autocomplete cliente officina
+
+#### Descrizione
+
+Ricerca tenant-scoped di customer per nome / ragione sociale, pensata per autocomplete operatore officina nel form `intervention create`. Ritorna solo customer presenti in `customer_tenant_relations` per il tenant chiamante (BR-151 soddisfatto by-construction dalla JOIN: ogni riga ritornata è già relata, niente PII redaction necessaria).
+
+Complementa `GET /v1/vehicles/search?customer=<uuid>` (PR #76): questo endpoint trova il customer per nome digitato, l'altro filtra i veicoli del customer scelto.
+
+#### Request
+
+`GET /v1/customers/search`
+
+**Auth:** officina pool (Cognito group `officine`). Customer pool ritorna `403`.
+
+**Query parameters:**
+
+| Nome | Tipo | Required | Default | Note |
+|---|---|---|---|---|
+| `q` | string | sì | — | Min 2, max 60 char. Match ILIKE substring case-insensitive su `firstName`, `lastName`, `businessName`. |
+| `limit` | integer | no | 20 | 1-50. |
+| `cursor` | string | no | — | Cursor opaco base64url ritornato dalla `meta.cursor` di una response precedente. |
+
+**Campi NON ricercabili** (privacy-by-default): `email`, `taxCode`, `vatNumber`. Esposti nella response, non matchabili via `q`.
+
+#### Response `200 OK`
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "firstName": "Mario",
+      "lastName": "Rossi",
+      "email": "mario.rossi@example.it",
+      "phone": "+39 333 1234567",
+      "isBusiness": false,
+      "businessName": null,
+      "vatNumber": null,
+      "status": "active"
+    }
+  ],
+  "meta": { "has_more": false }
+}
+```
+
+Quando `meta.has_more` è `true`, `meta.cursor` è presente; passalo come query param `cursor` per la pagina successiva. Ordering è `id ASC` per stabilità del cursor.
+
+#### Errori
+
+- `400 VALIDATION_ERROR` — q troppo corto/lungo, limit fuori range, q mancante.
+- `401` — JWT mancante o invalido.
+- `403` — chiamante non in pool officina.
+
+Niente `404`: nessun match → `200` con `data: []`.
+
+#### Note
+
+- **Tenant scoping**: la JOIN su `customer_tenant_relations` è enforced sia application-layer (Prisma `tenantRelations.some`) sia RLS-layer (la tabella CTR ha policy `_tenant_isolation`). Doppio lock difensivo.
+- **Filtri**: `status='active'` (esclude `pending_verification` e `deleted`) + `customer_deleted=false` sulla relazione.
+- **No audit log**: endpoint intra-tenant per costruzione, BR-154 non applicabile.
+- **Non-features intenzionali**: cross-tenant search, fuzzy/typo tolerance (pg_trgm), bulk lookup `?ids=`, customer-pool auth.
+
 ---
 
 ## 3. Riferimento completo endpoint
@@ -888,6 +950,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
+| GET | `/v1/customers/search` | F-OFF-205bis | Tenant User | **[DETTAGLIATO §2.8]** Autocomplete cliente per nome/ragione sociale (tenant-scoped) |
 | GET | `/customers` | F-OFF-202 | Tenant User | Lista clienti del tenant (con ricerca) |
 | POST | `/customers` | F-OFF-201 | Tenant User | Crea nuovo cliente |
 | GET | `/customers/:id` | F-OFF-203 | Tenant User | Dettaglio cliente (se relazione esistente) |
