@@ -1,4 +1,4 @@
-export type SearchType = 'vin' | 'plate' | 'garage_code';
+export type SearchType = 'vin' | 'plate' | 'garage_code' | 'customer';
 
 export type ParsedSearch = { kind: 'valid'; type: SearchType; value: string } | { kind: 'invalid' };
 
