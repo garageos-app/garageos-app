@@ -9,6 +9,7 @@ import {
   createTenantWithLocation,
   createUser,
   createVehicle,
+  ensureSystemInterventionType,
   resetDb,
 } from './helpers.js';
 import { pgAdmin } from './setup.js';
@@ -58,23 +59,6 @@ async function seedDeadline(params: SeedDeadlineParams): Promise<{ deadlineId: s
   return { deadlineId: rows[0]!.id };
 }
 
-async function seedInterventionType(params: {
-  code: string;
-  nameIt: string;
-  category?: 'maintenance' | 'tires' | 'repair' | 'inspection' | 'body' | 'other';
-}): Promise<{ id: string }> {
-  const { code, nameIt, category = 'maintenance' } = params;
-  const { rows } = await pgAdmin.query<{ id: string }>(
-    `INSERT INTO intervention_types (id, code, name_it, description, icon, category,
-        suggests_deadline, custom, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, '', 'wrench', $3::"InterventionTypeCategory",
-        true, false, NOW(), NOW())
-     RETURNING id`,
-    [code, nameIt, category],
-  );
-  return { id: rows[0]!.id };
-}
-
 describe('GET /v1/deadlines (integration)', () => {
   let app: FastifyInstance;
   beforeAll(async () => {
@@ -93,7 +77,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     await createUser({ tenantId: tA, cognitoSub });
 
-    const { id: typeId } = await seedInterventionType({ code: 'TAGLIANDO', nameIt: 'Tagliando' });
+    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
 
     const { vehicleId: vA1 } = await createVehicle({ createdByTenantId: tA });
     const { vehicleId: vA2 } = await createVehicle({ createdByTenantId: tA });
@@ -145,7 +129,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId, locationId } = await createTenantWithLocation('dl-status-default');
     const cognitoSub = '22222222-2222-4222-8222-222222222222';
     await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await seedInterventionType({ code: 'GOMME', nameIt: 'Gomme' });
+    const { id: typeId } = await ensureSystemInterventionType('GOMME');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({
@@ -190,7 +174,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId, locationId } = await createTenantWithLocation('dl-status-override');
     const cognitoSub = '33333333-3333-4333-8333-333333333333';
     await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await seedInterventionType({ code: 'REVISIONE', nameIt: 'Revisione' });
+    const { id: typeId } = await ensureSystemInterventionType('REVISIONE');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({
@@ -228,8 +212,8 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId, locationId } = await createTenantWithLocation('dl-type-filter');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
     await createUser({ tenantId, cognitoSub });
-    const { id: typeA } = await seedInterventionType({ code: 'TAGLIANDO', nameIt: 'Tagliando' });
-    const { id: typeB } = await seedInterventionType({ code: 'GOMME', nameIt: 'Gomme' });
+    const { id: typeA } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeB } = await ensureSystemInterventionType('GOMME');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({ tenantId, locationId, vehicleId, interventionTypeId: typeA });
@@ -256,7 +240,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId, locationId } = await createTenantWithLocation('dl-pii-related');
     const cognitoSub = '55555555-5555-4555-8555-555555555555';
     await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await seedInterventionType({ code: 'TAGLIANDO', nameIt: 'Tagliando' });
+    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
     const { customerId } = await createCustomer({ firstName: 'Mario', lastName: 'Rossi' });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
@@ -295,7 +279,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId: tB } = await createTenantWithLocation('dl-pii-B');
     const cognitoSub = '66666666-6666-4666-8666-666666666666';
     await createUser({ tenantId: tA, cognitoSub });
-    const { id: typeId } = await seedInterventionType({ code: 'TAGLIANDO', nameIt: 'Tagliando' });
+    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
 
     // Customer + vehicle + ownership exist but tenant A has NO CTR with the customer.
     const { customerId } = await createCustomer({ firstName: 'Hidden', lastName: 'Customer' });
@@ -336,7 +320,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId, locationId } = await createTenantWithLocation('dl-pagination');
     const cognitoSub = '77777777-7777-4777-8777-777777777777';
     await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await seedInterventionType({ code: 'TAGLIANDO', nameIt: 'Tagliando' });
+    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const seededIds: string[] = [];
