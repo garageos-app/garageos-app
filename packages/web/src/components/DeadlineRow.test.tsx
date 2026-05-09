@@ -1,16 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import { DeadlineRow } from './DeadlineRow';
 import type { TenantDeadline, TenantDeadlineCustomer } from '@/queries/types';
-
-const navigateMock = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
-  return { ...actual, useNavigate: () => navigateMock };
-});
 
 const VEHICLE_ID = '22222222-2222-4222-8222-222222222222';
 
@@ -119,11 +112,33 @@ describe('DeadlineRow', () => {
     expect(screen.getByText(/30\.000 km/)).toBeInTheDocument();
   });
 
-  it('navigates to /vehicles/:id on click', async () => {
-    navigateMock.mockClear();
-    const user = userEvent.setup();
+  it('vehicle area links to /vehicles/:id', () => {
     renderRow(makeDeadline({}));
-    await user.click(screen.getByRole('button'));
-    expect(navigateMock).toHaveBeenCalledWith(`/vehicles/${VEHICLE_ID}`);
+    const vehicleLink = screen.getByRole('link', { name: /Fiat Panda/ });
+    expect(vehicleLink).toHaveAttribute('href', `/vehicles/${VEHICLE_ID}`);
+  });
+
+  it('customer name links to /customers/:id when visible (closes followup #80)', () => {
+    renderRow(makeDeadline({}));
+    const customerLink = screen.getByRole('link', { name: /Mario Rossi/ });
+    expect(customerLink).toHaveAttribute('href', `/customers/${VISIBLE_CUSTOMER.id}`);
+  });
+
+  it('does NOT render customer link when redacted', () => {
+    const d = makeDeadline({
+      vehicle: {
+        id: VEHICLE_ID,
+        plate: 'AB123CD',
+        make: 'Fiat',
+        model: 'Panda',
+        currentOwnership: { customer: REDACTED_CUSTOMER },
+      },
+    });
+    renderRow(d);
+    // No customer link present (redacted = "—" plain text only). The vehicle
+    // link still exists; ensure no other link slipped through.
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', `/vehicles/${VEHICLE_ID}`);
   });
 });
