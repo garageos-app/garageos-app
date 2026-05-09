@@ -195,13 +195,14 @@ export async function createOwnership(params: {
   vehicleId: string;
   customerId: string;
   startedAt?: Date;
+  endedAt?: Date;
 }): Promise<{ ownershipId: string }> {
-  const { vehicleId, customerId, startedAt = new Date() } = params;
+  const { vehicleId, customerId, startedAt = new Date(), endedAt = null } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
-    `INSERT INTO vehicle_ownerships (id, vehicle_id, customer_id, started_at, created_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, NOW())
+    `INSERT INTO vehicle_ownerships (id, vehicle_id, customer_id, started_at, ended_at, created_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
      RETURNING id`,
-    [vehicleId, customerId, startedAt],
+    [vehicleId, customerId, startedAt, endedAt],
   );
   return { ownershipId: rows[0]!.id };
 }
