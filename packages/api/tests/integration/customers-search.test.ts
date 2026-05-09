@@ -90,8 +90,8 @@ describe('GET /v1/customers/search (integration)', () => {
     const cognitoSub = '33333333-3333-4333-8333-333333333333';
     await createUser({ tenantId, cognitoSub });
 
-    const { customerId: c1 } = await createCustomer({ firstName: 'Marina', lastName: 'Esposito' });
-    const { customerId: c2 } = await createCustomer({ firstName: 'Luca', lastName: 'Marini' });
+    const { customerId: c1 } = await createCustomer({ firstName: 'MARINA', lastName: 'Esposito' });
+    const { customerId: c2 } = await createCustomer({ firstName: 'Luca', lastName: 'MARINI' });
     const { customerId: c3 } = await createCustomer({
       firstName: 'B2B',
       lastName: 'Owner',
@@ -296,6 +296,9 @@ describe('GET /v1/customers/search (integration)', () => {
     expect(body2.data).toHaveLength(1);
     expect(body2.data[0]!.id).toBe(expectedSorted[2]);
     expect(body2.meta.has_more).toBe(false);
+
+    const allIds = [...body1.data.map((c) => c.id), ...body2.data.map((c) => c.id)].sort();
+    expect(allIds).toEqual(expectedSorted);
   });
 
   it('returns empty data array when no row matches', async () => {
@@ -316,5 +319,24 @@ describe('GET /v1/customers/search (integration)', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ data: [], meta: { has_more: false } });
+  });
+
+  it('returns 400 when q is absent', async () => {
+    const { tenantId } = await createTenantWithLocation('cs-400');
+    const cognitoSub = '99999999-9999-4999-8999-999999999999';
+    await createUser({ tenantId, cognitoSub });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/customers/search',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(400);
   });
 });
