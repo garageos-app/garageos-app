@@ -2,7 +2,7 @@ import { useId, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { fallback, formatDate, formatKm } from '@/lib/format';
+import { formatDate, formatKm } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import type { TimelineItem } from '@/queries/types';
 
@@ -44,7 +44,7 @@ export function TimelineRow({ item }: Props) {
           {formatDate(item.intervention_date)}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm text-foreground truncate">{fallback(title)}</div>
+          <div className="font-medium text-sm text-foreground truncate">{title}</div>
           <div className="text-xs text-muted-foreground truncate">
             {subtitle} · {formatKm(item.odometer_km)}
           </div>
@@ -79,7 +79,7 @@ export function TimelineRow({ item }: Props) {
 }
 
 function ExpandedPanel({ item }: { item: TimelineItem }) {
-  const description = item.description?.trim();
+  const description = item.description.trim();
   const isShop = item.kind === 'shop_intervention';
   const partsCount = isShop ? item.parts_replaced_count : 0;
   const hasAttachments = item.has_attachments && item.attachments_count > 0;
