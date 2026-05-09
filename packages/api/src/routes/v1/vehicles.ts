@@ -21,12 +21,14 @@ const searchQuerySchema = z
     vin: z.string().length(17).optional(),
     plate: z.string().min(1).max(10).optional(),
     garage_code: z.string().min(1).max(12).optional(),
+    customer: z.string().uuid().optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
     cursor: z.string().optional(),
   })
-  .refine((q) => [q.vin, q.plate, q.garage_code].filter((v) => v !== undefined).length === 1, {
-    message: 'Exactly one of vin, plate, garage_code is required',
-  });
+  .refine(
+    (q) => [q.vin, q.plate, q.garage_code, q.customer].filter((v) => v !== undefined).length === 1,
+    { message: 'Exactly one of vin, plate, garage_code, customer is required' },
+  );
 
 // Reuses CreateVehicleSchema from @garageos/database verbatim (vehicle +
 // customer discriminator + locationId + sendInvitationEmail +
@@ -225,7 +227,9 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [requireAuth, requireOfficinaPool, tenantContext],
     },
     async (request) => {
-      const { vin, plate, garage_code, limit, cursor } = searchQuerySchema.parse(request.query);
+      const { vin, plate, garage_code, customer, limit, cursor } = searchQuerySchema.parse(
+        request.query,
+      );
       const tenantId = request.tenantId!;
       const cognitoSub = request.userId!;
 
@@ -242,6 +246,9 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
         if (vin) where.vin = vin;
         if (plate) where.plate = plate;
         if (garage_code) where.garageCode = garage_code;
+        // See BR-040: filter to vehicles with an active ownership (endedAt null)
+        // for the given customer. Ended ownerships are excluded.
+        if (customer) where.ownerships = { some: { customerId: customer, endedAt: null } };
 
         const cursorId = decodeCursor(cursor);
         const rows = await tx.vehicle.findMany({

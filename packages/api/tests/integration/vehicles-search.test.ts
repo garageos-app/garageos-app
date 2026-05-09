@@ -202,4 +202,120 @@ describe('GET /v1/vehicles/search (integration)', () => {
     );
     expect(Number(rows[0]!.count)).toBe(1);
   });
+
+  it('finds vehicles owned by customer (active ownership only)', async () => {
+    const { tenantId } = await createTenantWithLocation('search-customer-active');
+    const cognitoSub = '44444444-4444-4444-8444-444444444444';
+    await createUser({ tenantId, cognitoSub });
+
+    const { customerId } = await createCustomer({ firstName: 'Mario', lastName: 'Rossi' });
+    const { vehicleId: v1 } = await createVehicle({ createdByTenantId: tenantId });
+    const { vehicleId: v2 } = await createVehicle({ createdByTenantId: tenantId });
+    const { vehicleId: v3 } = await createVehicle({ createdByTenantId: tenantId });
+    await createOwnership({ vehicleId: v1, customerId });
+    await createOwnership({ vehicleId: v2, customerId });
+    // v3 ended → must NOT appear
+    await createOwnership({
+      vehicleId: v3,
+      customerId,
+      startedAt: new Date('2024-01-01'),
+      endedAt: new Date('2025-01-01'),
+    });
+    await createCustomerTenantRelation({ tenantId, customerId });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/search?customer=${customerId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: Array<{ id: string }> };
+    const ids = body.data.map((v) => v.id).sort();
+    expect(ids).toEqual([v1, v2].sort());
+    expect(ids).not.toContain(v3);
+  });
+
+  it('returns empty data array when customer has no active ownerships', async () => {
+    const { tenantId } = await createTenantWithLocation('search-customer-no-vehicles');
+    const cognitoSub = '55555555-5555-4555-8555-555555555555';
+    await createUser({ tenantId, cognitoSub });
+
+    const { customerId } = await createCustomer({ firstName: 'Solo', lastName: 'Owner' });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/search?customer=${customerId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ data: [], meta: { has_more: false } });
+  });
+
+  it('returns empty data array when customer does not exist', async () => {
+    const { tenantId } = await createTenantWithLocation('search-customer-not-exist');
+    const cognitoSub = '66666666-6666-4666-8666-666666666666';
+    await createUser({ tenantId, cognitoSub });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/search?customer=99999999-9999-4999-8999-999999999999`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ data: [], meta: { has_more: false } });
+  });
+
+  it('masks customer PII when searching tenant has no relation', async () => {
+    const { tenantId: tenantA } = await createTenantWithLocation('search-customer-A');
+    const { tenantId: tenantB } = await createTenantWithLocation('search-customer-B');
+    const cognitoSub = '77777777-7777-4777-8777-777777777777';
+    await createUser({ tenantId: tenantA, cognitoSub });
+
+    const { customerId } = await createCustomer({ firstName: 'Hidden', lastName: 'Customer' });
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantB });
+    await createOwnership({ vehicleId, customerId });
+    // Only tenantB has the relation; tenantA does NOT.
+    await createCustomerTenantRelation({ tenantId: tenantB, customerId });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId: tenantA,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/search?customer=${customerId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{ id: string; currentOwnership: { customer: { redacted: boolean } } }>;
+    };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.id).toBe(vehicleId);
+    expect(body.data[0]!.currentOwnership.customer.redacted).toBe(true);
+  });
 });

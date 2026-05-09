@@ -214,6 +214,43 @@ describe('GET /v1/vehicles/search — validation & auth', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('accepts customer as the sole selector', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/vehicles/search?customer=55555555-5555-4555-8555-555555555555',
+      headers: { authorization: 'Bearer x' },
+    });
+    // 200 = handler proceeded past schema validation. The fake Prisma
+    // returns [] by default, so this asserts the schema accepted the input.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ data: [], meta: { has_more: false } });
+  });
+
+  it('rejects customer combined with another selector', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/vehicles/search?customer=55555555-5555-4555-8555-555555555555&plate=AB123CD',
+      headers: { authorization: 'Bearer x' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/VALIDATION_ERROR',
+      status: 400,
+    });
+  });
+
+  it('rejects a malformed customer UUID', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/vehicles/search?customer=not-a-uuid',
+      headers: { authorization: 'Bearer x' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('returns 401 without auth', async () => {
     app = await buildApp();
     const res = await app.inject({ method: 'GET', url: '/v1/vehicles/search?plate=AB123CD' });
