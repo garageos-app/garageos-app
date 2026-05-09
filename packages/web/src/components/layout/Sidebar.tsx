@@ -1,18 +1,25 @@
 // IT-strings — hardcoded, no i18n in demo-2
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Wrench, Users, Settings, LogOut } from 'lucide-react';
+import { Search, Wrench, Users, Settings, LogOut, Calendar } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { Separator } from '@/components/ui/separator';
 
 const navItems = [
   { id: 'search', label: 'Cerca veicolo', icon: Search, to: '/', enabled: true },
   { id: 'interventions', label: 'Interventi', icon: Wrench, enabled: false },
+  { id: 'deadlines', label: 'Scadenze', icon: Calendar, to: '/deadlines', enabled: true },
   { id: 'customers', label: 'Clienti', icon: Users, enabled: false },
   { id: 'settings', label: 'Impostazioni', icon: Settings, enabled: false },
 ] as const;
 
-function isSearchActive(pathname: string): boolean {
-  return pathname === '/' || pathname.startsWith('/search') || pathname.startsWith('/vehicles');
+function isActiveFor(itemId: string, pathname: string): boolean {
+  if (itemId === 'search') {
+    return pathname === '/' || pathname.startsWith('/search') || pathname.startsWith('/vehicles');
+  }
+  if (itemId === 'deadlines') {
+    return pathname.startsWith('/deadlines');
+  }
+  return false;
 }
 
 export function Sidebar() {
@@ -29,7 +36,7 @@ export function Sidebar() {
         {navItems.map((item) => {
           const Icon = item.icon;
           if (item.enabled && 'to' in item) {
-            const active = isSearchActive(pathname);
+            const active = isActiveFor(item.id, pathname);
             return (
               <Link
                 key={item.id}

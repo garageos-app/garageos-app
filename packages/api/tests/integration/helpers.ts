@@ -413,6 +413,14 @@ const SYSTEM_TYPE_FALLBACKS: Record<string, SystemInterventionTypeSeed> = {
     defaultDeadlineMonths: 24,
     defaultDeadlineKm: null,
   },
+  GOMME: {
+    code: 'GOMME',
+    nameIt: 'Cambio gomme',
+    category: 'tires',
+    suggestsDeadline: false,
+    defaultDeadlineMonths: null,
+    defaultDeadlineKm: null,
+  },
 };
 
 // Idempotent fetch: returns the seeded row if still present, otherwise

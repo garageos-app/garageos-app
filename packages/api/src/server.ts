@@ -16,6 +16,7 @@ import deadlinesCompleteRoutes from './routes/v1/deadlines-complete.js';
 import deadlinesCreateRoutes from './routes/v1/deadlines-create.js';
 import deadlinesDeleteRoutes from './routes/v1/deadlines-delete.js';
 import deadlinesListCustomerRoutes from './routes/v1/deadlines-list-customer.js';
+import deadlinesListTenantRoutes from './routes/v1/deadlines-list-tenant.js';
 import deadlinesListVehicleRoutes from './routes/v1/deadlines-list-vehicle.js';
 import deadlinesUpdateRoutes from './routes/v1/deadlines-update.js';
 import interventionCancelRoutes from './routes/v1/interventions-cancel.js';
@@ -141,6 +142,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(deadlinesDeleteRoutes);
   await app.register(deadlinesCompleteRoutes);
   await app.register(deadlinesListCustomerRoutes);
+  await app.register(deadlinesListTenantRoutes);
   await app.register(attachmentsRoutes);
   await app.register(meVehicleRoutes);
 
