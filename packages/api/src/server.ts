@@ -31,6 +31,7 @@ import interventionTypesRoutes from './routes/v1/intervention-types.js';
 import attachmentsRoutes from './routes/v1/attachments.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
 import userRoutes from './routes/v1/users.js';
+import customerRoutes from './routes/v1/customers.js';
 import tenantRoutes from './routes/v1/tenants.js';
 import vehicleTimelineRoutes from './routes/v1/vehicles-timeline.js';
 import vehicleUpdateRoutes from './routes/v1/vehicles-update.js';
@@ -120,6 +121,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(healthRoutes);
   await app.register(userRoutes);
   await app.register(tenantRoutes);
+  await app.register(customerRoutes);
   await app.register(vehicleRoutes);
   await app.register(vehicleUpdateRoutes);
   await app.register(vehicleTimelineRoutes);

@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
+import { decodeCursor, encodeCursor } from '../../lib/cursor.js';
 import { certifyVehicleWithGarageCode } from '../../lib/garage-code.js';
 import { maskCustomer, resolvePiiVisibility } from '../../lib/pii-filter.js';
 import {
@@ -203,22 +204,6 @@ const vehicleSearchSelect = {
   status: true,
   ownerships: vehicleOwnershipSelect,
 } as const;
-
-function encodeCursor(id: string): string {
-  return Buffer.from(JSON.stringify({ id }), 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor: string | undefined): string | undefined {
-  if (!cursor) return undefined;
-  try {
-    const obj = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
-      id?: string;
-    };
-    return typeof obj.id === 'string' ? obj.id : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 const vehicleRoutes: FastifyPluginAsync = async (app) => {
   app.get(

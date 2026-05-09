@@ -110,6 +110,16 @@ export async function createCustomer(params: {
   // application-side fallback (DEFAULT_NOTIFICATION_PREFERENCES) kicks
   // in — matches signup behavior.
   notificationPreferences?: object;
+  // B2B optional fields exposed so the customers/search suite can
+  // exercise businessName matching. Default false/null preserves the
+  // existing B2C-shaped fixture.
+  isBusiness?: boolean;
+  businessName?: string | null;
+  vatNumber?: string | null;
+  // Allow seeding pending_verification / deleted rows to verify the
+  // status='active' filter. Default 'active' preserves the previous
+  // behavior of every existing call site.
+  status?: 'active' | 'pending_verification' | 'deleted';
 }): Promise<{ customerId: string; email: string }> {
   const {
     email = `cust-${Math.random().toString(36).slice(2, 10)}@test.it`,
@@ -118,15 +128,32 @@ export async function createCustomer(params: {
     phone = '+39 333 1234567',
     cognitoSub = null,
     notificationPreferences = {},
+    isBusiness = false,
+    businessName = null,
+    vatNumber = null,
+    status = 'active',
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO customers
-       (id, cognito_sub, email, first_name, last_name, phone, status,
+       (id, cognito_sub, email, first_name, last_name, phone,
+        is_business, business_name, vat_number, status,
         notification_preferences, created_at, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5,
-        'active'::"CustomerStatus", $6::jsonb, NOW(), NOW())
+        $6, $7, $8, $9::"CustomerStatus",
+        $10::jsonb, NOW(), NOW())
      RETURNING id`,
-    [cognitoSub, email, firstName, lastName, phone, JSON.stringify(notificationPreferences)],
+    [
+      cognitoSub,
+      email,
+      firstName,
+      lastName,
+      phone,
+      isBusiness,
+      businessName,
+      vatNumber,
+      status,
+      JSON.stringify(notificationPreferences),
+    ],
   );
   return { customerId: rows[0]!.id, email };
 }
@@ -210,13 +237,15 @@ export async function createOwnership(params: {
 export async function createCustomerTenantRelation(params: {
   tenantId: string;
   customerId: string;
+  customerDeleted?: boolean;
 }): Promise<{ relationId: string }> {
+  const { tenantId, customerId, customerDeleted = false } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO customer_tenant_relations
-       (id, tenant_id, customer_id, intervention_count, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, 0, NOW(), NOW())
+       (id, tenant_id, customer_id, intervention_count, customer_deleted, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, 0, $3, NOW(), NOW())
      RETURNING id`,
-    [params.tenantId, params.customerId],
+    [tenantId, customerId, customerDeleted],
   );
   return { relationId: rows[0]!.id };
 }
