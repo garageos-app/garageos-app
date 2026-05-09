@@ -118,30 +118,52 @@ export interface CancelPendingRemindersInput {
 }
 
 /**
- * Cancel all `pending` DeadlineNotification rows for a deadline.
+ * Cancel all pending or stranded-failed reminders for a deadline.
  *
  * For each pending row:
  *   1. DeleteSchedule via `deadline-{id}` (idempotent — swallows ResourceNotFoundException).
  *   2. Flip `deliveryStatus` to `cancelled`, storing `reason` in `failureReason`.
  *
+ * For each failed row WITH an active EventBridge schedule (e.g. SES error
+ * mid-fire left the schedule untouched):
+ *   1. DeleteSchedule via `deadline-{id}` (idempotent).
+ *   2. Nullify `eventbridgeScheduleArn` only — preserve `deliveryStatus='failed'`
+ *      and the original `failureReason` for audit history. Nullifying the ARN
+ *      ensures re-entry skips this row (predicate filters `eventbridgeScheduleArn IS NOT NULL`).
+ *
  * `sent` rows are never touched (audit-preserving append-only invariant).
- * Already-`failed` and already-`cancelled` rows are excluded by the
- * `deliveryStatus: 'pending'` filter in `findMany`.
+ * Already-`cancelled` rows are excluded by the OR predicate. Failed rows
+ * without an active ARN (already cleaned up) are also excluded.
  */
 export async function cancelPendingReminders(input: CancelPendingRemindersInput): Promise<void> {
-  const pendingRows = await input.tx.deadlineNotification.findMany({
-    where: { deadlineId: input.deadlineId, deliveryStatus: 'pending' },
-    select: { id: true, eventbridgeScheduleArn: true },
+  const rows = await input.tx.deadlineNotification.findMany({
+    where: {
+      deadlineId: input.deadlineId,
+      OR: [
+        { deliveryStatus: 'pending' },
+        { deliveryStatus: 'failed', eventbridgeScheduleArn: { not: null } },
+      ],
+    },
+    select: { id: true, deliveryStatus: true, eventbridgeScheduleArn: true },
   });
 
-  for (const row of pendingRows) {
+  for (const row of rows) {
     // Use deterministic name pattern — not the stored ARN — because
     // DeleteSchedule accepts Name + GroupName, not ARN.
     await deleteReminderSchedule(`deadline-${row.id}`);
-    await input.tx.deadlineNotification.update({
-      where: { id: row.id },
-      data: { deliveryStatus: 'cancelled', failureReason: input.reason },
-    });
+    if (row.deliveryStatus === 'pending') {
+      await input.tx.deadlineNotification.update({
+        where: { id: row.id },
+        data: { deliveryStatus: 'cancelled', failureReason: input.reason },
+      });
+    } else {
+      // Audit-preserving: keep deliveryStatus='failed' + failureReason,
+      // nullify ARN only.
+      await input.tx.deadlineNotification.update({
+        where: { id: row.id },
+        data: { eventbridgeScheduleArn: null },
+      });
+    }
   }
 }
 
