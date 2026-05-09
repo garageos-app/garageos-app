@@ -181,14 +181,20 @@ describe('cancelPendingReminders', () => {
     expect(tx.deadlineNotification.update).not.toHaveBeenCalled();
   });
 
-  it('passes deliveryStatus=pending filter to findMany', async () => {
+  it('passes OR predicate (pending OR failed-with-active-arn) to findMany', async () => {
     const tx = makeTx({
       findMany: vi.fn().mockResolvedValue([]),
     });
     await cancelPendingReminders({ tx: asTx(tx), deadlineId: 'd1', reason: 'test' });
     expect(tx.deadlineNotification.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ deliveryStatus: 'pending' }),
+        where: expect.objectContaining({
+          deadlineId: 'd1',
+          OR: [
+            { deliveryStatus: 'pending' },
+            { deliveryStatus: 'failed', eventbridgeScheduleArn: { not: null } },
+          ],
+        }),
       }),
     );
   });
@@ -206,6 +212,36 @@ describe('cancelPendingReminders', () => {
     vi.mocked(schedulerClient.deleteReminderSchedule).mockResolvedValue(undefined);
     await cancelPendingReminders({ tx: asTx(tx), deadlineId: 'd1', reason: 'test' });
     expect(schedulerClient.deleteReminderSchedule).toHaveBeenCalledWith('deadline-abc-123');
+  });
+
+  it('failed row with active ARN: deletes schedule + nullifies arn, preserves status+reason', async () => {
+    const tx = makeTx({
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: 'n-failed',
+          deliveryStatus: 'failed',
+          eventbridgeScheduleArn:
+            'arn:aws:scheduler:eu-central-1:1:schedule/garageos-deadlines/deadline-n-failed',
+        },
+      ]),
+    });
+    vi.mocked(schedulerClient.deleteReminderSchedule).mockResolvedValue(undefined);
+    await cancelPendingReminders({ tx: asTx(tx), deadlineId: 'd1', reason: 'deadline cancelled' });
+    expect(schedulerClient.deleteReminderSchedule).toHaveBeenCalledWith('deadline-n-failed');
+    expect(tx.deadlineNotification.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'n-failed' },
+        data: { eventbridgeScheduleArn: null },
+      }),
+    );
+    // Audit-preserving: deliveryStatus and failureReason are NOT touched
+    // for failed rows — only the ARN is nullified to mark the schedule
+    // as removed and prevent re-entry.
+    const updateCall = vi.mocked(tx.deadlineNotification.update).mock.calls[0]?.[0] as
+      | { data: Record<string, unknown> }
+      | undefined;
+    expect(updateCall?.data).not.toHaveProperty('deliveryStatus');
+    expect(updateCall?.data).not.toHaveProperty('failureReason');
   });
 });
 

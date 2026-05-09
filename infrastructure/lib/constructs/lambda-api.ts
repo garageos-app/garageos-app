@@ -228,8 +228,8 @@ export class LambdaApiConstruct extends Construct {
    * Attach EventBridge Scheduler runtime CRUD permissions to the Lambda's
    * execution role. Called from MainStack post-construction to break the
    * cyclic prop dependency between LambdaApiConstruct and SchedulerConstruct
-   * (Lambda needs role+secret ARNs as env, Scheduler needs Lambda function
-   * ARN). Same pattern as ses.grantSendEmail(lambdaApi.function).
+   * (Lambda needs role ARN as env, Scheduler needs Lambda function ARN).
+   * Same pattern as ses.grantSendEmail(lambdaApi.function).
    *
    * Resources are scoped to the deadline group + the role we PassRole to.
    * Even if the Lambda is compromised, it cannot CRUD schedules outside
@@ -238,7 +238,6 @@ export class LambdaApiConstruct extends Construct {
   public attachSchedulerPolicies(props: {
     scheduleGroupName: string;
     schedulerRoleArn: string;
-    hmacSecret: secretsmanager.ISecret;
   }): void {
     const stack = cdk.Stack.of(this);
 
@@ -270,11 +269,6 @@ export class LambdaApiConstruct extends Construct {
         },
       }),
     );
-
-    // HMAC secret read for signing future deadline HTTP callbacks.
-    // grantRead handles both secretsmanager:GetSecretValue and
-    // automatic KMS Decrypt when the secret uses a customer KMS key.
-    props.hmacSecret.grantRead(this.function);
   }
 
   private mapRetention(days: number): logs.RetentionDays {

@@ -1,15 +1,15 @@
 import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 
 import { SchedulerConstruct } from '../lib/constructs/scheduler.js';
 
 // Helper builds a fresh stack per test. Uses Lambda.fromFunctionArn (static
-// factory returning IFunction) and Secret.fromSecretCompleteArn so the
-// SchedulerConstruct gets real-shape props without provisioning a real
-// Lambda or Secret in the test stack (avoids esbuild bundling cost).
+// factory returning IFunction) so the SchedulerConstruct gets real-shape
+// props without provisioning a real Lambda in the test stack (avoids esbuild
+// bundling cost). G2 hmacSecret removed in H3 cleanup (Lambda direct invoke
+// pivot — see feedback_eventbridge_scheduler_static_http_params.md).
 function buildStack(opts: { warmingEnabled?: boolean } = {}) {
   const app = new cdk.App();
   const stack = new cdk.Stack(app, 'TestStack', {
@@ -20,15 +20,9 @@ function buildStack(opts: { warmingEnabled?: boolean } = {}) {
     'MockLambda',
     'arn:aws:lambda:eu-central-1:111122223333:function:garageos-api',
   );
-  const hmacSecret = secretsmanager.Secret.fromSecretCompleteArn(
-    stack,
-    'MockSecret',
-    'arn:aws:secretsmanager:eu-central-1:111122223333:secret:garageos/production/eventbridge-hmac-AbCdEf',
-  );
   const construct = new SchedulerConstruct(stack, 'Scheduler', {
     lambdaFunction,
     lambdaFunctionName: 'garageos-api',
-    hmacSecret,
     warmingEnabled: opts.warmingEnabled ?? true,
     warmingScheduleName: 'garageos-api-warming',
     deadlineGroupName: 'garageos-deadlines',
@@ -93,33 +87,6 @@ describe('SchedulerConstruct', () => {
     );
     expect(httpStmt).toBeDefined();
     expect(httpStmt!.Resource).toBe('*');
-  });
-
-  it('SchedulerRole has secretsmanager:GetSecretValue scoped to hmacSecret arn', () => {
-    const { stack } = buildStack();
-    const template = Template.fromStack(stack);
-    const policies = template.findResources('AWS::IAM::Role');
-    const schedulerRole = Object.values(policies).find((r) => {
-      const stmts = (
-        r.Properties.AssumeRolePolicyDocument as {
-          Statement: Array<{ Principal?: { Service?: string } }>;
-        }
-      ).Statement;
-      return stmts.some((s) => s.Principal?.Service === 'scheduler.amazonaws.com');
-    });
-    const inlinePolicies = schedulerRole!.Properties.Policies as Array<{
-      PolicyDocument: {
-        Statement: Array<{ Action: string | string[]; Resource: string | string[] }>;
-      };
-    }>;
-    const allStatements = inlinePolicies.flatMap((p) => p.PolicyDocument.Statement);
-    const secretStmt = allStatements.find((s) =>
-      Array.isArray(s.Action)
-        ? s.Action.includes('secretsmanager:GetSecretValue')
-        : s.Action === 'secretsmanager:GetSecretValue',
-    );
-    expect(secretStmt).toBeDefined();
-    expect(JSON.stringify(secretStmt!.Resource)).toContain('eventbridge-hmac');
   });
 
   it('SchedulerRole has lambda:InvokeFunction scoped to lambdaFunction arn', () => {

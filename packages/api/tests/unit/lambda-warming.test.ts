@@ -32,7 +32,7 @@ describe('withWarmingGuard', () => {
     expect(inner).toHaveBeenCalledWith(apigwEvent, ctx, cb);
   });
 
-  it('logs warming source on short-circuit (F14.4 visibility)', async () => {
+  it('logs warming source on short-circuit (F14.3 visibility)', async () => {
     const inner = vi.fn();
     const guarded = withWarmingGuard(inner);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
