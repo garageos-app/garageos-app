@@ -219,3 +219,53 @@ export interface DeadlinesListResponse {
   deadlines: TenantDeadline[];
   nextCursor: string | null;
 }
+
+// /v1/customers/:id detail (officina-side, BR-151 enforced via 404).
+// Shape mirrors packages/api/src/lib/customer-detail-shared.ts.
+export interface CustomerDetail {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  taxCode: string | null;
+  isBusiness: boolean;
+  businessName: string | null;
+  vatNumber: string | null;
+  addressLine: string | null;
+  city: string | null;
+  province: string | null;
+  postalCode: string | null;
+  status: 'active';
+  createdAt: string;
+  tenantRelation: {
+    tenantNotes: string | null;
+    interventionCount: number;
+    firstInterventionAt: string | null;
+    lastInterventionAt: string | null;
+  };
+  vehicles: Array<{
+    id: string;
+    plate: string;
+    make: string;
+    model: string;
+    year: number;
+  }>;
+}
+
+// PATCH body: every field optional. Email is intentionally absent
+// (officina cannot change customer login identity — see APPENDICE_A §2.10).
+export type CustomerDetailUpdate = Partial<{
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  taxCode: string | null;
+  isBusiness: boolean;
+  businessName: string | null;
+  vatNumber: string | null;
+  addressLine: string | null;
+  city: string | null;
+  province: string | null;
+  postalCode: string | null;
+  tenantNotes: string | null;
+}>;
