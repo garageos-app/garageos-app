@@ -120,6 +120,14 @@ export async function createCustomer(params: {
   // status='active' filter. Default 'active' preserves the previous
   // behavior of every existing call site.
   status?: 'active' | 'pending_verification' | 'deleted';
+  // Anagrafica fields used by customer detail/edit suite (Task 3/4).
+  // Default null preserves existing B2C fixture behavior at every prior
+  // call site.
+  taxCode?: string | null;
+  addressLine?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postalCode?: string | null;
 }): Promise<{ customerId: string; email: string }> {
   const {
     email = `cust-${Math.random().toString(36).slice(2, 10)}@test.it`,
@@ -132,15 +140,22 @@ export async function createCustomer(params: {
     businessName = null,
     vatNumber = null,
     status = 'active',
+    taxCode = null,
+    addressLine = null,
+    city = null,
+    province = null,
+    postalCode = null,
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO customers
        (id, cognito_sub, email, first_name, last_name, phone,
-        is_business, business_name, vat_number, status,
-        notification_preferences, created_at, updated_at)
+        tax_code, is_business, business_name, vat_number,
+        address_line, city, province, postal_code,
+        status, notification_preferences, created_at, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5,
-        $6, $7, $8, $9::"CustomerStatus",
-        $10::jsonb, NOW(), NOW())
+        $6, $7, $8, $9,
+        $10, $11, $12, $13,
+        $14::"CustomerStatus", $15::jsonb, NOW(), NOW())
      RETURNING id`,
     [
       cognitoSub,
@@ -148,9 +163,14 @@ export async function createCustomer(params: {
       firstName,
       lastName,
       phone,
+      taxCode,
       isBusiness,
       businessName,
       vatNumber,
+      addressLine,
+      city,
+      province,
+      postalCode,
       status,
       JSON.stringify(notificationPreferences),
     ],
@@ -238,14 +258,41 @@ export async function createCustomerTenantRelation(params: {
   tenantId: string;
   customerId: string;
   customerDeleted?: boolean;
+  // Fields used by customer detail/edit suite (Task 3/4) to verify CTR
+  // data surfaced in the GET /customers/:id response. Defaults mirror
+  // DB column defaults so existing call sites are unaffected.
+  tenantNotes?: string | null;
+  interventionCount?: number;
+  firstInterventionAt?: Date | null;
+  lastInterventionAt?: Date | null;
 }): Promise<{ relationId: string }> {
-  const { tenantId, customerId, customerDeleted = false } = params;
+  const {
+    tenantId,
+    customerId,
+    customerDeleted = false,
+    tenantNotes = null,
+    interventionCount = 0,
+    firstInterventionAt = null,
+    lastInterventionAt = null,
+  } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO customer_tenant_relations
-       (id, tenant_id, customer_id, intervention_count, customer_deleted, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, 0, $3, NOW(), NOW())
+       (id, tenant_id, customer_id, intervention_count,
+        first_intervention_at, last_intervention_at,
+        tenant_notes, customer_deleted, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3,
+        $4, $5,
+        $6, $7, NOW(), NOW())
      RETURNING id`,
-    [tenantId, customerId, customerDeleted],
+    [
+      tenantId,
+      customerId,
+      interventionCount,
+      firstInterventionAt,
+      lastInterventionAt,
+      tenantNotes,
+      customerDeleted,
+    ],
   );
   return { relationId: rows[0]!.id };
 }

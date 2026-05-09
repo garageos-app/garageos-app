@@ -1,8 +1,9 @@
 // IT-strings — hardcoded
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { SearchX } from 'lucide-react';
 
 import { useVehicleSearch } from '@/queries/vehicleSearch';
+import { useCustomerDetail } from '@/queries/customerDetail';
 import type { SearchType } from '@/lib/search-input';
 import { VehicleResultCard } from '@/components/VehicleResultCard';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -47,6 +48,10 @@ function SearchResultsByCustomer({ customerId }: { customerId: string | null }) 
   const queryParams = paramsForCustomer(customerId);
   const query = useVehicleSearch(queryParams ?? { kind: 'customer', customerId: '' });
   const items = query.data?.pages.flatMap((p) => p.data) ?? [];
+  // Fetch customer detail to display the name in the header. The detail
+  // endpoint enforces BR-151 — if the caller has no CTR, the hook errors
+  // and we fall back to the UUID display.
+  const customer = useCustomerDetail(queryParams?.customerId ?? '');
 
   if (!queryParams) {
     return (
@@ -58,6 +63,12 @@ function SearchResultsByCustomer({ customerId }: { customerId: string | null }) 
     );
   }
 
+  const customerLabel =
+    customer.data &&
+    (customer.data.isBusiness && customer.data.businessName
+      ? customer.data.businessName
+      : `${customer.data.firstName} ${customer.data.lastName}`);
+
   return (
     <ResultsLayout
       header={
@@ -65,9 +76,12 @@ function SearchResultsByCustomer({ customerId }: { customerId: string | null }) 
           <div className="text-sm text-muted-foreground mb-2">
             Veicoli del <Badge variant="outline">cliente</Badge>
           </div>
-          <div className="font-mono text-lg font-semibold text-foreground">
-            {queryParams.customerId}
-          </div>
+          <Link
+            to={`/customers/${queryParams.customerId}`}
+            className="text-lg font-semibold text-foreground hover:underline"
+          >
+            {customerLabel ?? <span className="font-mono">{queryParams.customerId}</span>}
+          </Link>
         </div>
       }
       query={query}

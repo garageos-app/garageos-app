@@ -213,6 +213,8 @@ Per fornire dati utili al client per gestire l'errore:
 | Code | HTTP | Severity | Titolo | Quando | BR |
 |---|---|---|---|---|---|
 | `customer.not_found` | 404 | info | Cliente non trovato | | |
+| `customer.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/customers/:id con body vuoto | F-OFF-204 |
+| `customer.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/customers/:id con chiave non in schema (es. email, cognitoSub) | F-OFF-204, BR-151 |
 | `customer.email_duplicate` | 409 | info | Cliente con questa email già esistente | | BR-220 |
 | `customer.tax_code_invalid` | 400 | info | Codice fiscale non valido | Checksum CF fallito | |
 | `customer.business_data_missing` | 400 | info | Dati azienda richiesti | is_business=true ma business_name/vat_number assenti | BR-223 |
@@ -815,6 +817,8 @@ customer.email_duplicate
 customer.not_found
 customer.pii_not_accessible
 customer.tax_code_invalid
+customer.update.empty_body
+customer.update.unknown_field
 deadline.completion.already_completed
 deadline.completion.intervention_mismatch
 deadline.creation.duplicate_warning

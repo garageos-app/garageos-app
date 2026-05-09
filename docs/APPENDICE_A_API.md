@@ -899,6 +899,128 @@ Niente `404`: nessun match → `200` con `data: []`.
 
 ---
 
+### 2.9 `GET /v1/customers/:id` — Dettaglio cliente officina
+
+#### Descrizione
+
+Lookup tenant-scoped del singolo customer. Ritorna anagrafica + note tenant-private + storia con questa officina + lista veicoli del customer al momento (current ownership). BR-151 PII gating: l'endpoint risponde `404 customer.not_found` quando il chiamante non ha una relazione `customer_tenant_relations` con il customer.
+
+#### Request
+
+`GET /v1/customers/:id`
+
+**Auth:** officina pool (Cognito group `officine`). Customer pool ritorna `403`.
+
+**Path parameters:**
+
+| Nome | Tipo | Note |
+| --- | --- | --- |
+| `id` | uuid | id del customer da recuperare. UUID malformato → `400 VALIDATION_ERROR`. |
+
+#### Response `200 OK`
+
+```json
+{
+  "id": "uuid",
+  "email": "mario.rossi@example.it",
+  "firstName": "Mario",
+  "lastName": "Rossi",
+  "phone": "+39 333 1234567",
+  "taxCode": "RSSMRA80A01H501Z",
+  "isBusiness": false,
+  "businessName": null,
+  "vatNumber": null,
+  "addressLine": "Via Roma 1",
+  "city": "Roma",
+  "province": "RM",
+  "postalCode": "00100",
+  "status": "active",
+  "createdAt": "2026-01-15T10:30:00.000Z",
+  "tenantRelation": {
+    "tenantNotes": "Cliente VIP, sempre puntuale",
+    "interventionCount": 3,
+    "firstInterventionAt": "2025-01-15T10:00:00.000Z",
+    "lastInterventionAt": "2026-04-30T09:00:00.000Z"
+  },
+  "vehicles": [
+    { "id": "uuid", "plate": "AB123CD", "make": "Fiat", "model": "Panda", "year": 2018 }
+  ]
+}
+```
+
+`tenantRelation` contiene i campi della riga `customer_tenant_relations` filtrata sul tenant chiamante (sempre presente quando il 200 risponde — il 404 copre l'assenza). `vehicles` è la lista degli ownership attivi (`endedAt IS NULL`); array vuoto se il cliente non ha veicoli associati.
+
+#### Errori
+
+- `400 VALIDATION_ERROR` — `:id` non è un uuid valido.
+- `401` — JWT mancante o invalido.
+- `403` — chiamante non in pool officina.
+- `404 customer.not_found` — uno qualsiasi di: customer inesistente, customer con `status='deleted'` (BR-158 anonymized), nessuna relazione tenant-customer, relazione con `customerDeleted=true`. Il singolo 404 nasconde il motivo (BR-151 information leakage).
+
+#### Note
+
+- **PII gating**: BR-151 enforced application-layer. RLS `customers_read` è permissivo (`USING true`); l'isolation viene dalla predicato `tenantRelations.some({tenantId, customerDeleted: false})` in `findFirst`.
+- **No audit log**: endpoint intra-tenant per costruzione, BR-154 non applicabile.
+
+---
+
+### 2.10 `PATCH /v1/customers/:id` — Modifica cliente officina
+
+#### Descrizione
+
+Aggiornamento parziale dei dati anagrafica + note tenant-private. La officina può correggere typo / aggiornare contatti / cambiare stato B2B; l'email NON è modificabile (login identity B2C: cambiarla richiede flusso re-verification customer-self, deferred F-CLI-004). Dopo il PATCH ritorna lo stesso shape della GET.
+
+#### Request
+
+`PATCH /v1/customers/:id`
+
+**Auth:** officina pool. Customer pool ritorna `403`.
+
+**Path parameters:** `id: uuid`.
+
+**Body schema** (tutti opzionali, almeno uno richiesto):
+
+| Campo | Tipo | Vincoli | Nullable | Note |
+| --- | --- | --- | --- | --- |
+| `firstName` | string | 1-100 | no | Anagrafica core |
+| `lastName` | string | 1-100 | no | Anagrafica core |
+| `phone` | string | max 30 | sì | Contatto |
+| `taxCode` | string | max 20 | sì | Codice fiscale (no validation Italian-format v1) |
+| `isBusiness` | boolean | — | no | Toggle B2C/B2B |
+| `businessName` | string | max 200 | sì | Ragione sociale (B2B) |
+| `vatNumber` | string | max 20 | sì | P.IVA (B2B, no validation v1) |
+| `addressLine` | string | max 255 | sì | Indirizzo |
+| `city` | string | max 100 | sì | Città |
+| `province` | string | max 2 | sì | Provincia ISO IT |
+| `postalCode` | string | max 10 | sì | CAP |
+| `tenantNotes` | string | max 5000 | sì | Note officina-private (su `customer_tenant_relations.tenant_notes`) |
+| `email` | — | — | — | ❌ **Non modificabile** — chiave non in schema, 422 `customer.update.unknown_field`. Vedi BR-151 + F-CLI-004 deferred. |
+
+`.strict()` schema: ogni chiave non listata → 422 `customer.update.unknown_field`. Body interamente vuoto → 422 `customer.update.empty_body`.
+
+I campi `tenantNotes` aggiornano la riga `customer_tenant_relations` del tenant chiamante; tutti gli altri aggiornano la riga `customers` (cross-tenant: la modifica è visibile a ogni tenant relato — limitazione documentata, followup ticket per warning UI quando `cognitoSub != null`).
+
+#### Response `200 OK`
+
+Identica a `GET /v1/customers/:id` (re-query post-update via lo stesso `customerDetailSelect`).
+
+#### Errori
+
+- `400 VALIDATION_ERROR` — body con valore fuori vincoli (es. `firstName` > 100 char), `:id` non uuid, body non JSON.
+- `401` — JWT mancante o invalido.
+- `403` — chiamante non in pool officina.
+- `404 customer.not_found` — stesse condizioni della GET.
+- `422 customer.update.empty_body` — body vuoto.
+- `422 customer.update.unknown_field` — body contiene chiavi non modificabili (es. `email`, `cognitoSub`, `status`).
+
+#### Note
+
+- **Atomicità**: `customer` row update + `customer_tenant_relations` row update avvengono nella stessa `prisma.$transaction`.
+- **Idempotency**: PATCH idempotente; due chiamate con stesso body producono lo stesso stato finale.
+- **No audit log v1**: `access_log` è vehicle-scoped, non si presta a un'azione customer-only. Followup ticket `customer_revisions` table per audit dedicato. Il campo `customer.updatedAt` di Prisma è il de-facto audit minimo.
+
+---
+
 ## 3. Riferimento completo endpoint
 
 Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si indica: metodo, path, feature, auth richiesta e breve descrizione.
@@ -953,8 +1075,8 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | GET | `/customers/search` | F-OFF-202 | Tenant User | **[DETTAGLIATO §2.8]** Autocomplete cliente per nome/ragione sociale (tenant-scoped) |
 | GET | `/customers` | F-OFF-202 | Tenant User | Lista clienti del tenant (con ricerca) |
 | POST | `/customers` | F-OFF-201 | Tenant User | Crea nuovo cliente |
-| GET | `/customers/:id` | F-OFF-203 | Tenant User | Dettaglio cliente (se relazione esistente) |
-| PATCH | `/customers/:id` | F-OFF-204 | Tenant User | Modifica dati cliente |
+| GET | `/customers/:id` | F-OFF-203 | Tenant User | **[DETTAGLIATO §2.9]** Dettaglio cliente officina (BR-151) |
+| PATCH | `/customers/:id` | F-OFF-204 | Tenant User | **[DETTAGLIATO §2.10]** Modifica cliente officina |
 | POST | `/customers/:id/invite` | F-OFF-205 | Tenant User | Invia invito app a cliente |
 | GET | `/customers/:id/vehicles` | - | Tenant User | Veicoli del cliente |
 | GET | `/customers/:id/interventions` | F-OFF-203 | Tenant User | Tutti gli interventi di questo cliente presso il tenant |
