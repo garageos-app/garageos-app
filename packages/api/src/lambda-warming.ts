@@ -7,7 +7,7 @@
 // Performance: ~5ms warm response (vs ~50ms HTTP-based ping). ~3500
 // invocations per month — well within the Lambda free tier. No DB queries,
 // no Fastify routing setup. Emits one JSON log line per warming invocation
-// (F14.4 runbook: filter '"source":"warming"' in CloudWatch Logs).
+// (F14.3 runbook: filter '"source":"warming"' in CloudWatch Logs).
 //
 // Type approach: a permissive local LambdaHandler signature avoids adding
 // @types/aws-lambda as a devDependency just for this one HOC. The function
@@ -30,7 +30,7 @@ export function withWarmingGuard(inner: LambdaHandler): LambdaHandler {
       (event as { source?: unknown }).source === 'warming'
     ) {
       // Single-line JSON for CloudWatch Logs filter pattern
-      // '"source":"warming"' (F14.4 runbook). ~3500 lines/month, negligible cost.
+      // '"source":"warming"' (F14.3 runbook). ~3500 lines/month, negligible cost.
       console.log(JSON.stringify({ source: 'warming', ts: new Date().toISOString() }));
       return { ok: true, source: 'warming' };
     }
