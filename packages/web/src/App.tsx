@@ -8,6 +8,7 @@ import { Login } from '@/pages/Login';
 import { Dashboard } from '@/pages/Dashboard';
 import { SearchResults } from '@/pages/SearchResults';
 import { VehicleDetail } from '@/pages/VehicleDetail';
+import { DeadlineDashboard } from '@/pages/DeadlineDashboard';
 import { InterventionCreate } from '@/pages/InterventionCreate';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
 
@@ -36,6 +37,7 @@ export function App() {
                   <Route path="/search" element={<SearchResults />} />
                   <Route path="/vehicles/:id" element={<VehicleDetail />} />
                   <Route path="/vehicles/:id/interventions/new" element={<InterventionCreate />} />
+                  <Route path="/deadlines" element={<DeadlineDashboard />} />
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
