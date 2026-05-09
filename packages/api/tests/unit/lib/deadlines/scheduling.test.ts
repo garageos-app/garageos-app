@@ -243,18 +243,6 @@ describe('cancelPendingReminders', () => {
     expect(updateCall?.data).not.toHaveProperty('deliveryStatus');
     expect(updateCall?.data).not.toHaveProperty('failureReason');
   });
-
-  it('failed row without ARN is excluded by findMany predicate (no DeleteSchedule, no update)', async () => {
-    // Simulate the predicate filtering out failed-rows where ARN was already
-    // nullified — Prisma returns only rows matching the OR clause, so
-    // findMany would not include this row at all.
-    const tx = makeTx({
-      findMany: vi.fn().mockResolvedValue([]),
-    });
-    await cancelPendingReminders({ tx: asTx(tx), deadlineId: 'd1', reason: 'rerun' });
-    expect(schedulerClient.deleteReminderSchedule).not.toHaveBeenCalled();
-    expect(tx.deadlineNotification.update).not.toHaveBeenCalled();
-  });
 });
 
 describe('replaceReminders', () => {

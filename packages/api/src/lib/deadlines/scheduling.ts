@@ -156,13 +156,20 @@ export async function cancelPendingReminders(input: CancelPendingRemindersInput)
         where: { id: row.id },
         data: { deliveryStatus: 'cancelled', failureReason: input.reason },
       });
-    } else {
+    } else if (row.deliveryStatus === 'failed') {
       // Audit-preserving: keep deliveryStatus='failed' + failureReason,
       // nullify ARN only.
       await input.tx.deadlineNotification.update({
         where: { id: row.id },
         data: { eventbridgeScheduleArn: null },
       });
+    } else {
+      // Exhaustiveness guard: findMany predicate must be kept in sync with
+      // this dispatch. Reaching here means a status was added to the OR
+      // clause without a matching branch.
+      throw new Error(
+        `cancelPendingReminders: unexpected deliveryStatus '${row.deliveryStatus as string}' for row ${row.id}`,
+      );
     }
   }
 }
