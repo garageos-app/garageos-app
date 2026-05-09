@@ -111,7 +111,6 @@ export class MainStack extends cdk.Stack {
       // Passing the L2 token instead would re-introduce the cyclic dep
       // between SchedulerRole, LambdaFunction and the Lambda role policy.
       lambdaFunctionName: LAMBDA_FUNCTION_NAME,
-      hmacSecret: secrets.eventbridgeHmacSecret,
       warmingEnabled: config.scheduler.warmingEnabled,
       warmingScheduleName: config.scheduler.warmingScheduleName,
       deadlineGroupName: config.scheduler.deadlineGroupName,
@@ -122,15 +121,10 @@ export class MainStack extends cdk.Stack {
       'SCHEDULER_ROLE_ARN',
       schedulerConstruct.schedulerRole.roleArn,
     );
-    lambdaApi.function.addEnvironment(
-      'SCHEDULER_HMAC_SECRET_ARN',
-      secrets.eventbridgeHmacSecret.secretArn,
-    );
 
     lambdaApi.attachSchedulerPolicies({
       scheduleGroupName: schedulerConstruct.scheduleGroupName,
       schedulerRoleArn: schedulerConstruct.schedulerRole.roleArn,
-      hmacSecret: secrets.eventbridgeHmacSecret,
     });
 
     const monitoring = new MonitoringConstruct(this, 'Monitoring', {
@@ -188,10 +182,6 @@ export class MainStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'SchedulerDeadlineGroupName', {
       value: schedulerConstruct.scheduleGroupName,
       description: 'EventBridge Scheduler group reserved for runtime-created deadline schedules',
-    });
-    new cdk.CfnOutput(this, 'EventBridgeHmacSecretArn', {
-      value: secrets.eventbridgeHmacSecret.secretArn,
-      description: 'HMAC secret ARN for EventBridge Scheduler -> Lambda HTTP callbacks',
     });
     new cdk.CfnOutput(this, 'MonitoringAlertTopicArn', {
       value: monitoring.alertTopic.topicArn,

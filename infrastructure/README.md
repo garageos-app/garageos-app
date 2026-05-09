@@ -1090,10 +1090,10 @@ Expected: ≥1 line per 5-min business-hour window with shape `{"source":"warmin
 aws lambda get-function-configuration \
   --function-name garageos-api \
   --region eu-central-1 \
-  --query "Environment.Variables.{Group:SCHEDULER_GROUP_NAME, RoleArn:SCHEDULER_ROLE_ARN, HmacArn:SCHEDULER_HMAC_SECRET_ARN}"
+  --query "Environment.Variables.{Group:SCHEDULER_GROUP_NAME, RoleArn:SCHEDULER_ROLE_ARN}"
 ```
 
-Expected: all three populated, no placeholder. `Group` should be `garageos-deadlines`, `RoleArn` and `HmacArn` should be valid ARNs.
+Expected: both populated, no placeholder. `Group` should be `garageos-deadlines`, `RoleArn` should be a valid ARN.
 
 If any check fails, do NOT proceed with H notifications PR. Investigate via CloudFormation events on `MainStack` and the SchedulerConstruct logical IDs.
 

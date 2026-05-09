@@ -2,29 +2,23 @@ import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as scheduler from 'aws-cdk-lib/aws-scheduler';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
 // EventBridge Scheduler infrastructure for GarageOS:
 //   1. ScheduleGroup `garageos-deadlines` — landing zone for runtime-created
 //      deadline schedules (BR-064 revision email, BR-066 cancel email, etc.).
-//      Empty at deploy time; populated by future H notifications PR via
+//      Empty at deploy time; populated by H3 deadline reminders PR via
 //      SchedulerClient SDK calls from app code.
-//   2. SchedulerRole — assumed by scheduler.amazonaws.com. Three inline
-//      policies: InvokeHTTPEndpoint (HTTP callbacks for deadlines), secret
-//      read (HMAC sign), Lambda invoke (warming + future direct-Lambda
-//      schedules).
+//   2. SchedulerRole — assumed by scheduler.amazonaws.com. Two inline
+//      policies: InvokeHTTPEndpoint (HTTP callbacks) and Lambda invoke
+//      (warming + direct-Lambda schedules for deadline reminders).
+//      Note: G2 shipped a third policy (secretsmanager:GetSecretValue for HMAC
+//      signing) that was removed in H3 cleanup after the Lambda direct invoke
+//      pivot (feedback_eventbridge_scheduler_static_http_params.md).
 //   3. WarmingSchedule — singleton CfnSchedule firing every 5 min
 //      Mon-Sat 08:00-20:00 Europe/Rome. Target: Lambda with payload
 //      {source: 'warming'}. Reduces p99 cold-start tail. ~3500 invocations
 //      per month (well within free tier).
-//
-// Out of scope for G2 (deferred to H notifications PR):
-//   - HMAC sign+verify Fastify middleware
-//   - POST /v1/internal/deadline-fire HTTP endpoint
-//   - SchedulerClient SDK wrapper (lib/scheduler.ts) in packages/api
-//   - DB table tracking runtime-created schedule ARNs
-//   - CloudWatch alarms on warming failure rate (G3 Monitoring concern)
 
 export interface SchedulerConstructProps {
   readonly lambdaFunction: lambda.IFunction;
@@ -37,7 +31,6 @@ export interface SchedulerConstructProps {
    * created by attachSchedulerPolicies' iam:PassRole grant.
    */
   readonly lambdaFunctionName: string;
-  readonly hmacSecret: secretsmanager.ISecret;
   readonly warmingEnabled: boolean;
   readonly warmingScheduleName: string;
   readonly deadlineGroupName: string;
@@ -80,10 +73,6 @@ export class SchedulerConstruct extends Construct {
             new iam.PolicyStatement({
               actions: ['scheduler:InvokeHTTPEndpoint'],
               resources: ['*'],
-            }),
-            new iam.PolicyStatement({
-              actions: ['secretsmanager:GetSecretValue'],
-              resources: [props.hmacSecret.secretArn],
             }),
           ],
         }),
