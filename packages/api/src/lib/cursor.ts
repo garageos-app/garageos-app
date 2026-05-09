@@ -1,7 +1,8 @@
 // Cursor helpers for id-based pagination. Shared by /v1/vehicles/search
-// (PR #76) and /v1/customers/search. Base64url-encoded JSON `{ id }` is
-// opaque enough to discourage clients from constructing cursors by hand
-// while remaining easy to debug in logs.
+// and /v1/customers/search (this module landed when the customers
+// endpoint became the second consumer). Base64url-encoded JSON `{ id }`
+// is opaque enough to discourage clients from constructing cursors by
+// hand while remaining easy to debug in logs.
 
 export function encodeCursor(id: string): string {
   return Buffer.from(JSON.stringify({ id }), 'utf8').toString('base64url');

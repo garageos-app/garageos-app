@@ -950,7 +950,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
-| GET | `/v1/customers/search` | F-OFF-205bis | Tenant User | **[DETTAGLIATO §2.8]** Autocomplete cliente per nome/ragione sociale (tenant-scoped) |
+| GET | `/customers/search` | F-OFF-202 | Tenant User | **[DETTAGLIATO §2.8]** Autocomplete cliente per nome/ragione sociale (tenant-scoped) |
 | GET | `/customers` | F-OFF-202 | Tenant User | Lista clienti del tenant (con ricerca) |
 | POST | `/customers` | F-OFF-201 | Tenant User | Crea nuovo cliente |
 | GET | `/customers/:id` | F-OFF-203 | Tenant User | Dettaglio cliente (se relazione esistente) |
