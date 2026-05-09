@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -141,5 +141,82 @@ describe('CustomerDetail (view mode)', () => {
     renderRoute(<CustomerDetail />);
     await waitFor(() => screen.getByRole('heading', { name: 'Mario Rossi' }));
     expect(screen.getByText(/non modificabile/i)).toBeInTheDocument();
+  });
+});
+
+describe('CustomerDetail (edit mode)', () => {
+  it('clicking Modifica flips to edit mode with prepopulated fields', async () => {
+    apiFetchMock.mockResolvedValueOnce(FIXTURE);
+    renderRoute(<CustomerDetail />);
+    await waitFor(() => screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Modifica/i }));
+    expect(screen.getByLabelText('Nome')).toHaveValue('Mario');
+    expect(screen.getByLabelText(/Telefono/i)).toHaveValue('+39 333 1234567');
+    expect(screen.getByRole('button', { name: /Salva/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Annulla/i })).toBeInTheDocument();
+  });
+
+  it('email input is disabled in edit mode', async () => {
+    apiFetchMock.mockResolvedValueOnce(FIXTURE);
+    renderRoute(<CustomerDetail />);
+    await waitFor(() => screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Modifica/i }));
+    const emailInput = screen.getByLabelText('Email') as HTMLInputElement;
+    expect(emailInput.disabled).toBe(true);
+    expect(emailInput.value).toBe('mario@example.it');
+  });
+
+  it('isBusiness toggle hides/shows businessName + vatNumber inputs', async () => {
+    apiFetchMock.mockResolvedValueOnce(FIXTURE); // isBusiness=false in fixture
+    renderRoute(<CustomerDetail />);
+    await waitFor(() => screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Modifica/i }));
+    expect(screen.queryByLabelText(/Ragione sociale/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('switch', { name: /Cliente B2B/i }));
+    expect(await screen.findByLabelText(/Ragione sociale/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/P\.IVA/i)).toBeInTheDocument();
+  });
+
+  it('Annulla returns to view without mutation', async () => {
+    apiFetchMock.mockResolvedValueOnce(FIXTURE);
+    renderRoute(<CustomerDetail />);
+    await waitFor(() => screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Annulla/i }));
+    expect(apiFetchMock).toHaveBeenCalledTimes(1); // initial GET only — no PATCH
+    expect(screen.getByRole('button', { name: /Modifica/i })).toBeInTheDocument();
+  });
+
+  it('Salva submits PATCH with diff and returns to view on success', async () => {
+    apiFetchMock.mockResolvedValueOnce(FIXTURE);
+    apiFetchMock.mockResolvedValueOnce({ ...FIXTURE, firstName: 'Marco' });
+    renderRoute(<CustomerDetail />);
+    await waitFor(() => screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Modifica/i }));
+    const nameInput = screen.getByLabelText('Nome') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'Marco' } });
+    fireEvent.click(screen.getByRole('button', { name: /Salva/i }));
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith(`/v1/customers/${CUSTOMER_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ firstName: 'Marco' }),
+      }),
+    );
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('Cliente aggiornato'));
+  });
+
+  it('on 404 during save, toasts and redirects to /', async () => {
+    apiFetchMock.mockResolvedValueOnce(FIXTURE);
+    apiFetchMock.mockRejectedValueOnce(
+      new ApiError('customer.not_found', 404, 'Cliente non trovato'),
+    );
+    renderRoute(<CustomerDetail />);
+    await waitFor(() => screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Modifica/i }));
+    const nameInput = screen.getByLabelText('Nome') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'Marco' } });
+    fireEvent.click(screen.getByRole('button', { name: /Salva/i }));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('Cliente non più accessibile'));
+    expect(navigateMock).toHaveBeenCalledWith('/', { replace: true });
   });
 });
