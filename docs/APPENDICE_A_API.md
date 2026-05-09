@@ -1012,6 +1012,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
+| GET | `/deadlines` | F-OFF-402 | Tenant User | Lista aggregata scadenze del tenant (officina). Filtri status (default open) + intervention_type_id + cursor pagination. BR-151 PII customer filtrata. |
 | POST | `/vehicles/:id/deadlines` | F-OFF-401 | Tenant User | Crea scadenza |
 | GET | `/vehicles/:id/deadlines` | F-OFF-401 | Any User | Lista scadenze del veicolo |
 | PATCH | `/deadlines/:id` | F-OFF-401 | Tenant User | Modifica scadenza |
