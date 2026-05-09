@@ -35,7 +35,7 @@ async function seedDeadline(params: SeedDeadlineParams): Promise<{ deadlineId: s
     locationId,
     vehicleId,
     interventionTypeId,
-    dueDate = null,
+    dueDate = new Date('2025-12-31'),
     dueOdometerKm = null,
     description = null,
     status = 'open',
