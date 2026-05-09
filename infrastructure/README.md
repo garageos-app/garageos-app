@@ -1052,24 +1052,7 @@ aws scheduler get-schedule-group \
 
 Expected: `State=ACTIVE`. The group will remain empty until H notifications PR ships and the app starts creating runtime schedules.
 
-### F14.3 Verify HMAC secret populated (no placeholder)
-
-```bash
-aws secretsmanager describe-secret \
-  --secret-id garageos/production/eventbridge-hmac \
-  --region eu-central-1 \
-  --query "{Name:Name, Description:Description, ARN:ARN}"
-
-# Length sanity check (stdout includes 2 quote characters around the JSON string)
-aws secretsmanager get-secret-value \
-  --secret-id garageos/production/eventbridge-hmac \
-  --region eu-central-1 \
-  --query "SecretString" | wc -c
-```
-
-Expected: descriptive `Name`, `Description` matches construct, `ARN` populated. `wc -c` returns ≈66 (64 chars + 2 quotes + newline; exact value depends on shell).
-
-### F14.4 Smoke warming hits Lambda
+### F14.3 Smoke warming hits Lambda
 
 After waiting ≥5 min during business hours (Mon–Sat 08:00–20:00 Europe/Rome):
 
@@ -1084,7 +1067,7 @@ Expected: ≥1 line per 5-min business-hour window with shape `{"source":"warmin
 
 > **PowerShell note**: the filter pattern uses CloudWatch JSON event syntax (`{ $.source = "warming" }`) — this works cross-shell. The token-style pattern `'"source":"warming"'` is rejected by CloudWatch's parser (`:` is not allowed in unquoted terms) when invoked from PowerShell.
 
-### F14.5 Verify Lambda env vars populated
+### F14.4 Verify Lambda env vars populated
 
 ```bash
 aws lambda get-function-configuration \
