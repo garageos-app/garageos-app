@@ -1,9 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 
 import { TimelineRow } from './TimelineRow';
 import type { PrivateTimelineItem, ShopTimelineItem, TimelineItem } from '@/queries/types';
+
+// Mock the Dialog so we can assert its open state without rendering portal.
+vi.mock('./DisputeResponseDialog', () => ({
+  DisputeResponseDialog: ({
+    open,
+    interventionId,
+    vehicleId,
+  }: {
+    open: boolean;
+    interventionId: string;
+    vehicleId: string;
+  }) => (open ? <div data-testid={`dialog-open-${interventionId}-${vehicleId}`} /> : null),
+}));
 
 const SHOP_ITEM: ShopTimelineItem = {
   kind: 'shop_intervention',
@@ -43,8 +58,16 @@ const PRIVATE_ITEM: PrivateTimelineItem = {
   attachments_count: 0,
 };
 
-function renderRow(item: TimelineItem) {
-  return render(<TimelineRow item={item} />);
+function renderRow(item: TimelineItem, vehicleId = 'veh-1') {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  }
+  return render(
+    <Wrapper>
+      <TimelineRow item={item} vehicleId={vehicleId} />
+    </Wrapper>,
+  );
 }
 
 describe('TimelineRow — compact rendering', () => {
@@ -68,24 +91,48 @@ describe('TimelineRow — compact rendering', () => {
     expect(screen.getByText('Disputa')).toBeInTheDocument();
   });
 
-  it('starts collapsed (aria-expanded=false)', () => {
+  it('starts collapsed (chevron toggle aria-expanded=false)', () => {
     renderRow(SHOP_ITEM);
-    expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    const chevron = screen.getByRole('button', { name: 'Espandi dettagli intervento' });
+    expect(chevron).toHaveAttribute('aria-expanded', 'false');
   });
 });
 
 describe('TimelineRow — toggle behavior', () => {
-  it('toggles aria-expanded on click', async () => {
+  it('toggles via chevron button', async () => {
     const user = userEvent.setup();
     renderRow(SHOP_ITEM);
-    const button = screen.getByRole('button');
-    expect(button).toHaveAttribute('aria-expanded', 'false');
+    const chevron = screen.getByRole('button', { name: 'Espandi dettagli intervento' });
 
-    await user.click(button);
-    expect(button).toHaveAttribute('aria-expanded', 'true');
+    await user.click(chevron);
+    expect(screen.getByRole('button', { name: 'Comprimi dettagli intervento' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
 
-    await user.click(button);
-    expect(button).toHaveAttribute('aria-expanded', 'false');
+    await user.click(screen.getByRole('button', { name: 'Comprimi dettagli intervento' }));
+    expect(screen.getByRole('button', { name: 'Espandi dettagli intervento' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('toggles via row body click (not the dispute badge)', async () => {
+    const user = userEvent.setup();
+    renderRow(SHOP_ITEM_DISPUTED);
+    // The row body button is the one with the title text inside
+    const rowBody = screen.getByText('Cambio frizione').closest('button')!;
+    // Before click: chevron shows 'Espandi' (collapsed)
+    expect(screen.getByRole('button', { name: 'Espandi dettagli intervento' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    await user.click(rowBody);
+    // After click: chevron shows 'Comprimi' (expanded)
+    expect(screen.getByRole('button', { name: 'Comprimi dettagli intervento' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 });
 
@@ -93,7 +140,7 @@ describe('TimelineRow — expanded shop content', () => {
   it('shows description, parts count, attachments badge after expansion', async () => {
     const user = userEvent.setup();
     renderRow(SHOP_ITEM);
-    await user.click(screen.getByRole('button'));
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
 
     expect(screen.getByText(/Cambio olio motore/)).toBeInTheDocument();
     expect(screen.getByText('3 ricambi')).toBeInTheDocument();
@@ -104,7 +151,7 @@ describe('TimelineRow — expanded shop content', () => {
     const user = userEvent.setup();
     const item: ShopTimelineItem = { ...SHOP_ITEM, parts_replaced_count: 0 };
     renderRow(item);
-    await user.click(screen.getByRole('button'));
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
 
     expect(screen.queryByText(/ricambi/)).not.toBeInTheDocument();
     expect(screen.getByText('Con allegati (2)')).toBeInTheDocument();
@@ -113,7 +160,7 @@ describe('TimelineRow — expanded shop content', () => {
   it('omits attachments badge when has_attachments is false', async () => {
     const user = userEvent.setup();
     renderRow(SHOP_ITEM_DISPUTED); // has_attachments: false
-    await user.click(screen.getByRole('button'));
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
 
     expect(screen.queryByText(/Con allegati/)).not.toBeInTheDocument();
     expect(screen.getByText('1 ricambi')).toBeInTheDocument();
@@ -123,7 +170,7 @@ describe('TimelineRow — expanded shop content', () => {
     const user = userEvent.setup();
     const item: ShopTimelineItem = { ...SHOP_ITEM, description: '   ' };
     renderRow(item);
-    await user.click(screen.getByRole('button'));
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
 
     expect(screen.getByText('Nessuna descrizione.')).toBeInTheDocument();
   });
@@ -133,10 +180,37 @@ describe('TimelineRow — expanded private content', () => {
   it('shows description, no parts badge for private items', async () => {
     const user = userEvent.setup();
     renderRow(PRIVATE_ITEM);
-    await user.click(screen.getByRole('button'));
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
 
     expect(screen.getByText('Stagionali invernali montate.')).toBeInTheDocument();
     expect(screen.queryByText(/ricambi/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Con allegati/)).not.toBeInTheDocument();
+  });
+});
+
+describe('TimelineRow — dispute dialog wiring', () => {
+  it('does not render the dialog when not disputed', () => {
+    renderRow(SHOP_ITEM);
+    expect(screen.queryByTestId(/^dialog-open/)).not.toBeInTheDocument();
+  });
+
+  it('opens the DisputeResponseDialog when clicking the Disputa badge', async () => {
+    const user = userEvent.setup();
+    renderRow(SHOP_ITEM_DISPUTED, 'veh-42');
+    expect(screen.queryByTestId(/^dialog-open/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Apri contestazione/ }));
+    expect(screen.getByTestId('dialog-open-shop-disputed-veh-42')).toBeInTheDocument();
+  });
+
+  it('clicking the dispute badge does not toggle the row expansion', async () => {
+    const user = userEvent.setup();
+    renderRow(SHOP_ITEM_DISPUTED);
+    await user.click(screen.getByRole('button', { name: /Apri contestazione/ }));
+    // Chevron button should still report collapsed (row NOT expanded)
+    expect(screen.getByRole('button', { name: 'Espandi dettagli intervento' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 });

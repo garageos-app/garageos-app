@@ -169,7 +169,7 @@ export function VehicleDetail() {
           <>
             <div className="bg-card border border-border rounded-lg divide-y divide-border">
               {timelineItems.map((item) => (
-                <TimelineRow key={item.id} item={item} />
+                <TimelineRow key={item.id} item={item} vehicleId={id!} />
               ))}
             </div>
             {timeline.hasNextPage && (
