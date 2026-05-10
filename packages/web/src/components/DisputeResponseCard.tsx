@@ -22,7 +22,7 @@ const responseSchema = z.object({
   tenantResponse: z
     .string()
     .min(20, 'La risposta deve essere di almeno 20 caratteri.')
-    .max(2000, 'La risposta non puo superare i 2000 caratteri.'),
+    .max(2000, 'La risposta non può superare i 2000 caratteri.'),
 });
 type ResponseFormValues = z.infer<typeof responseSchema>;
 
@@ -83,7 +83,7 @@ export function DisputeResponseCard({ dispute, onSubmit }: Props) {
                   <FormControl>
                     <Textarea
                       {...field}
-                      placeholder="Scrivi qui la risposta che il cliente vedra..."
+                      placeholder="Scrivi qui la risposta che il cliente vedrà..."
                       className="min-h-32"
                       maxLength={2000}
                       disabled={submitting}
