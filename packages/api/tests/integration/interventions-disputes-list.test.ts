@@ -157,6 +157,9 @@ describe('GET /v1/interventions/:id/disputes (integration)', () => {
       tenantResponseAt: '2026-04-15T10:30:00.000Z',
       tenantResponseUser: { firstName: 'Test', lastName: 'User' },
     });
+    const openDispute = body.disputes.find((d: { status: string }) => d.status === 'open');
+    expect(openDispute?.tenantResponseUser).toBeNull();
+    expect(openDispute?.tenantResponse).toBeNull();
   });
 
   it('returns 200 with all 5 status flavours', async () => {
