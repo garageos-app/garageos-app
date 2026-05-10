@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 
+import { Prisma } from '@garageos/database';
+
 import { businessError } from '../../lib/business-error.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -29,20 +31,23 @@ const interventionDisputesListRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = request.tenantId!;
 
       return app.withContext({ tenantId }, async (tx) => {
-        // RLS-as-404: cross-tenant intervention id throws P2025 →
-        // mapped to NOT_FOUND by error-handler. Inline catch keeps the
-        // domain code consistent with the cancel route (BR-127 family).
+        // RLS-as-404: cross-tenant or missing intervention id throws P2025 →
+        // mapped to domain code `intervention.not_found`. Non-P2025 errors
+        // (DB connection lost, RLS denied, etc.) propagate to the 5xx handler.
         try {
           await tx.intervention.findUniqueOrThrow({
             where: { id },
             select: { id: true },
           });
-        } catch {
-          throw businessError(
-            'intervention.not_found',
-            404,
-            'Intervento non trovato o non accessibile da questa officina.',
-          );
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+            throw businessError(
+              'intervention.not_found',
+              404,
+              'Intervento non trovato o non accessibile da questa officina.',
+            );
+          }
+          throw err;
         }
 
         const disputes = await tx.interventionDispute.findMany({
