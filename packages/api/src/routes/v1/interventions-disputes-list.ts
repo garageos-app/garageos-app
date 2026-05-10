@@ -1,7 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
 
-import { Prisma } from '@garageos/database';
-
 import { businessError } from '../../lib/business-error.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -11,14 +9,17 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 // GET /v1/interventions/:id/disputes — F-OFF-602 read companion to
 // dispute-response (PR #28). Lists all disputes (any status) for an
 // intervention so the officina UI can display the full thread before
-// the operator writes a response. Mirror del pattern customers-detail
-// (RLS-as-404 via findUniqueOrThrow + tenant context).
+// the operator writes a response.
 //
 // Visibility: tutti i ruoli officina possono leggere; il POST response
 // resta gated a [super_admin, mechanic] in interventions-dispute-response.ts.
 //
-// RLS: la policy intervention_isolation (RLS) filtra cross-tenant
-// automaticamente. Cross-tenant intervention id → P2025 → 404.
+// Tenant scoping: post-PR #22 the interventions table has a permissive
+// SELECT RLS (cross-tenant readable to support shared timelines).
+// Therefore we must enforce tenant isolation explicitly via `findFirst`
+// with `where: { id, tenantId }` — `findUniqueOrThrow` would succeed
+// for cross-tenant ids and leak existence. See
+// `feedback_rls_split_changes_endpoint_semantics.md`.
 
 const interventionDisputesListRoutes: FastifyPluginAsync = async (app) => {
   app.get(
@@ -31,23 +32,16 @@ const interventionDisputesListRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = request.tenantId!;
 
       return app.withContext({ tenantId }, async (tx) => {
-        // RLS-as-404: cross-tenant or missing intervention id throws P2025 →
-        // mapped to domain code `intervention.not_found`. Non-P2025 errors
-        // (DB connection lost, RLS denied, etc.) propagate to the 5xx handler.
-        try {
-          await tx.intervention.findUniqueOrThrow({
-            where: { id },
-            select: { id: true },
-          });
-        } catch (err) {
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-            throw businessError(
-              'intervention.not_found',
-              404,
-              'Intervento non trovato o non accessibile da questa officina.',
-            );
-          }
-          throw err;
+        const intervention = await tx.intervention.findFirst({
+          where: { id, tenantId },
+          select: { id: true },
+        });
+        if (!intervention) {
+          throw businessError(
+            'intervention.not_found',
+            404,
+            'Intervento non trovato o non accessibile da questa officina.',
+          );
         }
 
         const disputes = await tx.interventionDispute.findMany({
