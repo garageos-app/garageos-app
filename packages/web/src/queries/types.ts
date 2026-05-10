@@ -269,3 +269,43 @@ export type CustomerDetailUpdate = Partial<{
   postalCode: string | null;
   tenantNotes: string | null;
 }>;
+
+// /v1/interventions/:id/disputes — F-OFF-602 read companion (PR #82).
+// Mirror del DTO emesso da packages/api/src/routes/v1/interventions-disputes-list.ts.
+export type DisputeReasonCategory = 'not_performed' | 'wrong_data' | 'not_authorized' | 'other';
+
+export type DisputeStatus =
+  | 'open'
+  | 'responded'
+  | 'resolved_by_cancellation'
+  | 'escalated'
+  | 'closed_by_admin';
+
+export interface InterventionDispute {
+  id: string;
+  reasonCategory: DisputeReasonCategory;
+  customerDescription: string;
+  status: DisputeStatus;
+  tenantResponse: string | null;
+  tenantResponseAt: string | null;
+  tenantResponseUser: { firstName: string; lastName: string } | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface InterventionDisputesResponse {
+  disputes: InterventionDispute[];
+}
+
+// POST /v1/interventions/:id/dispute-response request body (PR #28). UI
+// resta singola-dispute (sempre disputeId; multi-dispute fanout out of scope).
+export interface DisputeResponseRequest {
+  disputeId: string;
+  tenantResponse: string;
+}
+
+// Response del POST dispute-response.
+export interface DisputeResponseResult {
+  disputes: InterventionDispute[];
+  interventionStatus: 'active' | 'disputed';
+}

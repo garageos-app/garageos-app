@@ -536,7 +536,8 @@ export async function ensureSystemInterventionType(code: string): Promise<{
 // without driving the public POST /dispute path. status defaults to
 // 'open'; resolvedAt defaults to null. Callers that seed
 // 'resolved_by_cancellation' should set resolvedAt explicitly to mirror
-// production rows.
+// production rows. tenantResponse / tenantResponseAt / tenantResponseUserId
+// are optional triplet for seeding `responded` (and later) state.
 export async function createDispute(params: {
   interventionId: string;
   customerId: string;
@@ -544,6 +545,9 @@ export async function createDispute(params: {
   customerDescription?: string;
   status?: 'open' | 'responded' | 'resolved_by_cancellation' | 'escalated' | 'closed_by_admin';
   resolvedAt?: Date | null;
+  tenantResponse?: string;
+  tenantResponseAt?: Date;
+  tenantResponseUserId?: string;
 }): Promise<{ disputeId: string }> {
   const {
     interventionId,
@@ -552,17 +556,33 @@ export async function createDispute(params: {
     customerDescription = 'Contestazione di test della durata regolamentare.',
     status = 'open',
     resolvedAt = null,
+    tenantResponse,
+    tenantResponseAt,
+    tenantResponseUserId,
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO intervention_disputes
        (id, intervention_id, customer_id, reason_category, customer_description,
-        status, resolved_at, created_at, updated_at)
+        status, resolved_at,
+        tenant_response, tenant_response_at, tenant_response_user_id,
+        created_at, updated_at)
      VALUES (gen_random_uuid(), $1, $2,
         $3::"DisputeReasonCategory", $4,
         $5::"DisputeStatus", $6,
+        $7, $8, $9,
         NOW(), NOW())
      RETURNING id`,
-    [interventionId, customerId, reasonCategory, customerDescription, status, resolvedAt],
+    [
+      interventionId,
+      customerId,
+      reasonCategory,
+      customerDescription,
+      status,
+      resolvedAt,
+      tenantResponse ?? null,
+      tenantResponseAt ?? null,
+      tenantResponseUserId ?? null,
+    ],
   );
   return { disputeId: rows[0]!.id };
 }

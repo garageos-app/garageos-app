@@ -1021,6 +1021,63 @@ Identica a `GET /v1/customers/:id` (re-query post-update via lo stesso `customer
 
 ---
 
+### 2.11 `GET /v1/interventions/:id/disputes` — Lista contestazioni di un intervento
+
+**Feature**: F-OFF-602 (read companion to dispute-response endpoint).
+**Auth**: Tenant User (qualsiasi ruolo officina).
+**Rate limit**: standard utente.
+
+#### Descrizione
+
+Restituisce la lista completa di tutte le contestazioni (`intervention_disputes`) associate a un intervento, indipendentemente dallo `status`. Pensato per popolare la UI dialog di risposta lato officina, dove l'operatore deve vedere `reason_category` + `customer_description` prima di scrivere una risposta, oltre allo storico delle risposte già inviate.
+
+#### Request
+
+```http
+GET /v1/interventions/{id}/disputes
+Authorization: Bearer <tenant_user_jwt>
+```
+
+#### Response 200
+
+```json
+{
+  "disputes": [
+    {
+      "id": "uuid",
+      "reasonCategory": "not_performed | wrong_data | not_authorized | other",
+      "customerDescription": "string (BR-120, max 2000)",
+      "status": "open | responded | resolved_by_cancellation | escalated | closed_by_admin",
+      "tenantResponse": "string | null",
+      "tenantResponseAt": "ISO 8601 | null",
+      "tenantResponseUser": {
+        "firstName": "string",
+        "lastName": "string"
+      },
+      "createdAt": "ISO 8601",
+      "resolvedAt": "ISO 8601 | null"
+    }
+  ]
+}
+```
+
+`tenantResponseUser` è `null` quando la dispute non è stata ancora risposta (mirror del DTO Prisma — la relation è `User?`). Ordering: `createdAt ASC` (cronologico).
+
+#### Errors
+
+| Status | Code | Quando |
+|---|---|---|
+| 401 | (auth middleware) | Authorization header mancante o JWT non valido |
+| 403 | `auth.wrong_pool` | JWT proviene dal pool `clienti` invece di `officine` |
+| 404 | `intervention.not_found` | Intervento non esiste oppure appartiene a un altro tenant (RLS-as-404) |
+
+#### Note
+
+- BR-128: le risposte (`tenantResponse + tenantResponseAt + tenantResponseUserId`) sono **immutabili**. Questo endpoint le espone in sola lettura — non esiste un PATCH delle risposte.
+- Il POST response resta su `POST /v1/interventions/:id/dispute-response` (PR #28) e richiede ruolo `super_admin` o `mechanic`.
+
+---
+
 ## 3. Riferimento completo endpoint
 
 Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si indica: metodo, path, feature, auth richiesta e breve descrizione.
@@ -1116,6 +1173,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | GET | `/interventions/:id/revisions` | F-OFF-304 | Any User | Storico modifiche |
 | POST | `/interventions/:id/dispute` | F-CLI-206 | Customer | **[DETTAGLIATO §2.6]** Contesta intervento |
 | POST | `/interventions/:id/dispute-response` | F-OFF-602 | Tenant User | **[DETTAGLIATO §2.6.1]** Risposta officina a contestazione |
+| GET | `/interventions/:id/disputes` | F-OFF-602 | Tenant User | **[DETTAGLIATO §2.11]** Lista contestazioni intervento |
 | GET | `/intervention-types` | F-OFF-302 | Any User | Catalogo tipi intervento |
 | POST | `/intervention-types` | F-OFF-302 | Super Admin | Crea tipo custom (tenant) |
 | GET | `/intervention-templates` | F-OFF-303 | Tenant User | Template tenant (v1.1) |

@@ -1,3 +1,5 @@
+import type { DisputeReasonCategory, DisputeStatus } from '@/queries/types';
+
 const dateFmt = new Intl.DateTimeFormat('it-IT', {
   day: '2-digit',
   month: '2-digit',
@@ -26,4 +28,32 @@ export function formatCurrency(cents: number | null): string {
 
 export function fallback(s: string | null | undefined): string {
   return s ?? '—';
+}
+
+export function disputeReasonLabel(reason: DisputeReasonCategory): string {
+  switch (reason) {
+    case 'not_performed':
+      return 'Lavoro non svolto';
+    case 'wrong_data':
+      return 'Dati errati';
+    case 'not_authorized':
+      return 'Lavoro non autorizzato';
+    case 'other':
+      return 'Altro';
+  }
+}
+
+export function disputeStatusLabel(status: DisputeStatus): string {
+  switch (status) {
+    case 'open':
+      return 'Aperta';
+    case 'responded':
+      return 'Risposta inviata';
+    case 'resolved_by_cancellation':
+      return 'Chiusa per cancellazione intervento';
+    case 'escalated':
+      return 'Escalation in corso';
+    case 'closed_by_admin':
+      return "Chiusa dall'amministrazione";
+  }
 }
