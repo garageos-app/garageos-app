@@ -98,6 +98,8 @@ export function InterventionDetail() {
   // wire envelope { disputes: [...] } and returns InterventionDispute[]
   // directly. Use disputes.data ?? [] (NOT disputes.data?.disputes ?? []).
   const detail = useInterventionDetail(id);
+  // Preloaded on mount (not lazy) — detail page shows disputes inline,
+  // unlike the timeline row which loads them only when the dialog opens.
   const disputes = useInterventionDisputes(id);
   const revisions = useInterventionRevisions(id);
 
