@@ -116,6 +116,26 @@ describe('Dashboard — WAI-ARIA Tabs pattern', () => {
     expect(selectedTab?.getAttribute('aria-controls')).toBe(tabpanel.getAttribute('id'));
     expect(tabpanel.getAttribute('aria-labelledby')).toBe(selectedTab?.getAttribute('id'));
   });
+
+  it('arrow keys move focus and selection between tabs', async () => {
+    renderDashboard();
+    const vehicleTab = screen.getByRole('tab', { name: /veicolo/i });
+    const customerTab = screen.getByRole('tab', { name: /cliente/i });
+
+    // Start: vehicle tab focused and selected
+    vehicleTab.focus();
+    expect(vehicleTab).toHaveAttribute('aria-selected', 'true');
+
+    // ArrowRight moves to customer tab
+    await userEvent.keyboard('{ArrowRight}');
+    expect(customerTab).toHaveAttribute('aria-selected', 'true');
+    expect(customerTab).toHaveFocus();
+
+    // ArrowLeft moves back to vehicle tab
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(vehicleTab).toHaveAttribute('aria-selected', 'true');
+    expect(vehicleTab).toHaveFocus();
+  });
 });
 
 describe('Dashboard — customer tab → navigate', () => {

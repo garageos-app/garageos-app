@@ -1,5 +1,5 @@
 // IT-strings — hardcoded, no i18n in demo-2
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
@@ -13,6 +13,30 @@ type Tab = 'vehicle' | 'customer';
 
 export function Dashboard() {
   const [tab, setTab] = useState<Tab>('vehicle');
+  const vehicleTabRef = useRef<HTMLButtonElement>(null);
+  const customerTabRef = useRef<HTMLButtonElement>(null);
+  // Set on keyboard-driven tab changes so the post-render effect knows
+  // to move focus to the newly-selected tab (instead of letting the new
+  // panel's autoFocus claim focus). Click-driven changes leave this
+  // false — the user already pressed a mouse, focus moves naturally.
+  const keyboardTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    if (!keyboardTriggeredRef.current) return;
+    keyboardTriggeredRef.current = false;
+    (tab === 'vehicle' ? vehicleTabRef : customerTabRef).current?.focus();
+  }, [tab]);
+
+  // WAI-ARIA Tabs keyboard handler: left/right arrow keys move focus
+  // between tabs within the tablist. Required because we use roving
+  // tabIndex (only the active tab is in the Tab key stop sequence),
+  // so without this handler arrow navigation is unreachable.
+  function onTabsKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    keyboardTriggeredRef.current = true;
+    setTab(tab === 'vehicle' ? 'customer' : 'vehicle');
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-8">
@@ -21,8 +45,14 @@ export function Dashboard() {
         {tab === 'vehicle' ? 'VIN, targa o codice GarageOS' : 'Nome o ragione sociale del cliente'}
       </p>
 
-      <div className="flex gap-2 mb-6" role="tablist" aria-label="Modalità di ricerca">
+      <div
+        className="flex gap-2 mb-6"
+        role="tablist"
+        aria-label="Modalità di ricerca"
+        onKeyDown={onTabsKeyDown}
+      >
         <Button
+          ref={vehicleTabRef}
           type="button"
           role="tab"
           id="tab-vehicle"
@@ -35,6 +65,7 @@ export function Dashboard() {
           Veicolo
         </Button>
         <Button
+          ref={customerTabRef}
           type="button"
           role="tab"
           id="tab-customer"
