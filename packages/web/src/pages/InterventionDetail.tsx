@@ -50,7 +50,9 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
     tenant: {
       business_name: d.tenant.business_name,
       // ShopTimelineItem.tenant.location_city maps to the location.city
-      // from the richer DTO. Defensive fallback mirrors the Sede tile guard.
+      // from the richer DTO. The Sede tile shows '—' for null location;
+      // here we feed '' because EditInterventionDialog does not render
+      // this field (only the title/description/parts/notes are editable).
       location_city: d.location?.city ?? '',
     },
     has_attachments: d.attachments.length > 0,

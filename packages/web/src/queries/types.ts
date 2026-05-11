@@ -312,6 +312,11 @@ export interface DisputeResponseRequest {
 // Response del POST dispute-response.
 export interface DisputeResponseResult {
   disputes: InterventionDispute[];
+  // Intentionally narrower than InterventionStatus: BR-066 prevents
+  // cancelling a disputed intervention, so 'cancelled' is unreachable in
+  // this response. DisputeResponseDialog relies on this narrowing for
+  // exhaustive matching — do not widen to InterventionStatus without
+  // updating the dialog.
   interventionStatus: 'active' | 'disputed';
 }
 
