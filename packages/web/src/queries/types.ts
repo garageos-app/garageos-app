@@ -310,3 +310,89 @@ export interface DisputeResponseResult {
   disputes: InterventionDispute[];
   interventionStatus: 'active' | 'disputed';
 }
+
+// /v1/interventions/:id — F-OFF-301/307 (slice D). Officina detail
+// endpoint; full intervention record + relations. Mirror of
+// packages/api/src/routes/v1/interventions-detail.ts DTO. Snake_case
+// wire format (same convention as timeline DTO).
+export interface InterventionPartReplaced {
+  name: string;
+  code: string | null;
+  quantity: number;
+  notes: string | null;
+}
+
+export interface InterventionAttachment {
+  id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface InterventionDetail {
+  id: string;
+  status: 'active' | 'disputed' | 'cancelled';
+  is_disputed: boolean;
+  wiki_window_open: boolean;
+  intervention_date: string;
+  odometer_km: number;
+  created_at: string;
+  cancelled_at: string | null;
+  cancelled_reason: string | null;
+  title: string | null;
+  description: string;
+  internal_notes: string | null;
+  parts_replaced: InterventionPartReplaced[];
+  type: { id: string; code: string; name_it: string };
+  tenant: { id: string; business_name: string };
+  location: { id: string; name: string | null; city: string; address: string | null };
+  vehicle: { id: string; garage_code: string; plate: string; make: string; model: string };
+  created_by: { id: string; first_name: string; last_name: string } | null;
+  attachments: InterventionAttachment[];
+}
+
+// /v1/attachments/:id/view-url — lazy presign GET URL companion (slice D).
+// Returns a 15-min TTL presigned S3 URL plus its expiration.
+export interface AttachmentViewUrlResponse {
+  url: string;
+  expires_at: string;
+}
+
+// /v1/interventions/:id/cancel request body (F-OFF-307 BR-066).
+// Backend shipped #25; this is the first web consumer. Reason must be
+// at least 20 characters (enforced both client- and server-side).
+export interface CancelInterventionRequest {
+  reason: string;
+}
+
+// /v1/interventions/:id/revisions — first web consumer (backend
+// shipped #26). Mirror packages/api/src/routes/v1/interventions-revisions-list.ts.
+//
+// Wire format: snake_case. Envelope: { data, meta }.
+// Each revision row shape depends on the caller's auth pool:
+//   - officine pool: includes `user` (who made the edit)
+//   - clienti pool:  includes `tenant` (which shop made the edit)
+// The web app is officina-side, so InterventionRevision models the
+// officine variant. `changes` is an opaque JSON object keyed by
+// field name — each value is `{ before, after }` (exact shape
+// emitted by the PATCH route).
+export interface InterventionRevision {
+  id: string;
+  revised_at: string;
+  reason: string | null;
+  changes: Record<string, unknown>;
+  user: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+}
+
+export interface InterventionRevisionsResponse {
+  data: InterventionRevision[];
+  meta: {
+    has_more: boolean;
+    cursor?: string;
+  };
+}

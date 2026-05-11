@@ -1,4 +1,5 @@
 import {
+  GetObjectCommand,
   HeadObjectCommand,
   NoSuchKey,
   PutObjectCommand,
@@ -49,6 +50,24 @@ export async function presignPutObject(input: PresignedPutInput): Promise<string
     return await getSignedUrl(getS3Client(), command, { expiresIn: input.expiresInSeconds });
   } catch (cause) {
     throw new S3UnavailableError('Failed to sign presigned PUT URL', cause);
+  }
+}
+
+export interface PresignedGetInput {
+  bucket: string;
+  key: string;
+  expiresInSeconds: number;
+}
+
+// presignGetObject signs a GET URL for downloading/viewing an existing S3
+// object. Mirrors presignPutObject error handling and expiry semantics.
+// Used by GET /v1/attachments/:id/view-url (F-OFF-301 detail page consumer).
+export async function presignGetObject(input: PresignedGetInput): Promise<string> {
+  try {
+    const command = new GetObjectCommand({ Bucket: input.bucket, Key: input.key });
+    return await getSignedUrl(getS3Client(), command, { expiresIn: input.expiresInSeconds });
+  } catch (cause) {
+    throw new S3UnavailableError('Failed to sign presigned GET URL', cause);
   }
 }
 

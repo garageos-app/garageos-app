@@ -20,6 +20,7 @@ import deadlinesListTenantRoutes from './routes/v1/deadlines-list-tenant.js';
 import deadlinesListVehicleRoutes from './routes/v1/deadlines-list-vehicle.js';
 import deadlinesUpdateRoutes from './routes/v1/deadlines-update.js';
 import interventionCancelRoutes from './routes/v1/interventions-cancel.js';
+import interventionDetailRoutes from './routes/v1/interventions-detail.js';
 import interventionDisputeRoutes from './routes/v1/interventions-dispute.js';
 import interventionDisputeResponseRoutes from './routes/v1/interventions-dispute-response.js';
 import interventionDisputesListRoutes from './routes/v1/interventions-disputes-list.js';
@@ -132,6 +133,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(vehicleUpdateRoutes);
   await app.register(vehicleTimelineRoutes);
   await app.register(interventionRoutes);
+  await app.register(interventionDetailRoutes);
   await app.register(interventionTypesRoutes);
   await app.register(interventionUpdateRoutes);
   await app.register(interventionRevisionsListRoutes);

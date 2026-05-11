@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer';
 import type { FastifyError, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
+import { isWikiWindowOpen } from '../../lib/intervention-shared.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -107,21 +108,6 @@ const shopRowSelect = {
   location: { select: { city: true } },
   interventionType: { select: { id: true, code: true, nameIt: true } },
 } as const;
-
-// BR-062: wiki window is open while ALL three conditions hold. Mirrors
-// computeLockState in interventions-update.ts so the timeline DTO and
-// the PATCH handler agree on the predicate at any given moment.
-const WIKI_WINDOW_MS = 48 * 60 * 60 * 1000;
-function isWikiWindowOpen(
-  wikiLockedAt: Date | null,
-  firstSeenByCustomerAt: Date | null,
-  createdAt: Date,
-  now: Date,
-): boolean {
-  if (wikiLockedAt !== null) return false;
-  if (firstSeenByCustomerAt !== null) return false;
-  return now.getTime() - createdAt.getTime() < WIKI_WINDOW_MS;
-}
 
 const privateRowSelect = {
   id: true,

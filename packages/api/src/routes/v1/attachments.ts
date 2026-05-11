@@ -8,10 +8,13 @@ import {
   S3ObjectNotFoundError,
   S3UnavailableError,
   headObject,
+  presignGetObject,
   presignPutObject,
 } from '../../lib/s3.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
+import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
+import { tenantContext } from '../../middleware/tenant-context.js';
 
 // POST /v1/attachments/upload-url (F-OFF-305, phase 1 of 2)
 // Supports two pools:
@@ -612,6 +615,66 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       return reply.code(200).send(result);
+    },
+  );
+
+  // GET /v1/attachments/:id/view-url — officina-pool lazy presigned GET
+  // URL for an already-confirmed attachment (F-OFF-301 detail page
+  // consumer). Tenant-scoped via attachment.tenantId. v1: only
+  // ownerType='intervention' supported; private_intervention +
+  // intervention_dispute deferred to mobile slice and customer dispute UI.
+  //
+  // attachments_read RLS is permissive cross-tenant (same topology as
+  // interventions_read), so the explicit tenantId filter is the
+  // application-layer enforcement.
+  const ViewUrlParamsSchema = z.object({ id: z.string().uuid() });
+  app.get(
+    '/v1/attachments/:id/view-url',
+    {
+      preHandler: [requireAuth, requireOfficinaPool, tenantContext],
+    },
+    async (request) => {
+      const { id } = ViewUrlParamsSchema.parse(request.params);
+      const tenantId = request.tenantId!;
+
+      return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
+        const att = await tx.attachment.findFirst({
+          where: { id, tenantId, processed: true, deletedAt: null },
+          select: { id: true, s3Key: true, s3Bucket: true, ownerType: true },
+        });
+
+        if (!att) {
+          throw businessError('attachment.not_found', 404, 'Allegato non trovato.');
+        }
+        if (att.ownerType !== 'intervention') {
+          throw businessError(
+            'attachment.owner_not_supported',
+            422,
+            'Tipo di allegato non supportato per la visualizzazione.',
+          );
+        }
+
+        let url: string;
+        try {
+          url = await presignGetObject({
+            bucket: att.s3Bucket,
+            key: att.s3Key,
+            expiresInSeconds: PRESIGNED_URL_EXPIRY_SECONDS,
+          });
+        } catch (err) {
+          if (err instanceof S3UnavailableError) {
+            throw businessError(
+              'attachment.view_url.s3_unavailable',
+              502,
+              'Servizio storage temporaneamente non disponibile.',
+            );
+          }
+          throw err;
+        }
+
+        const expiresAt = new Date(Date.now() + PRESIGNED_URL_EXPIRY_SECONDS * 1000).toISOString();
+        return { url, expires_at: expiresAt };
+      });
     },
   );
 };

@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
+import { WIKI_WINDOW_MS } from '../../lib/intervention-shared.js';
 import { dispatchNotification } from '../../lib/notifications/dispatcher.js';
 import { resolveCurrentOwner } from '../../lib/notifications/recipient-resolver.js';
 import type { CustomerForNotification } from '../../lib/notifications/types.js';
@@ -49,7 +50,7 @@ function computeLockState(
     return { isLocked: true, lockedAtToPersist: null };
   }
   const ageMs = now.getTime() - existing.createdAt.getTime();
-  const ageGate = ageMs >= 48 * 60 * 60 * 1000;
+  const ageGate = ageMs >= WIKI_WINDOW_MS;
   const seenGate = existing.firstSeenByCustomerAt !== null;
   if (ageGate || seenGate) {
     return { isLocked: true, lockedAtToPersist: now };
