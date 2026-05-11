@@ -249,8 +249,8 @@ export function InterventionDetail() {
         </Card>
       )}
 
-      {/* Allegati — AttachmentsSection returns null when empty */}
-      <AttachmentsSection attachments={i.attachments} />
+      {/* Allegati — always visible to surface the upload affordance */}
+      <AttachmentsSection attachments={i.attachments} interventionId={i.id} />
 
       {/* Contestazione thread — DisputeThreadSection returns null when empty */}
       <DisputeThreadSection
