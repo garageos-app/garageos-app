@@ -106,6 +106,7 @@ function mapApiError(err: ApiError): { message: string; close: boolean } {
       return { message: 'Intervento cancellato: non modificabile.', close: true };
     case 'intervention.modification.revision_reason_required':
       return { message: 'Motivo richiesto (almeno 10 caratteri).', close: false };
+    case 'NOT_FOUND':
     case 'not_found':
     case 'intervention.not_found':
       return { message: 'Intervento non trovato.', close: true };

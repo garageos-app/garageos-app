@@ -203,6 +203,31 @@ describe('EditInterventionDialog', () => {
     expect(mockApiFetch).not.toHaveBeenCalled();
   });
 
+  it('handles 404 NOT_FOUND (RLS-as-404): shows toast and closes dialog', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    mockApiFetch.mockRejectedValueOnce(
+      new ApiError('NOT_FOUND', 404, 'The requested resource does not exist or is not accessible.'),
+    );
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={onOpenChange}
+      />,
+      { wrapper: wrap },
+    );
+    await user.clear(screen.getByLabelText(/descrizione/i));
+    await user.type(screen.getByLabelText(/descrizione/i), 'Modifica');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith('Intervento non trovato.');
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it('handles 422 disputed: shows toast and closes dialog', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
