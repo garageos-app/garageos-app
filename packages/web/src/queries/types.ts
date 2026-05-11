@@ -406,3 +406,40 @@ export interface InterventionRevisionsResponse {
     cursor?: string;
   };
 }
+
+// /v1/attachments/upload-url — request body (F-OFF-305 slice H).
+// v1: only `owner_type: 'intervention'` is supported (private_intervention
+// returns 422 server-side, deferred to mobile B2C slice K).
+export interface AttachmentUploadUrlRequest {
+  owner_type: 'intervention';
+  owner_id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+}
+
+// /v1/attachments/upload-url — response body. The client must PUT the
+// file binary to `upload_url` with `Content-Type: <mime_type>` and the
+// declared `Content-Length: <size_bytes>` before calling confirm.
+// `expires_at` reflects the 15-min S3 presign TTL.
+export interface AttachmentUploadUrlResponse {
+  attachment_id: string;
+  upload_url: string;
+  upload_method: 'PUT';
+  upload_headers: Record<string, string>;
+  expires_at: string;
+  callback_url: string;
+}
+
+// /v1/attachments/:id/confirm — response body. Idempotent: a second
+// call after success returns the same payload without re-calling S3.
+export interface AttachmentConfirmResponse {
+  id: string;
+  owner_type: 'intervention';
+  owner_id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  processed: true;
+  uploaded_at: string;
+}
