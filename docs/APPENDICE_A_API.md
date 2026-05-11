@@ -1006,6 +1006,7 @@ Lookup tenant-scoped del singolo customer. Ritorna anagrafica + note tenant-priv
   "city": "Roma",
   "province": "RM",
   "postalCode": "00100",
+  "cognitoSub": null,
   "status": "active",
   "createdAt": "2026-01-15T10:30:00.000Z",
   "tenantRelation": {
@@ -1020,7 +1021,7 @@ Lookup tenant-scoped del singolo customer. Ritorna anagrafica + note tenant-priv
 }
 ```
 
-`tenantRelation` contiene i campi della riga `customer_tenant_relations` filtrata sul tenant chiamante (sempre presente quando il 200 risponde — il 404 copre l'assenza). `vehicles` è la lista degli ownership attivi (`endedAt IS NULL`); array vuoto se il cliente non ha veicoli associati.
+`tenantRelation` contiene i campi della riga `customer_tenant_relations` filtrata sul tenant chiamante (sempre presente quando il 200 risponde — il 404 copre l'assenza). `vehicles` è la lista degli ownership attivi (`endedAt IS NULL`); array vuoto se il cliente non ha veicoli associati. `cognitoSub` è non-null quando il customer ha completato il signup nella mobile app (pool clienti) — la web app officina lo usa per mostrare un avviso "Cliente registrato" in edit mode (le modifiche propagano al profilo mobile).
 
 #### Errori
 
