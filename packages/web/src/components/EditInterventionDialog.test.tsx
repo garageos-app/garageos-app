@@ -35,7 +35,7 @@ vi.mock('@/queries/interventionTypes', () => ({
     data: {
       data: [
         {
-          id: 't-1',
+          id: '11111111-1111-4111-8111-111111111111',
           code: 'tagliando',
           nameIt: 'Tagliando',
           description: '',
@@ -46,7 +46,7 @@ vi.mock('@/queries/interventionTypes', () => ({
           defaultDeadlineKm: 15000,
         },
         {
-          id: 't-2',
+          id: '22222222-2222-4222-8222-222222222222',
           code: 'gomme',
           nameIt: 'Cambio gomme',
           description: '',
@@ -76,7 +76,7 @@ function makeShopItem(overrides: Partial<ShopTimelineItem> = {}): ShopTimelineIt
     id: 'i-1',
     intervention_date: '2026-05-10',
     odometer_km: 50000,
-    type: { id: 't-1', code: 'tagliando', name_it: 'Tagliando' },
+    type: { id: '11111111-1111-4111-8111-111111111111', code: 'tagliando', name_it: 'Tagliando' },
     title: 'Tagliando 50k',
     description: 'Olio motore + filtri',
     parts_replaced_count: 2,

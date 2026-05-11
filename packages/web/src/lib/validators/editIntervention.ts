@@ -29,7 +29,7 @@ const PartReplacedSchema = z.object({
 // The two fields nullable+optional (title, internalNotes) mirror the
 // backend: `null` clears the field, `undefined` leaves it unchanged.
 export const EditInterventionFormSchema = z.object({
-  interventionTypeId: z.string().min(1).optional(),
+  interventionTypeId: z.uuid().optional(),
   title: z.string().max(200).nullable().optional(),
   description: z.string().min(1).max(5000).optional(),
   partsReplaced: z.array(PartReplacedSchema).optional(),
