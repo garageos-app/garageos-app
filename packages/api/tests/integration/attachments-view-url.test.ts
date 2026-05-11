@@ -63,11 +63,11 @@ describe('GET /v1/attachments/:id/view-url', () => {
     const { rows } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO attachments
          (id, owner_type, owner_id, tenant_id, file_name, mime_type,
-          size_bytes, s3_key, s3_bucket, processed, deleted_at, created_at, updated_at)
+          size_bytes, s3_key, s3_bucket, processed, deleted_at, created_at)
        VALUES (gen_random_uuid(), $1::"AttachmentOwnerType", gen_random_uuid(), $2,
           'test.pdf', 'application/pdf', 12345,
           'attachments/intervention/test-key.pdf', 'garageos-dev',
-          $3, $4::timestamptz, NOW(), NOW())
+          $3, $4::timestamptz, NOW())
        RETURNING id`,
       [ownerType, tenantId, processed, deletedAt],
     );
