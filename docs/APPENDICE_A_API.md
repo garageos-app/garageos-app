@@ -573,6 +573,8 @@ Authorization: Bearer <any_user_jwt>
 - **Se richiedente è `Customer` ma non proprietario**: errore 403
 - **Interventi privati di precedenti proprietari**: sempre nascosti
 
+Vedi anche §2.12 per il DTO completo del singolo intervento.
+
 ---
 
 ### 2.6 `POST /interventions/:id/dispute` — Contestazione intervento
@@ -845,6 +847,66 @@ Authorization: Bearer <officina_user_jwt>
 
 In v1 il `processed: true` flip non triggera compression/thumbnail (cluster G PR 24 con EventBridge fan-out). `thumbnailS3Key` resta `null` finché un futuro Lambda consumer non genera thumbnail post-confirm.
 
+---
+
+### 2.7.1 `GET /v1/attachments/:id/view-url` — URL presigned GET allegato
+
+**Feature:** F-OFF-301 (companion slice D — detail page intervento)
+**Auth:** Tenant User (officina pool; clienti pool ritorna `403`)
+**Rate limit:** standard utente
+
+#### Descrizione
+
+Genera on-demand un URL presigned GET S3 per visualizzare o scaricare un allegato già confermato (`processed=true`). L'URL ha validità **15 minuti**. La generazione avviene al momento della richiesta (lazy presign): il DTO del dettaglio intervento (`GET /v1/interventions/:id`, §2.12) espone i metadati degli allegati ma **non** include URL di accesso precalcolati, per evitare fanout S3 non necessario al caricamento della pagina.
+
+v1: supportato solo `ownerType='intervention'`. `private_intervention` e `intervention_dispute` sono deferiti rispettivamente alla mobile slice B2C e alla UI dispute response.
+
+#### Request
+
+```http
+GET /v1/attachments/01HKZE.../view-url
+Authorization: Bearer <officina_user_jwt>
+```
+
+**Path parameters:**
+
+| Nome | Tipo | Note |
+| --- | --- | --- |
+| `id` | uuid v4 | UUID dell'allegato. UUID malformato → `400 VALIDATION_ERROR`. |
+
+#### Response `200 OK`
+
+```json
+{
+  "url": "https://garageos-production-attachments.s3.eu-central-1.amazonaws.com/attachments/intervention/01HKXQ.../01HKZE....jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=900&X-Amz-Signature=...",
+  "expires_at": "2026-05-11T15:47:05.000Z"
+}
+```
+
+| Campo | Tipo | Note |
+| --- | --- | --- |
+| `url` | string | URL presigned S3 GET. Valido per 15 minuti da `expires_at`. |
+| `expires_at` | string (ISO 8601 UTC) | Scadenza dell'URL. Il client deve rigenerare chiamando di nuovo questo endpoint dopo la scadenza. |
+
+#### Errori
+
+| Status | Codice | Scenario |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `id` non è un UUID v4 valido |
+| 401 | (auth middleware) | Authorization header mancante o JWT non valido |
+| 403 | `auth.wrong_pool` | JWT proviene dal pool `clienti` invece di `officine` |
+| 404 | `attachment.not_found` | Allegato non trovato, non `processed`, `deletedAt != null`, o appartenente a un altro tenant |
+| 422 | `attachment.owner_not_supported` | `ownerType != 'intervention'` (es. `intervention_dispute`, `private_intervention`) |
+| 502 | `s3.unavailable` | AWS SDK presign fail (passthrough da `S3UnavailableError`) |
+
+#### Note
+
+- **Lazy presign**: l'URL non è precalcolato nel DTO del dettaglio intervento (§2.12). Il client deve chiamare questo endpoint separatamente per ogni allegato che vuole aprire o scaricare.
+- **Tenant scoping**: il filtro `attachment.tenantId` è enforced application-layer. `attachments_read` RLS è permissivo cross-tenant (stessa topologia di `interventions_read`); il guard esplicito `{id, tenantId}` è la linea di difesa principale.
+- **Processed-only**: allegati in stato `processed=false` (upload pendente) o `deletedAt != null` (soft-deleted) ritornano `404 attachment.not_found` — non vengono distinti per evitare information leakage.
+
+---
+
 ### 2.8 `GET /v1/customers/search` — Autocomplete cliente officina
 
 #### Descrizione
@@ -1085,6 +1147,135 @@ Authorization: Bearer <tenant_user_jwt>
 
 - BR-128: le risposte (`tenantResponse + tenantResponseAt + tenantResponseUserId`) sono **immutabili**. Questo endpoint le espone in sola lettura — non esiste un PATCH delle risposte.
 - Il POST response resta su `POST /v1/interventions/:id/dispute-response` (PR #28) e richiede ruolo `super_admin` o `mechanic`.
+- Vedi anche §2.12 per il DTO completo dell'intervento.
+
+---
+
+### 2.12 `GET /v1/interventions/:id` — Dettaglio intervento officina
+
+**Feature:** F-OFF-301
+**Auth:** Tenant User (officina pool — tutti i ruoli: `super_admin`, `admin`, `mechanic`, `receptionist`)
+**Rate limit:** standard utente
+**Business rules:** BR-062, BR-064, BR-065, BR-066, BR-128, BR-130, BR-150, BR-151
+
+#### Descrizione
+
+Restituisce il DTO completo di un singolo intervento officina, inclusi tipo, tenant, location, veicolo, operatore che ha creato il record, e lista degli allegati confermati. Pensato per popolare la detail page dell'intervento nella web app officina.
+
+`wiki_window_open` è computato server-side come predicato composito BR-062: `wikiLockedAt IS NULL AND firstSeenByCustomerAt IS NULL AND now() - createdAt < 48h`. Non viene esposto il raw `wikiLockedAt` per evitare che il client ri-derivi la logica con bug di time-zone (vedi memory `feedback_compute_composite_br_predicates_server_side.md`).
+
+#### Request
+
+```http
+GET /v1/interventions/01HKXQ.../
+Authorization: Bearer <officina_user_jwt>
+```
+
+**Path parameters:**
+
+| Nome | Tipo | Note |
+| --- | --- | --- |
+| `id` | uuid v4 | UUID dell'intervento. UUID malformato → `400 VALIDATION_ERROR`. |
+
+#### Response `200 OK`
+
+```jsonc
+{
+  "id": "01HKXQ...",
+  "status": "active",                      // "active" | "disputed" | "cancelled"
+  "is_disputed": false,                    // shortcut: status === 'disputed'
+  "wiki_window_open": true,                // server-computed BR-062 predicate
+  "intervention_date": "2026-04-21",       // date-only string YYYY-MM-DD
+  "odometer_km": 45000,
+  "created_at": "2026-04-21T14:32:05.000Z",
+  "cancelled_at": null,                    // ISO 8601 UTC | null
+  "cancelled_reason": null,                // string | null (BR-130)
+  "title": "Tagliando completo",
+  "description": "Sostituzione olio motore...",
+  "internal_notes": "Cliente segnala rumore...",  // string | null
+  "parts_replaced": [                      // array; empty array if none
+    { "name": "Olio motore Selenia 5W30", "code": "SEL-5W30-4L", "quantity": 4, "notes": "Litri" }
+  ],
+  "type": {
+    "id": "01HSYS...",
+    "code": "TAGLIANDO",
+    "name_it": "Tagliando"
+  },
+  "tenant": {
+    "id": "01HKXL0...",
+    "business_name": "Officina Rossi S.r.l."
+  },
+  "location": {
+    "id": "01HKXP3...",
+    "name": "Sede Milano",
+    "city": "Milano",
+    "address": "Via Roma 1"               // string | null
+  },
+  "vehicle": {
+    "id": "01HKXN5...",
+    "garage_code": "GO-482-KXRT",
+    "plate": "AB123CD",
+    "make": "Fiat",
+    "model": "Panda"
+  },
+  "created_by": {                          // null se l'utente è stato cancellato (SetNull FK)
+    "id": "01HKXP8...",
+    "first_name": "Giuseppe",
+    "last_name": "Ferrari"
+  },
+  "attachments": [                         // solo processed=true e deletedAt=null
+    {
+      "id": "01HKZE...",
+      "file_name": "foto-prima.jpg",
+      "mime_type": "image/jpeg",
+      "size_bytes": 2457600,
+      "created_at": "2026-05-04T14:32:10.000Z"
+    }
+  ]
+}
+```
+
+**Dettaglio campi:**
+
+| Campo | Tipo | Nullable | Note |
+| --- | --- | --- | --- |
+| `id` | string (uuid) | no | |
+| `status` | enum | no | `active \| disputed \| cancelled` |
+| `is_disputed` | boolean | no | Shortcut derivato: `status === 'disputed'` |
+| `wiki_window_open` | boolean | no | Server-computed BR-062 predicate. `true` = modifiche libere; `false` = ogni PATCH richiede `reason` ≥ 10 char (BR-064). |
+| `intervention_date` | string | no | YYYY-MM-DD, data dell'intervento |
+| `odometer_km` | integer | no | Km al momento dell'intervento |
+| `created_at` | string (ISO 8601) | no | |
+| `cancelled_at` | string (ISO 8601) | sì | Non null solo se `status='cancelled'` |
+| `cancelled_reason` | string | sì | Motivazione annullamento (BR-130) |
+| `title` | string | no | |
+| `description` | string | sì | |
+| `internal_notes` | string | sì | Visibile solo a Tenant User (BR-150/BR-151) |
+| `parts_replaced` | array | no | Array vuoto se nessun ricambio |
+| `type` | object | no | Tipo intervento (`id`, `code`, `name_it`) |
+| `tenant` | object | no | Tenant owner (`id`, `business_name`) |
+| `location` | object | no | Location di esecuzione |
+| `vehicle` | object | no | Veicolo target |
+| `created_by` | object | sì | `null` se l'utente è stato cancellato (FK `SetNull` on delete) |
+| `attachments` | array | no | Solo `processed=true` e `deletedAt=null`. Upload pendenti e soft-deleted sono nascosti. |
+
+Per ottenere l'URL di accesso a un allegato, chiamare `GET /v1/attachments/:id/view-url` (§2.7.1) con l'`id` di ogni elemento dell'array `attachments`.
+
+#### Errori
+
+| Status | Codice | Scenario |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `id` non è un UUID v4 valido |
+| 401 | (auth middleware) | Authorization header mancante o JWT non valido |
+| 403 | `auth.wrong_pool` | JWT proviene dal pool `clienti` invece di `officine` |
+| 404 | `intervention.not_found` | Intervento non trovato o non accessibile da questa officina |
+
+#### Note
+
+- **RLS topology**: `interventions_read` è permissivo cross-tenant (post migration 0003). Il lookup usa `findFirst({id, tenantId})` + null check manuale → `404`. Non usare `findUniqueOrThrow` che lascerebbe filtrare righe cross-tenant. Stesso pattern di §2.11 disputes list.
+- **`internal_notes` visibility**: esposto solo al Tenant User (BR-150). Il pool clienti non ha accesso a questo endpoint (403), quindi BR-151 è soddisfatto by-construction.
+- **`created_by` null**: quando l'utente che ha creato l'intervento è stato rimosso (soft-delete con `SetNull` sulla FK `userId`). Il client deve gestire il caso null nella UI.
+- **Attachments fetch**: gli allegati sono caricati con una seconda query separata dopo il guard di esistenza dell'intervento (`attachments` non ha una Prisma relation diretta su `Intervention`). Solo `processed=true` e `deletedAt=null` sono inclusi.
 
 ---
 
@@ -1177,10 +1368,10 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | POST | `/vehicles/:id/interventions` | F-OFF-301, F-OFF-308 | Tenant User | **[DETTAGLIATO §2.2]** Crea intervento |
-| GET | `/interventions/:id` | F-OFF-301 | Any User | Dettaglio intervento |
-| PATCH | `/interventions/:id` | F-OFF-304 | Tenant User | Modifica intervento (wiki rules) |
+| GET | `/interventions/:id` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.12]** Dettaglio intervento officina (BR-062 wiki_window_open, allegati confermati) |
+| PATCH | `/interventions/:id` | F-OFF-304 | Tenant User | Modifica intervento (wiki rules). Vedi §2.12 per read-after-write. |
 | POST | `/interventions/:id/cancel` | F-OFF-307 | Super Admin | Annulla intervento con motivazione |
-| GET | `/interventions/:id/revisions` | F-OFF-304 | Any User | Storico modifiche |
+| GET | `/interventions/:id/revisions` | F-OFF-304 | Any User | Storico modifiche. Vedi §2.12 per il DTO completo dell'intervento. |
 | POST | `/interventions/:id/dispute` | F-CLI-206 | Customer | **[DETTAGLIATO §2.6]** Contesta intervento |
 | POST | `/interventions/:id/dispute-response` | F-OFF-602 | Tenant User | **[DETTAGLIATO §2.6.1]** Risposta officina a contestazione |
 | GET | `/interventions/:id/disputes` | F-OFF-602 | Tenant User | **[DETTAGLIATO §2.11]** Lista contestazioni intervento |
@@ -1217,6 +1408,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 |---|---|---|---|---|
 | POST | `/attachments/upload-url` | F-OFF-305 | Tenant User | **[DETTAGLIATO §2.7]** Richiede presigned URL upload |
 | POST | `/attachments/:id/confirm` | F-OFF-305 | Tenant User | **[DETTAGLIATO §2.7]** Conferma upload completato |
+| GET | `/attachments/:id/view-url` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.7.1]** Presigned GET URL per visualizzare allegato (15 min, lazy per click) |
 | GET | `/attachments/:id` | (deferred) | - | Dettaglio attachment metadata (non shipped in v1) |
 | GET | `/attachments/:id/download-url` | F-OFF-305 | Any User | Presigned URL download (15 min validity) |
 | DELETE | `/attachments/:id` | F-OFF-305 | Any User | Rimuove allegato |
