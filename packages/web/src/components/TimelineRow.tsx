@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { formatDate, formatKm } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { DisputeResponseDialog } from '@/components/DisputeResponseDialog';
+import { EditInterventionDialog } from '@/components/EditInterventionDialog';
 import type { TimelineItem } from '@/queries/types';
 
 // Timeline row con expand/collapse inline. Surfacia description,
@@ -28,9 +29,11 @@ interface Props {
 export function TimelineRow({ item, vehicleId }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const panelId = useId();
 
   const isShop = item.kind === 'shop_intervention';
+  const isEditable = isShop && item.status === 'active';
   const title = isShop
     ? (item.title ?? item.type.name_it)
     : (item.custom_type ?? 'Intervento privato');
@@ -102,7 +105,11 @@ export function TimelineRow({ item, vehicleId }: Props) {
         )}
       >
         <div className="overflow-hidden">
-          <ExpandedPanel item={item} />
+          <ExpandedPanel
+            item={item}
+            isEditable={isEditable}
+            onEditClick={() => setEditDialogOpen(true)}
+          />
         </div>
       </div>
 
@@ -115,11 +122,27 @@ export function TimelineRow({ item, vehicleId }: Props) {
           onOpenChange={setDisputeDialogOpen}
         />
       )}
+      {isEditable && item.kind === 'shop_intervention' && (
+        <EditInterventionDialog
+          intervention={item}
+          vehicleId={vehicleId}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+        />
+      )}
     </div>
   );
 }
 
-function ExpandedPanel({ item }: { item: TimelineItem }) {
+function ExpandedPanel({
+  item,
+  isEditable,
+  onEditClick,
+}: {
+  item: TimelineItem;
+  isEditable: boolean;
+  onEditClick: () => void;
+}) {
   const description = item.description.trim();
   const isShop = item.kind === 'shop_intervention';
   const partsCount = isShop ? item.parts_replaced_count : 0;
@@ -144,6 +167,17 @@ function ExpandedPanel({ item }: { item: TimelineItem }) {
               Con allegati ({item.attachments_count})
             </Badge>
           )}
+        </div>
+      )}
+      {isEditable && (
+        <div>
+          <button
+            type="button"
+            onClick={onEditClick}
+            className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm px-1 -mx-1"
+          >
+            Modifica
+          </button>
         </div>
       )}
     </div>
