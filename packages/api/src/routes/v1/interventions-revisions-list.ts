@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import { decodeCompoundCursor, encodeCompoundCursor } from '../../lib/cursor.js';
+import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -69,13 +69,11 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const { id: interventionId } = idParamSchema.parse(request.params);
       const { limit, cursor: cursorRaw } = revisionsListQuerySchema.parse(request.query);
-      // decodeCompoundCursor only verifies that the field is a string; we
-      // additionally reject cursors whose `ra` slot is not a valid date,
-      // so a hand-crafted cursor like {"ra":"banana","id":"..."} returns
-      // page 1 instead of throwing RangeError downstream in new Date(...).
-      const rawCursor = decodeCompoundCursor('ra', cursorRaw);
-      const cursor =
-        rawCursor && !Number.isNaN(new Date(rawCursor.ra).getTime()) ? rawCursor : undefined;
+      // `ra` is a full ISO timestamp; decodeDateCompoundCursor guards
+      // against hand-crafted cursors with non-date payloads (returns
+      // undefined → page 1 fallback) so we never feed Invalid Date into
+      // the Prisma `where` clause below.
+      const cursor = decodeDateCompoundCursor('ra', cursorRaw, 'timestamp');
 
       const isOfficine = request.authPool === 'officine';
       const isClienti = request.authPool === 'clienti';

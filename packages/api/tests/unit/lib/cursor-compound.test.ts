@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { encodeCompoundCursor, decodeCompoundCursor } from '../../../src/lib/cursor.js';
+import {
+  decodeCompoundCursor,
+  decodeDateCompoundCursor,
+  encodeCompoundCursor,
+} from '../../../src/lib/cursor.js';
 
 describe('cursor compound helpers', () => {
   it('round-trips a single field+id pair', () => {
@@ -35,14 +39,10 @@ describe('cursor compound helpers', () => {
     expect(decodeCompoundCursor('ra', malformed)).toBeUndefined();
   });
 
-  it('does NOT validate semantic field content (helper is value-agnostic — callers must guard)', () => {
-    // The helper only checks that the field is a string. Callers that
-    // feed cursor.ra into `new Date(...)` must additionally guard against
-    // non-date string content (`!Number.isNaN(new Date(value).getTime())`)
-    // so a hand-crafted cursor like {"ra":"banana","id":"uuid"} returns
-    // a clean page-1 result instead of throwing RangeError downstream.
-    // See interventions-revisions-list.ts and vehicles-timeline.ts for
-    // the call-site guard pattern.
+  it('does NOT validate semantic field content (helper is value-agnostic — callers must use decodeDateCompoundCursor)', () => {
+    // decodeCompoundCursor only checks that the field is a string; it
+    // passes 'banana' through. Callers that feed cursor.ra into
+    // `new Date(...)` must use decodeDateCompoundCursor (below) instead.
     const hostile = Buffer.from(
       JSON.stringify({ ra: 'banana', id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }),
       'utf8',
@@ -52,7 +52,46 @@ describe('cursor compound helpers', () => {
       ra: 'banana',
       id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
     });
-    // ...and the corresponding caller-side guard would reject it:
-    expect(Number.isNaN(new Date(decoded!.ra).getTime())).toBe(true);
+  });
+});
+
+describe('decodeDateCompoundCursor', () => {
+  it('accepts a valid ISO timestamp (format=timestamp)', () => {
+    const cursor = encodeCompoundCursor('ra', '2026-04-05T14:00:00.000Z', 'uuid-1');
+    const decoded = decodeDateCompoundCursor('ra', cursor, 'timestamp');
+    expect(decoded).toEqual({ ra: '2026-04-05T14:00:00.000Z', id: 'uuid-1' });
+  });
+
+  it('accepts a valid date-only YYYY-MM-DD (format=date)', () => {
+    const cursor = encodeCompoundCursor('d', '2026-04-05', 'uuid-2');
+    const decoded = decodeDateCompoundCursor('d', cursor, 'date');
+    expect(decoded).toEqual({ d: '2026-04-05', id: 'uuid-2' });
+  });
+
+  it('returns undefined when field value is a non-date string (timestamp format)', () => {
+    const hostile = Buffer.from(JSON.stringify({ ra: 'banana', id: 'uuid-3' }), 'utf8').toString(
+      'base64url',
+    );
+    expect(decodeDateCompoundCursor('ra', hostile, 'timestamp')).toBeUndefined();
+  });
+
+  it('returns undefined when field value is a non-date string (date format)', () => {
+    const hostile = Buffer.from(JSON.stringify({ d: 'banana', id: 'uuid-4' }), 'utf8').toString(
+      'base64url',
+    );
+    expect(decodeDateCompoundCursor('d', hostile, 'date')).toBeUndefined();
+  });
+
+  it('returns undefined when cursor itself is undefined', () => {
+    expect(decodeDateCompoundCursor('ra', undefined, 'timestamp')).toBeUndefined();
+  });
+
+  it('returns undefined when cursor is malformed base64', () => {
+    expect(decodeDateCompoundCursor('ra', 'not-base64!!!', 'timestamp')).toBeUndefined();
+  });
+
+  it('returns undefined when field is missing from decoded JSON', () => {
+    const cursor = encodeCompoundCursor('ra', '2026-04-05T14:00:00.000Z', 'uuid');
+    expect(decodeDateCompoundCursor('d', cursor, 'date')).toBeUndefined();
   });
 });

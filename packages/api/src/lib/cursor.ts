@@ -63,3 +63,34 @@ export function decodeCompoundCursor<F extends string>(
     return undefined;
   }
 }
+
+// Compound cursor where the field is a date or timestamp. Wraps
+// decodeCompoundCursor with a date-validity guard so a hand-crafted
+// cursor like {"ra":"banana","id":"valid-uuid"} returns `undefined` (page
+// 1 fallback) instead of letting `new Date(...)` produce an Invalid Date
+// that throws RangeError when serialized for Prisma.
+//
+// Two formats are supported because consumers carry different time
+// granularity in the cursor field:
+//   - 'timestamp': field is a full ISO timestamp (e.g. revisedAt -> 'ra'),
+//     parsed as-is by `new Date(value)`.
+//   - 'date': field is a date-only string 'YYYY-MM-DD' (e.g. timeline
+//     interventionDate -> 'd'), parsed as `new Date(value + 'T00:00:00.000Z')`
+//     so the UTC suffix avoids local-midnight ambiguity.
+//
+// Adding a new compound consumer with a different time format should
+// extend the union here rather than reimplementing the guard at the call
+// site.
+
+export function decodeDateCompoundCursor<F extends string>(
+  field: F,
+  cursor: string | undefined,
+  format: 'timestamp' | 'date',
+): ({ [K in F]: string } & { id: string }) | undefined {
+  const decoded = decodeCompoundCursor(field, cursor);
+  if (!decoded) return undefined;
+  const raw = decoded[field];
+  const dateInput = format === 'date' ? `${raw}T00:00:00.000Z` : raw;
+  if (Number.isNaN(new Date(dateInput).getTime())) return undefined;
+  return decoded;
+}
