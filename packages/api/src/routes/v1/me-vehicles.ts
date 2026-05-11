@@ -1,8 +1,7 @@
-import { Buffer } from 'node:buffer';
-
 import type { FastifyError, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
+import { decodeCursor, encodeCursor } from '../../lib/cursor.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
@@ -34,25 +33,6 @@ function businessError(code: string, status: number, detail: string): FastifyErr
   err.name = code;
   err.statusCode = status;
   return err;
-}
-
-// Cursor uses the ownership id (stable, monotonic-ish per customer
-// sign-up) rather than the vehicle id — the underlying query orders by
-// VehicleOwnership.id so paging is consistent with the SQL ORDER BY.
-function encodeCursor(id: string): string {
-  return Buffer.from(JSON.stringify({ id }), 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor: string | undefined): string | undefined {
-  if (!cursor) return undefined;
-  try {
-    const obj = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
-      id?: string;
-    };
-    return typeof obj.id === 'string' ? obj.id : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 // Vehicle projection used by both endpoints. Mirrors the officine list

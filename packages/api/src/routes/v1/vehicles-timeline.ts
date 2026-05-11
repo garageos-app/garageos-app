@@ -1,8 +1,7 @@
-import { Buffer } from 'node:buffer';
-
 import type { FastifyError, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
+import { decodeCompoundCursor, encodeCompoundCursor } from '../../lib/cursor.js';
 import { isWikiWindowOpen } from '../../lib/intervention-shared.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
@@ -29,30 +28,6 @@ const timelineQuerySchema = z.object({
     .optional(),
 });
 
-interface TimelineCursor {
-  d: string; // ISO 'YYYY-MM-DD' of the last item's interventionDate
-  id: string; // UUID of the last item, tie-breaker
-}
-
-function encodeCursor(c: TimelineCursor): string {
-  return Buffer.from(JSON.stringify(c), 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor: string | undefined): TimelineCursor | undefined {
-  if (!cursor) return undefined;
-  try {
-    const obj = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
-      d?: string;
-      id?: string;
-    };
-    if (typeof obj.d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(obj.d)) return undefined;
-    if (typeof obj.id !== 'string') return undefined;
-    return { d: obj.d, id: obj.id };
-  } catch {
-    return undefined;
-  }
-}
-
 function businessError(code: string, status: number, detail: string): FastifyError {
   const err = new Error(detail) as FastifyError;
   err.name = code;
@@ -66,6 +41,7 @@ function businessError(code: string, status: number, detail: string): FastifyErr
 //   - optional cursor predicate "(date < cD) OR (date = cD AND id < cId)"
 // Extra fields (status filter for officina, soft-delete for private) are
 // merged in by the caller via the spread.
+type TimelineCursor = { d: string; id: string };
 type DateWindow = { fromDateUtc?: Date; toDateUtc?: Date; cursor?: TimelineCursor };
 
 function buildVehicleDateCursorWhere(vehicleId: string, opts: DateWindow): Record<string, unknown> {
@@ -143,7 +119,7 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         ? new Date(`${query.from_date}T00:00:00.000Z`)
         : undefined;
       const toDateUtc = query.to_date ? new Date(`${query.to_date}T00:00:00.000Z`) : undefined;
-      const cursor = decodeCursor(query.cursor);
+      const cursor = decodeCompoundCursor('d', query.cursor);
 
       const wantShop = query.type === 'all' || query.type === 'shop_only';
       const wantPrivate = query.type === 'all' || query.type === 'private_only';
@@ -346,10 +322,11 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
             has_more: hasMore,
             ...(hasMore && lastItem
               ? {
-                  cursor: encodeCursor({
-                    d: lastItem.row.interventionDate.toISOString().slice(0, 10),
-                    id: lastItem.row.id,
-                  }),
+                  cursor: encodeCompoundCursor(
+                    'd',
+                    lastItem.row.interventionDate.toISOString().slice(0, 10),
+                    lastItem.row.id,
+                  ),
                 }
               : {}),
             total_interventions: data.length,
