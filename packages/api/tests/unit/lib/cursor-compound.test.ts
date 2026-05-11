@@ -34,4 +34,25 @@ describe('cursor compound helpers', () => {
     );
     expect(decodeCompoundCursor('ra', malformed)).toBeUndefined();
   });
+
+  it('does NOT validate semantic field content (helper is value-agnostic — callers must guard)', () => {
+    // The helper only checks that the field is a string. Callers that
+    // feed cursor.ra into `new Date(...)` must additionally guard against
+    // non-date string content (`!Number.isNaN(new Date(value).getTime())`)
+    // so a hand-crafted cursor like {"ra":"banana","id":"uuid"} returns
+    // a clean page-1 result instead of throwing RangeError downstream.
+    // See interventions-revisions-list.ts and vehicles-timeline.ts for
+    // the call-site guard pattern.
+    const hostile = Buffer.from(
+      JSON.stringify({ ra: 'banana', id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }),
+      'utf8',
+    ).toString('base64url');
+    const decoded = decodeCompoundCursor('ra', hostile);
+    expect(decoded).toEqual({
+      ra: 'banana',
+      id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    });
+    // ...and the corresponding caller-side guard would reject it:
+    expect(Number.isNaN(new Date(decoded!.ra).getTime())).toBe(true);
+  });
 });

@@ -119,7 +119,15 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         ? new Date(`${query.from_date}T00:00:00.000Z`)
         : undefined;
       const toDateUtc = query.to_date ? new Date(`${query.to_date}T00:00:00.000Z`) : undefined;
-      const cursor = decodeCompoundCursor('d', query.cursor);
+      // decodeCompoundCursor only verifies that the field is a string; we
+      // additionally reject cursors whose `d` slot is not a valid date so a
+      // hand-crafted cursor like {"d":"banana","id":"..."} returns page 1
+      // instead of throwing RangeError downstream in new Date(`${d}T...`).
+      const rawCursor = decodeCompoundCursor('d', query.cursor);
+      const cursor =
+        rawCursor && !Number.isNaN(new Date(`${rawCursor.d}T00:00:00.000Z`).getTime())
+          ? rawCursor
+          : undefined;
 
       const wantShop = query.type === 'all' || query.type === 'shop_only';
       const wantPrivate = query.type === 'all' || query.type === 'private_only';

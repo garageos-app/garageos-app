@@ -69,7 +69,13 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const { id: interventionId } = idParamSchema.parse(request.params);
       const { limit, cursor: cursorRaw } = revisionsListQuerySchema.parse(request.query);
-      const cursor = decodeCompoundCursor('ra', cursorRaw);
+      // decodeCompoundCursor only verifies that the field is a string; we
+      // additionally reject cursors whose `ra` slot is not a valid date,
+      // so a hand-crafted cursor like {"ra":"banana","id":"..."} returns
+      // page 1 instead of throwing RangeError downstream in new Date(...).
+      const rawCursor = decodeCompoundCursor('ra', cursorRaw);
+      const cursor =
+        rawCursor && !Number.isNaN(new Date(rawCursor.ra).getTime()) ? rawCursor : undefined;
 
       const isOfficine = request.authPool === 'officine';
       const isClienti = request.authPool === 'clienti';
