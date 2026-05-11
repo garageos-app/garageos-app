@@ -72,12 +72,13 @@ export interface ShopTimelineItem {
   id: string;
   intervention_date: string;
   odometer_km: number;
-  type: { code: string; name_it: string };
+  type: { id: string; code: string; name_it: string };
   title: string | null;
   description: string;
   parts_replaced_count: number;
   status: string;
   is_disputed: boolean;
+  wiki_locked_at: string | null;
   tenant: { business_name: string; location_city: string };
   has_attachments: boolean;
   attachments_count: number;

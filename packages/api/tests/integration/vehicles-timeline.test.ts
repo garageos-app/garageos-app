@@ -96,7 +96,13 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
-      data: Array<{ kind: string; title?: string; tenant?: { business_name: string } }>;
+      data: Array<{
+        kind: string;
+        title?: string;
+        tenant?: { business_name: string };
+        wiki_locked_at?: string | null;
+        type?: { id: string; code: string; name_it: string };
+      }>;
       meta: { shop_count: number; private_count: number };
     };
     expect(body.meta.shop_count).toBe(2);
@@ -105,6 +111,64 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const titles = body.data.map((d) => d.title ?? '');
     expect(titles).toContain('Tagliando A');
     expect(titles).toContain('Tagliando B');
+    const row = body.data[0]!;
+    expect(row.kind).toBe('shop_intervention');
+    expect(row.wiki_locked_at).toBeNull();
+    expect(row.type!.id).toBe(tagliando.id);
+  });
+
+  it('surfaces wiki_locked_at as ISO string when intervention is locked', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('tl-wiki-lock');
+    const cognitoSub = 'eeeeeeee-5555-4555-8555-555555555555';
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { customerId } = await createCustomer({});
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    await createOwnership({ vehicleId, customerId });
+    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+
+    const lockedAt = new Date('2026-05-01T10:00:00.000Z');
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: tagliando.id,
+      interventionDate: '2026-04-20',
+      odometerKm: 48000,
+      title: 'Tagliando bloccato',
+      wikiLockedAt: lockedAt,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${vehicleId}/timeline`,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: '10.20.30.41',
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{
+        id: string;
+        wiki_locked_at: string | null;
+        type: { id: string; code: string; name_it: string };
+      }>;
+    };
+    const found = body.data.find((r) => r.id === interventionId);
+    expect(found).toBeDefined();
+    expect(found!.wiki_locked_at).toBe(lockedAt.toISOString());
+    expect(found!.type).toMatchObject({
+      id: tagliando.id,
+      code: 'TAGLIANDO',
+      name_it: 'Tagliando',
+    });
   });
 
   it('officine pool never sees private_interventions in the timeline', async () => {

@@ -523,12 +523,13 @@ Authorization: Bearer <any_user_jwt>
       "id": "01HKXQ...",
       "intervention_date": "2026-04-21",
       "odometer_km": 45000,
-      "type": { "code": "TAGLIANDO", "name_it": "Tagliando" },
+      "type": { "id": "uuid...", "code": "TAGLIANDO", "name_it": "Tagliando" },
       "title": "Tagliando completo",
       "description": "...",
       "parts_replaced_count": 4,
       "status": "active",
       "is_disputed": false,
+      "wiki_locked_at": null,
       "tenant": {
         "business_name": "Officina Rossi S.r.l.",
         "location_city": "Milano"
@@ -555,6 +556,15 @@ Authorization: Bearer <any_user_jwt>
   }
 }
 ```
+
+#### Campi `shop_intervention` (selezione)
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `type.id` | string (uuid) | Intervention type UUID. Used by clients that need to populate edit forms with the current type. |
+| `type.code` | string | Codice mnemonico (es. `TAGLIANDO`). |
+| `type.name_it` | string | Nome localizzato italiano. |
+| `wiki_locked_at` | string \| null | ISO 8601 UTC timestamp. `null` = wiki window open (free edits per BR-062). Non-null = locked; subsequent PATCH requires `reason` ≥10 chars per BR-064. |
 
 #### Regole di visibilità
 

@@ -20,17 +20,28 @@ vi.mock('./DisputeResponseDialog', () => ({
   }) => (open ? <div data-testid={`dialog-open-${interventionId}-${vehicleId}`} /> : null),
 }));
 
+vi.mock('./EditInterventionDialog', () => ({
+  EditInterventionDialog: ({
+    open,
+    intervention,
+  }: {
+    open: boolean;
+    intervention: { id: string };
+  }) => (open ? <div data-testid={`edit-dialog-open-${intervention.id}`} /> : null),
+}));
+
 const SHOP_ITEM: ShopTimelineItem = {
   kind: 'shop_intervention',
   id: 'shop-1',
   intervention_date: '2025-03-15T10:00:00Z',
   odometer_km: 30200,
-  type: { code: 'TAGLIANDO', name_it: 'Tagliando' },
+  type: { id: 'type-tagliando', code: 'TAGLIANDO', name_it: 'Tagliando' },
   title: 'Tagliando 30000 km',
   description: 'Cambio olio motore e filtro olio.\nSostituiti dischi anteriori e pastiglie.',
   parts_replaced_count: 3,
   status: 'active',
   is_disputed: false,
+  wiki_locked_at: null,
   tenant: { business_name: 'Officina Rossi', location_city: 'Milano' },
   has_attachments: true,
   attachments_count: 2,
@@ -39,6 +50,7 @@ const SHOP_ITEM: ShopTimelineItem = {
 const SHOP_ITEM_DISPUTED: ShopTimelineItem = {
   ...SHOP_ITEM,
   id: 'shop-disputed',
+  status: 'disputed',
   is_disputed: true,
   title: 'Cambio frizione',
   description: 'Sostituzione frizione completa.',
@@ -212,5 +224,46 @@ describe('TimelineRow — dispute dialog wiring', () => {
       'aria-expanded',
       'false',
     );
+  });
+});
+
+describe('TimelineRow — edit affordance', () => {
+  const SHOP_ITEM_CANCELLED: ShopTimelineItem = {
+    ...SHOP_ITEM,
+    id: 'shop-cancelled',
+    status: 'cancelled',
+  };
+
+  it('shows "Modifica" button in expanded panel when status=active', async () => {
+    const user = userEvent.setup();
+    renderRow(SHOP_ITEM);
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
+
+    expect(screen.getByRole('button', { name: 'Modifica' })).toBeInTheDocument();
+  });
+
+  it('hides "Modifica" button when status=disputed', async () => {
+    const user = userEvent.setup();
+    renderRow(SHOP_ITEM_DISPUTED);
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
+
+    expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
+  });
+
+  it('hides "Modifica" button when status=cancelled', async () => {
+    const user = userEvent.setup();
+    renderRow(SHOP_ITEM_CANCELLED);
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
+
+    expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
+  });
+
+  it('clicking "Modifica" mounts EditInterventionDialog with open=true', async () => {
+    const user = userEvent.setup();
+    renderRow(SHOP_ITEM);
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
+    await user.click(screen.getByRole('button', { name: 'Modifica' }));
+
+    expect(screen.getByTestId(`edit-dialog-open-${SHOP_ITEM.id}`)).toBeInTheDocument();
   });
 });
