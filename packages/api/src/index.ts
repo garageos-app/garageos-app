@@ -37,8 +37,17 @@ const schedulerHandler = (detail: SchedulerInvocationDetail): Promise<SchedulerI
     detail,
   });
 
+// Warmup callback: exercise the DB connection pool so the first real
+// request after a cold container spawn does not pay the ~3-5s Prisma
+// $connect cost. Runs every ~5 min during business hours (cron in
+// SchedulerConstruct). See the rationale in lambda-warming.ts.
+const warmup = async (): Promise<void> => {
+  await app.prisma.$queryRaw`SELECT 1`;
+};
+
 export const handler = withWarmingGuard(
   withSchedulerGuard(schedulerHandler)(awsLambdaFastify(app)),
+  warmup,
 );
 
 if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
