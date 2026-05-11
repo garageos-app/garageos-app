@@ -92,8 +92,9 @@ revision row creation are already in place.
 ### Web — files modified
 
 - **`packages/web/src/components/TimelineRow.tsx`** — add an "Modifica"
-  button inside the expanded panel (visible only if `status` ∈
-  {`created`, `reviewed`}); wire it to a controlled `<EditInterventionDialog>`.
+  button inside the expanded panel (visible only if `status === 'active'`,
+  the sole editable status in the `InterventionStatus` enum `{active,
+  disputed, cancelled}`); wire it to a controlled `<EditInterventionDialog>`.
   Add `wikiLockedAt: string | null` to consumed `TimelineItem` props.
 - **`packages/web/src/components/TimelineRow.test.tsx`** — 3 new scenarios
   (button visible for active status, hidden for `cancelled` and `disputed`,
@@ -120,12 +121,13 @@ revision row creation are already in place.
 ### Opening the dialog
 
 1. User expands a timeline row in `TimelineRow.tsx`.
-2. If `status ∈ { 'created', 'reviewed' }`, the expanded panel renders a
-   "Modifica" button in the action bar inside the expanded panel.
-   "Modifica" and "Rispondi disputa" are mutually exclusive (the dispute
-   response action is gated by `is_disputed === true` ⇒ `status ===
-   'disputed'`, which is one of the hidden cases for "Modifica"), so the
-   action bar shows exactly one primary action at a time.
+2. If `status === 'active'` (the only editable value of the
+   `InterventionStatus` enum), the expanded panel renders a "Modifica"
+   button in the action bar inside the expanded panel. "Modifica" and
+   "Rispondi disputa" are mutually exclusive (the dispute response
+   action is gated by `is_disputed === true` ⇒ `status === 'disputed'`,
+   which is one of the hidden cases for "Modifica"), so the action bar
+   shows exactly one primary action at a time.
 3. Click toggles a local `editOpen` state. `<EditInterventionDialog
    open={editOpen} onOpenChange={setEditOpen} intervention={item}
    vehicleId={vehicleId} />` mounts.
@@ -360,7 +362,7 @@ form via direct DOM queries inside the rendered children).
 `packages/web/src/components/TimelineRow.test.tsx` (3 new scenarios on top
 of existing 14):
 
-1. "Modifica" button visible in expanded panel when `status === 'created'`.
+1. "Modifica" button visible in expanded panel when `status === 'active'`.
 2. Button hidden when `status === 'disputed'`.
 3. Button hidden when `status === 'cancelled'`.
 4. Click on "Modifica" opens `EditInterventionDialog` (verified via the
