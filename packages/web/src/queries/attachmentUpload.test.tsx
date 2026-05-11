@@ -151,10 +151,14 @@ describe('useAttachmentUpload', () => {
       xhr.resolveSuccess(200);
     });
 
-    // Wait for confirm call
+    // Wait for confirm call. Body is `'{}'` (not absent) because the backend's
+    // Fastify body parser rejects empty bodies when Content-Type is application/json
+    // (which useApiFetch hard-codes). The spec calls for no meaningful payload —
+    // the empty object satisfies both ends.
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
     expect(apiFetchMock).toHaveBeenNthCalledWith(2, `/v1/attachments/${ATTACHMENT_ID}/confirm`, {
       method: 'POST',
+      body: '{}',
     });
 
     await uploadPromise;
