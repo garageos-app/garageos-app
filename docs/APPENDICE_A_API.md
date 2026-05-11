@@ -529,7 +529,7 @@ Authorization: Bearer <any_user_jwt>
       "parts_replaced_count": 4,
       "status": "active",
       "is_disputed": false,
-      "wiki_locked_at": null,
+      "wiki_window_open": true,
       "tenant": {
         "business_name": "Officina Rossi S.r.l.",
         "location_city": "Milano"
@@ -564,7 +564,7 @@ Authorization: Bearer <any_user_jwt>
 | `type.id` | string (uuid) | Intervention type UUID. Used by clients that need to populate edit forms with the current type. |
 | `type.code` | string | Codice mnemonico (es. `TAGLIANDO`). |
 | `type.name_it` | string | Nome localizzato italiano. |
-| `wiki_locked_at` | string \| null | ISO 8601 UTC timestamp. `null` = wiki window open (free edits per BR-062). Non-null = locked; subsequent PATCH requires `reason` ≥10 chars per BR-064. |
+| `wiki_window_open` | boolean | Server-computed BR-062 predicate. `true` = free edits, no revision row created. `false` = audit active; subsequent PATCH requires `reason` ≥10 chars per BR-064. Computed from `wikiLockedAt IS NULL AND firstSeenByCustomerAt IS NULL AND now() - createdAt < 48h`. |
 
 #### Regole di visibilità
 

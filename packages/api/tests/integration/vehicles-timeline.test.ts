@@ -100,7 +100,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
         kind: string;
         title?: string;
         tenant?: { business_name: string };
-        wiki_locked_at?: string | null;
+        wiki_window_open?: boolean;
         type?: { id: string; code: string; name_it: string };
       }>;
       meta: { shop_count: number; private_count: number };
@@ -113,11 +113,13 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     expect(titles).toContain('Tagliando B');
     const row = body.data[0]!;
     expect(row.kind).toBe('shop_intervention');
-    expect(row.wiki_locked_at).toBeNull();
+    // Interventions created in this test are < 48h old, never seen,
+    // and have no wikiLockedAt → wiki window must be open.
+    expect(row.wiki_window_open).toBe(true);
     expect(row.type!.id).toBe(tagliando.id);
   });
 
-  it('surfaces wiki_locked_at as ISO string when intervention is locked', async () => {
+  it('computes wiki_window_open=false when wikiLockedAt is set', async () => {
     const { tenantId, locationId } = await createTenantWithLocation('tl-wiki-lock');
     const cognitoSub = 'eeeeeeee-5555-4555-8555-555555555555';
     const { userId } = await createUser({ tenantId, cognitoSub, locationId });
@@ -157,18 +159,70 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const body = res.json() as {
       data: Array<{
         id: string;
-        wiki_locked_at: string | null;
+        wiki_window_open: boolean;
         type: { id: string; code: string; name_it: string };
       }>;
     };
     const found = body.data.find((r) => r.id === interventionId);
     expect(found).toBeDefined();
-    expect(found!.wiki_locked_at).toBe(lockedAt.toISOString());
+    expect(found!.wiki_window_open).toBe(false);
     expect(found!.type).toMatchObject({
       id: tagliando.id,
       code: 'TAGLIANDO',
       name_it: 'Tagliando',
     });
+  });
+
+  it('computes wiki_window_open=false when createdAt is older than 48h even if wikiLockedAt is null', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('tl-wiki-aged');
+    const cognitoSub = 'eeeeeeee-6666-4666-8666-666666666666';
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { customerId } = await createCustomer({});
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    await createOwnership({ vehicleId, customerId });
+    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: tagliando.id,
+      interventionDate: '2026-04-20',
+      odometerKm: 48000,
+      title: 'Tagliando vecchio',
+    });
+
+    // Force createdAt to 49h ago without touching wikiLockedAt (which
+    // is what production looks like when nobody has triggered the
+    // lock-persist via a PATCH or a customer-side first-seen yet).
+    const fortyNineHoursAgo = new Date(Date.now() - 49 * 60 * 60 * 1000);
+    await pgAdmin.query('UPDATE interventions SET created_at = $1 WHERE id = $2', [
+      fortyNineHoursAgo,
+      interventionId,
+    ]);
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${vehicleId}/timeline`,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: '10.20.30.42',
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{ id: string; wiki_window_open: boolean }>;
+    };
+    const found = body.data.find((r) => r.id === interventionId);
+    expect(found).toBeDefined();
+    expect(found!.wiki_window_open).toBe(false);
   });
 
   it('officine pool never sees private_interventions in the timeline', async () => {
