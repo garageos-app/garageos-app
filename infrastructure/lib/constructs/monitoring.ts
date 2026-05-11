@@ -81,9 +81,19 @@ export class MonitoringConstruct extends Construct {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     }).addAlarmAction(new cw_actions.SnsAction(this.alertTopic));
 
+    // Threshold tuned to demo-phase reality: with the warming schedule
+    // exercising Prisma every ~5 min during business hours (08-20 Europe/Rome,
+    // MON-SAT), warm p95 sits well under 1s. The 5000ms threshold absorbs the
+    // residual cold-start tail when AWS recycles a container outside the
+    // warming window (e.g. weekend traffic, off-hours, or a 2nd concurrent
+    // invocation that spawns a fresh container) without paging on every such
+    // event. Tighten to ~1500ms at pilot beta when Provisioned Concurrency
+    // becomes economically defensible. See feedback memory for the
+    // investigation chain: warming guard + Prisma warmup callback (PR after
+    // #88) was the actual fix for the customer-facing 10s first-hit.
     new cloudwatch.Alarm(this, 'LambdaHighDuration', {
       alarmName: 'garageos-api-lambda-duration',
-      alarmDescription: 'Lambda p95 duration > 3s over 5 minutes',
+      alarmDescription: 'Lambda p95 duration > 5s over 5 minutes (demo-phase tuned)',
       metric: new cloudwatch.Metric({
         namespace: 'AWS/Lambda',
         metricName: 'Duration',
@@ -91,7 +101,7 @@ export class MonitoringConstruct extends Construct {
         statistic: 'p95',
         period: cdk.Duration.minutes(5),
       }),
-      threshold: 3000,
+      threshold: 5000,
       evaluationPeriods: 2,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
     }).addAlarmAction(new cw_actions.SnsAction(this.alertTopic));

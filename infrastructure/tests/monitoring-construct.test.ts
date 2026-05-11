@@ -52,14 +52,14 @@ describe('MonitoringConstruct', () => {
     );
   });
 
-  it('creates LambdaHighDuration alarm p95 > 3000ms with 2 evaluation periods', () => {
+  it('creates LambdaHighDuration alarm p95 > 5000ms with 2 evaluation periods', () => {
     const { stack } = buildStack();
     const template = Template.fromStack(stack);
     template.hasResourceProperties(
       'AWS::CloudWatch::Alarm',
       Match.objectLike({
         AlarmName: 'garageos-api-lambda-duration',
-        Threshold: 3000,
+        Threshold: 5000,
         EvaluationPeriods: 2,
         MetricName: 'Duration',
         Namespace: 'AWS/Lambda',
