@@ -25,7 +25,10 @@ export function Dashboard() {
         <Button
           type="button"
           role="tab"
+          id="tab-vehicle"
+          aria-controls="panel-vehicle"
           aria-selected={tab === 'vehicle'}
+          tabIndex={tab === 'vehicle' ? 0 : -1}
           variant={tab === 'vehicle' ? 'default' : 'outline'}
           onClick={() => setTab('vehicle')}
         >
@@ -34,7 +37,10 @@ export function Dashboard() {
         <Button
           type="button"
           role="tab"
+          id="tab-customer"
+          aria-controls="panel-customer"
           aria-selected={tab === 'customer'}
+          tabIndex={tab === 'customer' ? 0 : -1}
           variant={tab === 'customer' ? 'default' : 'outline'}
           onClick={() => setTab('customer')}
         >
@@ -42,7 +48,13 @@ export function Dashboard() {
         </Button>
       </div>
 
-      {tab === 'vehicle' ? <VehicleSearchForm /> : <CustomerSearchPanel />}
+      <div
+        role="tabpanel"
+        id={tab === 'vehicle' ? 'panel-vehicle' : 'panel-customer'}
+        aria-labelledby={tab === 'vehicle' ? 'tab-vehicle' : 'tab-customer'}
+      >
+        {tab === 'vehicle' ? <VehicleSearchForm /> : <CustomerSearchPanel />}
+      </div>
     </div>
   );
 }
