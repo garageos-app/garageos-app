@@ -117,8 +117,14 @@ export function DisputeResponseDialog({
         const mapped = mapResponseError(err);
         toast.error(mapped.message);
         if (mapped.closeDialog) {
+          // Dialog is closing — child unmounts. Do NOT re-throw, else
+          // DisputeResponseCard.finally runs setSubmitting(false) on an
+          // unmounted form and React 18 warns. The user cannot retry an
+          // auth-guard error from the same dialog anyway.
           onOpenChange(false);
-        } else if (mapped.autoRefetch) {
+          return;
+        }
+        if (mapped.autoRefetch) {
           await query.refetch();
         }
       } else {
