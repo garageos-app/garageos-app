@@ -1,15 +1,12 @@
 import { z } from 'zod';
 
-// BR-071 — parts_replaced item shape. Mirrors PartReplacedSchema from
-// @garageos/database (intervention.ts:8-13). Defined locally because
-// @garageos/database is not a dependency of @garageos/web — the same
-// approach used by intervention.ts (create form).
-const PartReplacedSchema = z.object({
-  name: z.string().min(1).max(200),
-  code: z.string().max(50).optional(),
-  quantity: z.number().positive(),
-  notes: z.string().max(200).optional(),
-});
+// BR-071 — parts_replaced item shape. Re-exported from the web-local
+// BasePartReplacedSchema (see lib/validators/parts-replaced.ts) which mirrors
+// the backend authoritative schema in @garageos/database. Edit form uses the
+// base schema unchanged — quantity is decimal-permissive (positive, not
+// integer-only), matching backend behavior (e.g. 0.5L oil quantities).
+import { BasePartReplacedSchema as PartReplacedSchema } from './parts-replaced';
+export { PartReplacedSchema };
 
 // Mirrors @garageos/database UpdateInterventionSchema for the 5 BR-065
 // editable fields, with two intentional divergences:
