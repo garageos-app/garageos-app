@@ -1,3 +1,7 @@
+import type { InterventionStatus } from '@/lib/types/intervention';
+
+export type { InterventionStatus };
+
 export type VehicleStatus = 'pending' | 'certified' | 'archived';
 export type VehicleType = 'auto' | 'moto' | 'commercial' | 'agricultural';
 export type FuelType = 'gasoline' | 'diesel' | 'lpg' | 'cng' | 'electric' | 'hybrid';
@@ -332,7 +336,7 @@ export interface InterventionAttachment {
 
 export interface InterventionDetail {
   id: string;
-  status: 'active' | 'disputed' | 'cancelled';
+  status: InterventionStatus;
   is_disputed: boolean;
   wiki_window_open: boolean;
   intervention_date: string;

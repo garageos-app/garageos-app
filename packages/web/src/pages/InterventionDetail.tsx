@@ -50,8 +50,8 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
     tenant: {
       business_name: d.tenant.business_name,
       // ShopTimelineItem.tenant.location_city maps to the location.city
-      // from the richer DTO.
-      location_city: d.location.city,
+      // from the richer DTO. Defensive fallback mirrors the Sede tile guard.
+      location_city: d.location?.city ?? '',
     },
     has_attachments: d.attachments.length > 0,
     attachments_count: d.attachments.length,
@@ -164,7 +164,11 @@ export function InterventionDetail() {
         <Tile label="Officina" value={i.tenant.business_name} />
         <Tile
           label="Sede"
-          value={`${i.location.city}${i.location.name ? ' · ' + i.location.name : ''}`}
+          value={
+            i.location?.city
+              ? `${i.location.city}${i.location.name ? ' · ' + i.location.name : ''}`
+              : '—'
+          }
         />
         <Tile
           label="Operatore"
