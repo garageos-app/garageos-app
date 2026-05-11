@@ -5,9 +5,14 @@ import { Input } from '@/components/ui/input';
 import type { BasePartReplaced } from '@/lib/validators/parts-replaced';
 
 // Form values must include a `partsReplaced` array of BasePartReplaced.
-// Both CreateInterventionFormValues and EditInterventionFormValues
-// satisfy this constraint, so PartsRepeater is reusable across forms
-// without an unsound cast.
+// CreateInterventionFormValues satisfies this strictly (required array).
+// EditInterventionFormValues declares `partsReplaced` as optional at the
+// schema level (omitted PATCH bodies are sparse), but EditInterventionDialog
+// always initializes the form state with `partsReplaced: []`, so at the
+// PartsRepeater mount point the field is structurally present. Both
+// usage sites omit the explicit type argument and rely on inference from
+// the surrounding FormProvider — the constraint above is documentary, not
+// a runtime check at the call site.
 type PartsFormValues = FieldValues & { partsReplaced: BasePartReplaced[] };
 
 export function PartsRepeater<TFormValues extends PartsFormValues>() {

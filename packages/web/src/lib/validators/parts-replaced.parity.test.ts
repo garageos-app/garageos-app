@@ -6,10 +6,13 @@ import { BasePartReplacedSchema } from './parts-replaced';
 // Backend authoritative schema imported via deep relative path.
 // Dev-time only (this is a test file). We deliberately do NOT add
 // @garageos/database as a web runtime dep to keep Prisma client out
-// of the Vite bundle. The cross-package import is intentional and
-// outside tsconfig.app.json's file list — Vitest resolves it fine at
-// test time. The @ts-ignore suppresses the TS6307 project-boundary
-// diagnostic only; the import is structurally valid at runtime.
+// of the Vite bundle. The cross-package import sits outside
+// tsconfig.app.json's file list, surfacing as TS6307 under `tsc -b`;
+// Vitest resolves it fine at test time. @ts-ignore (not @ts-expect-error)
+// because the diagnostic position is fragile — `@ts-expect-error` is
+// reported as "Unused" depending on subtle line-counting interactions
+// with the rest of the file. If the diagnostic ever goes away (e.g.
+// vitest tsconfig override), this suppression silently no-ops.
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore TS6307 cross-package dev-time-only import
 import { PartReplacedSchema as BackendPartReplacedSchema } from '../../../../database/src/validators/intervention';
