@@ -85,7 +85,9 @@ describe('CancelInterventionDialog', () => {
     );
     await user.type(screen.getByLabelText(/motivo dell'annullamento/i), '0123456789');
     await user.click(screen.getByRole('button', { name: /annulla intervento/i }));
-    expect(await screen.findByText(/almeno 20 caratteri/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText('La motivazione deve essere di almeno 20 caratteri.'),
+    ).toBeInTheDocument();
     expect(mockApiFetch).not.toHaveBeenCalled();
   });
 
@@ -224,5 +226,29 @@ describe('CancelInterventionDialog', () => {
       );
     });
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  // 9. Error 404 NOT_FOUND → toast.error('Intervento non trovato.') + close
+  it('shows not found toast and closes on 404 NOT_FOUND', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    mockApiFetch.mockRejectedValueOnce(new ApiError('NOT_FOUND', 404, 'not found'));
+    render(
+      <CancelInterventionDialog
+        interventionId={INTERVENTION_ID}
+        open={true}
+        onOpenChange={onOpenChange}
+      />,
+      { wrapper: wrap },
+    );
+    await user.type(
+      screen.getByLabelText(/motivo dell'annullamento/i),
+      'Motivo valido lungo abbastanza',
+    );
+    await user.click(screen.getByRole('button', { name: /annulla intervento/i }));
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith('Intervento non trovato.');
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

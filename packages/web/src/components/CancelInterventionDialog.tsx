@@ -96,6 +96,13 @@ function mapCancelError(err: unknown): MappedError {
   return { type: 'toast', keepOpen: true, message: 'Errore imprevisto.' };
 }
 
+/**
+ * Officina-only dialog to cancel an intervention (F-OFF-307 / BR-066).
+ *
+ * Reason must be ≥20 characters (enforced client-side and re-checked server-side).
+ * Cancellation is irreversible and cascades open disputes to
+ * `resolved_by_cancellation` (BR-130). IT-strings hardcoded (officina UX only).
+ */
 export function CancelInterventionDialog({ interventionId, open, onOpenChange }: Props) {
   const cancel = useCancelIntervention(interventionId);
   const form = useForm<FormValues>({
@@ -142,7 +149,7 @@ export function CancelInterventionDialog({ interventionId, open, onOpenChange }:
           </DialogDescription>
         </DialogHeader>
 
-        <Alert>
+        <Alert variant="destructive">
           <AlertDescription>
             L&apos;annullamento è visibile al cliente nella sua timeline e risolve automaticamente
             eventuali contestazioni aperte (BR-130).
@@ -166,7 +173,14 @@ export function CancelInterventionDialog({ interventionId, open, onOpenChange }:
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                form.reset();
+                onOpenChange(false);
+              }}
+            >
               Chiudi
             </Button>
             <Button type="submit" variant="destructive" disabled={cancel.isPending}>
