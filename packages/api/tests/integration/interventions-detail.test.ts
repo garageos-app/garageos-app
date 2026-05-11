@@ -76,7 +76,7 @@ describe('GET /v1/interventions/:id (officina)', () => {
       description: 'Cambio olio e filtri completi',
       internalNotes: 'Note interne di test',
       partsReplaced: [
-        { brand: 'Castrol', code: 'OIL-5W40', description: 'Olio motore', quantity: 5 },
+        { name: 'Olio motore Selenia 5W40', code: 'OIL-5W40', quantity: 5, notes: null },
       ],
       ...(args.overrides ?? {}),
     });
@@ -120,11 +120,11 @@ describe('GET /v1/interventions/:id (officina)', () => {
     // parts_replaced
     const parts = body.parts_replaced as Array<Record<string, unknown>>;
     expect(parts).toHaveLength(1);
-    expect(parts[0]).toMatchObject({
-      brand: 'Castrol',
+    expect(parts[0]).toEqual({
+      name: 'Olio motore Selenia 5W40',
       code: 'OIL-5W40',
-      description: 'Olio motore',
       quantity: 5,
+      notes: null,
     });
 
     // Nested relation: type
@@ -408,8 +408,13 @@ describe('GET /v1/interventions/:id (officina)', () => {
       interventionDate: '2026-04-02',
       odometerKm: 20000,
       partsReplaced: [
-        { brand: 'Bosch', code: 'F026407123', description: 'Filtro olio', quantity: 1 },
-        { brand: null, code: null, description: 'Guarnizione testata', quantity: 2 },
+        { name: 'Filtro olio', code: 'F026407123', quantity: 1, notes: null },
+        {
+          name: 'Guarnizione testata',
+          code: null,
+          quantity: 2,
+          notes: 'Verificare coppia serraggio',
+        },
       ],
     });
 
@@ -431,17 +436,17 @@ describe('GET /v1/interventions/:id (officina)', () => {
     const bodyParts = resParts.json() as Record<string, unknown>;
     const parts = bodyParts.parts_replaced as Array<Record<string, unknown>>;
     expect(parts).toHaveLength(2);
-    expect(parts[0]).toMatchObject({
-      brand: 'Bosch',
+    expect(parts[0]).toEqual({
+      name: 'Filtro olio',
       code: 'F026407123',
-      description: 'Filtro olio',
       quantity: 1,
+      notes: null,
     });
-    expect(parts[1]).toMatchObject({
-      brand: null,
+    expect(parts[1]).toEqual({
+      name: 'Guarnizione testata',
       code: null,
-      description: 'Guarnizione testata',
       quantity: 2,
+      notes: 'Verificare coppia serraggio',
     });
   });
 

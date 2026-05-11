@@ -894,10 +894,10 @@ Authorization: Bearer <officina_user_jwt>
 | --- | --- | --- |
 | 400 | `VALIDATION_ERROR` | `id` non è un UUID v4 valido |
 | 401 | (auth middleware) | Authorization header mancante o JWT non valido |
-| 403 | `auth.wrong_pool` | JWT proviene dal pool `clienti` invece di `officine` |
+| 403 | `FORBIDDEN` | JWT proviene dal pool `clienti` invece di `officine` |
 | 404 | `attachment.not_found` | Allegato non trovato, non `processed`, `deletedAt != null`, o appartenente a un altro tenant |
 | 422 | `attachment.owner_not_supported` | `ownerType != 'intervention'` (es. `intervention_dispute`, `private_intervention`) |
-| 502 | `s3.unavailable` | AWS SDK presign fail (passthrough da `S3UnavailableError`) |
+| 502 | `attachment.view_url.s3_unavailable` | AWS SDK presign fail (passthrough da `S3UnavailableError`) |
 
 #### Note
 
@@ -1140,7 +1140,7 @@ Authorization: Bearer <tenant_user_jwt>
 | Status | Code | Quando |
 |---|---|---|
 | 401 | (auth middleware) | Authorization header mancante o JWT non valido |
-| 403 | `auth.wrong_pool` | JWT proviene dal pool `clienti` invece di `officine` |
+| 403 | `FORBIDDEN` | JWT proviene dal pool `clienti` invece di `officine` |
 | 404 | `intervention.not_found` | Intervento non esiste oppure appartiene a un altro tenant (RLS-as-404) |
 
 #### Note
@@ -1267,7 +1267,7 @@ Per ottenere l'URL di accesso a un allegato, chiamare `GET /v1/attachments/:id/v
 | --- | --- | --- |
 | 400 | `VALIDATION_ERROR` | `id` non è un UUID v4 valido |
 | 401 | (auth middleware) | Authorization header mancante o JWT non valido |
-| 403 | `auth.wrong_pool` | JWT proviene dal pool `clienti` invece di `officine` |
+| 403 | `FORBIDDEN` | JWT proviene dal pool `clienti` invece di `officine` |
 | 404 | `intervention.not_found` | Intervento non trovato o non accessibile da questa officina |
 
 #### Note

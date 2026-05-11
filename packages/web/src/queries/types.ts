@@ -316,10 +316,10 @@ export interface DisputeResponseResult {
 // packages/api/src/routes/v1/interventions-detail.ts DTO. Snake_case
 // wire format (same convention as timeline DTO).
 export interface InterventionPartReplaced {
-  brand: string | null;
+  name: string;
   code: string | null;
-  description: string;
   quantity: number;
+  notes: string | null;
 }
 
 export interface InterventionAttachment {

@@ -312,4 +312,34 @@ describe('InterventionDetail', () => {
     // Dialog should now be open
     expect(screen.getByTestId('cancel-dialog-open')).toBeInTheDocument();
   });
+
+  // 11. Renders Ricambi card with populated parts (BR-071 canonical shape)
+  it('renders Ricambi card with populated parts using canonical BR-071 shape', async () => {
+    const withParts: InterventionDetailDto = {
+      ...BASE_DETAIL,
+      parts_replaced: [
+        { name: 'Olio motore Selenia 5W30', code: 'SEL-5W30-4L', quantity: 4, notes: 'Litri' },
+        { name: 'Filtro olio', code: null, quantity: 1, notes: null },
+      ],
+    };
+    setupApiFetch({ detail: withParts, disputes: [], revisions: [] });
+    render(wrap({ children: <InterventionDetail /> }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Tagliando 30000 km/i })).toBeInTheDocument(),
+    );
+
+    // Ricambi card heading shows correct count
+    expect(screen.getByText('Ricambi sostituiti (2)')).toBeInTheDocument();
+
+    // First part: name, code, quantity, notes all rendered
+    expect(screen.getByText('Olio motore Selenia 5W30')).toBeInTheDocument();
+    expect(screen.getByText(/codice SEL-5W30-4L/)).toBeInTheDocument();
+    expect(screen.getByText(/×4/)).toBeInTheDocument();
+    expect(screen.getByText(/Litri/)).toBeInTheDocument();
+
+    // Second part: name, quantity rendered; code + notes absent
+    expect(screen.getByText('Filtro olio')).toBeInTheDocument();
+    expect(screen.getByText(/×1/)).toBeInTheDocument();
+  });
 });

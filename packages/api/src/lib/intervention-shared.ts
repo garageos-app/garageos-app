@@ -19,16 +19,16 @@ export function isWikiWindowOpen(
   return now.getTime() - createdAt.getTime() < WIKI_WINDOW_MS;
 }
 
-// BR-065 parts_replaced JSON normalization. The column is a free-form
-// Json without a Prisma type. Defensive normalization protects callers
-// from hand-edited rows or schema drift. Shared across any route that
-// returns a full intervention DTO (detail, future B2C mobile detail,
-// revision diff, print export).
+// BR-071 parts_replaced JSON normalization. Canonical shape from
+// PartReplacedSchema in @garageos/database. Defensive normalization
+// protects callers from hand-edited rows or schema drift. Shared
+// across any route that returns a full intervention DTO (detail,
+// future B2C mobile detail, revision diff, print export).
 export interface PartReplaced {
-  brand: string | null;
+  name: string;
   code: string | null;
-  description: string;
   quantity: number;
+  notes: string | null;
 }
 
 export function normalizePartsReplaced(value: unknown): PartReplaced[] {
@@ -36,10 +36,10 @@ export function normalizePartsReplaced(value: unknown): PartReplaced[] {
   return value.map((p) => {
     const o = (p ?? {}) as Record<string, unknown>;
     return {
-      brand: typeof o.brand === 'string' ? o.brand : null,
+      name: typeof o.name === 'string' ? o.name : '',
       code: typeof o.code === 'string' ? o.code : null,
-      description: typeof o.description === 'string' ? o.description : '',
       quantity: typeof o.quantity === 'number' ? o.quantity : 1,
+      notes: typeof o.notes === 'string' ? o.notes : null,
     };
   });
 }

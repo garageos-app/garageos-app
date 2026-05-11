@@ -232,10 +232,10 @@ export function InterventionDetail() {
             <ul className="space-y-2 text-sm">
               {i.parts_replaced.map((p, idx) => (
                 <li key={idx}>
-                  <span className="font-medium">{p.description}</span>
-                  {p.brand && <span className="text-muted-foreground"> · {p.brand}</span>}
+                  <span className="font-medium">{p.name}</span>
                   {p.code && <span className="text-muted-foreground"> · codice {p.code}</span>}
                   <span className="text-muted-foreground"> ×{p.quantity}</span>
+                  {p.notes && <span className="text-muted-foreground"> · {p.notes}</span>}
                 </li>
               ))}
             </ul>
