@@ -166,13 +166,43 @@ describe('GET /v1/attachments/:id/view-url', () => {
 
   // -----------------------------------------------------------------------
   // Scenario 6: 422 owner type unsupported
+  //
+  // Only `intervention_dispute` (officina-variant) can reach the 422
+  // branch — the route filters by tenantId, but `private_intervention`
+  // attachments have tenant_id IS NULL per chk_attachment_owner_consistent,
+  // so they would always 404 first. Insert directly (the shared helper
+  // assumes the 'intervention' owner shape).
   // -----------------------------------------------------------------------
   it('returns 422 when attachment ownerType is not intervention', async () => {
     const { tenantId, token } = await setupCaller('vu-422');
-    const { attachmentId } = await insertAttachment({
-      tenantId,
-      ownerType: 'private_intervention',
-    });
+    // Need a user row in the same tenant for uploaded_by_user_id.
+    const cognitoSub = `vu-422-uploader-${Date.now()}`;
+    const { rows: userRows } = await pgAdmin.query<{ id: string }>(
+      `SELECT id FROM users WHERE cognito_sub = $1 LIMIT 1`,
+      [cognitoSub],
+    );
+    // setupCaller already created a user with a different sub — fetch its id.
+    const { rows: callerUserRows } = await pgAdmin.query<{ id: string }>(
+      `SELECT id FROM users WHERE tenant_id = $1 LIMIT 1`,
+      [tenantId],
+    );
+    const uploaderId = userRows[0]?.id ?? callerUserRows[0]!.id;
+
+    const { rows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO attachments
+         (id, owner_type, owner_id, tenant_id, customer_id,
+          uploaded_by_user_id, uploaded_by_customer_id,
+          file_name, mime_type, size_bytes, s3_key, s3_bucket,
+          processed, deleted_at, created_at)
+       VALUES (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
+          gen_random_uuid(), $1, NULL, $2, NULL,
+          'evidence.pdf', 'application/pdf', 12345,
+          'attachments/dispute/test.pdf', 'garageos-dev',
+          TRUE, NULL, NOW())
+       RETURNING id`,
+      [tenantId, uploaderId],
+    );
+    const attachmentId = rows[0]!.id;
 
     const res = await app.inject({
       method: 'GET',
