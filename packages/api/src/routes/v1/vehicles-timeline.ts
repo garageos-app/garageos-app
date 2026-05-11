@@ -96,9 +96,10 @@ const shopRowSelect = {
   description: true,
   partsReplaced: true,
   status: true,
+  wikiLockedAt: true,
   tenant: { select: { businessName: true } },
   location: { select: { city: true } },
-  interventionType: { select: { code: true, nameIt: true } },
+  interventionType: { select: { id: true, code: true, nameIt: true } },
 } as const;
 
 const privateRowSelect = {
@@ -284,12 +285,17 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
               id: r.id,
               intervention_date: r.interventionDate.toISOString().slice(0, 10),
               odometer_km: r.odometerKm,
-              type: { code: r.interventionType.code, name_it: r.interventionType.nameIt },
+              type: {
+                id: r.interventionType.id,
+                code: r.interventionType.code,
+                name_it: r.interventionType.nameIt,
+              },
               title: r.title,
               description: r.description,
               parts_replaced_count: partsReplacedCount(r.partsReplaced),
               status: r.status,
               is_disputed: r.status === 'disputed',
+              wiki_locked_at: r.wikiLockedAt ? r.wikiLockedAt.toISOString() : null,
               tenant: {
                 business_name: r.tenant.businessName,
                 location_city: r.location.city,
