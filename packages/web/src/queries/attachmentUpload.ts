@@ -96,9 +96,14 @@ export function useAttachmentUpload(interventionId: string): UseAttachmentUpload
       // Step 3 — confirm (idempotent)
       setState({ phase: 'confirming' });
       try {
+        // Empty `{}` body is required: `useApiFetch` hard-codes
+        // `Content-Type: application/json` on every request, and Fastify's
+        // body parser rejects empty bodies under that header with 400
+        // "Body cannot be empty when content-type is set to 'application/json'".
+        // The spec calls for no body — the empty object satisfies both ends.
         const result = await apiFetch<AttachmentConfirmResponse>(
           `/v1/attachments/${presign.attachment_id}/confirm`,
-          { method: 'POST' },
+          { method: 'POST', body: '{}' },
         );
         setState({ phase: 'success', attachmentId: result.id });
         await queryClient.invalidateQueries({
