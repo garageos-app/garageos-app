@@ -3,17 +3,12 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatBytes, formatDate } from '@/lib/format';
 import { useAttachmentViewUrl } from '@/queries/interventionDetail';
 import type { InterventionAttachment } from '@/queries/types';
 
 interface Props {
   attachments: InterventionAttachment[];
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /**
@@ -57,7 +52,7 @@ export function AttachmentsSection({ attachments }: Props) {
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-foreground truncate">{a.file_name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {formatBytes(a.size_bytes)} · {new Date(a.created_at).toLocaleDateString('it-IT')}
+                  {formatBytes(a.size_bytes)} · {formatDate(a.created_at)}
                 </div>
               </div>
               <Button

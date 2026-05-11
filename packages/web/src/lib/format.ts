@@ -30,6 +30,16 @@ export function fallback(s: string | null | undefined): string {
   return s ?? '—';
 }
 
+/**
+ * Format a byte count as a short human-readable string.
+ * < 1 KB → bytes; < 1 MB → KB (no decimals); >= 1 MB → MB (1 decimal).
+ */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export function disputeReasonLabel(reason: DisputeReasonCategory): string {
   switch (reason) {
     case 'not_performed':
