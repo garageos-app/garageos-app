@@ -628,8 +628,6 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
   // interventions_read), so the explicit tenantId filter is the
   // application-layer enforcement.
   const ViewUrlParamsSchema = z.object({ id: z.string().uuid() });
-  const VIEW_URL_EXPIRY_SECONDS = 900; // 15 min
-
   app.get(
     '/v1/attachments/:id/view-url',
     {
@@ -661,7 +659,7 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
           url = await presignGetObject({
             bucket: att.s3Bucket,
             key: att.s3Key,
-            expiresInSeconds: VIEW_URL_EXPIRY_SECONDS,
+            expiresInSeconds: PRESIGNED_URL_EXPIRY_SECONDS,
           });
         } catch (err) {
           if (err instanceof S3UnavailableError) {
@@ -674,7 +672,7 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
           throw err;
         }
 
-        const expiresAt = new Date(Date.now() + VIEW_URL_EXPIRY_SECONDS * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + PRESIGNED_URL_EXPIRY_SECONDS * 1000).toISOString();
         return { url, expires_at: expiresAt };
       });
     },
