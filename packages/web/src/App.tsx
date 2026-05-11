@@ -11,6 +11,7 @@ import { VehicleDetail } from '@/pages/VehicleDetail';
 import { CustomerDetail } from '@/pages/CustomerDetail';
 import { DeadlineDashboard } from '@/pages/DeadlineDashboard';
 import { InterventionCreate } from '@/pages/InterventionCreate';
+import { InterventionDetail } from '@/pages/InterventionDetail';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
 
 const queryClient = new QueryClient({
@@ -39,6 +40,7 @@ export function App() {
                   <Route path="/vehicles/:id" element={<VehicleDetail />} />
                   <Route path="/vehicles/:id/interventions/new" element={<InterventionCreate />} />
                   <Route path="/customers/:id" element={<CustomerDetail />} />
+                  <Route path="/interventions/:id" element={<InterventionDetail />} />
                   <Route path="/deadlines" element={<DeadlineDashboard />} />
                 </Route>
               </Route>

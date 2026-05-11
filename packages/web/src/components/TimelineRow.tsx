@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -169,15 +170,23 @@ function ExpandedPanel({
           )}
         </div>
       )}
-      {isEditable && (
-        <div>
-          <button
-            type="button"
-            onClick={onEditClick}
+      {isShop && (
+        <div className="flex items-center gap-3 flex-wrap">
+          {isEditable && (
+            <button
+              type="button"
+              onClick={onEditClick}
+              className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm px-1 -mx-1"
+            >
+              Modifica
+            </button>
+          )}
+          <Link
+            to={`/interventions/${item.id}`}
             className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm px-1 -mx-1"
           >
-            Modifica
-          </button>
+            Apri scheda
+          </Link>
         </div>
       )}
     </div>

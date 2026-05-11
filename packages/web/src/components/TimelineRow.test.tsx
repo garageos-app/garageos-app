@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -73,7 +74,11 @@ const PRIVATE_ITEM: PrivateTimelineItem = {
 function renderRow(item: TimelineItem, vehicleId = 'veh-1') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    return (
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      </MemoryRouter>
+    );
   }
   return render(
     <Wrapper>
@@ -265,5 +270,30 @@ describe('TimelineRow — edit affordance', () => {
     await user.click(screen.getByRole('button', { name: 'Modifica' }));
 
     expect(screen.getByTestId(`edit-dialog-open-${SHOP_ITEM.id}`)).toBeInTheDocument();
+  });
+});
+
+describe('TimelineRow — Apri scheda link', () => {
+  it('renders "Apri scheda" link pointing to /interventions/:id on shop rows when expanded', async () => {
+    const user = userEvent.setup();
+    renderRow(SHOP_ITEM);
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
+    const link = screen.getByRole('link', { name: 'Apri scheda' });
+    expect(link).toHaveAttribute('href', `/interventions/${SHOP_ITEM.id}`);
+  });
+
+  it('renders "Apri scheda" link for disputed shop rows (not gated on isEditable)', async () => {
+    const user = userEvent.setup();
+    renderRow(SHOP_ITEM_DISPUTED);
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
+    const link = screen.getByRole('link', { name: 'Apri scheda' });
+    expect(link).toHaveAttribute('href', `/interventions/${SHOP_ITEM_DISPUTED.id}`);
+  });
+
+  it('does not render "Apri scheda" link for private rows', async () => {
+    const user = userEvent.setup();
+    renderRow(PRIVATE_ITEM);
+    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
+    expect(screen.queryByRole('link', { name: 'Apri scheda' })).not.toBeInTheDocument();
   });
 });
