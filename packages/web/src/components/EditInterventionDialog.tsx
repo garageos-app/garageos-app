@@ -124,7 +124,13 @@ function mapApiError(err: ApiError): { message: string; close: boolean } {
 export function EditInterventionDialog({ intervention, vehicleId, open, onOpenChange }: Props) {
   const types = useInterventionTypes();
   const mutation = useUpdateIntervention(vehicleId);
-  const isLocked = intervention.wiki_locked_at !== null;
+  // BR-062: locked = wiki window closed. The DTO surfaces a server-
+  // computed boolean (wiki_window_open) because the predicate is the
+  // composite of three conditions — wikiLockedAt being null in DB is
+  // NOT sufficient on its own (a row older than 48h with no PATCH and
+  // no customer-side first-seen still has wikiLockedAt NULL but is
+  // logically locked).
+  const isLocked = !intervention.wiki_window_open;
 
   const defaults: EditInterventionFormValues = {
     interventionTypeId: intervention.type.id,

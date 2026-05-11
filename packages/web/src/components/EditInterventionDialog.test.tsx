@@ -82,7 +82,7 @@ function makeShopItem(overrides: Partial<ShopTimelineItem> = {}): ShopTimelineIt
     parts_replaced_count: 2,
     status: 'active',
     is_disputed: false,
-    wiki_locked_at: null,
+    wiki_window_open: true,
     tenant: { business_name: 'Garage Acme', location_city: 'Milano' },
     has_attachments: false,
     attachments_count: 0,
@@ -112,10 +112,10 @@ describe('EditInterventionDialog', () => {
     expect(screen.getByLabelText(/titolo/i)).toHaveValue('Tagliando 50k');
   });
 
-  it('renders "Modifiche libere" banner when wiki_locked_at is null', () => {
+  it('renders "Modifiche libere" banner when wiki_window_open is true', () => {
     render(
       <EditInterventionDialog
-        intervention={makeShopItem({ wiki_locked_at: null })}
+        intervention={makeShopItem({ wiki_window_open: true })}
         vehicleId="v-1"
         open={true}
         onOpenChange={() => {}}
@@ -126,10 +126,10 @@ describe('EditInterventionDialog', () => {
     expect(screen.queryByLabelText(/motivo della modifica/i)).not.toBeInTheDocument();
   });
 
-  it('renders "Audit attivo" banner and reason field when wiki_locked_at is set', () => {
+  it('renders "Audit attivo" banner and reason field when wiki_window_open is false', () => {
     render(
       <EditInterventionDialog
-        intervention={makeShopItem({ wiki_locked_at: '2026-05-01T10:00:00.000Z' })}
+        intervention={makeShopItem({ wiki_window_open: false })}
         vehicleId="v-1"
         open={true}
         onOpenChange={() => {}}
@@ -187,7 +187,7 @@ describe('EditInterventionDialog', () => {
     const user = userEvent.setup();
     render(
       <EditInterventionDialog
-        intervention={makeShopItem({ wiki_locked_at: '2026-05-01T10:00:00.000Z' })}
+        intervention={makeShopItem({ wiki_window_open: false })}
         vehicleId="v-1"
         open={true}
         onOpenChange={() => {}}

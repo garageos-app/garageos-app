@@ -71,7 +71,7 @@ const TIMELINE_FIXTURE: TimelineResponse = {
       parts_replaced_count: 3,
       status: 'active',
       is_disputed: false,
-      wiki_locked_at: null,
+      wiki_window_open: true,
       tenant: { business_name: 'Officina Rossi', location_city: 'Milano' },
       has_attachments: true,
       attachments_count: 2,
