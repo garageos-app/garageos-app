@@ -241,6 +241,7 @@ export interface CustomerDetail {
   city: string | null;
   province: string | null;
   postalCode: string | null;
+  cognitoSub: string | null;
   status: 'active';
   createdAt: string;
   tenantRelation: {

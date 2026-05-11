@@ -7,8 +7,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { ApiError } from '@/lib/api-client';
+import { formToPatch, type FormValues } from '@/lib/customer-form';
 import { useCustomerDetail, useUpdateCustomer } from '@/queries/customerDetail';
-import type { CustomerDetail as CustomerDetailDto, CustomerDetailUpdate } from '@/queries/types';
+import type { CustomerDetail as CustomerDetailDto } from '@/queries/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,8 @@ const formSchema = z.object({
   tenantNotes: z.string().max(5000),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+// FormValues is imported from '@/lib/customer-form' (extracted voce 10).
+// The Zod schema infers the same shape — validated at call sites via zodResolver.
 
 function dtoToFormDefaults(dto: CustomerDetailDto): FormValues {
   return {
@@ -57,46 +59,6 @@ function dtoToFormDefaults(dto: CustomerDetailDto): FormValues {
     postalCode: dto.postalCode ?? '',
     tenantNotes: dto.tenantRelation.tenantNotes ?? '',
   };
-}
-
-function formToPatch(values: FormValues, dto: CustomerDetailDto): CustomerDetailUpdate {
-  const patch: CustomerDetailUpdate = {};
-
-  if (values.firstName !== dto.firstName) patch.firstName = values.firstName;
-  if (values.lastName !== dto.lastName) patch.lastName = values.lastName;
-  if (values.isBusiness !== dto.isBusiness) patch.isBusiness = values.isBusiness;
-
-  const setNullable = (
-    key:
-      | 'phone'
-      | 'taxCode'
-      | 'businessName'
-      | 'vatNumber'
-      | 'addressLine'
-      | 'city'
-      | 'province'
-      | 'postalCode',
-    currentValue: string | null,
-  ) => {
-    const next = values[key] === '' ? null : values[key];
-    if (next !== currentValue) patch[key] = next;
-  };
-  setNullable('phone', dto.phone);
-  setNullable('taxCode', dto.taxCode);
-  setNullable('businessName', dto.businessName);
-  setNullable('vatNumber', dto.vatNumber);
-  setNullable('addressLine', dto.addressLine);
-  setNullable('city', dto.city);
-  setNullable('province', dto.province);
-  setNullable('postalCode', dto.postalCode);
-
-  // tenantNotes lives on the CTR block in DTO but is a top-level patch field.
-  const nextNotes = values.tenantNotes === '' ? null : values.tenantNotes;
-  if (nextNotes !== dto.tenantRelation.tenantNotes) {
-    patch.tenantNotes = nextNotes;
-  }
-
-  return patch;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +154,16 @@ function EditMode({
   });
   const isBusiness = form.watch('isBusiness');
 
+  // Voce 11: hard-reset business fields when user toggles isBusiness off.
+  // Coherent with backend (a private customer has no business identity)
+  // and avoids hidden form state that would silently resurface on toggle-on.
+  useEffect(() => {
+    if (!isBusiness) {
+      form.setValue('businessName', '');
+      form.setValue('vatNumber', '');
+    }
+  }, [isBusiness, form]);
+
   const onSubmit = form.handleSubmit(async (values) => {
     const patch = formToPatch(values, dto);
     if (Object.keys(patch).length === 0) {
@@ -227,6 +199,16 @@ function EditMode({
           </Button>
         </div>
       </header>
+
+      {/* Voce 9: B2C-registered warning — customer has a mobile app account. */}
+      {dto.cognitoSub && (
+        <Alert>
+          <AlertDescription>
+            <strong>Cliente registrato</strong> — le modifiche propagano al profilo mobile del
+            cliente.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader>
