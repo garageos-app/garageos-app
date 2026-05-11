@@ -78,7 +78,7 @@ export interface ShopTimelineItem {
   parts_replaced_count: number;
   status: string;
   is_disputed: boolean;
-  wiki_locked_at: string | null;
+  wiki_window_open: boolean;
   tenant: { business_name: string; location_city: string };
   has_attachments: boolean;
   attachments_count: number;

@@ -96,11 +96,32 @@ const shopRowSelect = {
   description: true,
   partsReplaced: true,
   status: true,
+  // BR-062 wiki window is a composite predicate (wikiLockedAt IS NULL
+  // AND now - createdAt < 48h AND firstSeenByCustomerAt IS NULL). The
+  // DTO surfaces the computed `wiki_window_open` boolean below; these
+  // three raw fields are selected only as inputs to that computation.
   wikiLockedAt: true,
+  createdAt: true,
+  firstSeenByCustomerAt: true,
   tenant: { select: { businessName: true } },
   location: { select: { city: true } },
   interventionType: { select: { id: true, code: true, nameIt: true } },
 } as const;
+
+// BR-062: wiki window is open while ALL three conditions hold. Mirrors
+// computeLockState in interventions-update.ts so the timeline DTO and
+// the PATCH handler agree on the predicate at any given moment.
+const WIKI_WINDOW_MS = 48 * 60 * 60 * 1000;
+function isWikiWindowOpen(
+  wikiLockedAt: Date | null,
+  firstSeenByCustomerAt: Date | null,
+  createdAt: Date,
+  now: Date,
+): boolean {
+  if (wikiLockedAt !== null) return false;
+  if (firstSeenByCustomerAt !== null) return false;
+  return now.getTime() - createdAt.getTime() < WIKI_WINDOW_MS;
+}
 
 const privateRowSelect = {
   id: true,
@@ -276,6 +297,11 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         const hasMore = merged.length > query.limit;
         const page = hasMore ? merged.slice(0, query.limit) : merged;
 
+        // Single `now` snapshot for the whole page so two rows created
+        // milliseconds apart at the 48h boundary report a consistent
+        // wiki_window_open in the same response.
+        const now = new Date();
+
         const data = page.map((item) => {
           if (item.kind === 'shop') {
             const r = item.row;
@@ -295,7 +321,12 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
               parts_replaced_count: partsReplacedCount(r.partsReplaced),
               status: r.status,
               is_disputed: r.status === 'disputed',
-              wiki_locked_at: r.wikiLockedAt ? r.wikiLockedAt.toISOString() : null,
+              wiki_window_open: isWikiWindowOpen(
+                r.wikiLockedAt,
+                r.firstSeenByCustomerAt,
+                r.createdAt,
+                now,
+              ),
               tenant: {
                 business_name: r.tenant.businessName,
                 location_city: r.location.city,
