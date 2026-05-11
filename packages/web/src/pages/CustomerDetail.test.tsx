@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -45,6 +46,7 @@ const FIXTURE: CustomerDetailDto = {
   city: 'Roma',
   province: 'RM',
   postalCode: '00100',
+  cognitoSub: null,
   status: 'active',
   createdAt: '2026-01-15T10:30:00.000Z',
   tenantRelation: {
@@ -218,5 +220,56 @@ describe('CustomerDetail (edit mode)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Salva/i }));
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('Cliente non più accessibile'));
     expect(navigateMock).toHaveBeenCalledWith('/', { replace: true });
+  });
+
+  // Voce 9: B2C-registered warning banner
+  it('shows B2C-registered banner in edit mode when customer has cognitoSub', async () => {
+    apiFetchMock.mockResolvedValueOnce({ ...FIXTURE, cognitoSub: 'aws-sub-12345' });
+    renderRoute(<CustomerDetail />);
+    await waitFor(() => screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Modifica/i }));
+    expect(screen.getByText(/Cliente registrato/i)).toBeInTheDocument();
+    expect(screen.getByText(/le modifiche propagano al profilo mobile/i)).toBeInTheDocument();
+  });
+
+  it('does not show B2C-registered banner when cognitoSub is null', async () => {
+    apiFetchMock.mockResolvedValueOnce({ ...FIXTURE, cognitoSub: null });
+    renderRoute(<CustomerDetail />);
+    await waitFor(() => screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Modifica/i }));
+    expect(screen.queryByText(/Cliente registrato/i)).not.toBeInTheDocument();
+  });
+
+  // Voce 11: B2B clear on toggle off
+  it('clears businessName and vatNumber form state when user toggles isBusiness off', async () => {
+    const user = userEvent.setup();
+    const dtoBusiness: CustomerDetailDto = {
+      ...FIXTURE,
+      isBusiness: true,
+      businessName: 'ACME Srl',
+      vatNumber: '01234567890',
+    };
+    apiFetchMock.mockResolvedValueOnce(dtoBusiness);
+    renderRoute(<CustomerDetail />);
+    await waitFor(() => screen.getByRole('button', { name: /Modifica/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Modifica/i }));
+
+    // Sanity: business fields are visible and populated
+    const businessNameInput = screen.getByLabelText(/Ragione sociale/i) as HTMLInputElement;
+    const vatNumberInput = screen.getByLabelText(/P\.IVA/i) as HTMLInputElement;
+    expect(businessNameInput.value).toBe('ACME Srl');
+    expect(vatNumberInput.value).toBe('01234567890');
+
+    // Toggle isBusiness off
+    const isBusinessSwitch = screen.getByRole('switch', { name: /Cliente B2B/i });
+    await user.click(isBusinessSwitch);
+
+    // Re-toggle on to verify the values were cleared (inputs are hidden while off)
+    await user.click(isBusinessSwitch);
+
+    const businessNameAfter = screen.getByLabelText(/Ragione sociale/i) as HTMLInputElement;
+    const vatNumberAfter = screen.getByLabelText(/P\.IVA/i) as HTMLInputElement;
+    expect(businessNameAfter.value).toBe('');
+    expect(vatNumberAfter.value).toBe('');
   });
 });

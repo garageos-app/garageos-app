@@ -517,4 +517,47 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // constraint. Attempting to orphan the user after insertion would cascade
   // the FK violation. The null branch in the DTO is a defensive guard only.
   // -----------------------------------------------------------------------
+
+  // -----------------------------------------------------------------------
+  // Scenario 14: deletedAt filter coverage
+  //
+  // NOTE: The `interventions` table does NOT currently have a `deleted_at`
+  // column in schema.prisma (as of 2026-05-11). This test is forward-looking
+  // coverage that will fail at the $executeRawUnsafe step with a PG column-
+  // not-found error until soft-delete is added to the schema.
+  //
+  // When soft-delete is implemented:
+  //   1. Add `deletedAt DateTime? @map("deleted_at")` to Intervention model
+  //   2. Add `deletedAt: null` to the findFirst where clause in
+  //      packages/api/src/routes/v1/interventions-detail.ts
+  //   3. Run migration + re-enable this test (remove the .skip below).
+  //
+  // Static analysis of interventions-detail.ts: the current findFirst uses
+  //   where: { id, tenantId }
+  // without a `deletedAt: null` filter — so when soft-delete lands, Outcome B
+  // (route returns 200 for soft-deleted rows) is expected until the route is
+  // patched.
+  // -----------------------------------------------------------------------
+  it.skip('scenario 14: returns 404 when intervention has deletedAt != null (soft-delete filter)', async () => {
+    const { tenantId, locationId, userId, token } = await setupCaller('det-softdel');
+    const { interventionId } = await setupIntervention({ tenantId, locationId, userId });
+
+    // Soft-delete the intervention via raw SQL to simulate future
+    // soft-delete behavior — backend route must filter even if the column
+    // gets set out-of-band.
+    await pgAdmin.query(`UPDATE interventions SET deleted_at = now() WHERE id = $1::uuid`, [
+      interventionId,
+    ]);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      code: 'intervention.not_found',
+    });
+  });
 });

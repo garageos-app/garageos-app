@@ -1,3 +1,7 @@
+import type { InterventionStatus } from '@/lib/types/intervention';
+
+export type { InterventionStatus };
+
 export type VehicleStatus = 'pending' | 'certified' | 'archived';
 export type VehicleType = 'auto' | 'moto' | 'commercial' | 'agricultural';
 export type FuelType = 'gasoline' | 'diesel' | 'lpg' | 'cng' | 'electric' | 'hybrid';
@@ -237,6 +241,7 @@ export interface CustomerDetail {
   city: string | null;
   province: string | null;
   postalCode: string | null;
+  cognitoSub: string | null;
   status: 'active';
   createdAt: string;
   tenantRelation: {
@@ -308,6 +313,11 @@ export interface DisputeResponseRequest {
 // Response del POST dispute-response.
 export interface DisputeResponseResult {
   disputes: InterventionDispute[];
+  // Intentionally narrower than InterventionStatus: BR-066 prevents
+  // cancelling a disputed intervention, so 'cancelled' is unreachable in
+  // this response. DisputeResponseDialog relies on this narrowing for
+  // exhaustive matching — do not widen to InterventionStatus without
+  // updating the dialog.
   interventionStatus: 'active' | 'disputed';
 }
 
@@ -332,7 +342,7 @@ export interface InterventionAttachment {
 
 export interface InterventionDetail {
   id: string;
-  status: 'active' | 'disputed' | 'cancelled';
+  status: InterventionStatus;
   is_disputed: boolean;
   wiki_window_open: boolean;
   intervention_date: string;

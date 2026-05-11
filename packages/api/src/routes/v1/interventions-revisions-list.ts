@@ -1,10 +1,9 @@
-import { Buffer } from 'node:buffer';
-
 import type { Prisma } from '@garageos/database';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
+import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -25,31 +24,6 @@ export const revisionsListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
   cursor: z.string().optional(),
 });
-
-interface RevisionCursor {
-  ra: string;
-  id: string;
-}
-
-export function encodeCursor(c: RevisionCursor): string {
-  return Buffer.from(JSON.stringify(c), 'utf8').toString('base64url');
-}
-
-export function decodeCursor(cursor: string | undefined): RevisionCursor | undefined {
-  if (!cursor) return undefined;
-  try {
-    const obj = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
-      ra?: string;
-      id?: string;
-    };
-    if (typeof obj.ra !== 'string') return undefined;
-    if (typeof obj.id !== 'string') return undefined;
-    if (Number.isNaN(new Date(obj.ra).getTime())) return undefined;
-    return { ra: obj.ra, id: obj.id };
-  } catch {
-    return undefined;
-  }
-}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -95,7 +69,11 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const { id: interventionId } = idParamSchema.parse(request.params);
       const { limit, cursor: cursorRaw } = revisionsListQuerySchema.parse(request.query);
-      const cursor = decodeCursor(cursorRaw);
+      // `ra` is a full ISO timestamp; decodeDateCompoundCursor guards
+      // against hand-crafted cursors with non-date payloads (returns
+      // undefined → page 1 fallback) so we never feed Invalid Date into
+      // the Prisma `where` clause below.
+      const cursor = decodeDateCompoundCursor('ra', cursorRaw, 'timestamp');
 
       const isOfficine = request.authPool === 'officine';
       const isClienti = request.authPool === 'clienti';
@@ -164,10 +142,7 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
         const lastFetched = fetched.at(-1);
         const cursorOut =
           hasMore && lastFetched
-            ? encodeCursor({
-                ra: lastFetched.revisedAt.toISOString(),
-                id: lastFetched.id,
-              })
+            ? encodeCompoundCursor('ra', lastFetched.revisedAt.toISOString(), lastFetched.id)
             : undefined;
 
         // 5. Filter cliente (sezione 4 spec) + map response shape.

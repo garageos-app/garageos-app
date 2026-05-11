@@ -1,9 +1,12 @@
 import { z } from 'zod';
+import { BasePartReplacedSchema } from './parts-replaced';
 
-const PartReplacedFormSchema = z.object({
-  name: z.string().min(1, 'Nome richiesto').max(200),
+// Create form: quantity is integer-only (UX simplicity for the create flow).
+// Empty strings for optional text fields are allowed at the form level and
+// stripped by transformToPayload before sending to the API.
+const PartReplacedFormSchema = BasePartReplacedSchema.extend({
+  quantity: z.number().int().positive('Quantità > 0 (intero)'),
   code: z.string().max(50).optional().or(z.literal('')),
-  quantity: z.number().int().positive('Quantità > 0'),
   notes: z.string().max(200).optional().or(z.literal('')),
 });
 

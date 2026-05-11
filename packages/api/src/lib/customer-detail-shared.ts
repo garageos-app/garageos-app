@@ -16,6 +16,7 @@ export const customerDetailSelect = {
   city: true,
   province: true,
   postalCode: true,
+  cognitoSub: true,
   status: true,
   createdAt: true,
   tenantRelations: {
@@ -59,6 +60,7 @@ export interface CustomerDetailRow {
   city: string | null;
   province: string | null;
   postalCode: string | null;
+  cognitoSub: string | null;
   status: 'active' | 'pending_verification' | 'deleted';
   createdAt: Date;
   tenantRelations: Array<{
@@ -92,6 +94,7 @@ export interface CustomerDetailDto {
   city: string | null;
   province: string | null;
   postalCode: string | null;
+  cognitoSub: string | null;
   status: 'active';
   createdAt: string;
   tenantRelation: {
@@ -128,6 +131,7 @@ export function projectCustomerDetail(row: CustomerDetailRow): CustomerDetailDto
     city: row.city,
     province: row.province,
     postalCode: row.postalCode,
+    cognitoSub: row.cognitoSub,
     status: 'active',
     createdAt: row.createdAt.toISOString(),
     tenantRelation: {

@@ -43,11 +43,6 @@ function isBeforeAfter(v: unknown): v is { before: unknown; after: unknown } {
 export function RevisionHistorySection({ revisions }: Props) {
   if (revisions.length === 0) return null;
 
-  // Backend already orders DESC (revised_at DESC, id DESC), but we sort
-  // client-side too for robustness. Stable sort: same revised_at preserves
-  // the backend tie-break order (id DESC).
-  const ordered = [...revisions].sort((a, b) => (a.revised_at < b.revised_at ? 1 : -1));
-
   return (
     <Card>
       <CardHeader>
@@ -56,7 +51,7 @@ export function RevisionHistorySection({ revisions }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {ordered.map((r) => (
+        {revisions.map((r) => (
           <div
             key={r.id}
             data-testid="revision-entry"

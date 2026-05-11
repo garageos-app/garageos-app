@@ -88,6 +88,56 @@ describe('Dashboard — tab toggle', () => {
   });
 });
 
+describe('Dashboard — WAI-ARIA Tabs pattern', () => {
+  it('renders tabs with full WAI-ARIA Tabs pattern attributes', () => {
+    renderDashboard();
+
+    // Tablist container
+    const tablist = screen.getByRole('tablist');
+    expect(tablist).toBeInTheDocument();
+
+    // Both tab buttons present
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.length).toBeGreaterThanOrEqual(2);
+
+    // Exactly one tab is selected (the vehicle tab by default)
+    const selectedTab = tabs.find((t) => t.getAttribute('aria-selected') === 'true');
+    expect(selectedTab).toBeDefined();
+    expect(selectedTab).toHaveTextContent(/veicolo/i);
+
+    // Inactive tab has aria-selected=false and tabIndex=-1
+    const inactiveTab = tabs.find((t) => t.getAttribute('aria-selected') === 'false');
+    expect(inactiveTab).toBeDefined();
+    expect(inactiveTab).toHaveAttribute('tabindex', '-1');
+
+    // Tabpanel exists and is cross-referenced with the selected tab
+    const tabpanel = screen.getByRole('tabpanel');
+    expect(tabpanel).toBeInTheDocument();
+    expect(selectedTab?.getAttribute('aria-controls')).toBe(tabpanel.getAttribute('id'));
+    expect(tabpanel.getAttribute('aria-labelledby')).toBe(selectedTab?.getAttribute('id'));
+  });
+
+  it('arrow keys move focus and selection between tabs', async () => {
+    renderDashboard();
+    const vehicleTab = screen.getByRole('tab', { name: /veicolo/i });
+    const customerTab = screen.getByRole('tab', { name: /cliente/i });
+
+    // Start: vehicle tab focused and selected
+    vehicleTab.focus();
+    expect(vehicleTab).toHaveAttribute('aria-selected', 'true');
+
+    // ArrowRight moves to customer tab
+    await userEvent.keyboard('{ArrowRight}');
+    expect(customerTab).toHaveAttribute('aria-selected', 'true');
+    expect(customerTab).toHaveFocus();
+
+    // ArrowLeft moves back to vehicle tab
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(vehicleTab).toHaveAttribute('aria-selected', 'true');
+    expect(vehicleTab).toHaveFocus();
+  });
+});
+
 describe('Dashboard — customer tab → navigate', () => {
   it('navigates to /search?customer=<id>&t=customer when autocomplete fires onSelect', async () => {
     navigateMock.mockClear();

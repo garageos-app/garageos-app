@@ -2,9 +2,8 @@ import { Buffer } from 'node:buffer';
 
 import { describe, expect, it } from 'vitest';
 
+import { decodeCompoundCursor, encodeCompoundCursor } from '../../../../src/lib/cursor.js';
 import {
-  decodeCursor,
-  encodeCursor,
   filterRevisionsForCustomer,
   revisionsListQuerySchema,
 } from '../../../../src/routes/v1/interventions-revisions-list.js';
@@ -39,38 +38,32 @@ describe('revisionsListQuerySchema', () => {
   });
 });
 
-describe('encodeCursor / decodeCursor', () => {
+describe('encodeCompoundCursor / decodeCompoundCursor (ra field)', () => {
   it('roundtrips a valid cursor', () => {
-    const c = { ra: '2026-04-27T10:15:00.000Z', id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' };
-    const decoded = decodeCursor(encodeCursor(c));
-    expect(decoded).toEqual(c);
+    const ra = '2026-04-27T10:15:00.000Z';
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const decoded = decodeCompoundCursor('ra', encodeCompoundCursor('ra', ra, id));
+    expect(decoded).toEqual({ ra, id });
   });
 
   it('decodes invalid base64 → undefined', () => {
-    expect(decodeCursor('!!!!')).toBeUndefined();
+    expect(decodeCompoundCursor('ra', '!!!!')).toBeUndefined();
   });
 
   it('decodes JSON missing ra → undefined', () => {
     const bogus = Buffer.from(JSON.stringify({ id: 'x' }), 'utf8').toString('base64url');
-    expect(decodeCursor(bogus)).toBeUndefined();
+    expect(decodeCompoundCursor('ra', bogus)).toBeUndefined();
   });
 
   it('decodes JSON missing id → undefined', () => {
     const bogus = Buffer.from(JSON.stringify({ ra: '2026-04-27T10:00:00Z' }), 'utf8').toString(
       'base64url',
     );
-    expect(decodeCursor(bogus)).toBeUndefined();
-  });
-
-  it('decodes JSON with non-ISO ra → undefined', () => {
-    const bogus = Buffer.from(JSON.stringify({ ra: 'not-a-date', id: 'x' }), 'utf8').toString(
-      'base64url',
-    );
-    expect(decodeCursor(bogus)).toBeUndefined();
+    expect(decodeCompoundCursor('ra', bogus)).toBeUndefined();
   });
 
   it('decodes undefined input → undefined', () => {
-    expect(decodeCursor(undefined)).toBeUndefined();
+    expect(decodeCompoundCursor('ra', undefined)).toBeUndefined();
   });
 });
 

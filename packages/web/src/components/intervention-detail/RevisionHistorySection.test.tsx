@@ -29,6 +29,32 @@ describe('RevisionHistorySection', () => {
   });
 
   it('renders one entry per revision in DESC order (most recent first)', () => {
+    // Input in DESC order — matches real backend output (revised_at DESC, id DESC).
+    const revisions = [
+      makeRevision({
+        id: '22222222-2222-2222-2222-222222222222',
+        revised_at: '2026-04-05T14:00:00Z',
+      }),
+      makeRevision({
+        id: '11111111-1111-1111-1111-111111111111',
+        revised_at: '2026-04-01T10:00:00Z',
+      }),
+    ];
+
+    render(<RevisionHistorySection revisions={revisions} />);
+
+    const entries = screen.getAllByTestId('revision-entry');
+    expect(entries).toHaveLength(2);
+
+    const firstEntry = entries[0];
+    const secondEntry = entries[1];
+
+    expect(within(firstEntry).getByText(/05\/04\/2026/)).toBeInTheDocument();
+    expect(within(secondEntry).getByText(/01\/04\/2026/)).toBeInTheDocument();
+  });
+
+  it('does not reorder revisions client-side (preserves input order — backend is authoritative)', () => {
+    // Input in NON-DESC order (older first) — component must render in input order, NOT re-sort.
     const revisions = [
       makeRevision({
         id: '11111111-1111-1111-1111-111111111111',
@@ -45,12 +71,9 @@ describe('RevisionHistorySection', () => {
     const entries = screen.getAllByTestId('revision-entry');
     expect(entries).toHaveLength(2);
 
-    // April-5 entry must appear before April-1 entry (DESC order).
-    const firstEntry = entries[0];
-    const secondEntry = entries[1];
-
-    expect(within(firstEntry).getByText(/05\/04\/2026/)).toBeInTheDocument();
-    expect(within(secondEntry).getByText(/01\/04\/2026/)).toBeInTheDocument();
+    // April-1 entry must appear FIRST (input order preserved — no client reorder).
+    expect(within(entries[0]).getByText(/01\/04\/2026/)).toBeInTheDocument();
+    expect(within(entries[1]).getByText(/05\/04\/2026/)).toBeInTheDocument();
   });
 
   it('shows revisedAt, user full name, and reason for a single revision', () => {
