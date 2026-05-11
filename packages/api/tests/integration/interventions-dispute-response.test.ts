@@ -535,6 +535,29 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     expect(postBody.intervention.description).toBe('Tagliando completo + filtro');
   });
 
+  it('403 FORBIDDEN when authenticated as clienti-pool user (requireOfficinaPool guard)', async () => {
+    // The guard fires before any DB query, so no fixture setup is required.
+    // Any valid UUID is sufficient for the intervention ID in the URL.
+    const customerToken = await signTestToken({
+      pool: 'clienti',
+      sub: `cust-${randomUUID().slice(0, 8)}`,
+      customerId: randomUUID(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/interventions/${randomUUID()}/dispute-response`,
+      headers: { authorization: `Bearer ${customerToken}` },
+      payload: { tenantResponse: VALID_RESPONSE },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({
+      code: 'FORBIDDEN',
+      detail: 'This endpoint is not available for customer users',
+    });
+  });
+
   it('409 omitted disputeId on intervention with zero open disputes', async () => {
     const { tenantId, locationId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;

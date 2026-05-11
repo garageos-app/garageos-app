@@ -25,10 +25,23 @@ interface Props {
 }
 
 // Map known POST /dispute-response error codes to Italian copy.
-// Returns { message, autoRefetch } where autoRefetch=true triggers a
-// silent refetch so the dialog re-renders with the updated state.
-function mapResponseError(err: ApiError): { message: string; autoRefetch: boolean } {
+// Returns { message, autoRefetch, closeDialog } where:
+//   autoRefetch=true  → silent refetch so the dialog re-renders with updated state
+//   closeDialog=true  → close the dialog after showing the toast (e.g. auth errors)
+function mapResponseError(err: ApiError): {
+  message: string;
+  autoRefetch: boolean;
+  closeDialog?: boolean;
+} {
   switch (err.code) {
+    case 'FORBIDDEN':
+      // requireOfficinaPool guard (error-handler.ts CamelCase regex → 'FORBIDDEN').
+      // Customer-pool tokens must not reach this endpoint; close dialog immediately.
+      return {
+        message: 'Accesso non autorizzato.',
+        autoRefetch: false,
+        closeDialog: true,
+      };
     case 'intervention.dispute.response.permission_denied':
       return {
         message: "Solo i meccanici e l'amministratore possono rispondere alle contestazioni.",
@@ -92,7 +105,8 @@ export function DisputeResponseDialog({
   async function handleSubmit(dispute: InterventionDispute, tenantResponse: string) {
     try {
       const result = await mutation.mutateAsync({ disputeId: dispute.id, tenantResponse });
-      const stillOpenAfter = (result.disputes ?? []).some((d) => d.status === 'open');
+      // result.disputes is always InterventionDispute[] per DisputeResponseResult type (voce 12).
+      const stillOpenAfter = result.disputes.some((d) => d.status === 'open');
       const message =
         !stillOpenAfter && result.interventionStatus === 'active'
           ? 'Risposta inviata. La contestazione è stata chiusa.'
@@ -102,7 +116,9 @@ export function DisputeResponseDialog({
       if (err instanceof ApiError) {
         const mapped = mapResponseError(err);
         toast.error(mapped.message);
-        if (mapped.autoRefetch) {
+        if (mapped.closeDialog) {
+          onOpenChange(false);
+        } else if (mapped.autoRefetch) {
           await query.refetch();
         }
       } else {

@@ -223,6 +223,42 @@ describe('DisputeResponseDialog', () => {
     );
   });
 
+  it('on 403 FORBIDDEN closes dialog and shows Accesso non autorizzato toast', async () => {
+    apiFetchMock.mockClear();
+    toastError.mockClear();
+    apiFetchMock.mockResolvedValueOnce({ disputes: [openDispute] });
+    apiFetchMock.mockRejectedValueOnce(
+      new ApiError('FORBIDDEN', 403, 'This endpoint is not available for customer users'),
+    );
+
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    const { Wrapper } = makeWrapper();
+    render(
+      <Wrapper>
+        <DisputeResponseDialog
+          interventionId="int-1"
+          vehicleId="veh-1"
+          interventionTitle="Tagliando"
+          open
+          onOpenChange={onOpenChange}
+        />
+      </Wrapper>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Da rispondere')).toBeInTheDocument());
+    await user.type(
+      screen.getByLabelText(/Risposta dell.officina/),
+      'Una risposta abbastanza lunga per passare la validazione.',
+    );
+    await user.click(screen.getByRole('button', { name: 'Invia risposta' }));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith('Accesso non autorizzato.');
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+  });
+
   it('closes dialog when GET returns intervention.not_found', async () => {
     apiFetchMock.mockClear();
     toastError.mockClear();
