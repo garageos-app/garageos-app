@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import { isWikiWindowOpen } from '../../lib/intervention-shared.js';
+import { isWikiWindowOpen, normalizePartsReplaced } from '../../lib/intervention-shared.js';
+import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -18,8 +18,6 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 //
 // wiki_window_open is server-computed (BR-062 composite predicate with
 // time component — see feedback_compute_composite_br_predicates_server_side.md).
-
-const paramsSchema = z.object({ id: z.uuid() });
 
 const interventionDetailSelect = {
   id: true,
@@ -46,26 +44,6 @@ const interventionDetailSelect = {
   user: { select: { id: true, firstName: true, lastName: true } },
 } as const;
 
-interface PartReplaced {
-  brand: string | null;
-  code: string | null;
-  description: string;
-  quantity: number;
-}
-
-function normalizePartsReplaced(value: unknown): PartReplaced[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((p) => {
-    const o = (p ?? {}) as Record<string, unknown>;
-    return {
-      brand: typeof o.brand === 'string' ? o.brand : null,
-      code: typeof o.code === 'string' ? o.code : null,
-      description: typeof o.description === 'string' ? o.description : '',
-      quantity: typeof o.quantity === 'number' ? o.quantity : 1,
-    };
-  });
-}
-
 const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/v1/interventions/:id',
@@ -73,10 +51,11 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [requireAuth, requireOfficinaPool, tenantContext],
     },
     async (request) => {
-      const { id } = paramsSchema.parse(request.params);
+      const { id } = idParamSchema.parse(request.params);
       const tenantId = request.tenantId!;
+      const now = new Date();
 
-      return app.withContext({ tenantId }, async (tx) => {
+      return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
         const row = await tx.intervention.findFirst({
           where: { id, tenantId },
           select: interventionDetailSelect,
@@ -94,10 +73,17 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
         // Intervention model has no direct Prisma relation to Attachment.
         // Fetch separately after the tenant-scoped intervention lookup so
         // the intervention-not-found guard runs first.
+        //
+        // tenantId guard is redundant with the intervention-existence check
+        // above (the intervention id was already verified tenant-scoped), but
+        // added explicitly for defense-in-depth: attachments_read RLS is
+        // permissive cross-tenant, and a future refactor could change the
+        // query order or introduce an early-return path.
         const attachments = await tx.attachment.findMany({
           where: {
             ownerType: 'intervention',
             ownerId: id,
+            tenantId,
             processed: true,
             deletedAt: null,
           },
@@ -110,8 +96,6 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
           },
           orderBy: { createdAt: 'asc' },
         });
-
-        const now = new Date();
 
         return {
           id: row.id,

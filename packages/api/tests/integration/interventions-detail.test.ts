@@ -378,7 +378,11 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // -----------------------------------------------------------------------
   it('normalizes parts_replaced correctly for empty and non-empty cases', async () => {
     const { tenantId, locationId, userId, token } = await setupCaller('det-parts');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    // beforeEach already calls ensureSystemInterventionType('TAGLIANDO'); look up
+    // the existing row rather than re-creating it.
+    const type = await pgAdmin
+      .query<{ id: string }>(`SELECT id FROM intervention_types WHERE code = 'TAGLIANDO' LIMIT 1`)
+      .then((r) => r.rows[0]!);
 
     // Intervention with empty partsReplaced
     const { vehicleId: vEmpty } = await createVehicle({ createdByTenantId: tenantId });
@@ -444,7 +448,7 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // -----------------------------------------------------------------------
   // Scenario 13: Attachments filtering (processed=true only, deletedAt=null)
   // -----------------------------------------------------------------------
-  it('returns only processed=true and deletedAt=null attachments', async () => {
+  it('hides pending (processed=false) and soft-deleted (deletedAt!=null) attachments; surfaces only processed+live ones', async () => {
     const { tenantId, locationId, userId, token } = await setupCaller('det-attach');
     const { interventionId } = await setupIntervention({ tenantId, locationId, userId });
 
@@ -459,7 +463,7 @@ describe('GET /v1/interventions/:id (officina)', () => {
       [interventionId, tenantId],
     );
 
-    // Attachment 2: processed=true → must be included
+    // Attachment 2: processed=true, deletedAt=null → must be included
     const { rows } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO attachments
          (id, owner_type, owner_id, tenant_id, file_name, mime_type,
@@ -471,6 +475,17 @@ describe('GET /v1/interventions/:id (officina)', () => {
       [interventionId, tenantId],
     );
     const processedAttachmentId = rows[0]!.id;
+
+    // Attachment 3: processed=true but soft-deleted → must be excluded
+    await pgAdmin.query(
+      `INSERT INTO attachments
+         (id, owner_type, owner_id, tenant_id, file_name, mime_type,
+          size_bytes, s3_key, s3_bucket, processed, deleted_at, created_at)
+       VALUES (gen_random_uuid(), 'intervention'::"AttachmentOwnerType", $1, $2,
+          'deleted.pdf', 'application/pdf', 11111,
+          'uploads/deleted.pdf', 'garageos-dev', true, NOW(), NOW())`,
+      [interventionId, tenantId],
+    );
 
     const res = await app.inject({
       method: 'GET',
