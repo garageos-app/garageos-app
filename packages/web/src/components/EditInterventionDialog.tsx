@@ -219,9 +219,12 @@ export function EditInterventionDialog({ intervention, vehicleId, open, onOpenCh
 
         <FormProvider {...methods}>
           <form onSubmit={methods.handleSubmit(onSubmit)} noValidate className="space-y-4">
-            {/* BR-062 banner */}
+            {/* BR-062 banner. Caution (not error) state — the icon
+                differentiates wiki vs locked. The alert.tsx primitive
+                only exposes `default` and `destructive`; destructive
+                styling would overstate the locked state as an error. */}
             {isLocked ? (
-              <Alert variant="destructive">
+              <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
                   Audit attivo. La modifica sarà registrata e visibile al cliente. Motivo richiesto.
