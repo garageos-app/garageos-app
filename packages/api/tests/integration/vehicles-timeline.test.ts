@@ -112,8 +112,9 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     expect(titles).toContain('Tagliando A');
     expect(titles).toContain('Tagliando B');
     const row = body.data[0]!;
+    expect(row.kind).toBe('shop_intervention');
     expect(row.wiki_locked_at).toBeNull();
-    expect(row.type!.id).toEqual(expect.any(String));
+    expect(row.type!.id).toBe(tagliando.id);
   });
 
   it('surfaces wiki_locked_at as ISO string when intervention is locked', async () => {
