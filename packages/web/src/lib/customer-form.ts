@@ -2,7 +2,7 @@ import type { CustomerDetail as CustomerDetailDto, CustomerDetailUpdate } from '
 
 export type { CustomerDetailDto };
 
-export type FormValues = {
+export type CustomerFormValues = {
   firstName: string;
   lastName: string;
   isBusiness: boolean;
@@ -23,7 +23,10 @@ export type FormValues = {
 // clear businessName/vatNumber form state (see CustomerDetail watch effect — voce 11);
 // this function then emits `businessName: null` + `vatNumber: null` correctly via
 // setNullable.
-export function formToPatch(values: FormValues, dto: CustomerDetailDto): CustomerDetailUpdate {
+export function formToPatch(
+  values: CustomerFormValues,
+  dto: CustomerDetailDto,
+): CustomerDetailUpdate {
   const patch: CustomerDetailUpdate = {};
 
   if (values.firstName !== dto.firstName) patch.firstName = values.firstName;

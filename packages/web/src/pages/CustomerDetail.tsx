@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { ApiError } from '@/lib/api-client';
-import { formToPatch, type FormValues } from '@/lib/customer-form';
+import { formToPatch, type CustomerFormValues } from '@/lib/customer-form';
 import { useCustomerDetail, useUpdateCustomer } from '@/queries/customerDetail';
 import type { CustomerDetail as CustomerDetailDto } from '@/queries/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -41,10 +41,10 @@ const formSchema = z.object({
   tenantNotes: z.string().max(5000),
 });
 
-// FormValues is imported from '@/lib/customer-form' (extracted voce 10).
+// CustomerFormValues is imported from '@/lib/customer-form' (extracted voce 10).
 // The Zod schema infers the same shape — validated at call sites via zodResolver.
 
-function dtoToFormDefaults(dto: CustomerDetailDto): FormValues {
+function dtoToFormDefaults(dto: CustomerDetailDto): CustomerFormValues {
   return {
     firstName: dto.firstName,
     lastName: dto.lastName,
@@ -148,7 +148,7 @@ function EditMode({
 }) {
   const navigate = useNavigate();
   const update = useUpdateCustomer(customerId);
-  const form = useForm<FormValues>({
+  const form = useForm<CustomerFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: dtoToFormDefaults(dto),
   });

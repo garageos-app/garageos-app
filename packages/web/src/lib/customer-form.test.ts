@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { formToPatch } from './customer-form';
-import type { CustomerDetailDto, FormValues } from './customer-form';
+import type { CustomerDetailDto, CustomerFormValues } from './customer-form';
 
 // Minimal DTO fixture — only the fields formToPatch reads.
 function makeDto(overrides: Partial<CustomerDetailDto> = {}): CustomerDetailDto {
@@ -33,7 +33,7 @@ function makeDto(overrides: Partial<CustomerDetailDto> = {}): CustomerDetailDto 
   };
 }
 
-function makeValues(overrides: Partial<FormValues> = {}): FormValues {
+function makeValues(overrides: Partial<CustomerFormValues> = {}): CustomerFormValues {
   return {
     firstName: 'Mario',
     lastName: 'Rossi',
