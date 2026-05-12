@@ -49,11 +49,10 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
     wiki_window_open: d.wiki_window_open,
     tenant: {
       business_name: d.tenant.business_name,
-      // ShopTimelineItem.tenant.location_city maps to the location.city
-      // from the richer DTO. The Sede tile shows '—' for null location;
-      // here we feed '' because EditInterventionDialog does not render
-      // this field (only the title/description/parts/notes are editable).
-      location_city: d.location?.city ?? '',
+      // location.city is non-nullable in the InterventionDetail DTO
+      // (queries/types.ts). The dialog does not render this field, so the
+      // value is informational only for the ShopTimelineItem slice contract.
+      location_city: d.location.city,
     },
     has_attachments: d.attachments.length > 0,
     attachments_count: d.attachments.length,
@@ -166,11 +165,7 @@ export function InterventionDetail() {
         <Tile label="Officina" value={i.tenant.business_name} />
         <Tile
           label="Sede"
-          value={
-            i.location?.city
-              ? `${i.location.city}${i.location.name ? ' · ' + i.location.name : ''}`
-              : '—'
-          }
+          value={`${i.location.city}${i.location.name ? ' · ' + i.location.name : ''}`}
         />
         <Tile
           label="Operatore"

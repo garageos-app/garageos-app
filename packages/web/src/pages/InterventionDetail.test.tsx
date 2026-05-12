@@ -313,31 +313,7 @@ describe('InterventionDetail', () => {
     expect(screen.getByTestId('cancel-dialog-open')).toBeInTheDocument();
   });
 
-  // 11. Sede tile renders '—' when location is null (defensive fallback)
-  it('renders Sede tile as "—" when location is null', async () => {
-    const noLocation: InterventionDetailDto = {
-      ...BASE_DETAIL,
-      // Cast to override TS non-nullable for defensive runtime guard test.
-      location: null as unknown as InterventionDetailDto['location'],
-    };
-    setupApiFetch({ detail: noLocation, disputes: [], revisions: [] });
-    render(wrap({ children: <InterventionDetail /> }));
-
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /Tagliando 30000 km/i })).toBeInTheDocument(),
-    );
-
-    // Sede tile label is present and its value is the em dash fallback.
-    // Tile renders: outer div > label div + value div.font-semibold.
-    // getByText('Sede') returns the inner label div; parent is the outer tile div.
-    const sedeLabelEl = screen.getByText('Sede');
-    const tileEl = sedeLabelEl.parentElement;
-    expect(tileEl).not.toBeNull();
-    const valueEl = tileEl!.querySelector('.font-semibold');
-    expect(valueEl?.textContent).toBe('—');
-  });
-
-  // 12. Renders Ricambi card with populated parts (BR-071 canonical shape)
+  // 11. Renders Ricambi card with populated parts (BR-071 canonical shape)
   it('renders Ricambi card with populated parts using canonical BR-071 shape', async () => {
     const withParts: InterventionDetailDto = {
       ...BASE_DETAIL,
