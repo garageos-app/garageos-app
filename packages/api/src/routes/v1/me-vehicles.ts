@@ -1,7 +1,8 @@
-import type { FastifyError, FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { decodeCursor, encodeCursor } from '../../lib/cursor.js';
+import { businessError } from '../../lib/business-error.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
@@ -27,13 +28,6 @@ const listQuerySchema = z.object({
 const idParamSchema = z.object({
   id: z.uuid(),
 });
-
-function businessError(code: string, status: number, detail: string): FastifyError {
-  const err = new Error(detail) as FastifyError;
-  err.name = code;
-  err.statusCode = status;
-  return err;
-}
 
 // Vehicle projection used by both endpoints. Mirrors the officine list
 // shape (vehicles_search) minus the ownerships nesting — the customer

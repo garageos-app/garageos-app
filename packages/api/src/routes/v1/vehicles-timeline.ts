@@ -1,7 +1,8 @@
-import type { FastifyError, FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor.js';
+import { businessError } from '../../lib/business-error.js';
 import { isWikiWindowOpen } from '../../lib/intervention-shared.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
@@ -27,13 +28,6 @@ const timelineQuerySchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'to_date must be YYYY-MM-DD')
     .optional(),
 });
-
-function businessError(code: string, status: number, detail: string): FastifyError {
-  const err = new Error(detail) as FastifyError;
-  err.name = code;
-  err.statusCode = status;
-  return err;
-}
 
 // Build a Prisma where clause that respects:
 //   - vehicleId equality (always)
