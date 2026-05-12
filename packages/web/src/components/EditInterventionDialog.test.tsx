@@ -6,13 +6,16 @@ import type { ReactNode } from 'react';
 
 import { EditInterventionDialog, partsEqual } from './EditInterventionDialog';
 import { ApiError } from '@/lib/api-client';
-import type { ShopTimelineItem } from '@/queries/types';
+import type { InterventionDetail, ShopTimelineItem } from '@/queries/types';
 
-const { mockApiFetch, mockToastSuccess, mockToastError } = vi.hoisted(() => ({
-  mockApiFetch: vi.fn(),
-  mockToastSuccess: vi.fn(),
-  mockToastError: vi.fn(),
-}));
+const { mockApiFetch, mockToastSuccess, mockToastError, mockUseInterventionDetail, mockRefetch } =
+  vi.hoisted(() => ({
+    mockApiFetch: vi.fn(),
+    mockToastSuccess: vi.fn(),
+    mockToastError: vi.fn(),
+    mockUseInterventionDetail: vi.fn(),
+    mockRefetch: vi.fn(),
+  }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
@@ -63,6 +66,16 @@ vi.mock('@/queries/interventionTypes', () => ({
   }),
 }));
 
+vi.mock('@/queries/interventionDetail', async () => {
+  const actual = await vi.importActual<typeof import('@/queries/interventionDetail')>(
+    '@/queries/interventionDetail',
+  );
+  return {
+    ...actual,
+    useInterventionDetail: mockUseInterventionDetail,
+  };
+});
+
 function wrap({ children }: { children: ReactNode }) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -90,11 +103,47 @@ function makeShopItem(overrides: Partial<ShopTimelineItem> = {}): ShopTimelineIt
   };
 }
 
+function makeDetail(overrides: Partial<InterventionDetail> = {}): InterventionDetail {
+  return {
+    id: 'i-1',
+    status: 'active',
+    is_disputed: false,
+    wiki_window_open: true,
+    intervention_date: '2026-05-10',
+    odometer_km: 50000,
+    created_at: '2026-05-10T10:00:00Z',
+    cancelled_at: null,
+    cancelled_reason: null,
+    title: 'Tagliando 50k',
+    description: 'Olio motore + filtri',
+    internal_notes: null,
+    parts_replaced: [],
+    type: { id: '11111111-1111-4111-8111-111111111111', code: 'tagliando', name_it: 'Tagliando' },
+    tenant: { id: 't-1', business_name: 'Garage Acme' },
+    location: { id: 'l-1', name: null, city: 'Milano', address: null },
+    vehicle: { id: 'v-1', garage_code: 'ACM-0001', plate: 'AB123CD', make: 'Fiat', model: 'Panda' },
+    created_by: null,
+    attachments: [],
+    ...overrides,
+  };
+}
+
 describe('EditInterventionDialog', () => {
   beforeEach(() => {
     mockApiFetch.mockClear();
     mockToastSuccess.mockClear();
     mockToastError.mockClear();
+    mockUseInterventionDetail.mockReset();
+    mockRefetch.mockClear();
+    // Default: detail resolves successfully with the same fixture content as
+    // the timeline item used by existing tests. Individual tests override
+    // this with mockReturnValueOnce when they need loading / error states.
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail(),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
   });
 
   it('renders pre-populated form values from intervention prop', () => {
@@ -253,6 +302,57 @@ describe('EditInterventionDialog', () => {
       );
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('shows skeleton placeholder while detail is loading', () => {
+    mockUseInterventionDetail.mockReturnValue({
+      data: undefined,
+      isPending: true,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+    // The form body is not mounted: no description textarea, no Salva button.
+    expect(screen.queryByLabelText(/descrizione/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /salva/i })).not.toBeInTheDocument();
+    // The shell still shows the dialog title and an Annulla button (disabled).
+    expect(screen.getByText(/modifica intervento/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /annulla/i })).toBeDisabled();
+    // Skeleton placeholder is present (we'll use a role + aria-label assertion).
+    expect(screen.getByRole('status', { name: /caricamento/i })).toBeInTheDocument();
+  });
+
+  it('shows error alert with Riprova when detail fetch fails', async () => {
+    const user = userEvent.setup();
+    mockUseInterventionDetail.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      refetch: mockRefetch,
+    });
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+    expect(screen.getByText(/impossibile caricare l'intervento\. riprova\./i)).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: /riprova/i });
+    await user.click(retry);
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+    // Form body still not mounted.
+    expect(screen.queryByLabelText(/descrizione/i)).not.toBeInTheDocument();
   });
 
   describe('partsEqual structural compare', () => {
