@@ -53,9 +53,11 @@ export function AttachmentsSection({ attachments, interventionId }: Props) {
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
 
   // Image preview (blob URL) — for decodable image mimes only. HEIC/HEIF
-  // are excluded because non-iOS browsers cannot render them, producing a
-  // broken-image icon. The file uploads correctly regardless; only the
-  // pre-upload preview falls through to the file-icon placeholder.
+  // are blanket-excluded: desktop browsers can't render them at all, and
+  // while iOS Safari natively decodes HEIC we don't UA-sniff to gate the
+  // preview (the platform check would be brittle and asymmetric). The
+  // file uploads correctly regardless; only the pre-upload preview falls
+  // through to the file-icon placeholder.
   const previewUrl = useMemo(() => {
     if (!selectedFile) return null;
     const mime = selectedFile.type;
