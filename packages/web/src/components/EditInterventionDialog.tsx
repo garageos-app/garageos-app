@@ -155,14 +155,22 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
   // for the rationale). Detail and timeline DTO agree on this boolean.
   const isLocked = !intervention.wiki_window_open;
 
-  // Defaults: still seeded from timeline-style values. Task 3 will switch
-  // these to detail.internal_notes / detail.parts_replaced.
+  // Detail is the authoritative source for all editable fields. The
+  // `intervention` prop is still passed for legacy reads (id, wiki_window_open,
+  // type fallback for the Select) but defaults derive entirely from detail.
+  // `code` and `notes` are null on the wire (snake_case nullable) but undefined
+  // in the form Zod schema; ?? undefined adapts at the boundary.
   const defaults: EditInterventionFormValues = {
-    interventionTypeId: intervention.type.id,
-    title: intervention.title ?? null,
-    description: intervention.description,
-    internalNotes: null,
-    partsReplaced: [],
+    interventionTypeId: detail.type.id,
+    title: detail.title,
+    description: detail.description,
+    internalNotes: detail.internal_notes,
+    partsReplaced: detail.parts_replaced.map((p) => ({
+      name: p.name,
+      code: p.code ?? undefined,
+      quantity: p.quantity,
+      notes: p.notes ?? undefined,
+    })),
     reason: '',
   };
 
@@ -171,7 +179,7 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
     defaultValues: defaults,
   });
 
-  const [showTitle, setShowTitle] = useState(!!intervention.title);
+  const [showTitle, setShowTitle] = useState(!!detail.title);
   const [showParts, setShowParts] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -214,9 +222,6 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
       }
     }
   }
-
-  // Suppress "unused" warning for `detail` — Task 3 will consume it.
-  void detail;
 
   const submitting = mutation.isPending;
 

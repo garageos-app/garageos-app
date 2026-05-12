@@ -355,6 +355,160 @@ describe('EditInterventionDialog', () => {
     expect(screen.queryByLabelText(/descrizione/i)).not.toBeInTheDocument();
   });
 
+  it('preserves existing parts when user adds a new one (no data loss)', async () => {
+    // Setup: the detail has 1 existing part. The user expands the section,
+    // sees the existing part rendered, adds a second, and submits.
+    // Pre-fix bug: defaults were [], so submitting sent only [newPart] which
+    // overwrote the existing one. Post-fix: defaults are detail.parts_replaced,
+    // so submitting sends [existingPart, newPart].
+    const user = userEvent.setup();
+    const existingPart = {
+      name: 'Filtro olio',
+      code: 'F1',
+      quantity: 1,
+      notes: null,
+    };
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ parts_replaced: [existingPart] }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    mockApiFetch.mockResolvedValueOnce({ intervention: { id: 'i-1' }, revision: null });
+
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+
+    await user.click(screen.getByRole('button', { name: /modifica pezzi sostituiti/i }));
+    // PartsRepeater exposes "Aggiungi pezzo" to push a new row. Inputs use
+    // placeholder text, not <label>, so we query by placeholder.
+    await user.click(screen.getByRole('button', { name: /aggiungi pezzo/i }));
+    // Two name inputs are now rendered: index 0 (existing, "Filtro olio")
+    // and index 1 (new, empty).
+    const nameInputs = screen.getAllByPlaceholderText(/nome pezzo/i);
+    expect(nameInputs).toHaveLength(2);
+    await user.type(nameInputs[1], 'Pastiglie freno');
+    const qtyInputs = screen.getAllByPlaceholderText(/quantità/i);
+    await user.clear(qtyInputs[1]);
+    await user.type(qtyInputs[1], '4');
+
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalled();
+    });
+    const [, callOptions] = mockApiFetch.mock.calls[0];
+    const body = JSON.parse(callOptions.body) as Record<string, unknown>;
+    const parts = body.partsReplaced as Array<{ name: string; quantity: number }>;
+    expect(parts).toHaveLength(2);
+    expect(parts[0].name).toBe('Filtro olio');
+    expect(parts[1].name).toBe('Pastiglie freno');
+    expect(parts[1].quantity).toBe(4);
+  });
+
+  it('preserves existing internal notes when user edits the field (no data loss)', async () => {
+    const user = userEvent.setup();
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ internal_notes: 'Esistente: ricontrollare freni' }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    mockApiFetch.mockResolvedValueOnce({ intervention: { id: 'i-1' }, revision: null });
+
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+
+    await user.click(screen.getByRole('button', { name: /modifica note interne/i }));
+    // The textarea is hydrated with the existing text. User appends.
+    const notes = screen.getByLabelText(/note interne/i);
+    expect(notes).toHaveValue('Esistente: ricontrollare freni');
+    await user.type(notes, ' + verificare olio');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalled();
+    });
+    const [, callOptions] = mockApiFetch.mock.calls[0];
+    const body = JSON.parse(callOptions.body) as Record<string, unknown>;
+    expect(body.internalNotes).toBe('Esistente: ricontrollare freni + verificare olio');
+  });
+
+  it('omits partsReplaced from PATCH when expanded but unchanged', async () => {
+    const user = userEvent.setup();
+    const existingPart = {
+      name: 'Filtro olio',
+      code: 'F1',
+      quantity: 1,
+      notes: 'OEM',
+    };
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ parts_replaced: [existingPart] }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    mockApiFetch.mockResolvedValueOnce({ intervention: { id: 'i-1' }, revision: null });
+
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+
+    await user.click(screen.getByRole('button', { name: /modifica pezzi sostituiti/i }));
+    // User does NOT modify any row. Makes an unrelated change and submits.
+    await user.clear(screen.getByLabelText(/descrizione/i));
+    await user.type(screen.getByLabelText(/descrizione/i), 'Nuovo testo');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalled();
+    });
+    const [, callOptions] = mockApiFetch.mock.calls[0];
+    const body = JSON.parse(callOptions.body) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('partsReplaced');
+  });
+
+  it('auto-expands title section when detail.title is non-null', () => {
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ title: 'Tagliando 50k' }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem({ title: null })}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+    // Even though the timeline item has title=null, the detail has it. The
+    // dialog auto-expands the title section from detail, not from timeline.
+    expect(screen.getByLabelText(/titolo/i)).toHaveValue('Tagliando 50k');
+  });
+
   describe('partsEqual structural compare', () => {
     it('treats arrays with shifted key order as equal', () => {
       const a = [{ name: 'Filtro olio', code: 'F1', quantity: 1, notes: 'OEM' }];
