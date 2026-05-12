@@ -82,6 +82,15 @@ export interface ShopTimelineItem {
   parts_replaced_count: number;
   status: string;
   is_disputed: boolean;
+  /**
+   * Server-computed BR-062 wiki-window state at fetch time (true = modifiche
+   * libere, false = audit attivo). NOT guaranteed to match across timeline +
+   * detail responses if fetched on either side of the 48h boundary tick —
+   * both are point-in-time snapshots. Consumers must NOT assume runtime
+   * parity; the server is authoritative on PATCH submission (will return
+   * `intervention.modification.revision_reason_required` if the window has
+   * just closed).
+   */
   wiki_window_open: boolean;
   tenant: { business_name: string; location_city: string };
   has_attachments: boolean;
@@ -344,6 +353,15 @@ export interface InterventionDetail {
   id: string;
   status: InterventionStatus;
   is_disputed: boolean;
+  /**
+   * Server-computed BR-062 wiki-window state at fetch time (true = modifiche
+   * libere, false = audit attivo). NOT guaranteed to match across timeline +
+   * detail responses if fetched on either side of the 48h boundary tick —
+   * both are point-in-time snapshots. Consumers must NOT assume runtime
+   * parity; the server is authoritative on PATCH submission (will return
+   * `intervention.modification.revision_reason_required` if the window has
+   * just closed).
+   */
   wiki_window_open: boolean;
   intervention_date: string;
   odometer_km: number;
