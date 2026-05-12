@@ -50,8 +50,9 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
     tenant: {
       business_name: d.tenant.business_name,
       // location.city is non-nullable in the InterventionDetail DTO
-      // (queries/types.ts). The dialog does not render this field, so the
-      // value is informational only for the ShopTimelineItem slice contract.
+      // (queries/types.ts). EditInterventionDialog does not render this
+      // field, but the surrounding ShopTimeline component does — passed
+      // here for the slice contract.
       location_city: d.location.city,
     },
     has_attachments: d.attachments.length > 0,
