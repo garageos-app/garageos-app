@@ -162,10 +162,11 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
   const effectivelyLocked = isLocked || serverLocked;
 
   // Detail is the authoritative source for all editable fields. The
-  // `intervention` prop is still passed for legacy reads (id, wiki_window_open,
-  // type fallback for the Select) but defaults derive entirely from detail.
-  // `code` and `notes` are null on the wire (snake_case nullable) but undefined
-  // in the form Zod schema; ?? undefined adapts at the boundary.
+  // `intervention` prop is still passed for `id` (mutation key + detail
+  // fetch) and `wiki_window_open` (BR-062 lock state), but every editable
+  // default derives from `detail`. `code` and `notes` are null on the wire
+  // (snake_case nullable) but undefined in the form Zod schema; ?? undefined
+  // adapts at the boundary.
   const defaults: EditInterventionFormValues = {
     interventionTypeId: detail.type.id,
     title: detail.title,
@@ -403,6 +404,13 @@ export function EditInterventionDialog({ intervention, vehicleId, open, onOpenCh
   // overwrite real DB values with empty defaults (data-loss risk closed
   // in slice J). The hook's `enabled` flag is the `id` argument being
   // string-truthy; we pass undefined while the dialog is closed.
+  //
+  // Race-window note: if detail.data mutates while the dialog is open
+  // (e.g. manual cache invalidation from a sibling tab), the body keeps
+  // the initial defaults via useForm — refetch does NOT re-seed. The
+  // queryClient's staleTime: 5min + refetchOnWindowFocus: false mitigate
+  // this. If it becomes a real bug, freeze detail at first-success render
+  // (useRef pattern) before re-seeding via methods.reset().
   const detail = useInterventionDetail(open ? intervention.id : undefined);
 
   return (
