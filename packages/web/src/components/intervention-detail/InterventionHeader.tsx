@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useHasRole } from '@/auth/useHasRole';
 import { formatDate, formatKm } from '@/lib/format';
 import type { InterventionDetail } from '@/queries/types';
 
@@ -19,13 +20,15 @@ interface Props {
  * buttons (Modifica + Annulla) gated to status === 'active'.
  *
  * Backend gates action permissions (BR-066 super_admin, BR-128
- * disputed/cancelled hides edit). UI shows the buttons optimistically
- * and surfaces 403 via toast — consistent with TimelineRow Modifica
- * button pattern (PR #83). AuthContext role extension is deferred
- * (slice I).
+ * disputed/cancelled hides edit). The "Annulla" button is now gated
+ * pre-emptively via `useHasRole('super_admin')` (slice I) — mechanic
+ * users do not see it, eliminating the 403-toast roundtrip for the
+ * common no-permission case. Backend remains source of truth: stale
+ * tokens with downgraded roles still surface 403 via toast on submit.
  */
 export function InterventionHeader({ intervention: i, onEditClick, onCancelClick }: Props) {
   const isActive = i.status === 'active';
+  const canCancel = useHasRole('super_admin'); // BR-066
   const title = i.title ?? i.type.name_it;
   const vehicleHref = `/vehicles/${i.vehicle.id}`;
 
@@ -58,9 +61,11 @@ export function InterventionHeader({ intervention: i, onEditClick, onCancelClick
               <Button variant="outline" size="sm" onClick={onEditClick}>
                 Modifica
               </Button>
-              <Button variant="outline" size="sm" onClick={onCancelClick}>
-                Annulla
-              </Button>
+              {canCancel && (
+                <Button variant="outline" size="sm" onClick={onCancelClick}>
+                  Annulla
+                </Button>
+              )}
             </>
           )}
         </div>
