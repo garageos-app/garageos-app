@@ -146,7 +146,7 @@ describe('EditInterventionDialog', () => {
     });
   });
 
-  it('renders pre-populated form values from intervention prop', () => {
+  it('renders pre-populated form values from detail prefetch', () => {
     render(
       <EditInterventionDialog
         intervention={makeShopItem()}
@@ -486,6 +486,43 @@ describe('EditInterventionDialog', () => {
     const [, callOptions] = mockApiFetch.mock.calls[0];
     const body = JSON.parse(callOptions.body) as Record<string, unknown>;
     expect(body).not.toHaveProperty('partsReplaced');
+  });
+
+  it('omits internalNotes from PATCH when notes section expanded but unchanged', async () => {
+    const user = userEvent.setup();
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ internal_notes: 'Nota originale' }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    mockApiFetch.mockResolvedValueOnce({ intervention: { id: 'i-1' }, revision: null });
+
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+
+    // Expand the notes section without editing the field.
+    await user.click(screen.getByRole('button', { name: /modifica note interne/i }));
+    // The textarea should now be visible and pre-populated.
+    expect(screen.getByLabelText(/note interne/i)).toHaveValue('Nota originale');
+    // User does NOT modify the notes. Makes an unrelated change and submits.
+    await user.clear(screen.getByLabelText(/descrizione/i));
+    await user.type(screen.getByLabelText(/descrizione/i), 'Nuovo testo');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalled();
+    });
+    const [, callOptions] = mockApiFetch.mock.calls[0];
+    const body = JSON.parse(callOptions.body) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('internalNotes');
   });
 
   it('auto-expands title section when detail.title is non-null', () => {
