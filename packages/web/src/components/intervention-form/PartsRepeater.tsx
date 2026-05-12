@@ -6,10 +6,9 @@ import { Input } from '@/components/ui/input';
 // PartsRepeater renders a parts array editor expected at form path
 // `partsReplaced`. Both call sites (InterventionForm, EditInterventionDialog)
 // mount this component inside a FormProvider whose form values include a
-// `partsReplaced` array of BasePartReplaced. The component relies on
-// react-hook-form's loose path typing (FieldValues + `as never` casts) at
-// the field-array boundary because RHF's compile-time path inference does
-// not flow through to nested generic components in practice.
+// `partsReplaced` array of BasePartReplaced. The component uses RHF's
+// untyped overloads (useFormContext / useFieldArray without type arguments),
+// which accept any string path — no generic or cast is needed.
 
 export function PartsRepeater() {
   const { control, register } = useFormContext();
