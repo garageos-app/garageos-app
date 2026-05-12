@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { EditInterventionDialog } from './EditInterventionDialog';
+import { EditInterventionDialog, partsEqual } from './EditInterventionDialog';
 import { ApiError } from '@/lib/api-client';
 import type { ShopTimelineItem } from '@/queries/types';
 
@@ -253,5 +253,33 @@ describe('EditInterventionDialog', () => {
       );
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  describe('partsEqual structural compare', () => {
+    it('treats arrays with shifted key order as equal', () => {
+      const a = [{ name: 'Filtro olio', code: 'F1', quantity: 1, notes: 'OEM' }];
+      // Same content, different key insertion order (simulates Prisma JSON
+      // serializer vs Zod parse divergence).
+      const b = [{ quantity: 1, notes: 'OEM', name: 'Filtro olio', code: 'F1' }];
+      expect(partsEqual(a, b)).toBe(true);
+    });
+
+    it('returns false when length differs', () => {
+      const a = [{ name: 'A', code: null, quantity: 1, notes: null }];
+      const b: typeof a = [];
+      expect(partsEqual(a, b)).toBe(false);
+    });
+
+    it('returns false when a single field differs', () => {
+      const a = [{ name: 'A', code: 'X', quantity: 1, notes: null }];
+      const b = [{ name: 'A', code: 'X', quantity: 2, notes: null }];
+      expect(partsEqual(a, b)).toBe(false);
+    });
+
+    it('treats undefined and null as equivalent for nullable fields', () => {
+      const a = [{ name: 'A', code: undefined, quantity: 1, notes: undefined }];
+      const b = [{ name: 'A', code: null, quantity: 1, notes: null }];
+      expect(partsEqual(a, b as unknown as typeof a)).toBe(true);
+    });
   });
 });

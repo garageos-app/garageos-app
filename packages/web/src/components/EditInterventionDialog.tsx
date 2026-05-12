@@ -60,10 +60,28 @@ function collectErrorMessages(errors: unknown): string[] {
   return out;
 }
 
-// Cheap deep-equality for the parts array. Stable because both sides
-// originate from Zod parses with the same key order.
-function partsEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+// Cheap structural deep-equality for the parts array. Field-by-field so it
+// survives key-order shifts between the form-side Zod parse and any source
+// where the array originates from a JSON serializer (e.g. Prisma).
+//
+// Exported for unit testing only. Fields mirror BasePartReplacedSchema in
+// lib/validators/parts-replaced.ts. `code` and `notes` are optional/nullable
+// at the type boundary; `??` normalizes undefined and null to null so the
+// comparison is symmetric across both representations.
+export function partsEqual(
+  a: ReadonlyArray<{ name: string; code?: string | null; quantity: number; notes?: string | null }>,
+  b: ReadonlyArray<{ name: string; code?: string | null; quantity: number; notes?: string | null }>,
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((part, i) => {
+    const o = b[i];
+    return (
+      part.name === o.name &&
+      (part.code ?? null) === (o.code ?? null) &&
+      part.quantity === o.quantity &&
+      (part.notes ?? null) === (o.notes ?? null)
+    );
+  });
 }
 
 function buildPatchBody(
