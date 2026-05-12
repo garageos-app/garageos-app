@@ -11,7 +11,7 @@ function makeRevision(overrides: Partial<InterventionRevision> = {}): Interventi
     revised_at: '2026-04-01T10:00:00Z',
     reason: 'Correzione dati',
     changes: {
-      title: { before: 'Vecchio titolo', after: 'Nuovo titolo' },
+      title: { from: 'Vecchio titolo', to: 'Nuovo titolo' },
     },
     user: {
       id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
@@ -98,11 +98,11 @@ describe('RevisionHistorySection', () => {
     expect(screen.getByText(/Aggiornamento km errati/)).toBeInTheDocument();
   });
 
-  it('renders field label + before→after values for each top-level changes key', () => {
+  it('renders field label + from→to values for each top-level changes key', () => {
     const revision = makeRevision({
       changes: {
-        title: { before: 'A', after: 'B' },
-        description: { before: 'old', after: 'new' },
+        title: { from: 'A', to: 'B' },
+        description: { from: 'old', to: 'new' },
       },
     });
 
@@ -119,7 +119,7 @@ describe('RevisionHistorySection', () => {
     expect(screen.getByText('new')).toBeInTheDocument();
   });
 
-  it('gracefully renders changes with unknown (non-before/after) shape', () => {
+  it('gracefully renders changes with unknown (non-from/to) shape', () => {
     const revision = makeRevision({
       changes: {
         partsReplaced: ['Filtro olio', 'Pastiglie freni'],

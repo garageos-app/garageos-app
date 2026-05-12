@@ -403,8 +403,8 @@ export interface CancelInterventionRequest {
 //   - clienti pool:  includes `tenant` (which shop made the edit)
 // The web app is officina-side, so InterventionRevision models the
 // officine variant. `changes` is an opaque JSON object keyed by
-// field name — each value is `{ before, after }` (exact shape
-// emitted by the PATCH route).
+// field name — each value is `{ from, to }` (exact shape emitted by
+// the PATCH route, see interventions-update.ts buildChangesJson).
 export interface InterventionRevision {
   id: string;
   revised_at: string;
