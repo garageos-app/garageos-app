@@ -154,6 +154,12 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
   // BR-062 surfaced server-computed (see EditInterventionDialog.tsx pre-#85
   // for the rationale). Detail and timeline DTO agree on this boolean.
   const isLocked = !intervention.wiki_window_open;
+  // Server-driven flip: when isLocked is false at render but the PATCH
+  // returns `revision_reason_required` (BR-062 48h window just closed
+  // during the edit), flip to locked-mode UX so the reason field is
+  // mounted and the user can recover without losing input.
+  const [serverLocked, setServerLocked] = useState(false);
+  const effectivelyLocked = isLocked || serverLocked;
 
   // Detail is the authoritative source for all editable fields. The
   // `intervention` prop is still passed for legacy reads (id, wiki_window_open,
@@ -190,7 +196,7 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
 
   async function onSubmit(values: EditInterventionFormValues) {
     setFormError(null);
-    if (isLocked && (!values.reason || values.reason.trim().length < 10)) {
+    if (effectivelyLocked && (!values.reason || values.reason.trim().length < 10)) {
       methods.setError('reason', {
         type: 'manual',
         message: 'Motivo richiesto (almeno 10 caratteri).',
@@ -213,7 +219,17 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
           toast.error(mapped.message);
           onOpenChange(false);
         } else if (err.code === 'intervention.modification.revision_reason_required') {
-          methods.setError('reason', { type: 'manual', message: mapped.message });
+          // Race-window: server detected the 48h boundary closed mid-edit.
+          // Flip to locked-mode UX so the reason field is mounted and the
+          // user can recover without losing input. See BR-062.
+          setServerLocked(true);
+          methods.setError('reason', {
+            type: 'manual',
+            // This branch is only reachable when isLocked is false at render
+            // (the pre-submit guard above blocks PATCH with missing reason when
+            // already locked), so the message is always the race-window copy.
+            message: 'Finestra di modifica chiusa — fornisci il motivo (min 10 caratteri).',
+          });
         } else {
           toast.error(mapped.message);
         }
@@ -228,7 +244,14 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
   return (
     <FormProvider {...methods}>
       <form onSubmit={methods.handleSubmit(onSubmit)} noValidate className="space-y-4">
-        {isLocked ? (
+        {effectivelyLocked && !isLocked ? (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Audit appena attivato. Fornisci il motivo per salvare la modifica.
+            </AlertDescription>
+          </Alert>
+        ) : isLocked ? (
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
@@ -343,7 +366,7 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
           </div>
         )}
 
-        {isLocked && (
+        {effectivelyLocked && (
           <div>
             <Label htmlFor="reason">Motivo della modifica (richiesto, min 10 caratteri)</Label>
             <Textarea id="reason" rows={3} {...methods.register('reason')} />

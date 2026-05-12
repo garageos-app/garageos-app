@@ -509,6 +509,98 @@ describe('EditInterventionDialog', () => {
     expect(screen.getByLabelText(/titolo/i)).toHaveValue('Tagliando 50k');
   });
 
+  it('race-window: PATCH revision_reason_required switches banner to "Audit appena attivato"', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockRejectedValueOnce(
+      new ApiError('intervention.modification.revision_reason_required', 400, 'Reason required'),
+    );
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem({ wiki_window_open: true })}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+    // Banner pre-submit: "Modifiche libere".
+    expect(screen.getByText(/modifiche libere/i)).toBeInTheDocument();
+    // User makes an edit + submits — backend says window just closed.
+    await user.clear(screen.getByLabelText(/descrizione/i));
+    await user.type(screen.getByLabelText(/descrizione/i), 'Nuovo testo');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+    // Banner switches to the "race-window" warning variant.
+    await waitFor(() => {
+      expect(screen.getByText(/audit appena attivato/i)).toBeInTheDocument();
+    });
+    // "Modifiche libere" banner is no longer present.
+    expect(screen.queryByText(/modifiche libere/i)).not.toBeInTheDocument();
+  });
+
+  it('race-window: after server-driven switch, reason field is mounted', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockRejectedValueOnce(
+      new ApiError('intervention.modification.revision_reason_required', 400, 'Reason required'),
+    );
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem({ wiki_window_open: true })}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+    // Pre-submit: reason field is NOT in DOM (free-edit mode).
+    expect(screen.queryByLabelText(/motivo della modifica/i)).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText(/descrizione/i));
+    await user.type(screen.getByLabelText(/descrizione/i), 'Nuovo');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+    // Post-failed-submit: reason field is mounted.
+    await waitFor(() => {
+      expect(screen.getByLabelText(/motivo della modifica/i)).toBeInTheDocument();
+    });
+  });
+
+  it('race-window: after switch, submitting with reason >=10 char succeeds', async () => {
+    const user = userEvent.setup();
+    // First submit fails (race-window detected by server).
+    mockApiFetch.mockRejectedValueOnce(
+      new ApiError('intervention.modification.revision_reason_required', 400, 'Reason required'),
+    );
+    // Second submit (with reason) succeeds.
+    mockApiFetch.mockResolvedValueOnce({
+      intervention: { id: 'i-1' },
+      revision: { id: 'rev-1' },
+    });
+    const onOpenChange = vi.fn();
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem({ wiki_window_open: true })}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={onOpenChange}
+      />,
+      { wrapper: wrap },
+    );
+    await user.clear(screen.getByLabelText(/descrizione/i));
+    await user.type(screen.getByLabelText(/descrizione/i), 'Nuovo');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+    // Reason field mounts after the failed PATCH.
+    const reasonField = await screen.findByLabelText(/motivo della modifica/i);
+    await user.type(reasonField, 'Audit attivato durante modifica');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+    await waitFor(() => {
+      expect(mockToastSuccess).toHaveBeenCalledWith('Intervento aggiornato');
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    // The second PATCH body includes the reason field.
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    const [, secondCallOptions] = mockApiFetch.mock.calls[1];
+    const body = JSON.parse(secondCallOptions.body) as Record<string, unknown>;
+    expect(body).toHaveProperty('reason', 'Audit attivato durante modifica');
+  });
+
   describe('partsEqual structural compare', () => {
     it('treats arrays with shifted key order as equal', () => {
       const a = [{ name: 'Filtro olio', code: 'F1', quantity: 1, notes: 'OEM' }];
