@@ -7,10 +7,25 @@ import {
 import { officineUserPool } from '@/lib/cognito';
 import { mapCognitoError } from '@/lib/auth-errors';
 
+export type UserRole = 'super_admin' | 'mechanic';
+
+// Officine pool roles, mirrored from
+// packages/api/src/middleware/tenant-context.ts (z.enum source of truth).
+// Duplicated here on purpose: importing the backend Zod schema would
+// pull @garageos/api (and its transitive deps) into the Vite bundle.
+// When backend adds a role, add it here too — see ALLOWED_ROLES below.
+const ALLOWED_ROLES: readonly UserRole[] = ['super_admin', 'mechanic'];
+
 export interface AuthenticatedUser {
   email: string;
   givenName?: string;
   familyName?: string;
+  // Pre-emptive UI gating only — backend remains authoritative via
+  // 403 on each request. Undefined when claim missing or unknown.
+  role?: UserRole;
+  // Tenant id surfaced for future logging / error breadcrumbs.
+  // No client-side UUID parse — backend Zod validates on every request.
+  tenantId?: string;
 }
 
 export type AuthState =
@@ -62,11 +77,23 @@ export interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
-function userFromIdToken(idToken: { payload: Record<string, unknown> }): AuthenticatedUser {
+export function userFromIdToken(idToken: { payload: Record<string, unknown> }): AuthenticatedUser {
   const email = String(idToken.payload.email ?? '');
   const givenName = idToken.payload.given_name ? String(idToken.payload.given_name) : undefined;
   const familyName = idToken.payload.family_name ? String(idToken.payload.family_name) : undefined;
-  return { email, givenName, familyName };
+
+  const roleRaw = idToken.payload['custom:role'];
+  let role: UserRole | undefined;
+  if (typeof roleRaw === 'string' && (ALLOWED_ROLES as readonly string[]).includes(roleRaw)) {
+    role = roleRaw as UserRole;
+  } else if (roleRaw !== undefined) {
+    console.warn('AuthContext: unknown custom:role claim, ignoring', { raw: roleRaw });
+  }
+
+  const tenantRaw = idToken.payload['custom:tenant_id'];
+  const tenantId = typeof tenantRaw === 'string' && tenantRaw.length > 0 ? tenantRaw : undefined;
+
+  return { email, givenName, familyName, role, tenantId };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
