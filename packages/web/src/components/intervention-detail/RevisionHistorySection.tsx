@@ -23,11 +23,12 @@ function formatChangeValue(v: unknown): string {
   return String(v);
 }
 
-// Type guard for the { before, after } diff shape emitted by the PATCH route.
-// `changes` is typed as Record<string, unknown> (opaque) so we guard defensively
-// rather than casting.
-function isBeforeAfter(v: unknown): v is { before: unknown; after: unknown } {
-  return typeof v === 'object' && v !== null && 'before' in v && 'after' in v;
+// Type guard for the { from, to } diff shape emitted by the PATCH route
+// (see packages/api/src/routes/v1/interventions-update.ts buildChangesJson).
+// `changes` is typed as Record<string, unknown> (opaque) so we guard
+// defensively rather than casting.
+function isFromTo(v: unknown): v is { from: unknown; to: unknown } {
+  return typeof v === 'object' && v !== null && 'from' in v && 'to' in v;
 }
 
 /**
@@ -71,15 +72,15 @@ export function RevisionHistorySection({ revisions }: Props) {
             <ul className="text-sm space-y-0.5">
               {Object.entries(r.changes).map(([field, change]) => {
                 const label = fieldLabels[field] ?? field;
-                if (isBeforeAfter(change)) {
+                if (isFromTo(change)) {
                   return (
                     <li key={field}>
                       <span className="text-muted-foreground">{label}:</span>{' '}
                       <span className="line-through text-muted-foreground">
-                        {formatChangeValue(change.before)}
+                        {formatChangeValue(change.from)}
                       </span>
                       {' → '}
-                      <span className="font-medium">{formatChangeValue(change.after)}</span>
+                      <span className="font-medium">{formatChangeValue(change.to)}</span>
                     </li>
                   );
                 }
