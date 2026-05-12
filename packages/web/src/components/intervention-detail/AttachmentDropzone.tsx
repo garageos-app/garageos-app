@@ -3,10 +3,9 @@ import { useRef, type DragEvent, type KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import type { UploadState } from '@/queries/attachmentUpload';
-import { ALLOWED_MIME_TYPES, MAX_ATTACHMENTS_PER_INTERVENTION } from '@/lib/attachmentValidation';
+import { ALLOWED_MIME_TYPES } from '@/lib/attachmentValidation';
 
 interface Props {
-  currentCount: number;
   state: UploadState;
   selectedFile?: File | null;
   previewUrl?: string | null;
@@ -26,11 +25,10 @@ const ACCEPT_ATTR = [...ALLOWED_MIME_TYPES, '.heic'].join(',');
 /**
  * Visual dropzone + picker + preview + progress for F-OFF-305 upload UI.
  * Pure presentational: validation and orchestration are owned by the parent
- * (AttachmentsSection). Hides itself entirely when the intervention is at
- * the BR-180 cap (10 attachments) and shows a static "limit reached" line.
+ * (AttachmentsSection). The parent renders this component only when below the
+ * BR-180 cap (10 attachments); the limit-reached message lives there.
  */
 export function AttachmentDropzone({
-  currentCount,
   state,
   selectedFile,
   previewUrl,
@@ -41,14 +39,6 @@ export function AttachmentDropzone({
   onReset,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-
-  if (currentCount >= MAX_ATTACHMENTS_PER_INTERVENTION) {
-    return (
-      <div className="text-xs text-muted-foreground italic">
-        Limite di 10 allegati raggiunto. Elimina un allegato prima di caricarne un altro.
-      </div>
-    );
-  }
 
   const isInFlight =
     state.phase === 'requesting' || state.phase === 'uploading' || state.phase === 'confirming';

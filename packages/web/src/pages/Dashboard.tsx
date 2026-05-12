@@ -31,6 +31,9 @@ export function Dashboard() {
   // between tabs within the tablist. Required because we use roving
   // tabIndex (only the active tab is in the Tab key stop sequence),
   // so without this handler arrow navigation is unreachable.
+  // TODO when adding a 3rd tab: switch to functional setTab updater
+  // (`setTab(prev => ...)`) — the current binary toggle reads `tab` from
+  // closure and would race on rapid double keypress with 3+ tabs.
   function onTabsKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();

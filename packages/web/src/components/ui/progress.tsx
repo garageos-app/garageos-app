@@ -4,9 +4,10 @@ import { cn } from '@/lib/utils';
 
 /**
  * Minimal Progress bar — shadcn-compatible API without @radix-ui/react-progress.
- * Wraps a <div role="progressbar"> so the outer consumer can omit the role.
- * The aria-* attributes are NOT set here; callers that need them should wrap
- * this component in their own div[role="progressbar"] with aria-valuenow etc.
+ * Purely visual: the rendered outer <div> has NO `role` and NO `aria-*`
+ * attributes. Callers that need ARIA exposure must wrap this primitive in
+ * their own `div[role="progressbar"]` with `aria-valuenow`/`aria-valuemin`/
+ * `aria-valuemax`/`aria-label` (see AttachmentDropzone for the canonical wrap).
  */
 const Progress = React.forwardRef<
   HTMLDivElement,

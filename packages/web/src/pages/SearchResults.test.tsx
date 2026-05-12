@@ -50,6 +50,7 @@ describe('SearchResults — t=customer branch', () => {
         return Promise.resolve({
           id: '11111111-1111-4111-8111-111111111111',
           email: 'mario@example.it',
+          cognitoSub: null,
           firstName: 'Mario',
           lastName: 'Rossi',
           phone: null,
@@ -103,6 +104,7 @@ describe('SearchResults — t=customer branch', () => {
         return Promise.resolve({
           id: '22222222-2222-4222-8222-222222222222',
           email: 'mario@example.it',
+          cognitoSub: null,
           firstName: 'Mario',
           lastName: 'Rossi',
           phone: null,

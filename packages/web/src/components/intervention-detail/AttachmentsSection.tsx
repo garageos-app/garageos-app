@@ -52,10 +52,16 @@ export function AttachmentsSection({ attachments, interventionId }: Props) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
 
-  // Image preview (blob URL) — only for image mimes, cleaned up on unmount/change.
+  // Image preview (blob URL) — for decodable image mimes only. HEIC/HEIF
+  // are blanket-excluded: desktop browsers can't render them at all, and
+  // while iOS Safari natively decodes HEIC we don't UA-sniff to gate the
+  // preview (the platform check would be brittle and asymmetric). The
+  // file uploads correctly regardless; only the pre-upload preview falls
+  // through to the file-icon placeholder.
   const previewUrl = useMemo(() => {
     if (!selectedFile) return null;
-    if (selectedFile.type.startsWith('image/')) {
+    const mime = selectedFile.type;
+    if (mime.startsWith('image/') && mime !== 'image/heic' && mime !== 'image/heif') {
       return URL.createObjectURL(selectedFile);
     }
     return null;
@@ -134,7 +140,6 @@ export function AttachmentsSection({ attachments, interventionId }: Props) {
       <CardContent className="space-y-4">
         {showDropzone ? (
           <AttachmentDropzone
-            currentCount={attachments.length}
             state={upload.state}
             selectedFile={selectedFile}
             previewUrl={previewUrl}

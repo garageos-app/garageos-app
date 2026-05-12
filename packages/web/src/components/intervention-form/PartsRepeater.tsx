@@ -1,25 +1,20 @@
 import { Plus, Trash2 } from 'lucide-react';
-import { type FieldValues, useFieldArray, useFormContext } from 'react-hook-form';
+import { useFieldArray, useFormContext } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { BasePartReplaced } from '@/lib/validators/parts-replaced';
 
-// Form values must include a `partsReplaced` array of BasePartReplaced.
-// CreateInterventionFormValues satisfies this strictly (required array).
-// EditInterventionFormValues declares `partsReplaced` as optional at the
-// schema level (omitted PATCH bodies are sparse), but EditInterventionDialog
-// always initializes the form state with `partsReplaced: []`, so at the
-// PartsRepeater mount point the field is structurally present. Both
-// usage sites omit the explicit type argument and rely on inference from
-// the surrounding FormProvider — the constraint above is documentary, not
-// a runtime check at the call site.
-type PartsFormValues = FieldValues & { partsReplaced: BasePartReplaced[] };
+// PartsRepeater renders a parts array editor expected at form path
+// `partsReplaced`. Both call sites (InterventionForm, EditInterventionDialog)
+// mount this component inside a FormProvider whose form values include a
+// `partsReplaced` array of BasePartReplaced. The component uses RHF's
+// untyped overloads (useFormContext / useFieldArray without type arguments),
+// which accept any string path — no generic or cast is needed.
 
-export function PartsRepeater<TFormValues extends PartsFormValues>() {
-  const { control, register } = useFormContext<TFormValues>();
-  const { fields, append, remove } = useFieldArray<TFormValues>({
+export function PartsRepeater() {
+  const { control, register } = useFormContext();
+  const { fields, append, remove } = useFieldArray({
     control,
-    name: 'partsReplaced' as never,
+    name: 'partsReplaced',
   });
 
   return (
@@ -29,14 +24,14 @@ export function PartsRepeater<TFormValues extends PartsFormValues>() {
       ) : (
         fields.map((f, i) => (
           <div key={f.id} className="grid grid-cols-[1fr_120px_80px_36px] gap-2 items-start">
-            <Input placeholder="Nome pezzo" {...register(`partsReplaced.${i}.name` as never)} />
-            <Input placeholder="Codice (opz)" {...register(`partsReplaced.${i}.code` as never)} />
+            <Input placeholder="Nome pezzo" {...register(`partsReplaced.${i}.name`)} />
+            <Input placeholder="Codice (opz)" {...register(`partsReplaced.${i}.code`)} />
             <Input
               type="number"
               placeholder="Quantità"
               step="1"
               min={1}
-              {...register(`partsReplaced.${i}.quantity` as never, { valueAsNumber: true })}
+              {...register(`partsReplaced.${i}.quantity`, { valueAsNumber: true })}
             />
             <Button
               type="button"
@@ -54,7 +49,7 @@ export function PartsRepeater<TFormValues extends PartsFormValues>() {
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => append({ name: '', quantity: 1 } as never)}
+        onClick={() => append({ name: '', quantity: 1 })}
       >
         <Plus size={14} className="mr-1" /> Aggiungi pezzo
       </Button>
