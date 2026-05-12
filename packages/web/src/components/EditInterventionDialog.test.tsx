@@ -4,15 +4,18 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { EditInterventionDialog } from './EditInterventionDialog';
+import { EditInterventionDialog, partsEqual } from './EditInterventionDialog';
 import { ApiError } from '@/lib/api-client';
-import type { ShopTimelineItem } from '@/queries/types';
+import type { InterventionDetail, ShopTimelineItem } from '@/queries/types';
 
-const { mockApiFetch, mockToastSuccess, mockToastError } = vi.hoisted(() => ({
-  mockApiFetch: vi.fn(),
-  mockToastSuccess: vi.fn(),
-  mockToastError: vi.fn(),
-}));
+const { mockApiFetch, mockToastSuccess, mockToastError, mockUseInterventionDetail, mockRefetch } =
+  vi.hoisted(() => ({
+    mockApiFetch: vi.fn(),
+    mockToastSuccess: vi.fn(),
+    mockToastError: vi.fn(),
+    mockUseInterventionDetail: vi.fn(),
+    mockRefetch: vi.fn(),
+  }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
@@ -63,6 +66,16 @@ vi.mock('@/queries/interventionTypes', () => ({
   }),
 }));
 
+vi.mock('@/queries/interventionDetail', async () => {
+  const actual = await vi.importActual<typeof import('@/queries/interventionDetail')>(
+    '@/queries/interventionDetail',
+  );
+  return {
+    ...actual,
+    useInterventionDetail: mockUseInterventionDetail,
+  };
+});
+
 function wrap({ children }: { children: ReactNode }) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -90,11 +103,47 @@ function makeShopItem(overrides: Partial<ShopTimelineItem> = {}): ShopTimelineIt
   };
 }
 
+function makeDetail(overrides: Partial<InterventionDetail> = {}): InterventionDetail {
+  return {
+    id: 'i-1',
+    status: 'active',
+    is_disputed: false,
+    wiki_window_open: true,
+    intervention_date: '2026-05-10',
+    odometer_km: 50000,
+    created_at: '2026-05-10T10:00:00Z',
+    cancelled_at: null,
+    cancelled_reason: null,
+    title: 'Tagliando 50k',
+    description: 'Olio motore + filtri',
+    internal_notes: null,
+    parts_replaced: [],
+    type: { id: '11111111-1111-4111-8111-111111111111', code: 'tagliando', name_it: 'Tagliando' },
+    tenant: { id: 't-1', business_name: 'Garage Acme' },
+    location: { id: 'l-1', name: null, city: 'Milano', address: null },
+    vehicle: { id: 'v-1', garage_code: 'ACM-0001', plate: 'AB123CD', make: 'Fiat', model: 'Panda' },
+    created_by: null,
+    attachments: [],
+    ...overrides,
+  };
+}
+
 describe('EditInterventionDialog', () => {
   beforeEach(() => {
     mockApiFetch.mockClear();
     mockToastSuccess.mockClear();
     mockToastError.mockClear();
+    mockUseInterventionDetail.mockReset();
+    mockRefetch.mockClear();
+    // Default: detail resolves successfully with the same fixture content as
+    // the timeline item used by existing tests. Individual tests override
+    // this with mockReturnValueOnce when they need loading / error states.
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail(),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
   });
 
   it('renders pre-populated form values from intervention prop', () => {
@@ -253,5 +302,238 @@ describe('EditInterventionDialog', () => {
       );
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('shows skeleton placeholder while detail is loading', () => {
+    mockUseInterventionDetail.mockReturnValue({
+      data: undefined,
+      isPending: true,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+    // The form body is not mounted: no description textarea, no Salva button.
+    expect(screen.queryByLabelText(/descrizione/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /salva/i })).not.toBeInTheDocument();
+    // The shell still shows the dialog title and an Annulla button (disabled).
+    expect(screen.getByText(/modifica intervento/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /annulla/i })).toBeDisabled();
+    // Skeleton placeholder is present (we'll use a role + aria-label assertion).
+    expect(screen.getByRole('status', { name: /caricamento/i })).toBeInTheDocument();
+  });
+
+  it('shows error alert with Riprova when detail fetch fails', async () => {
+    const user = userEvent.setup();
+    mockUseInterventionDetail.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      refetch: mockRefetch,
+    });
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+    expect(screen.getByText(/impossibile caricare l'intervento\. riprova\./i)).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: /riprova/i });
+    await user.click(retry);
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+    // Form body still not mounted.
+    expect(screen.queryByLabelText(/descrizione/i)).not.toBeInTheDocument();
+  });
+
+  it('preserves existing parts when user adds a new one (no data loss)', async () => {
+    // Setup: the detail has 1 existing part. The user expands the section,
+    // sees the existing part rendered, adds a second, and submits.
+    // Pre-fix bug: defaults were [], so submitting sent only [newPart] which
+    // overwrote the existing one. Post-fix: defaults are detail.parts_replaced,
+    // so submitting sends [existingPart, newPart].
+    const user = userEvent.setup();
+    const existingPart = {
+      name: 'Filtro olio',
+      code: 'F1',
+      quantity: 1,
+      notes: null,
+    };
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ parts_replaced: [existingPart] }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    mockApiFetch.mockResolvedValueOnce({ intervention: { id: 'i-1' }, revision: null });
+
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+
+    await user.click(screen.getByRole('button', { name: /modifica pezzi sostituiti/i }));
+    // PartsRepeater exposes "Aggiungi pezzo" to push a new row. Inputs use
+    // placeholder text, not <label>, so we query by placeholder.
+    await user.click(screen.getByRole('button', { name: /aggiungi pezzo/i }));
+    // Two name inputs are now rendered: index 0 (existing, "Filtro olio")
+    // and index 1 (new, empty).
+    const nameInputs = screen.getAllByPlaceholderText(/nome pezzo/i);
+    expect(nameInputs).toHaveLength(2);
+    await user.type(nameInputs[1], 'Pastiglie freno');
+    const qtyInputs = screen.getAllByPlaceholderText(/quantità/i);
+    await user.clear(qtyInputs[1]);
+    await user.type(qtyInputs[1], '4');
+
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalled();
+    });
+    const [, callOptions] = mockApiFetch.mock.calls[0];
+    const body = JSON.parse(callOptions.body) as Record<string, unknown>;
+    const parts = body.partsReplaced as Array<{ name: string; quantity: number }>;
+    expect(parts).toHaveLength(2);
+    expect(parts[0].name).toBe('Filtro olio');
+    expect(parts[1].name).toBe('Pastiglie freno');
+    expect(parts[1].quantity).toBe(4);
+  });
+
+  it('preserves existing internal notes when user edits the field (no data loss)', async () => {
+    const user = userEvent.setup();
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ internal_notes: 'Esistente: ricontrollare freni' }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    mockApiFetch.mockResolvedValueOnce({ intervention: { id: 'i-1' }, revision: null });
+
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+
+    await user.click(screen.getByRole('button', { name: /modifica note interne/i }));
+    // The textarea is hydrated with the existing text. User appends.
+    const notes = screen.getByLabelText(/note interne/i);
+    expect(notes).toHaveValue('Esistente: ricontrollare freni');
+    await user.type(notes, ' + verificare olio');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalled();
+    });
+    const [, callOptions] = mockApiFetch.mock.calls[0];
+    const body = JSON.parse(callOptions.body) as Record<string, unknown>;
+    expect(body.internalNotes).toBe('Esistente: ricontrollare freni + verificare olio');
+  });
+
+  it('omits partsReplaced from PATCH when expanded but unchanged', async () => {
+    const user = userEvent.setup();
+    const existingPart = {
+      name: 'Filtro olio',
+      code: 'F1',
+      quantity: 1,
+      notes: 'OEM',
+    };
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ parts_replaced: [existingPart] }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    mockApiFetch.mockResolvedValueOnce({ intervention: { id: 'i-1' }, revision: null });
+
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+
+    await user.click(screen.getByRole('button', { name: /modifica pezzi sostituiti/i }));
+    // User does NOT modify any row. Makes an unrelated change and submits.
+    await user.clear(screen.getByLabelText(/descrizione/i));
+    await user.type(screen.getByLabelText(/descrizione/i), 'Nuovo testo');
+    await user.click(screen.getByRole('button', { name: /salva/i }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalled();
+    });
+    const [, callOptions] = mockApiFetch.mock.calls[0];
+    const body = JSON.parse(callOptions.body) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('partsReplaced');
+  });
+
+  it('auto-expands title section when detail.title is non-null', () => {
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ title: 'Tagliando 50k' }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem({ title: null })}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+    // Even though the timeline item has title=null, the detail has it. The
+    // dialog auto-expands the title section from detail, not from timeline.
+    expect(screen.getByLabelText(/titolo/i)).toHaveValue('Tagliando 50k');
+  });
+
+  describe('partsEqual structural compare', () => {
+    it('treats arrays with shifted key order as equal', () => {
+      const a = [{ name: 'Filtro olio', code: 'F1', quantity: 1, notes: 'OEM' }];
+      // Same content, different key insertion order (simulates Prisma JSON
+      // serializer vs Zod parse divergence).
+      const b = [{ quantity: 1, notes: 'OEM', name: 'Filtro olio', code: 'F1' }];
+      expect(partsEqual(a, b)).toBe(true);
+    });
+
+    it('returns false when length differs', () => {
+      const a = [{ name: 'A', code: null, quantity: 1, notes: null }];
+      const b: typeof a = [];
+      expect(partsEqual(a, b)).toBe(false);
+    });
+
+    it('returns false when a single field differs', () => {
+      const a = [{ name: 'A', code: 'X', quantity: 1, notes: null }];
+      const b = [{ name: 'A', code: 'X', quantity: 2, notes: null }];
+      expect(partsEqual(a, b)).toBe(false);
+    });
+
+    it('treats undefined and null as equivalent for nullable fields', () => {
+      const a = [{ name: 'A', code: undefined, quantity: 1, notes: undefined }];
+      const b = [{ name: 'A', code: null, quantity: 1, notes: null }];
+      expect(partsEqual(a, b as unknown as typeof a)).toBe(true);
+    });
   });
 });
