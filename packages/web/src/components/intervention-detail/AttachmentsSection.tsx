@@ -138,7 +138,6 @@ export function AttachmentsSection({ attachments, interventionId }: Props) {
       <CardContent className="space-y-4">
         {showDropzone ? (
           <AttachmentDropzone
-            currentCount={attachments.length}
             state={upload.state}
             selectedFile={selectedFile}
             previewUrl={previewUrl}

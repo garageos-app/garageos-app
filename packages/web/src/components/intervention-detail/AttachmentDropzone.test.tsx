@@ -16,7 +16,6 @@ beforeEach(() => {
 
 function defaultProps(overrides: Partial<React.ComponentProps<typeof AttachmentDropzone>> = {}) {
   return {
-    currentCount: 0,
     state: { phase: 'idle' } as UploadState,
     onSelect: noop,
     onUpload: noop,
@@ -31,12 +30,6 @@ describe('AttachmentDropzone — rendering by state', () => {
     render(<AttachmentDropzone {...defaultProps()} />);
     expect(screen.getByRole('button', { name: /trascina qui un file/i })).toBeInTheDocument();
     expect(screen.getByText(/seleziona file/i)).toBeInTheDocument();
-  });
-
-  it('count=10 hides the dropzone and shows limit message', () => {
-    render(<AttachmentDropzone {...defaultProps({ currentCount: 10 })} />);
-    expect(screen.queryByRole('button', { name: /trascina/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/limite di 10 allegati raggiunto/i)).toBeInTheDocument();
   });
 
   it('uploading phase shows progress bar with aria-valuenow', () => {
