@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 
 import { InterventionDetail } from './InterventionDetail';
 import { ApiError } from '@/lib/api-client';
+import { useHasRole } from '@/auth/useHasRole';
 import type {
   InterventionDetail as InterventionDetailDto,
   InterventionDispute,
@@ -23,6 +24,12 @@ const { apiFetchMock, navigateMock, toastErrorMock } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   toastErrorMock: vi.fn(),
 }));
+
+vi.mock('@/auth/useHasRole', () => ({
+  useHasRole: vi.fn(),
+}));
+
+const mockedUseHasRole = vi.mocked(useHasRole);
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
@@ -172,6 +179,8 @@ describe('InterventionDetail', () => {
     navigateMock.mockClear();
     toastErrorMock.mockClear();
     cancelDialogOpenValues.length = 0;
+    // Default: super_admin — keeps all Annulla button assertions passing.
+    mockedUseHasRole.mockReturnValue(true);
   });
 
   afterEach(() => {

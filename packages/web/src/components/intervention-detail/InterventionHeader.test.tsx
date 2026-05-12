@@ -1,10 +1,23 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import { InterventionHeader } from './InterventionHeader';
+import { useHasRole } from '@/auth/useHasRole';
 import type { InterventionDetail } from '@/queries/types';
+
+vi.mock('@/auth/useHasRole', () => ({
+  useHasRole: vi.fn(),
+}));
+
+const mockedUseHasRole = vi.mocked(useHasRole);
+
+beforeEach(() => {
+  // Default: super_admin — preserves existing test expectations.
+  // Tests that need the mechanic case override per-test.
+  mockedUseHasRole.mockReturnValue(true);
+});
 
 // Minimal fixture factory — only fields consumed by InterventionHeader.
 function makeIntervention(overrides: Partial<InterventionDetail> = {}): InterventionDetail {
@@ -121,5 +134,34 @@ describe('InterventionHeader', () => {
 
     await user.click(screen.getByRole('button', { name: 'Annulla' }));
     expect(onCancelClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('mechanic user (useHasRole=false) sees Modifica but NOT Annulla on active intervention', () => {
+    mockedUseHasRole.mockReturnValue(false);
+    renderHeader(makeIntervention());
+
+    expect(screen.getByRole('button', { name: 'Modifica' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
+  });
+
+  it('super_admin user (useHasRole=true) sees both Modifica and Annulla on active intervention', () => {
+    // Default beforeEach mock already returns true — explicit here for clarity.
+    mockedUseHasRole.mockReturnValue(true);
+    renderHeader(makeIntervention());
+
+    expect(screen.getByRole('button', { name: 'Modifica' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Annulla' })).toBeInTheDocument();
+  });
+
+  it('mechanic on cancelled intervention sees neither button (status gate dominates role gate)', () => {
+    mockedUseHasRole.mockReturnValue(false);
+    const cancelled = makeIntervention({
+      status: 'cancelled',
+      cancelled_at: '2025-06-02T10:00:00Z',
+    });
+    renderHeader(cancelled);
+
+    expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
   });
 });
