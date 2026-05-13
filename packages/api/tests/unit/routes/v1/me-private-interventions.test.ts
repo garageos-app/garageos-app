@@ -42,12 +42,18 @@ interface FakePrisma {
     findMany: ReturnType<typeof vi.fn>;
     count: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    updateMany: ReturnType<typeof vi.fn>;
   };
   vehicleOwnership: {
     findFirst: ReturnType<typeof vi.fn>;
   };
   interventionType: {
     findFirst: ReturnType<typeof vi.fn>;
+  };
+  attachment: {
+    findMany: ReturnType<typeof vi.fn>;
+    groupBy: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -58,12 +64,18 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
       create: vi.fn().mockResolvedValue(PRIVATE_ROW),
+      update: vi.fn().mockResolvedValue(PRIVATE_ROW),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     vehicleOwnership: {
       findFirst: vi.fn().mockResolvedValue(OWNERSHIP_ROW),
     },
     interventionType: {
       findFirst: vi.fn().mockResolvedValue({ id: 'type-1' }),
+    },
+    attachment: {
+      findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     ...overrides,
   };
@@ -146,6 +158,8 @@ describe('mePrivateInterventionRoutes (unit)', () => {
         findMany: vi.fn(),
         count: vi.fn(),
         create: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
       },
     });
     app = await buildApp({ prisma });
@@ -265,5 +279,123 @@ describe('mePrivateInterventionRoutes (unit)', () => {
         }),
       }),
     );
+  });
+
+  it('PATCH 200 calls update with merged data + reads back attachments', async () => {
+    // The PATCH handler's findFirst uses `select: { id, interventionTypeId,
+    // customType }` for the merged-XOR check. The default PRIVATE_ROW omits
+    // `interventionTypeId` (undefined), which would collide with the
+    // customType-set state and trip the XOR guard → 422. Override the mock
+    // findFirst to return a row shaped exactly like the handler's select.
+    const prisma = buildFakePrisma({
+      privateIntervention: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValue({ id: PRIVATE_ID, interventionTypeId: null, customType: 'X' }),
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        create: vi.fn().mockResolvedValue(PRIVATE_ROW),
+        update: vi.fn().mockResolvedValue(PRIVATE_ROW),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/me/private-interventions/${PRIVATE_ID}`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: { description: 'updated' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prisma.privateIntervention.findFirst).toHaveBeenCalled();
+    expect(prisma.privateIntervention.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: PRIVATE_ID },
+        data: { description: 'updated' },
+      }),
+    );
+    expect(prisma.attachment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ownerType: 'private_intervention',
+          ownerId: PRIVATE_ID,
+          processed: true,
+          deletedAt: null,
+        }),
+      }),
+    );
+  });
+
+  it('PATCH 404 when findFirst returns null (cross-customer / soft-deleted)', async () => {
+    const prisma = buildFakePrisma({
+      privateIntervention: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn(),
+        count: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/me/private-interventions/${PRIVATE_ID}`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: { description: 'updated' },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.not_found' });
+    expect(prisma.privateIntervention.update).not.toHaveBeenCalled();
+  });
+
+  it('DELETE 204 calls updateMany with scoped where + count=1', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/me/private-interventions/${PRIVATE_ID}`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(204);
+    expect(prisma.privateIntervention.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: PRIVATE_ID,
+          customerId: CUSTOMER_ID,
+          deletedAt: null,
+        }),
+        data: expect.objectContaining({ deletedAt: expect.any(Date) }),
+      }),
+    );
+  });
+
+  it('DELETE 404 when updateMany returns count=0 (idempotency)', async () => {
+    const prisma = buildFakePrisma({
+      privateIntervention: {
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+        count: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/me/private-interventions/${PRIVATE_ID}`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.not_found' });
   });
 });

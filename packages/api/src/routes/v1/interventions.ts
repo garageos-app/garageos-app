@@ -3,6 +3,7 @@ import type { FastifyError, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
+import { todayUtcMidnight } from '../../lib/intervention-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -55,14 +56,6 @@ async function previousMaxOdometerKm(
   const b = privato._max.odometerKm;
   if (a === null && b === null) return null;
   return Math.max(a ?? 0, b ?? 0);
-}
-
-// Today in UTC, normalized to midnight. interventionDate parses to a
-// midnight-UTC Date (the schema accepts only YYYY-MM-DD), so comparing
-// at the same anchor avoids timezone false positives around midnight.
-function todayUtcMidnight(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
 // Adds N calendar months to a base date in UTC. Used to project the

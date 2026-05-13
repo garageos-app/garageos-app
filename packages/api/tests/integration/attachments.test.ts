@@ -10,6 +10,7 @@
 import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { _resetS3ClientForTests } from '../../src/lib/s3.js';
@@ -18,6 +19,7 @@ import {
   createCustomer,
   createIntervention,
   createOwnership,
+  createPrivateIntervention,
   createTenantWithLocation,
   createUser,
   createVehicle,
@@ -437,5 +439,320 @@ describe('POST /v1/attachments/upload-url — intervention_dispute cross-pool', 
     expect((res.json() as { code: string }).code).toBe(
       'attachment.upload.intervention_dispute_not_owner',
     );
+  });
+});
+
+describe('POST /v1/attachments/upload-url — private_intervention (integration)', () => {
+  const TEST_IP_PI = '10.50.14.1';
+
+  it('201 returns presigned PUT URL for owner_type=private_intervention (clienti pool)', async () => {
+    const cognitoSub = 'att-pi-ok-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('att-pi-ok');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'ATTPIOK0000000001',
+      plate: 'AP001AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PI,
+      },
+      payload: {
+        owner_type: 'private_intervention',
+        owner_id: privateInterventionId,
+        file_name: 'oil-change.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 250_000,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as {
+      attachment_id: string;
+      upload_url: string;
+      expires_at: string;
+    };
+    expect(body.attachment_id).toBeTruthy();
+    expect(body.upload_url).toMatch(/^https:\/\/.+/);
+
+    // Verify s3_key shape via DB (not response — buildPresignedPayload doesn't surface it).
+    const { rows: keyRows } = await pgAdmin.query<{ s3_key: string }>(
+      `SELECT s3_key FROM attachments WHERE id = $1`,
+      [body.attachment_id],
+    );
+    expect(keyRows[0]!.s3_key).toContain(
+      `attachments/private_intervention/${privateInterventionId}/`,
+    );
+
+    // Verify the attachment row was persisted with the XOR shape.
+    const { rows } = await pgAdmin.query<{
+      owner_type: string;
+      tenant_id: string | null;
+      customer_id: string;
+      uploaded_by_user_id: string | null;
+      uploaded_by_customer_id: string;
+      processed: boolean;
+    }>(
+      `SELECT owner_type, tenant_id, customer_id, uploaded_by_user_id,
+              uploaded_by_customer_id, processed
+       FROM attachments WHERE id = $1`,
+      [body.attachment_id],
+    );
+    expect(rows[0]).toMatchObject({
+      owner_type: 'private_intervention',
+      tenant_id: null,
+      customer_id: customerId,
+      uploaded_by_user_id: null,
+      uploaded_by_customer_id: customerId,
+      processed: false,
+    });
+  });
+
+  it('404 when owner_id is a non-existent private intervention', async () => {
+    const cognitoSub = 'att-pi-404-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PI,
+      },
+      payload: {
+        owner_type: 'private_intervention',
+        owner_id: randomUUID(),
+        file_name: 'x.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 1000,
+      },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'attachment.upload.private_intervention_not_found' });
+  });
+
+  it('404 when owner_id belongs to a different customer (BR-080 RLS)', async () => {
+    const cognitoSubA = 'att-pi-cross-a-' + Math.random().toString(36).slice(2, 10);
+    const cognitoSubB = 'att-pi-cross-b-' + Math.random().toString(36).slice(2, 10);
+    const { customerId: customerIdA } = await createCustomer({ cognitoSub: cognitoSubA });
+    const { customerId: customerIdB } = await createCustomer({ cognitoSub: cognitoSubB });
+    const { tenantId } = await createTenantWithLocation('att-pi-cross');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'ATTPICROSS00001',
+      plate: 'AP002AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId: customerIdB });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId: customerIdB,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+
+    const tokenA = await signTestToken({
+      pool: 'clienti',
+      sub: cognitoSubA,
+      customerId: customerIdA,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: {
+        authorization: `Bearer ${tokenA}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PI,
+      },
+      payload: {
+        owner_type: 'private_intervention',
+        owner_id: privateInterventionId,
+        file_name: 'x.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 1000,
+      },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'attachment.upload.private_intervention_not_found' });
+  });
+
+  it('404 when owner_id is soft-deleted', async () => {
+    const cognitoSub = 'att-pi-soft-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('att-pi-soft');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'ATTPISOFT0000001',
+      plate: 'AP003AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+      deletedAt: new Date(),
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PI,
+      },
+      payload: {
+        owner_type: 'private_intervention',
+        owner_id: privateInterventionId,
+        file_name: 'x.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 1000,
+      },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'attachment.upload.private_intervention_not_found' });
+  });
+
+  it('403 when officina-pool attempts owner_type=private_intervention', async () => {
+    const cognitoSub = 'att-pi-officina-' + Math.random().toString(36).slice(2, 10);
+    const { tenantId, locationId } = await createTenantWithLocation('att-pi-officina');
+    const { userId } = await createUser({
+      tenantId,
+      locationId,
+      cognitoSub,
+      role: 'mechanic',
+    });
+    void userId;
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PI,
+      },
+      payload: {
+        owner_type: 'private_intervention',
+        owner_id: randomUUID(),
+        file_name: 'x.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 1000,
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({
+      code: 'attachment.upload.officina_pool_not_allowed_for_private',
+    });
+  });
+});
+
+describe('POST /v1/attachments/:id/confirm — private_intervention (integration)', () => {
+  const TEST_IP_PI = '10.50.14.2';
+
+  it('confirms a private_intervention attachment (clienti pool)', async () => {
+    // This exercises the existing clienti confirm branch (no code change in
+    // F2) end-to-end against a private_intervention attachment row.
+    const cognitoSub = 'att-pi-confirm-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('att-pi-confirm');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'ATTPICONF000001',
+      plate: 'AP004AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+
+    // Step 1: upload-url to create the unprocessed attachment.
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const uploadRes = await app.inject({
+      method: 'POST',
+      url: '/v1/attachments/upload-url',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PI,
+      },
+      payload: {
+        owner_type: 'private_intervention',
+        owner_id: privateInterventionId,
+        file_name: 'confirmed.jpg',
+        mime_type: 'image/jpeg',
+        size_bytes: 5000,
+      },
+    });
+    expect(uploadRes.statusCode).toBe(201);
+    const { attachment_id } = uploadRes.json() as {
+      attachment_id: string;
+    };
+
+    // Step 2: override S3 HeadObject mock to return matching ContentLength + ContentType.
+    // The module-level beforeEach already sets a default mock with 1024 bytes;
+    // we need to override per test because this attachment has size_bytes=5000.
+    s3Mock.on(HeadObjectCommand).resolves({
+      ContentLength: 5000,
+      ContentType: 'image/jpeg',
+    });
+
+    // Step 3: confirm.
+    const confirmRes = await app.inject({
+      method: 'POST',
+      url: `/v1/attachments/${attachment_id}/confirm`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_PI },
+    });
+    expect(confirmRes.statusCode).toBe(200);
+    expect(confirmRes.json()).toMatchObject({
+      id: attachment_id,
+      processed: true,
+    });
+
+    // Step 4: verify processed=true in DB.
+    const { rows } = await pgAdmin.query<{ processed: boolean }>(
+      `SELECT processed FROM attachments WHERE id = $1`,
+      [attachment_id],
+    );
+    expect(rows[0]!.processed).toBe(true);
   });
 });
