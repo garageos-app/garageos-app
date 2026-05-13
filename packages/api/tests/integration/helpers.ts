@@ -390,6 +390,8 @@ export async function createIntervention(params: {
 
 // Private intervention seed (customer-side). `deleted_at` stays NULL
 // by default; tests that need the soft-delete branch set it.
+// `createdAt` overrides the DB default so BR-085 rolling-window tests can
+// backdate rows to simulate the roll-off scenario (See BR-085).
 export async function createPrivateIntervention(params: {
   customerId: string;
   vehicleId: string;
@@ -398,6 +400,7 @@ export async function createPrivateIntervention(params: {
   customType?: string | null;
   description?: string;
   deletedAt?: Date | null;
+  createdAt?: Date | null;
 }): Promise<{ privateInterventionId: string }> {
   const {
     customerId,
@@ -407,14 +410,25 @@ export async function createPrivateIntervention(params: {
     customType = 'Manutenzione fai-da-te',
     description = 'Test private intervention',
     deletedAt = null,
+    createdAt = null,
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO private_interventions
        (id, customer_id, vehicle_id, intervention_date, odometer_km,
         custom_type, description, deleted_at, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3::date, $4, $5, $6, $7, NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3::date, $4, $5, $6, $7,
+             COALESCE($8::timestamptz, NOW()), NOW())
      RETURNING id`,
-    [customerId, vehicleId, interventionDate, odometerKm, customType, description, deletedAt],
+    [
+      customerId,
+      vehicleId,
+      interventionDate,
+      odometerKm,
+      customType,
+      description,
+      deletedAt,
+      createdAt,
+    ],
   );
   return { privateInterventionId: rows[0]!.id };
 }
