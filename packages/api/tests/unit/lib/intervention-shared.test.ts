@@ -83,6 +83,32 @@ describe('fetchPrivateInterventionAttachments', () => {
       orderBy: { createdAt: 'asc' },
     });
   });
+
+  it('returns an empty array when findMany returns no rows', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const tx = { attachment: { findMany } } as unknown as Parameters<
+      typeof fetchPrivateInterventionAttachments
+    >[0];
+
+    const result = await fetchPrivateInterventionAttachments(tx, 'pi-empty');
+    expect(result).toEqual([]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        ownerType: 'private_intervention',
+        ownerId: 'pi-empty',
+        processed: true,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        fileName: true,
+        mimeType: true,
+        sizeBytes: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  });
 });
 
 describe('assertInterventionTypeExists', () => {
