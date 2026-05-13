@@ -171,6 +171,18 @@ describe('mePrivateInterventionRoutes (unit)', () => {
     });
 
     expect(res.statusCode).toBe(200);
+    // Ownership guard must run before the list query — BR-082 on
+    // list-per-vehicle. Pinning the call defends against an accidental
+    // skip on refactor.
+    expect(prisma.vehicleOwnership.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          vehicleId: VEHICLE_ID,
+          customerId: CUSTOMER_ID,
+          endedAt: null,
+        }),
+      }),
+    );
     expect(prisma.privateIntervention.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -237,12 +249,19 @@ describe('mePrivateInterventionRoutes (unit)', () => {
 
     expect(res.statusCode).toBe(201);
     expect(prisma.privateIntervention.create).toHaveBeenCalledTimes(1);
+    // Pin every snake_case → camelCase mapping so a typo in any one
+    // field (e.g. intervention_type_id → interventionTypeId) is caught
+    // at unit-test time, not in production.
     expect(prisma.privateIntervention.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           customerId: CUSTOMER_ID,
           vehicleId: VEHICLE_ID,
+          interventionTypeId: null,
           customType: 'fai-da-te',
+          interventionDate: expect.any(Date),
+          odometerKm: null,
+          description: 'd',
         }),
       }),
     );
