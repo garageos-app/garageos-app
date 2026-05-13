@@ -419,6 +419,67 @@ export async function createPrivateIntervention(params: {
   return { privateInterventionId: rows[0]!.id };
 }
 
+// Attachment seed for integration tests. The `attachments` table has no
+// `updated_at` column per Prisma schema model Attachment — only created_at.
+// Owner-consistency CHECK (chk_attachment_owner_consistent):
+//   intervention | intervention_dispute → tenant_id set, customer_id null
+//   private_intervention → customer_id set, tenant_id null
+//   dispute (clienti upload) can also carry customer_id alongside tenant_id
+// Pass tenantId/customerId explicitly to match the owner shape under test.
+export async function createAttachment(params: {
+  ownerType: 'intervention' | 'private_intervention' | 'intervention_dispute';
+  ownerId: string;
+  tenantId?: string | null;
+  customerId?: string | null;
+  uploadedByUserId?: string | null;
+  uploadedByCustomerId?: string | null;
+  fileName?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  processed?: boolean;
+  deletedAt?: Date | null;
+}): Promise<{ attachmentId: string }> {
+  const {
+    ownerType,
+    ownerId,
+    tenantId = null,
+    customerId = null,
+    uploadedByUserId = null,
+    uploadedByCustomerId = null,
+    fileName = 'test.pdf',
+    mimeType = 'application/pdf',
+    sizeBytes = 12345,
+    processed = true,
+    deletedAt = null,
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO attachments
+       (id, owner_type, owner_id, tenant_id, customer_id,
+        uploaded_by_user_id, uploaded_by_customer_id,
+        file_name, mime_type, size_bytes, s3_key, s3_bucket,
+        processed, deleted_at, created_at)
+     VALUES (gen_random_uuid(), $1::"AttachmentOwnerType", $2, $3, $4,
+        $5, $6, $7, $8, $9,
+        'attachments/' || $1 || '/' || $2 || '/test.pdf', 'garageos-test',
+        $10, $11, NOW())
+     RETURNING id`,
+    [
+      ownerType,
+      ownerId,
+      tenantId,
+      customerId,
+      uploadedByUserId,
+      uploadedByCustomerId,
+      fileName,
+      mimeType,
+      sizeBytes,
+      processed,
+      deletedAt,
+    ],
+  );
+  return { attachmentId: rows[0]!.id };
+}
+
 // System intervention types catalogue used by integration helpers.
 // Mirrors a subset of packages/database/src/seed-data.ts — the integration
 // tests do not import that file because globalSetup runs `pnpm db:seed`
