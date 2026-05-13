@@ -37,7 +37,12 @@ interface FakePrisma {
   };
   vehicleOwnership: { create: ReturnType<typeof vi.fn> };
   invitation: { create: ReturnType<typeof vi.fn> };
-  accessLog: { findFirst: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
+  accessLog: {
+    findFirst: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+    createMany: ReturnType<typeof vi.fn>;
+  };
   // Tagged-template variants (garage-code.ts uses these after Task 3 fix).
   $queryRaw: ReturnType<typeof vi.fn>;
   $executeRaw: ReturnType<typeof vi.fn>;
@@ -126,6 +131,8 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     accessLog: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({}),
+      findMany: vi.fn().mockResolvedValue([]),
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
       // generate_garage_code() returns a single-column row.
@@ -436,7 +443,7 @@ describe('GET /v1/vehicles/search — data path', () => {
     expect(typeof body.meta.cursor).toBe('string');
   });
 
-  it('writes one access_log entry per matched vehicle with action=search_match', async () => {
+  it('writes one access_log entry per matched vehicle with action=search_match (bulk path)', async () => {
     prisma.vehicle.findMany.mockResolvedValue([seedVehicleRow()]);
     app = await buildApp({ prisma });
     await app.inject({
@@ -444,14 +451,18 @@ describe('GET /v1/vehicles/search — data path', () => {
       url: '/v1/vehicles/search?plate=AB123CD',
       headers: { authorization: 'Bearer x' },
     });
-    expect(prisma.accessLog.create).toHaveBeenCalledWith(
+    // Search endpoint uses recordVehiclesBatch: 1 dedup findMany + 1 bulk
+    // createMany. The createMany payload is an array of row objects.
+    expect(prisma.accessLog.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          vehicleId: VEHICLE_ID,
-          action: 'search_match',
-          tenantId: TENANT_ID,
-          userId: USER_ID,
-        }),
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            vehicleId: VEHICLE_ID,
+            action: 'search_match',
+            tenantId: TENANT_ID,
+            userId: USER_ID,
+          }),
+        ]),
       }),
     );
   });
