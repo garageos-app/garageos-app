@@ -281,6 +281,7 @@ Per fornire dati utili al client per gestire l'errore:
 
 | Code | HTTP | Severity | Titolo | Quando | BR |
 |---|---|---|---|---|---|
+| `private_intervention.date_future` | 422 | warning | Data intervento futura | Data caricata > today (UTC midnight) | BR-069 mirror |
 | `private_intervention.not_found` | 404 | info | Intervento privato non trovato | | |
 | `private_intervention.not_owner` | 403 | warning | Non sei il proprietario | | BR-080 |
 | `private_intervention.rate_limit` | 429 | warning | Limite interventi privati superato | >50/giorno | BR-085 |
@@ -866,6 +867,7 @@ location.not_in_tenant
 notification.push_token.already_registered
 notification.push_token.invalid
 notification.rate_limit
+private_intervention.date_future
 private_intervention.not_found
 private_intervention.not_owner
 private_intervention.rate_limit

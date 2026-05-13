@@ -7,6 +7,13 @@ import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
 
+// Today at UTC midnight — mirrors interventions.ts:63 so officina and
+// private create handlers behave identically at the UTC-day boundary.
+function todayUtcMidnight(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
 // /v1/me/private-interventions* — customer-app private interventions
 // CRUD (APPENDICE_A §3.7, F-CLI-201/202/203). RLS policy
 // private_int_isolation (USING customer_id = current_customer_id()) is
@@ -224,7 +231,51 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        // TODO Task 4: future-date guard + type existence + rate-limit.
+        // BR-069 mirror: future-dated private interventions rejected at
+        // the same UTC-midnight anchor as officina interventions.ts:164.
+        const interventionDateUtc = new Date(`${body.intervention_date}T00:00:00.000Z`);
+        if (interventionDateUtc.getTime() > todayUtcMidnight().getTime()) {
+          throw businessError(
+            'private_intervention.date_future',
+            422,
+            'Non è possibile registrare interventi futuri.',
+          );
+        }
+
+        // Type existence check. RLS on intervention_types is permissive
+        // (migration 20260427120000) — system-wide AND tenant-custom rows
+        // are visible. Customer-facing UX surfaces only nameIt, no
+        // workshop ownership leak. FK Restrict prevents a dangling
+        // reference post-creation.
+        if (body.intervention_type_id !== null) {
+          const t = await tx.interventionType.findFirst({
+            where: { id: body.intervention_type_id },
+            select: { id: true },
+          });
+          if (!t) {
+            throw businessError('VALIDATION_ERROR', 422, 'Tipo intervento non valido.');
+          }
+        }
+
+        // BR-085: anti-spam 50 / rolling 24h. Counts both alive and soft-
+        // deleted rows — the limit is on CREATE rate, not on row count,
+        // so soft-delete after the fact does not refresh the budget.
+        // Race window: two parallel POSTs may both observe count=49 and
+        // succeed (= 51 in DB). Acceptable for the anti-spam threat
+        // model; a DB advisory lock would over-engineer this.
+        const countLast24h = await tx.privateIntervention.count({
+          where: {
+            customerId,
+            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          },
+        });
+        if (countLast24h >= 50) {
+          throw businessError(
+            'private_intervention.rate_limit',
+            429,
+            'Hai raggiunto il limite giornaliero di interventi privati (50/giorno).',
+          );
+        }
 
         const row = await tx.privateIntervention.create({
           data: {
@@ -232,7 +283,7 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
             vehicleId,
             interventionTypeId: body.intervention_type_id,
             customType: body.custom_type,
-            interventionDate: new Date(`${body.intervention_date}T00:00:00.000Z`),
+            interventionDate: interventionDateUtc,
             odometerKm: body.odometer_km,
             description: body.description,
           },

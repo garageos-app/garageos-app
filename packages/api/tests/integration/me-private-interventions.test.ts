@@ -660,4 +660,189 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
     expect(res.statusCode).toBe(422);
     expect(res.json()).toMatchObject({ code: 'private_intervention.vehicle_not_owned' });
   });
+
+  it('returns 422 private_intervention.date_future for future intervention_date', async () => {
+    const cognitoSub = 'me-pip-future-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-future');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTFUT00000001',
+      plate: 'PP007AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    // Today + 365 days, formatted as YYYY-MM-DD UTC, guaranteed future
+    // regardless of when this test runs.
+    const futureDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: futureDate,
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'futura',
+        description: 'Data futura',
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.date_future' });
+  });
+
+  it('returns 422 VALIDATION_ERROR for non-existent intervention_type_id', async () => {
+    const cognitoSub = 'me-pip-badtype-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-badtype');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTBAD00000001',
+      plate: 'PP008AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: '00000000-0000-0000-0000-000000000099',
+        custom_type: null,
+        description: 'Type inesistente',
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('returns 429 private_intervention.rate_limit after 50 creates in 24h (BR-085)', async () => {
+    const cognitoSub = 'me-pip-rate-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-rate');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTRATE0000001',
+      plate: 'PP009AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+
+    // Seed 50 existing rows via the test helper — direct DB inserts bypass
+    // the rate-limit check, simulating "50 already created today".
+    for (let i = 0; i < 50; i++) {
+      await createPrivateIntervention({
+        customerId,
+        vehicleId,
+        interventionDate: '2026-03-10',
+        description: `seed-${i}`,
+      });
+    }
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'over-limit',
+        description: 'Eccede 50',
+      },
+    });
+
+    expect(res.statusCode).toBe(429);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.rate_limit' });
+  });
+
+  it('accepts the 50th create but rejects the 51st (BR-085 boundary)', async () => {
+    const cognitoSub = 'me-pip-rate2-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-rate2');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTRATEBND0001',
+      plate: 'PP010AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+
+    // Seed 49 — the next POST is the 50th and must succeed.
+    for (let i = 0; i < 49; i++) {
+      await createPrivateIntervention({
+        customerId,
+        vehicleId,
+        interventionDate: '2026-03-10',
+        description: `seed-${i}`,
+      });
+    }
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res50 = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'fiftieth',
+        description: 'Cinquantesimo',
+      },
+    });
+    expect(res50.statusCode).toBe(201);
+
+    const res51 = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'fifty-first',
+        description: 'Cinquantunesimo',
+      },
+    });
+    expect(res51.statusCode).toBe(429);
+  });
 });
