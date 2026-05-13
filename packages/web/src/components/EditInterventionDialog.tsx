@@ -188,7 +188,9 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
 
   const [showTitle, setShowTitle] = useState(!!detail.title);
   const [showParts, setShowParts] = useState(false);
-  const [showNotes, setShowNotes] = useState(false);
+  // Mirror showTitle's auto-expand behavior: if the intervention already
+  // has internal notes, expand the section so the user sees them on open.
+  const [showNotes, setShowNotes] = useState(!!detail.internal_notes);
   const [formError, setFormError] = useState<string | null>(null);
 
   const allErrorMessages = collectErrorMessages(
@@ -409,8 +411,10 @@ export function EditInterventionDialog({ intervention, vehicleId, open, onOpenCh
   // (e.g. manual cache invalidation from a sibling tab), the body keeps
   // the initial defaults via useForm — refetch does NOT re-seed. The
   // queryClient's staleTime: 5min + refetchOnWindowFocus: false mitigate
-  // this. If it becomes a real bug, freeze detail at first-success render
-  // (useRef pattern) before re-seeding via methods.reset().
+  // this. Note: the 48h boundary tick is handled separately by `serverLocked`
+  // in the body (see PR #93 state machine). If it becomes a real bug, freeze
+  // detail at first-success render (useRef pattern) before re-seeding via
+  // methods.reset().
   const detail = useInterventionDetail(open ? intervention.id : undefined);
 
   return (

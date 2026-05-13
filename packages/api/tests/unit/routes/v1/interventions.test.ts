@@ -31,7 +31,6 @@ interface FakePrisma {
     update: ReturnType<typeof vi.fn>;
   };
   interventionRevision: { create: ReturnType<typeof vi.fn> };
-  privateIntervention: { aggregate: ReturnType<typeof vi.fn> };
   customerTenantRelation: { upsert: ReturnType<typeof vi.fn> };
   deadline: { create: ReturnType<typeof vi.fn> };
   accessLog: { findFirst: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
@@ -152,9 +151,6 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
         changes: { description: { from: 'X', to: 'Y' } },
         reason: 'Test reason',
       }),
-    },
-    privateIntervention: {
-      aggregate: vi.fn().mockResolvedValue({ _max: { odometerKm: null } }),
     },
     customerTenantRelation: {
       upsert: vi.fn().mockResolvedValue({ id: 'rel-id' }),
@@ -466,20 +462,26 @@ describe('POST /v1/vehicles/:id/interventions — BR-068 km validation', () => {
     );
   });
 
-  it('considers private interventions when computing the previous max', async () => {
+  it('BR-083: ignores private interventions when computing the previous max', async () => {
+    // Pre-BR-083: officina max 30k + (mocked) private max 60k → request 25k
+    // would have hit 409 odometer_decrease_warning. Post-BR-083: only
+    // officina (30k) matters, request 35k > officina max 30k → 201.
+    // FakePrisma no longer has `privateIntervention.aggregate`, so any
+    // attempt to call it would throw — implicit proof of the BR-083 fix.
     prisma.intervention.aggregate.mockResolvedValue({ _max: { odometerKm: 30000 } });
-    prisma.privateIntervention.aggregate.mockResolvedValue({ _max: { odometerKm: 60000 } });
     app = await buildApp({ prisma });
     const res = await app.inject({
       method: 'POST',
       url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
       headers: { authorization: 'Bearer x' },
-      payload: { ...validBody, odometerKm: 50000 },
+      payload: { ...validBody, odometerKm: 35000 },
     });
-    expect(res.statusCode).toBe(409);
-    expect(res.json()).toMatchObject({
-      code: 'intervention.creation.odometer_decrease_warning',
-    });
+    expect(res.statusCode).toBe(201);
+    expect(prisma.intervention.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ kmAnomaly: false }),
+      }),
+    );
   });
 
   it('accepts km equal to the previous max (BR-068 is non-decreasing, not strictly increasing)', async () => {

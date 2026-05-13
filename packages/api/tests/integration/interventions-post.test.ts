@@ -5,6 +5,7 @@ import { buildTestServer } from './fixtures.js';
 import {
   createCustomer,
   createOwnership,
+  createPrivateIntervention,
   createTenantWithLocation,
   createUser,
   createVehicle,
@@ -293,5 +294,50 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json()).toMatchObject({ code: 'intervention.creation.user_no_location' });
+  });
+
+  it('BR-083: a high-km private intervention does NOT block a lower-km officina create', async () => {
+    // Setup: vehicle V has 1 officina intervention at 10_000 km AND 1
+    // customer-side private intervention at 50_000 km. The customer's
+    // self-declared 50k must NOT bind the workshop's future km per BR-083.
+    const { tenantId, locationId } = await createTenantWithLocation('br083-noblock');
+    const cognitoSub = '11111111-1111-4111-8111-111111111083';
+    await createUser({ tenantId, cognitoSub, locationId });
+    const { customerId } = await createCustomer({});
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    await createOwnership({ vehicleId, customerId });
+
+    // Seed officina intervention at 10k via the same endpoint.
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const seedRes = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${vehicleId}/interventions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: buildBody(taglianodoTypeId, { odometerKm: 10_000, interventionDate: '2026-01-01' }),
+    });
+    expect(seedRes.statusCode).toBe(201);
+
+    // Seed customer-side private intervention at 50k.
+    await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-02-01',
+      odometerKm: 50_000,
+    });
+
+    // Officina creates at 15k. Pre-BR-083: 409 odometer_decrease_warning because max(10k, 50k)=50k > 15k.
+    // Post-BR-083: 201 because only officina (10k) counts; 15k > 10k OK.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${vehicleId}/interventions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: buildBody(taglianodoTypeId, { odometerKm: 15_000, interventionDate: '2026-03-01' }),
+    });
+    expect(res.statusCode).toBe(201);
   });
 });

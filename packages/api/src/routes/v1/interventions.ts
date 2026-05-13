@@ -29,33 +29,21 @@ function businessError(code: string, status: number, detail: string): FastifyErr
   return err;
 }
 
-// BR-068: previous max km is computed across BOTH officina interventions
-// (`interventions`) AND customer-side records (`private_interventions`),
-// because the rule is "non-decreasing on the vehicle's recorded history",
-// not "on this tenant's history". Cancelled officina rows are excluded —
-// a cancelled intervention does not bind future km. Soft-deleted private
-// rows are also excluded.
+// BR-083: previous max km is computed ONLY across officina interventions.
+// Customer-side `private_interventions` are self-declared and less
+// reliable, so they do NOT concur to the BR-068 (km non-decreasing)
+// check. Conversely — APPENDICE_F:416 — a private intervention may carry
+// any km without warning. Cancelled officina rows are excluded — they
+// do not bind future km.
 async function previousMaxOdometerKm(
   tx: import('@garageos/database').PrismaClient,
   vehicleId: string,
 ): Promise<number | null> {
-  // Sequential awaits: see vehicles-timeline.ts — Promise.all on `tx`
-  // (single $transaction connection) serialises internally + triggers
-  // the pg "client.query() … already executing" warning. Two aggregates
-  // sequenced cost ~500 ms vs the (illusory) ~250 ms parallel plan, but
-  // remove the deprecation noise.
   const officina = await tx.intervention.aggregate({
     where: { vehicleId, status: { not: 'cancelled' } },
     _max: { odometerKm: true },
   });
-  const privato = await tx.privateIntervention.aggregate({
-    where: { vehicleId, deletedAt: null },
-    _max: { odometerKm: true },
-  });
-  const a = officina._max.odometerKm;
-  const b = privato._max.odometerKm;
-  if (a === null && b === null) return null;
-  return Math.max(a ?? 0, b ?? 0);
+  return officina._max.odometerKm;
 }
 
 // Adds N calendar months to a base date in UTC. Used to project the
@@ -177,11 +165,11 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        // BR-068: km must not decrease vs. previous interventions on this
-        // vehicle (officina + private). A decrease is a *warning*, not a
-        // hard failure: the workshop can confirm with `forceKmDecrease=true`,
-        // and the resulting row is flagged `kmAnomaly=true` so downstream
-        // analytics can surface the override.
+        // BR-068: km must not decrease vs. previous officina interventions on this
+        // vehicle (BR-083 excludes customer-side records). A decrease is a
+        // *warning*, not a hard failure: the workshop can confirm with
+        // `forceKmDecrease=true`, and the resulting row is flagged `kmAnomaly=true`
+        // so downstream analytics can surface the override.
         const prevMaxKm = await previousMaxOdometerKm(tx, vehicleId);
         let kmAnomaly = false;
         if (prevMaxKm !== null && body.odometerKm < prevMaxKm) {

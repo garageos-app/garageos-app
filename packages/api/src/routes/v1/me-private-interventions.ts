@@ -3,7 +3,11 @@ import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
 import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor.js';
-import { todayUtcMidnight } from '../../lib/intervention-shared.js';
+import {
+  assertInterventionTypeExists,
+  assertNotFutureInterventionDate,
+  fetchPrivateInterventionAttachments,
+} from '../../lib/intervention-shared.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
@@ -102,24 +106,6 @@ function projectDetail(r: DetailRow) {
   };
 }
 
-type AttachmentForDetail = {
-  id: string;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  createdAt: Date;
-};
-
-function serializeAttachmentForDetail(a: AttachmentForDetail) {
-  return {
-    id: a.id,
-    file_name: a.fileName,
-    mime_type: a.mimeType,
-    size_bytes: a.sizeBytes,
-    created_at: a.createdAt.toISOString(),
-  };
-}
-
 const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/me/private-interventions/:id — F-CLI-202
   app.get(
@@ -144,26 +130,11 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        const attachments = await tx.attachment.findMany({
-          where: {
-            ownerType: 'private_intervention',
-            ownerId: id,
-            processed: true,
-            deletedAt: null,
-          },
-          select: {
-            id: true,
-            fileName: true,
-            mimeType: true,
-            sizeBytes: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: 'asc' },
-        });
+        const attachments = await fetchPrivateInterventionAttachments(tx, id);
 
         return {
           ...projectDetail(row),
-          attachments: attachments.map(serializeAttachmentForDetail),
+          attachments,
         };
       });
     },
@@ -299,29 +270,18 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
         }
 
         // BR-069 mirror: future-dated private interventions rejected at
-        // the same UTC-midnight anchor as officina interventions.ts:164.
-        const interventionDateUtc = new Date(`${body.intervention_date}T00:00:00.000Z`);
-        if (interventionDateUtc.getTime() > todayUtcMidnight().getTime()) {
-          throw businessError(
-            'private_intervention.date_future',
-            422,
-            'Non è possibile registrare interventi futuri.',
-          );
-        }
+        // the same UTC-midnight anchor as officina interventions.ts.
+        const interventionDateUtc = assertNotFutureInterventionDate(
+          body.intervention_date,
+          'private_intervention.date_future',
+          'Non è possibile registrare interventi futuri.',
+        );
 
-        // Type existence check. RLS on intervention_types is permissive
-        // (migration 20260427120000) — system-wide AND tenant-custom rows
-        // are visible. Customer-facing UX surfaces only nameIt, no
-        // workshop ownership leak. FK Restrict prevents a dangling
-        // reference post-creation.
+        // FK existence for intervention_type. See helper comment for RLS
+        // rationale (intervention_types is permissive read post 20260427120000).
+        // FK Restrict prevents a dangling reference post-creation.
         if (body.intervention_type_id !== null) {
-          const t = await tx.interventionType.findFirst({
-            where: { id: body.intervention_type_id },
-            select: { id: true },
-          });
-          if (!t) {
-            throw businessError('VALIDATION_ERROR', 422, 'Tipo intervento non valido.');
-          }
+          await assertInterventionTypeExists(tx, body.intervention_type_id);
         }
 
         // BR-085: anti-spam 50 / rolling 24h. Counts both alive and soft-
@@ -407,25 +367,20 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
 
         // 3. Future-date guard (only if intervention_date in payload).
         if (body.intervention_date !== undefined) {
-          const dateUtc = new Date(`${body.intervention_date}T00:00:00.000Z`);
-          if (dateUtc.getTime() > todayUtcMidnight().getTime()) {
-            throw businessError(
-              'private_intervention.date_future',
-              422,
-              'Non è possibile registrare interventi futuri.',
-            );
-          }
+          assertNotFutureInterventionDate(
+            body.intervention_date,
+            'private_intervention.date_future',
+            'Non è possibile registrare interventi futuri.',
+          );
         }
 
         // 4. Type existence (only if intervention_type_id provided and non-null).
-        if (body.intervention_type_id != null) {
-          const t = await tx.interventionType.findFirst({
-            where: { id: body.intervention_type_id },
-            select: { id: true },
-          });
-          if (!t) {
-            throw businessError('VALIDATION_ERROR', 422, 'Tipo intervento non valido.');
-          }
+        // The explicit `!== null && !== undefined` mirrors POST: in the
+        // PATCH body, undefined means "field omitted" (no validation needed),
+        // null means "explicit clear to custom_type" (also no validation —
+        // there's no id to verify).
+        if (body.intervention_type_id !== null && body.intervention_type_id !== undefined) {
+          await assertInterventionTypeExists(tx, body.intervention_type_id);
         }
 
         // 5. Build update data — only fields explicitly in body.
@@ -451,26 +406,11 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           select: detailSelect,
         });
 
-        const attachments = await tx.attachment.findMany({
-          where: {
-            ownerType: 'private_intervention',
-            ownerId: id,
-            processed: true,
-            deletedAt: null,
-          },
-          select: {
-            id: true,
-            fileName: true,
-            mimeType: true,
-            sizeBytes: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: 'asc' },
-        });
+        const attachments = await fetchPrivateInterventionAttachments(tx, id);
 
         return {
           ...projectDetail(row),
-          attachments: attachments.map(serializeAttachmentForDetail),
+          attachments,
         };
       });
     },

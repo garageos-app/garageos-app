@@ -1022,6 +1022,52 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
     });
     expect(res51.statusCode).toBe(429);
   });
+
+  it('BR-085: rows created >24h ago roll off the rate-limit window', async () => {
+    const cognitoSub = 'me-pip-rolloff-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-rolloff');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTRATERLF001',
+      plate: 'PP011AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+
+    const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    for (let i = 0; i < 50; i++) {
+      await createPrivateIntervention({
+        customerId,
+        vehicleId,
+        interventionDate: '2026-03-10',
+        description: `old-${i}`,
+        createdAt: twentyFiveHoursAgo,
+      });
+    }
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'after-rolloff',
+        description: 'Dopo che le 50 vecchie sono uscite dalla finestra',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+  });
 });
 
 describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
