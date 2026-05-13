@@ -49,6 +49,10 @@ interface FakePrisma {
   interventionType: {
     findFirst: ReturnType<typeof vi.fn>;
   };
+  attachment: {
+    findMany: ReturnType<typeof vi.fn>;
+    groupBy: ReturnType<typeof vi.fn>;
+  };
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
@@ -64,6 +68,10 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     },
     interventionType: {
       findFirst: vi.fn().mockResolvedValue({ id: 'type-1' }),
+    },
+    attachment: {
+      findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     ...overrides,
   };
