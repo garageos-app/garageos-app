@@ -326,7 +326,12 @@ describe('GET /v1/me/vehicles/:id/private-interventions (integration)', () => {
       data: Array<{ id: string; intervention_date: string }>;
       meta: { has_more: boolean; cursor?: string };
     };
+    // Seeded dates (DESC): 2026-03-10, -09, -08, -07, -06 → 5 rows, limit=2.
+    // Page1 must be [03-10, 03-09]; Page2 anchored after 03-09 must be
+    // [03-08, 03-07]. Asserting full date sequence catches cursor-anchoring
+    // bugs that a non-overlap-only assertion would miss.
     expect(b1.data).toHaveLength(2);
+    expect(b1.data.map((d) => d.intervention_date)).toEqual(['2026-03-10', '2026-03-09']);
     expect(b1.meta.has_more).toBe(true);
     expect(b1.meta.cursor).toBeTruthy();
 
@@ -337,12 +342,12 @@ describe('GET /v1/me/vehicles/:id/private-interventions (integration)', () => {
     });
     expect(page2.statusCode).toBe(200);
     const b2 = page2.json() as {
-      data: Array<{ id: string }>;
+      data: Array<{ id: string; intervention_date: string }>;
       meta: { has_more: boolean; cursor?: string };
     };
     expect(b2.data).toHaveLength(2);
-    expect(b2.data[0]!.id).not.toBe(b1.data[0]!.id);
-    expect(b2.data[0]!.id).not.toBe(b1.data[1]!.id);
+    expect(b2.data.map((d) => d.intervention_date)).toEqual(['2026-03-08', '2026-03-07']);
+    expect(b2.meta.has_more).toBe(true);
   });
 
   it('returns empty list for a vehicle with no private interventions', async () => {

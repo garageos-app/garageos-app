@@ -128,17 +128,16 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        const cursorWhere = cursor
-          ? {
-              OR: [
-                { interventionDate: { lt: new Date(`${cursor.d}T00:00:00.000Z`) } },
-                {
-                  interventionDate: new Date(`${cursor.d}T00:00:00.000Z`),
-                  id: { lt: cursor.id },
-                },
-              ],
-            }
-          : {};
+        let cursorWhere: Record<string, unknown> = {};
+        if (cursor) {
+          const cursorDateUtc = new Date(`${cursor.d}T00:00:00.000Z`);
+          cursorWhere = {
+            OR: [
+              { interventionDate: { lt: cursorDateUtc } },
+              { interventionDate: cursorDateUtc, id: { lt: cursor.id } },
+            ],
+          };
+        }
 
         const rows = await tx.privateIntervention.findMany({
           where: {
