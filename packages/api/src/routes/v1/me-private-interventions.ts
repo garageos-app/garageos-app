@@ -3,16 +3,10 @@ import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
 import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor.js';
+import { todayUtcMidnight } from '../../lib/intervention-shared.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
-
-// Today at UTC midnight — mirrors interventions.ts:63 so officina and
-// private create handlers behave identically at the UTC-day boundary.
-function todayUtcMidnight(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-}
 
 // /v1/me/private-interventions* — customer-app private interventions
 // CRUD (APPENDICE_A §3.7, F-CLI-201/202/203). RLS policy

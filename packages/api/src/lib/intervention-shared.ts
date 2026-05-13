@@ -43,3 +43,12 @@ export function normalizePartsReplaced(value: unknown): PartReplaced[] {
     };
   });
 }
+
+// Today at UTC midnight. Shared anchor for future-date guards on
+// intervention_date (officina POST, customer-side POST/PATCH). YYYY-MM-DD
+// strings parse to UTC midnight; comparing at the same anchor avoids
+// timezone false positives around midnight in any browser locale.
+export function todayUtcMidnight(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
