@@ -6,6 +6,8 @@
 // a single page-scoped `now` snapshot so all rows on the same response
 // report a consistent value.
 
+import type { PrismaClient } from '@garageos/database';
+
 import { businessError } from './business-error.js';
 
 export const WIKI_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -71,4 +73,19 @@ export function assertNotFutureInterventionDate(
     throw businessError(errorCode, 422, errorMsg);
   }
   return dateUtc;
+}
+
+// FK existence check for intervention_types. RLS on intervention_types
+// is permissive (migration 20260427120000) — system-wide AND tenant-
+// custom rows are visible. Caller is responsible for the null/undefined
+// guard on id. Used by both POST and PATCH private intervention
+// endpoints. FK Restrict prevents a dangling reference post-creation.
+export async function assertInterventionTypeExists(tx: PrismaClient, id: string): Promise<void> {
+  const t = await tx.interventionType.findFirst({
+    where: { id },
+    select: { id: true },
+  });
+  if (!t) {
+    throw businessError('VALIDATION_ERROR', 422, 'Tipo intervento non valido.');
+  }
 }

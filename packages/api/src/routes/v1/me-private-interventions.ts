@@ -3,7 +3,10 @@ import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
 import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor.js';
-import { assertNotFutureInterventionDate } from '../../lib/intervention-shared.js';
+import {
+  assertInterventionTypeExists,
+  assertNotFutureInterventionDate,
+} from '../../lib/intervention-shared.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
@@ -306,19 +309,11 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           'Non è possibile registrare interventi futuri.',
         );
 
-        // Type existence check. RLS on intervention_types is permissive
-        // (migration 20260427120000) — system-wide AND tenant-custom rows
-        // are visible. Customer-facing UX surfaces only nameIt, no
-        // workshop ownership leak. FK Restrict prevents a dangling
-        // reference post-creation.
+        // FK existence for intervention_type. See helper JSDoc for RLS
+        // rationale (intervention_types is permissive read post 20260427120000).
+        // FK Restrict prevents a dangling reference post-creation.
         if (body.intervention_type_id !== null) {
-          const t = await tx.interventionType.findFirst({
-            where: { id: body.intervention_type_id },
-            select: { id: true },
-          });
-          if (!t) {
-            throw businessError('VALIDATION_ERROR', 422, 'Tipo intervento non valido.');
-          }
+          await assertInterventionTypeExists(tx, body.intervention_type_id);
         }
 
         // BR-085: anti-spam 50 / rolling 24h. Counts both alive and soft-
@@ -412,14 +407,12 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
         }
 
         // 4. Type existence (only if intervention_type_id provided and non-null).
-        if (body.intervention_type_id != null) {
-          const t = await tx.interventionType.findFirst({
-            where: { id: body.intervention_type_id },
-            select: { id: true },
-          });
-          if (!t) {
-            throw businessError('VALIDATION_ERROR', 422, 'Tipo intervento non valido.');
-          }
+        // The explicit `!== null && !== undefined` mirrors POST: in the
+        // PATCH body, undefined means "field omitted" (no validation needed),
+        // null means "explicit clear to custom_type" (also no validation —
+        // there's no id to verify).
+        if (body.intervention_type_id !== null && body.intervention_type_id !== undefined) {
+          await assertInterventionTypeExists(tx, body.intervention_type_id);
         }
 
         // 5. Build update data — only fields explicitly in body.
