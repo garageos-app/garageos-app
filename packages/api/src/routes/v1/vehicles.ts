@@ -2,7 +2,7 @@ import { CreateVehicleSchema, Prisma } from '@garageos/database';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
-import { recordVehicleAccess } from '../../lib/access-log.js';
+import { recordVehicleAccess, recordVehiclesBatch } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
 import { decodeCursor, encodeCursor } from '../../lib/cursor.js';
 import { certifyVehicleWithGarageCode } from '../../lib/garage-code.js';
@@ -276,22 +276,20 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
           };
         });
 
-        // BR-154: log every matched vehicle as search_match. Fire-and-
-        // forget — the helper swallows errors into log.warn.
-        await Promise.all(
-          page.map((v) =>
-            recordVehicleAccess({
-              tx,
-              vehicleId: v.id,
-              tenantId,
-              userId: user.id,
-              ...(user.locationId ? { locationId: user.locationId } : {}),
-              action: 'search_match',
-              ipAddress: request.ip,
-              log: request.log,
-            }),
-          ),
-        );
+        // BR-154: log every matched vehicle as search_match via 1 dedup
+        // SELECT + 1 bulk INSERT. Per-row Promise.all on `tx` would
+        // serialise 2N queries on the same Prisma $transaction connection
+        // (~250 ms × 2N to Supabase = ~10 s tail observed in PR #95).
+        await recordVehiclesBatch({
+          tx,
+          vehicleIds: page.map((v) => v.id),
+          tenantId,
+          userId: user.id,
+          ...(user.locationId ? { locationId: user.locationId } : {}),
+          action: 'search_match',
+          ipAddress: request.ip,
+          log: request.log,
+        });
 
         const lastRow = page.at(-1);
         return {

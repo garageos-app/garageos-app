@@ -318,4 +318,61 @@ describe('GET /v1/vehicles/search (integration)', () => {
     expect(body.data[0]!.id).toBe(vehicleId);
     expect(body.data[0]!.currentOwnership.customer.redacted).toBe(true);
   });
+
+  it('writes one access_logs row per matched vehicle for high-N customer (BR-154, batched)', async () => {
+    const { tenantId } = await createTenantWithLocation('search-customer-batch');
+    const cognitoSub = '88888888-8888-4888-8888-888888888888';
+    const { userId } = await createUser({ tenantId, cognitoSub });
+
+    const { customerId } = await createCustomer({ firstName: 'Anna', lastName: 'Verdi' });
+    await createCustomerTenantRelation({ tenantId, customerId });
+
+    const N = 15;
+    const vehicleIds: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+      await createOwnership({ vehicleId, customerId });
+      vehicleIds.push(vehicleId);
+    }
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/search?customer=${customerId}&limit=${N}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: Array<{ id: string }> };
+    expect(body.data).toHaveLength(N);
+
+    // BR-154: exactly one access_logs row per matched vehicle.
+    const { rows } = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM access_logs
+       WHERE user_id = $1 AND action = 'search_match'`,
+      [userId],
+    );
+    expect(Number(rows[0]!.count)).toBe(N);
+
+    // Repeat the search inside the 30-min dedup window — must NOT add rows.
+    const res2 = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/search?customer=${customerId}&limit=${N}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res2.statusCode).toBe(200);
+
+    const { rows: rows2 } = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM access_logs
+       WHERE user_id = $1 AND action = 'search_match'`,
+      [userId],
+    );
+    expect(Number(rows2[0]!.count)).toBe(N);
+  });
 });
