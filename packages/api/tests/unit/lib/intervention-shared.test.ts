@@ -19,18 +19,18 @@ describe('assertNotFutureInterventionDate', () => {
 
   it('throws a 422 businessError with the supplied code+message on a future date', () => {
     vi.useFakeTimers().setSystemTime(new Date('2026-05-13T10:00:00.000Z'));
-    try {
+    expect(() =>
       assertNotFutureInterventionDate(
         '2026-05-14',
         'private_intervention.date_future',
         'Non è possibile registrare interventi futuri.',
-      );
-      throw new Error('should not reach');
-    } catch (e: unknown) {
-      const err = e as { name?: string; statusCode?: number; message?: string };
-      expect(err.name).toBe('private_intervention.date_future');
-      expect(err.statusCode).toBe(422);
-      expect(err.message).toBe('Non è possibile registrare interventi futuri.');
-    }
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        name: 'private_intervention.date_future',
+        statusCode: 422,
+        message: 'Non è possibile registrare interventi futuri.',
+      }),
+    );
   });
 });
