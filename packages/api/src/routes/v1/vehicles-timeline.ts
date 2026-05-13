@@ -163,9 +163,14 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         // Per-source queries: each ordered by (interventionDate DESC,
         // id DESC) and limit+1, enough for the merge to fill the page
         // and detect has_more. Officine never reads private.
-        const shopRowsP =
+        // Sequential awaits: Promise.all on `tx` (single Prisma $transaction
+        // connection) serialises queries internally and triggers the pg
+        // "client.query() … already executing" warning — see PR #95. The
+        // two findMany calls cost ~250 ms each at Supabase; sequential
+        // execution adds ~250 ms vs the (illusory) parallel plan.
+        const shopRows =
           isOfficine && wantShop
-            ? tx.intervention.findMany({
+            ? await tx.intervention.findMany({
                 where: buildVehicleDateCursorWhere(vehicleId, {
                   ...(fromDateUtc ? { fromDateUtc } : {}),
                   ...(toDateUtc ? { toDateUtc } : {}),
@@ -176,7 +181,7 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
                 take: query.limit + 1,
               })
             : isClienti && wantShop
-              ? tx.intervention.findMany({
+              ? await tx.intervention.findMany({
                   where: buildVehicleDateCursorWhere(vehicleId, {
                     ...(fromDateUtc ? { fromDateUtc } : {}),
                     ...(toDateUtc ? { toDateUtc } : {}),
@@ -186,11 +191,11 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
                   orderBy: [{ interventionDate: 'desc' }, { id: 'desc' }],
                   take: query.limit + 1,
                 })
-              : Promise.resolve([]);
+              : [];
 
-        const privateRowsP =
+        const privateRows =
           isClienti && wantPrivate
-            ? tx.privateIntervention.findMany({
+            ? await tx.privateIntervention.findMany({
                 where: {
                   ...buildVehicleDateCursorWhere(vehicleId, {
                     ...(fromDateUtc ? { fromDateUtc } : {}),
@@ -204,9 +209,7 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
                 orderBy: [{ interventionDate: 'desc' }, { id: 'desc' }],
                 take: query.limit + 1,
               })
-            : Promise.resolve([]);
-
-        const [shopRows, privateRows] = await Promise.all([shopRowsP, privateRowsP]);
+            : [];
 
         // Attachments: single groupBy across both owner types, joined
         // on the row id back into the response.

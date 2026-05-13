@@ -38,16 +38,19 @@ async function previousMaxOdometerKm(
   tx: import('@garageos/database').PrismaClient,
   vehicleId: string,
 ): Promise<number | null> {
-  const [officina, privato] = await Promise.all([
-    tx.intervention.aggregate({
-      where: { vehicleId, status: { not: 'cancelled' } },
-      _max: { odometerKm: true },
-    }),
-    tx.privateIntervention.aggregate({
-      where: { vehicleId, deletedAt: null },
-      _max: { odometerKm: true },
-    }),
-  ]);
+  // Sequential awaits: see vehicles-timeline.ts — Promise.all on `tx`
+  // (single $transaction connection) serialises internally + triggers
+  // the pg "client.query() … already executing" warning. Two aggregates
+  // sequenced cost ~500 ms vs the (illusory) ~250 ms parallel plan, but
+  // remove the deprecation noise.
+  const officina = await tx.intervention.aggregate({
+    where: { vehicleId, status: { not: 'cancelled' } },
+    _max: { odometerKm: true },
+  });
+  const privato = await tx.privateIntervention.aggregate({
+    where: { vehicleId, deletedAt: null },
+    _max: { odometerKm: true },
+  });
   const a = officina._max.odometerKm;
   const b = privato._max.odometerKm;
   if (a === null && b === null) return null;
