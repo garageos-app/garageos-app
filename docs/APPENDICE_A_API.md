@@ -727,18 +727,18 @@ Quando si fa fanout (richiesta SENZA `dispute_id`) E `attachment_ids` non è vuo
 
 ### 2.7 `POST /attachments/upload-url` + `POST /attachments/:id/confirm` — Workflow upload allegati
 
-**Feature:** F-OFF-305
-**Auth:** Tenant User (officina pool only — clienti pool rejected con 403 finché PR D non shipped)
+**Feature:** F-OFF-305 (+ reciprocal F-CLI-203/204 attachments)
+**Auth:** Dual pool — `owner_type: intervention` → officina; `owner_type: private_intervention` → clienti (customer must own the row); `owner_type: intervention_dispute` → both pools
 
 #### Descrizione
 
-Workflow a 3 step per uploadare allegati a interventi via presigned URL S3:
+Workflow a 3 step per uploadare allegati via presigned URL S3:
 
 1. Client chiama `POST /v1/attachments/upload-url` → server insert attachment row con `processed: false`, ritorna URL S3 PUT presigned (15 min) + metadata
 2. Client `PUT` direct su `upload_url` con il file binary (server bypassed)
 3. Client chiama `POST /v1/attachments/:id/confirm` → server verifica via S3 HeadObject, flippa `processed: false → true`
 
-In v1 supporta solo `owner_type: intervention` (officina-side). `private_intervention` rejected con 422 finché PR D ship la CRUD customer-side.
+Dispatch per `owner_type` + auth pool: `intervention` (officina), `private_intervention` (clienti — XOR `tenant_id NULL + customer_id SET` per `chk_attachment_owner_consistent`), `intervention_dispute` (entrambi i pool).
 
 ---
 
@@ -787,9 +787,10 @@ Authorization: Bearer <officina_user_jwt>
 
 - `400 VALIDATION_ERROR` — body schema fail (Zod parsing)
 - `401 UNAUTHORIZED` — JWT mancante/invalid
-- `403 FORBIDDEN` — clienti pool JWT (deferred a PR D)
-- `404 attachment.upload.intervention_not_found` — owner_id non esiste o cross-tenant
-- `422 attachment.upload.private_intervention_not_supported` — owner_type=private_intervention
+- `403 attachment.upload.officina_only` — clienti pool tenta `owner_type=intervention`
+- `403 attachment.upload.officina_pool_not_allowed_for_private` — officina pool tenta `owner_type=private_intervention`
+- `404 attachment.upload.intervention_not_found` — owner_id (intervention) non esiste o cross-tenant
+- `404 attachment.upload.private_intervention_not_found` — owner_id (private_intervention) non esiste, soft-deleted, o di altro customer
 - `502 attachment.upload.s3_unavailable` — AWS SDK signing fail
 
 ---
