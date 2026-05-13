@@ -463,6 +463,60 @@ async function handleDisputeUploadOfficina(
   });
 }
 
+// handlePrivateInterventionUpload handles owner_type='private_intervention'
+// for clienti-pool users. F-OFF-305 reciprocal: customer attaches photos /
+// PDFs to their own private intervention. The XOR shape enforced by
+// chk_attachment_owner_consistent requires tenant_id NULL + customer_id SET.
+async function handlePrivateInterventionUpload(
+  app: FastifyInstance,
+  request: FastifyRequest,
+  body: z.infer<typeof UploadUrlSchema>,
+): Promise<ReturnType<typeof buildPresignedPayload>> {
+  const customerId = request.customerId!;
+
+  return app.withContext({ customerId }, async (tx) => {
+    // Verify the private intervention exists, belongs to this customer,
+    // and is not soft-deleted. RLS scopes by customerId; application-layer
+    // defense-in-depth re-checks (lesson feedback_rls_split_lookup_auth_table).
+    const privateInt = await tx.privateIntervention.findFirst({
+      where: { id: body.owner_id, customerId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!privateInt) {
+      throw businessError(
+        'attachment.upload.private_intervention_not_found',
+        404,
+        `Intervento privato ${body.owner_id} non trovato.`,
+      );
+    }
+
+    const attachmentId = randomUUID();
+    const ext = deriveExtension(body.mime_type);
+    const s3Key = `attachments/${body.owner_type}/${body.owner_id}/${attachmentId}.${ext}`;
+    const bucket = env.S3_ATTACHMENTS_BUCKET;
+
+    await tx.attachment.create({
+      data: {
+        id: attachmentId,
+        ownerType: 'private_intervention',
+        ownerId: body.owner_id,
+        tenantId: null,
+        customerId,
+        uploadedByUserId: null,
+        uploadedByCustomerId: customerId,
+        fileName: body.file_name,
+        mimeType: body.mime_type,
+        sizeBytes: body.size_bytes,
+        s3Key,
+        s3Bucket: bucket,
+        processed: false,
+      },
+    });
+
+    return buildPresignedPayload(body.mime_type, body.size_bytes, attachmentId, s3Key);
+  });
+}
+
 const attachmentsRoutes: FastifyPluginAsync = async (app) => {
   app.post(
     '/v1/attachments/upload-url',
@@ -471,17 +525,6 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request, reply) => {
       const body = UploadUrlSchema.parse(request.body);
-
-      // BR-F-OFF-305: customer-side private interventions not supported in v1.
-      // The owner_type enum accepts the value so validation passes, but we
-      // reject it here with a descriptive 422 rather than silently ignoring it.
-      if (body.owner_type === 'private_intervention') {
-        throw businessError(
-          'attachment.upload.private_intervention_not_supported',
-          422,
-          'Customer-side private interventions non ancora supportato in v1.',
-        );
-      }
 
       // Dispatch to the appropriate handler based on owner_type and pool.
       // Capture the response payload AFTER withContext resolves (i.e. after
@@ -498,6 +541,16 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
         } else {
           throw businessError('auth.pool_mismatch', 403, 'Pool di autenticazione non supportato.');
         }
+      } else if (body.owner_type === 'private_intervention') {
+        // F-OFF-305 reciprocal: clienti-pool only.
+        if (request.authPool !== 'clienti') {
+          throw businessError(
+            'attachment.upload.officina_pool_not_allowed_for_private',
+            403,
+            'Officina pool non può caricare allegati a interventi privati customer-side.',
+          );
+        }
+        result = await handlePrivateInterventionUpload(app, request, body);
       } else {
         // owner_type === 'intervention'
         if (request.authPool !== 'officine') {

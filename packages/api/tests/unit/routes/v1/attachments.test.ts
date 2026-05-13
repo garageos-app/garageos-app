@@ -219,15 +219,17 @@ describe('POST /v1/attachments/upload-url', () => {
     expect(res.json().code).toBe('attachment.upload.intervention_not_found');
   });
 
-  it('rejects owner_type private_intervention with 422 attachment.upload.private_intervention_not_supported', async () => {
+  it('rejects officina pool with owner_type=private_intervention → 403 attachment.upload.officina_pool_not_allowed_for_private', async () => {
+    // F-OFF-305 reciprocal: private_intervention is clienti-pool only.
+    // Officina pool attempting upload returns 403 with the dedicated error code.
     const res = await app.inject({
       method: 'POST',
       url: '/v1/attachments/upload-url',
       headers: { authorization: 'Bearer fake-token' },
       payload: { ...VALID_BODY, owner_type: 'private_intervention' },
     });
-    expect(res.statusCode).toBe(422);
-    expect(res.json().code).toBe('attachment.upload.private_intervention_not_supported');
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('attachment.upload.officina_pool_not_allowed_for_private');
   });
 
   it('s3 sdk failure → 502 attachment.upload.s3_unavailable', async () => {
