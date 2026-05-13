@@ -309,7 +309,7 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           'Non è possibile registrare interventi futuri.',
         );
 
-        // FK existence for intervention_type. See helper JSDoc for RLS
+        // FK existence for intervention_type. See helper comment for RLS
         // rationale (intervention_types is permissive read post 20260427120000).
         // FK Restrict prevents a dangling reference post-creation.
         if (body.intervention_type_id !== null) {
