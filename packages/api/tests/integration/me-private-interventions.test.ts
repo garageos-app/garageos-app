@@ -12,8 +12,11 @@ import {
 } from './helpers.js';
 import { signTestToken } from '../helpers/jwt.js';
 
-// Per-test fixed IP to isolate rate-limit buckets between tests in the
-// same describe block (lesson: feedback_integration_test_rate_limit_isolation).
+// Pin the client IP for this describe block. The detail route doesn't
+// opt into @fastify/rate-limit today, but future per-route limits would
+// key on remoteAddress; pinning makes the keyer deterministic. Tasks
+// that DO exercise rate-limit semantics (POST in this slice) MUST use a
+// distinct IP per test — see feedback_integration_test_rate_limit_isolation.
 const TEST_IP = '10.50.13.1';
 
 describe('GET /v1/me/private-interventions/:id (integration)', () => {
