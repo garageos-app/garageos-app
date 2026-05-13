@@ -433,8 +433,8 @@ describe('EditInterventionDialog', () => {
       { wrapper: wrap },
     );
 
-    await user.click(screen.getByRole('button', { name: /modifica note interne/i }));
-    // The textarea is hydrated with the existing text. User appends.
+    // Mi3: notes section is auto-expanded because internal_notes is non-null;
+    // no expander click needed. The textarea is hydrated with the existing text. User appends.
     const notes = screen.getByLabelText(/note interne/i);
     expect(notes).toHaveValue('Esistente: ricontrollare freni');
     await user.type(notes, ' + verificare olio');
@@ -508,11 +508,9 @@ describe('EditInterventionDialog', () => {
       { wrapper: wrap },
     );
 
-    // Expand the notes section without editing the field.
-    await user.click(screen.getByRole('button', { name: /modifica note interne/i }));
-    // The textarea should now be visible and pre-populated.
-    expect(screen.getByLabelText(/note interne/i)).toHaveValue('Nota originale');
-    // User does NOT modify the notes. Makes an unrelated change and submits.
+    // Mi3: notes section is auto-expanded because internal_notes is non-null;
+    // no expander click needed. User does NOT modify the notes.
+    // Makes an unrelated change and submits.
     await user.clear(screen.getByLabelText(/descrizione/i));
     await user.type(screen.getByLabelText(/descrizione/i), 'Nuovo testo');
     await user.click(screen.getByRole('button', { name: /salva/i }));
@@ -544,6 +542,32 @@ describe('EditInterventionDialog', () => {
     // Even though the timeline item has title=null, the detail has it. The
     // dialog auto-expands the title section from detail, not from timeline.
     expect(screen.getByLabelText(/titolo/i)).toHaveValue('Tagliando 50k');
+  });
+
+  it('auto-expands notes section when detail.internal_notes is non-null', () => {
+    // Mirror of the existing showTitle auto-expand behavior. The expander
+    // toggle should NOT need to be clicked to reveal the textarea.
+    mockUseInterventionDetail.mockReturnValue({
+      data: makeDetail({ internal_notes: 'Sostituita la frizione' }),
+      isPending: false,
+      isError: false,
+      refetch: mockRefetch,
+    });
+    render(
+      <EditInterventionDialog
+        intervention={makeShopItem()}
+        vehicleId="v-1"
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap },
+    );
+    // The "Modifica note interne" toggle button should NOT be present because
+    // the section is auto-expanded; the textarea should be visible instead.
+    expect(
+      screen.queryByRole('button', { name: /modifica note interne/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('Sostituita la frizione')).toBeInTheDocument();
   });
 
   it('race-window: PATCH revision_reason_required switches banner to "Audit appena attivato"', async () => {
