@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock presignGetObject to avoid hitting real S3 credentials.
@@ -14,7 +15,16 @@ vi.mock('../../src/lib/s3.js', async (importOriginal) => {
 });
 
 import { buildTestServer } from './fixtures.js';
-import { createTenantWithLocation, createUser, resetDb } from './helpers.js';
+import {
+  createAttachment,
+  createCustomer,
+  createOwnership,
+  createPrivateIntervention,
+  createTenantWithLocation,
+  createUser,
+  createVehicle,
+  resetDb,
+} from './helpers.js';
 import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
@@ -212,5 +222,159 @@ describe('GET /v1/attachments/:id/view-url', () => {
 
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('attachment.owner_not_supported');
+  });
+});
+
+describe('GET /v1/attachments/:id/view-url — clienti+private_intervention (integration)', () => {
+  let app: FastifyInstance;
+  const TEST_IP_VIEW = '10.50.15.1';
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('200 returns presigned GET URL for clienti+private_intervention attachment', async () => {
+    const cognitoSub = 'view-pi-ok-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('view-pi-ok');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'VIEWPIOK00000001',
+      plate: 'VP001AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+    const { attachmentId } = await createAttachment({
+      ownerType: 'private_intervention',
+      ownerId: privateInterventionId,
+      customerId,
+      uploadedByCustomerId: customerId,
+      processed: true,
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/attachments/${attachmentId}/view-url`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_VIEW },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { url: string; expires_at: string };
+    expect(body.url).toMatch(/^https:\/\/.+/);
+    expect(body.expires_at).toBeTruthy();
+  });
+
+  it('404 clienti requesting intervention attachment (RLS hides → not_found)', async () => {
+    // Clienti context can't see the intervention-owned attachment because
+    // RLS scopes by customerId; the row's customerId is null (tenant-side
+    // attachment), so it's not visible. Response is 404 not 422 — RLS
+    // hides the row before the ownerType check runs.
+    const cognitoSub = 'view-cli-int-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('view-cli-int');
+    const { attachmentId } = await createAttachment({
+      ownerType: 'intervention',
+      ownerId: randomUUID(),
+      tenantId,
+      uploadedByUserId: null,
+      processed: true,
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/attachments/${attachmentId}/view-url`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_VIEW },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'attachment.not_found' });
+  });
+
+  it('422 clienti requesting intervention_dispute (deferred)', async () => {
+    // Clienti CAN see intervention_dispute attachments via RLS (they uploaded
+    // them themselves on their own dispute), but view-url for that ownerType
+    // is deferred to a future customer dispute UI slice. F2 only ships
+    // private_intervention support for clienti.
+    const cognitoSub = 'view-cli-disp-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('view-cli-disp');
+    const { attachmentId } = await createAttachment({
+      ownerType: 'intervention_dispute',
+      ownerId: randomUUID(),
+      tenantId,
+      customerId,
+      uploadedByCustomerId: customerId,
+      processed: true,
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/attachments/${attachmentId}/view-url`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_VIEW },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'attachment.owner_not_supported' });
+  });
+
+  it("404 clienti requesting another customer's private_intervention attachment", async () => {
+    const cognitoSubA = 'view-cli-cross-a-' + Math.random().toString(36).slice(2, 10);
+    const cognitoSubB = 'view-cli-cross-b-' + Math.random().toString(36).slice(2, 10);
+    const { customerId: customerIdA } = await createCustomer({ cognitoSub: cognitoSubA });
+    const { customerId: customerIdB } = await createCustomer({ cognitoSub: cognitoSubB });
+    const { tenantId } = await createTenantWithLocation('view-cli-cross');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'VIEWCROSS000001',
+      plate: 'VP002AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId: customerIdB });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId: customerIdB,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+    const { attachmentId } = await createAttachment({
+      ownerType: 'private_intervention',
+      ownerId: privateInterventionId,
+      customerId: customerIdB,
+      uploadedByCustomerId: customerIdB,
+      processed: true,
+    });
+
+    const tokenA = await signTestToken({
+      pool: 'clienti',
+      sub: cognitoSubA,
+      customerId: customerIdA,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/attachments/${attachmentId}/view-url`,
+      headers: { authorization: `Bearer ${tokenA}`, 'x-forwarded-for': TEST_IP_VIEW },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'attachment.not_found' });
   });
 });

@@ -13,8 +13,6 @@ import {
 } from '../../lib/s3.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
-import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
-import { tenantContext } from '../../middleware/tenant-context.js';
 
 // POST /v1/attachments/upload-url (F-OFF-305, phase 1 of 2)
 // Supports two pools:
@@ -128,6 +126,35 @@ function serializeAttachment(attachment: {
     processed: attachment.processed,
     uploaded_at: attachment.createdAt.toISOString(),
   };
+}
+
+// presignViewUrl produces a short-lived presigned GET URL + ISO8601 expiry
+// for an already-confirmed attachment. Shared between the officina and
+// clienti branches of the view-url handler. Maps S3UnavailableError to a
+// 502 business error; other errors bubble to the default 500 handler.
+async function presignViewUrl(
+  bucket: string,
+  key: string,
+): Promise<{ url: string; expires_at: string }> {
+  let url: string;
+  try {
+    url = await presignGetObject({
+      bucket,
+      key,
+      expiresInSeconds: PRESIGNED_URL_EXPIRY_SECONDS,
+    });
+  } catch (err) {
+    if (err instanceof S3UnavailableError) {
+      throw businessError(
+        'attachment.view_url.s3_unavailable',
+        502,
+        'Servizio storage temporaneamente non disponibile.',
+      );
+    }
+    throw err;
+  }
+  const expiresAt = new Date(Date.now() + PRESIGNED_URL_EXPIRY_SECONDS * 1000).toISOString();
+  return { url, expires_at: expiresAt };
 }
 
 // isP2025 checks whether an unknown error is a Prisma P2025 (record not found).
@@ -671,62 +698,65 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
-  // GET /v1/attachments/:id/view-url — officina-pool lazy presigned GET
-  // URL for an already-confirmed attachment (F-OFF-301 detail page
-  // consumer). Tenant-scoped via attachment.tenantId. v1: only
-  // ownerType='intervention' supported; private_intervention +
-  // intervention_dispute deferred to mobile slice and customer dispute UI.
+  // GET /v1/attachments/:id/view-url — dualPool lazy presigned GET URL.
+  // F-OFF-301 (officina detail page) + F-OFF-305 reciprocal (customer-side
+  // private intervention attachments). Dispatch by (pool, ownerType):
+  //   officine + intervention            → existing flow
+  //   clienti  + private_intervention    → new in F2
+  // Other combinations rejected with 422 attachment.owner_not_supported.
+  // intervention_dispute view for clienti is deferred to a later UI slice.
   //
   // attachments_read RLS is permissive cross-tenant (same topology as
-  // interventions_read), so the explicit tenantId filter is the
+  // interventions_read), so the explicit tenantId/customerId filter is the
   // application-layer enforcement.
   const ViewUrlParamsSchema = z.object({ id: z.string().uuid() });
   app.get(
     '/v1/attachments/:id/view-url',
     {
-      preHandler: [requireAuth, requireOfficinaPool, tenantContext],
+      preHandler: [requireAuth, dualPoolContext],
     },
     async (request) => {
       const { id } = ViewUrlParamsSchema.parse(request.params);
-      const tenantId = request.tenantId!;
 
-      return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
+      if (request.authPool === 'officine') {
+        const tenantId = request.tenantId!;
+        return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
+          const att = await tx.attachment.findFirst({
+            where: { id, tenantId, processed: true, deletedAt: null },
+            select: { id: true, s3Key: true, s3Bucket: true, ownerType: true },
+          });
+          if (!att) {
+            throw businessError('attachment.not_found', 404, 'Allegato non trovato.');
+          }
+          if (att.ownerType !== 'intervention') {
+            throw businessError(
+              'attachment.owner_not_supported',
+              422,
+              'Tipo di allegato non supportato per la visualizzazione.',
+            );
+          }
+          return presignViewUrl(att.s3Bucket, att.s3Key);
+        });
+      }
+
+      // clienti pool
+      const customerId = request.customerId!;
+      return app.withContext({ customerId, role: 'user' as const }, async (tx) => {
         const att = await tx.attachment.findFirst({
-          where: { id, tenantId, processed: true, deletedAt: null },
+          where: { id, customerId, processed: true, deletedAt: null },
           select: { id: true, s3Key: true, s3Bucket: true, ownerType: true },
         });
-
         if (!att) {
           throw businessError('attachment.not_found', 404, 'Allegato non trovato.');
         }
-        if (att.ownerType !== 'intervention') {
+        if (att.ownerType !== 'private_intervention') {
           throw businessError(
             'attachment.owner_not_supported',
             422,
             'Tipo di allegato non supportato per la visualizzazione.',
           );
         }
-
-        let url: string;
-        try {
-          url = await presignGetObject({
-            bucket: att.s3Bucket,
-            key: att.s3Key,
-            expiresInSeconds: PRESIGNED_URL_EXPIRY_SECONDS,
-          });
-        } catch (err) {
-          if (err instanceof S3UnavailableError) {
-            throw businessError(
-              'attachment.view_url.s3_unavailable',
-              502,
-              'Servizio storage temporaneamente non disponibile.',
-            );
-          }
-          throw err;
-        }
-
-        const expiresAt = new Date(Date.now() + PRESIGNED_URL_EXPIRY_SECONDS * 1000).toISOString();
-        return { url, expires_at: expiresAt };
+        return presignViewUrl(att.s3Bucket, att.s3Key);
       });
     },
   );
