@@ -33,6 +33,7 @@ import interventionRoutes from './routes/v1/interventions.js';
 import interventionTypesRoutes from './routes/v1/intervention-types.js';
 import attachmentsRoutes from './routes/v1/attachments.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
+import mePrivateInterventionRoutes from './routes/v1/me-private-interventions.js';
 import userRoutes from './routes/v1/users.js';
 import customerDetailRoutes from './routes/v1/customers-detail.js';
 import customerUpdateRoutes from './routes/v1/customers-update.js';
@@ -153,6 +154,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(deadlinesListTenantRoutes);
   await app.register(attachmentsRoutes);
   await app.register(meVehicleRoutes);
+  await app.register(mePrivateInterventionRoutes);
 
   // Echo the request id back so clients can correlate. Fastify sets
   // this by default for 2xx responses; doing it via onSend covers
