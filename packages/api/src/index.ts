@@ -45,10 +45,34 @@ const warmup = async (): Promise<void> => {
   await app.prisma.$queryRaw`SELECT 1`;
 };
 
-export const handler = withWarmingGuard(
+const innerHandler = withWarmingGuard(
   withSchedulerGuard(schedulerHandler)(awsLambdaFastify(app)),
   warmup,
 );
+
+// Lambda + persistent DB pool: set callbackWaitsForEmptyEventLoop=false so
+// the function returns to APIGW as soon as the handler promise resolves,
+// without waiting for pending event-loop work. Without this, every real
+// invocation pays an extra ~10s tail because @prisma/adapter-pg uses
+// node-postgres' pg.Pool, whose default `idleTimeoutMillis: 10000` keeps
+// a setTimeout alive for 10s after the last query — Fastify completes in
+// ~100ms but Lambda waits for that timer to fire before returning to
+// APIGW (PR #95 diagnosis: APIGW integrationLatency 10142ms vs Pino
+// responseTime 104ms, exact 10000ms gap).
+//
+// Container freeze preserves the timer; on the next invocation it either
+// fires immediately (closing the conn → Prisma re-$connects) or is reset
+// (warmer SELECT 1 every 5 min keeps the pool alive in practice).
+export const handler = async (
+  event: unknown,
+  context: unknown,
+  callback?: unknown,
+): Promise<unknown> => {
+  if (context && typeof context === 'object' && 'callbackWaitsForEmptyEventLoop' in context) {
+    (context as { callbackWaitsForEmptyEventLoop: boolean }).callbackWaitsForEmptyEventLoop = false;
+  }
+  return innerHandler(event, context, callback);
+};
 
 if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
   const shutdown = async (signal: string): Promise<void> => {
