@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -39,9 +41,11 @@ describe('GET /v1/me/private-interventions/:id (integration)', () => {
 
     const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
 
+    // randomUUID() produces a real v4 UUID that passes z.uuid() but cannot
+    // collide with any seeded row — exercises the not_found path, not Zod.
     const res = await app.inject({
       method: 'GET',
-      url: '/v1/me/private-interventions/00000000-0000-0000-0000-000000000001',
+      url: `/v1/me/private-interventions/${randomUUID()}`,
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
     });
 
@@ -727,7 +731,9 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
       payload: {
         intervention_date: '2026-03-10',
         odometer_km: null,
-        intervention_type_id: '00000000-0000-0000-0000-000000000099',
+        // Valid-format UUID v4 that doesn't exist in DB — exercises the
+        // application-layer existence check rather than Zod's z.uuid().
+        intervention_type_id: randomUUID(),
         custom_type: null,
         description: 'Type inesistente',
       },
