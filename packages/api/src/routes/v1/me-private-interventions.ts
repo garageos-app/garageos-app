@@ -6,6 +6,7 @@ import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor
 import {
   assertInterventionTypeExists,
   assertNotFutureInterventionDate,
+  fetchPrivateInterventionAttachments,
 } from '../../lib/intervention-shared.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -105,24 +106,6 @@ function projectDetail(r: DetailRow) {
   };
 }
 
-type AttachmentForDetail = {
-  id: string;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  createdAt: Date;
-};
-
-function serializeAttachmentForDetail(a: AttachmentForDetail) {
-  return {
-    id: a.id,
-    file_name: a.fileName,
-    mime_type: a.mimeType,
-    size_bytes: a.sizeBytes,
-    created_at: a.createdAt.toISOString(),
-  };
-}
-
 const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/me/private-interventions/:id — F-CLI-202
   app.get(
@@ -147,26 +130,11 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        const attachments = await tx.attachment.findMany({
-          where: {
-            ownerType: 'private_intervention',
-            ownerId: id,
-            processed: true,
-            deletedAt: null,
-          },
-          select: {
-            id: true,
-            fileName: true,
-            mimeType: true,
-            sizeBytes: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: 'asc' },
-        });
+        const attachments = await fetchPrivateInterventionAttachments(tx, id);
 
         return {
           ...projectDetail(row),
-          attachments: attachments.map(serializeAttachmentForDetail),
+          attachments,
         };
       });
     },
@@ -438,26 +406,11 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           select: detailSelect,
         });
 
-        const attachments = await tx.attachment.findMany({
-          where: {
-            ownerType: 'private_intervention',
-            ownerId: id,
-            processed: true,
-            deletedAt: null,
-          },
-          select: {
-            id: true,
-            fileName: true,
-            mimeType: true,
-            sizeBytes: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: 'asc' },
-        });
+        const attachments = await fetchPrivateInterventionAttachments(tx, id);
 
         return {
           ...projectDetail(row),
-          attachments: attachments.map(serializeAttachmentForDetail),
+          attachments,
         };
       });
     },
