@@ -1,0 +1,202 @@
+import type { FastifyInstance } from 'fastify';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
+import { buildTestServer } from './fixtures.js';
+import {
+  createCustomer,
+  createOwnership,
+  createPrivateIntervention,
+  createTenantWithLocation,
+  createVehicle,
+  resetDb,
+} from './helpers.js';
+import { signTestToken } from '../helpers/jwt.js';
+
+// Per-test fixed IP to isolate rate-limit buckets between tests in the
+// same describe block (lesson: feedback_integration_test_rate_limit_isolation).
+const TEST_IP = '10.50.13.1';
+
+describe('GET /v1/me/private-interventions/:id (integration)', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('returns 404 private_intervention.not_found for unknown id', async () => {
+    const cognitoSub = 'me-pi-404-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/me/private-interventions/00000000-0000-0000-0000-000000000001',
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.not_found' });
+  });
+
+  it('returns the private intervention for the owning customer', async () => {
+    const cognitoSub = 'me-pi-ok-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pi-ok');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIDETAIL000000001',
+      plate: 'PI001AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+      odometerKm: 43500,
+      customType: 'Olio fai-da-te',
+      description: 'Cambio olio garage personale',
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      id: privateInterventionId,
+      vehicle_id: vehicleId,
+      intervention_date: '2026-03-10',
+      odometer_km: 43500,
+      type: null,
+      custom_type: 'Olio fai-da-te',
+      description: 'Cambio olio garage personale',
+    });
+  });
+
+  it('returns 404 for soft-deleted private intervention (BR-080 + soft delete)', async () => {
+    const cognitoSub = 'me-pi-soft-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pi-soft');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PISOFTDEL00000001',
+      plate: 'PI002AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+      deletedAt: new Date(),
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.not_found' });
+  });
+
+  it('returns 404 for private intervention of another customer (BR-080 cross-customer RLS)', async () => {
+    const cognitoSubA = 'me-pi-cross-a-' + Math.random().toString(36).slice(2, 10);
+    const cognitoSubB = 'me-pi-cross-b-' + Math.random().toString(36).slice(2, 10);
+    const { customerId: customerIdA } = await createCustomer({ cognitoSub: cognitoSubA });
+    const { customerId: customerIdB } = await createCustomer({ cognitoSub: cognitoSubB });
+    const { tenantId } = await createTenantWithLocation('me-pi-cross');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PICROSS0000000001',
+      plate: 'PI003AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId: customerIdB });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId: customerIdB,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+
+    const tokenA = await signTestToken({
+      pool: 'clienti',
+      sub: cognitoSubA,
+      customerId: customerIdA,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${tokenA}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.not_found' });
+  });
+
+  it('returns 200 for private intervention on a transferred vehicle (BR-082)', async () => {
+    // BR-082: private interventions stay with the customer who created
+    // them, even after the vehicle is transferred. Detail-by-id must
+    // remain accessible to the original customer.
+    const cognitoSubSeller = 'me-pi-br082-' + Math.random().toString(36).slice(2, 10);
+    const { customerId: sellerId } = await createCustomer({ cognitoSub: cognitoSubSeller });
+    const { customerId: buyerId } = await createCustomer({
+      cognitoSub: 'me-pi-buyer-' + Math.random().toString(36).slice(2, 10),
+    });
+    const { tenantId } = await createTenantWithLocation('me-pi-br082');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PITRANSFER0000001',
+      plate: 'PI004AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    // Original ownership (seller), then transfer to buyer
+    await createOwnership({ vehicleId, customerId: sellerId, endedAt: new Date('2026-01-01') });
+    await createOwnership({ vehicleId, customerId: buyerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId: sellerId,
+      vehicleId,
+      interventionDate: '2025-06-01',
+      description: 'Pre-transfer private record',
+    });
+
+    const tokenSeller = await signTestToken({
+      pool: 'clienti',
+      sub: cognitoSubSeller,
+      customerId: sellerId,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${tokenSeller}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      id: privateInterventionId,
+      vehicle_id: vehicleId,
+      description: 'Pre-transfer private record',
+    });
+  });
+});
