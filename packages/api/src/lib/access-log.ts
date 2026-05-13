@@ -63,3 +63,53 @@ export async function recordVehicleAccess(args: RecordVehicleAccessArgs): Promis
     log?.warn({ err, vehicleId, userId, action }, 'access-log: write failed');
   }
 }
+
+export interface RecordVehiclesBatchArgs {
+  tx: PrismaClient;
+  vehicleIds: string[];
+  tenantId: string;
+  userId: string;
+  locationId?: string;
+  action: AccessLogAction;
+  ipAddress?: string;
+  log?: FastifyBaseLogger;
+}
+
+// Bulk variant of recordVehicleAccess: 1 findMany (dedup) + 1 createMany.
+// Replaces the per-row Promise.all(page.map(v => recordVehicleAccess({tx, ...})))
+// pattern, which serialises 2N queries on the single Prisma $transaction
+// connection (Prisma docs: tx is bound to one DB conn) — the cause of the
+// ~10s tail on /v1/vehicles/search?customer= for high-N customers (PR #95).
+// Errors are swallowed into log.warn for the same BR-154 rationale as the
+// single-row helper: audit loss must not break the user-visible read.
+export async function recordVehiclesBatch(args: RecordVehiclesBatchArgs): Promise<void> {
+  const { tx, vehicleIds, tenantId, userId, locationId, action, ipAddress, log } = args;
+  if (vehicleIds.length === 0) return;
+  const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS);
+
+  try {
+    const recent = await tx.accessLog.findMany({
+      where: {
+        vehicleId: { in: vehicleIds },
+        userId,
+        createdAt: { gte: cutoff },
+      },
+      select: { vehicleId: true },
+    });
+    const dedupSet = new Set(recent.map((r) => r.vehicleId));
+    const toInsert = vehicleIds
+      .filter((id) => !dedupSet.has(id))
+      .map((vehicleId) => ({
+        vehicleId,
+        tenantId,
+        userId,
+        ...(locationId ? { locationId } : {}),
+        action,
+        ...(ipAddress ? { ipAddress } : {}),
+      }));
+    if (toInsert.length === 0) return;
+    await tx.accessLog.createMany({ data: toInsert });
+  } catch (err) {
+    log?.warn({ err, vehicleIds, userId, action }, 'access-log: batch write failed');
+  }
+}

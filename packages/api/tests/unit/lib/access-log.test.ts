@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { recordVehicleAccess } from '../../../src/lib/access-log.js';
+import { recordVehicleAccess, recordVehiclesBatch } from '../../../src/lib/access-log.js';
 
 // BR-154: every successful GET /vehicles/:id and /vehicles/search that
 // matches logs one row in access_logs. Repeat accesses from the same
@@ -97,6 +97,146 @@ describe('recordVehicleAccess', () => {
         tenantId: TENANT,
         userId: USER,
         action: 'view',
+        log: log as never,
+      }),
+    ).resolves.toBeUndefined();
+    expect(log.warn).toHaveBeenCalled();
+  });
+});
+
+describe('recordVehiclesBatch', () => {
+  const VEHICLE_A = '33333333-3333-4333-8333-333333333333';
+  const VEHICLE_B = '44444444-4444-4444-8444-444444444444';
+  const VEHICLE_C = '55555555-5555-4555-8555-555555555555';
+
+  it('returns immediately on empty vehicleIds (no DB calls)', async () => {
+    const findMany = vi.fn();
+    const createMany = vi.fn();
+    const tx = { accessLog: { findMany, createMany } } as never;
+
+    await recordVehiclesBatch({
+      tx,
+      vehicleIds: [],
+      tenantId: TENANT,
+      userId: USER,
+      locationId: LOCATION,
+      action: 'search_match',
+      ipAddress: IP,
+    });
+
+    expect(findMany).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it('issues exactly 1 findMany (dedup) and 1 createMany (bulk insert) when nothing is deduped', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const createMany = vi.fn().mockResolvedValue({ count: 3 });
+    const tx = { accessLog: { findMany, createMany } } as never;
+
+    await recordVehiclesBatch({
+      tx,
+      vehicleIds: [VEHICLE_A, VEHICLE_B, VEHICLE_C],
+      tenantId: TENANT,
+      userId: USER,
+      locationId: LOCATION,
+      action: 'search_match',
+      ipAddress: IP,
+    });
+
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(createMany).toHaveBeenCalledTimes(1);
+    const createArg = createMany.mock.calls[0]?.[0] as {
+      data: Array<{
+        vehicleId: string;
+        userId: string;
+        tenantId: string;
+        action: string;
+        ipAddress?: string;
+        locationId?: string;
+      }>;
+    };
+    expect(createArg.data).toHaveLength(3);
+    const ids = createArg.data.map((r) => r.vehicleId).sort();
+    expect(ids).toEqual([VEHICLE_A, VEHICLE_B, VEHICLE_C].sort());
+    expect(createArg.data.every((r) => r.userId === USER && r.tenantId === TENANT)).toBe(true);
+    expect(createArg.data.every((r) => r.action === 'search_match')).toBe(true);
+    expect(createArg.data.every((r) => r.ipAddress === IP && r.locationId === LOCATION)).toBe(true);
+  });
+
+  it('skips already-deduped vehicleIds in the bulk insert', async () => {
+    const findMany = vi.fn().mockResolvedValue([{ vehicleId: VEHICLE_B }]);
+    const createMany = vi.fn().mockResolvedValue({ count: 2 });
+    const tx = { accessLog: { findMany, createMany } } as never;
+
+    await recordVehiclesBatch({
+      tx,
+      vehicleIds: [VEHICLE_A, VEHICLE_B, VEHICLE_C],
+      tenantId: TENANT,
+      userId: USER,
+      action: 'search_match',
+    });
+
+    expect(createMany).toHaveBeenCalledTimes(1);
+    const createArg = createMany.mock.calls[0]?.[0] as { data: Array<{ vehicleId: string }> };
+    const ids = createArg.data.map((r) => r.vehicleId).sort();
+    expect(ids).toEqual([VEHICLE_A, VEHICLE_C].sort());
+  });
+
+  it('skips createMany entirely when ALL vehicleIds are deduped', async () => {
+    const findMany = vi
+      .fn()
+      .mockResolvedValue([{ vehicleId: VEHICLE_A }, { vehicleId: VEHICLE_B }]);
+    const createMany = vi.fn();
+    const tx = { accessLog: { findMany, createMany } } as never;
+
+    await recordVehiclesBatch({
+      tx,
+      vehicleIds: [VEHICLE_A, VEHICLE_B],
+      tenantId: TENANT,
+      userId: USER,
+      action: 'search_match',
+    });
+
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it('scopes findMany to (vehicleId IN, userId, last 30 min)', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const createMany = vi.fn().mockResolvedValue({ count: 1 });
+    const tx = { accessLog: { findMany, createMany } } as never;
+
+    await recordVehiclesBatch({
+      tx,
+      vehicleIds: [VEHICLE_A],
+      tenantId: TENANT,
+      userId: USER,
+      action: 'search_match',
+    });
+
+    const call = findMany.mock.calls[0]?.[0] as {
+      where: { vehicleId: { in: string[] }; userId: string; createdAt: { gte: Date } };
+    };
+    expect(call.where.vehicleId.in).toEqual([VEHICLE_A]);
+    expect(call.where.userId).toBe(USER);
+    const cutoff = call.where.createdAt.gte.getTime();
+    expect(cutoff).toBeLessThanOrEqual(Date.now());
+    expect(cutoff).toBeGreaterThanOrEqual(Date.now() - 30 * 60 * 1000 - 5_000);
+  });
+
+  it('does not propagate failure to the caller (logged only) — search must still respond', async () => {
+    const findMany = vi.fn().mockRejectedValue(new Error('disk full'));
+    const createMany = vi.fn();
+    const tx = { accessLog: { findMany, createMany } } as never;
+    const log = { warn: vi.fn() };
+
+    await expect(
+      recordVehiclesBatch({
+        tx,
+        vehicleIds: [VEHICLE_A],
+        tenantId: TENANT,
+        userId: USER,
+        action: 'search_match',
         log: log as never,
       }),
     ).resolves.toBeUndefined();
