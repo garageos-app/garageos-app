@@ -48,6 +48,19 @@ const createBodySchema = z
     },
   );
 
+const patchBodySchema = z
+  .object({
+    intervention_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'intervention_date deve essere YYYY-MM-DD')
+      .optional(),
+    odometer_km: z.number().int().min(0).max(9_999_999).nullable().optional(),
+    intervention_type_id: z.uuid().nullable().optional(),
+    custom_type: z.string().min(1).max(150).nullable().optional(),
+    description: z.string().min(1).max(5000).optional(),
+  })
+  .strict(); // reject unknown keys to fail fast on client typos
+
 // Detail projection — reused by detail, list, and create responses.
 const detailSelect = {
   id: true,
@@ -285,6 +298,99 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
         });
 
         reply.code(201);
+        return projectDetail(row);
+      });
+    },
+  );
+
+  // PATCH /v1/me/private-interventions/:id — F-CLI-204 (update)
+  app.patch(
+    '/v1/me/private-interventions/:id',
+    {
+      preHandler: [requireAuth, requireClientiPool, clientiContext],
+    },
+    async (request) => {
+      const { id } = idParamSchema.parse(request.params);
+      const body = patchBodySchema.parse(request.body);
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        // 1. Load current row (BR-080 RLS + app-layer scope).
+        const current = await tx.privateIntervention.findFirst({
+          where: { id, customerId, deletedAt: null },
+          select: {
+            id: true,
+            interventionTypeId: true,
+            customType: true,
+          },
+        });
+        if (!current) {
+          throw businessError(
+            'private_intervention.not_found',
+            404,
+            'Intervento privato non trovato.',
+          );
+        }
+
+        // 2. Merged XOR check: post-merge state must have exactly one of
+        //    interventionTypeId / customType non-null.
+        const mergedTypeId =
+          'intervention_type_id' in body ? body.intervention_type_id! : current.interventionTypeId;
+        const mergedCustomType = 'custom_type' in body ? body.custom_type! : current.customType;
+        if ((mergedTypeId !== null) === (mergedCustomType !== null)) {
+          throw businessError(
+            'VALIDATION_ERROR',
+            422,
+            'Specifica esattamente uno tra intervention_type_id e custom_type.',
+          );
+        }
+
+        // 3. Future-date guard (only if intervention_date in payload).
+        if (body.intervention_date !== undefined) {
+          const dateUtc = new Date(`${body.intervention_date}T00:00:00.000Z`);
+          if (dateUtc.getTime() > todayUtcMidnight().getTime()) {
+            throw businessError(
+              'private_intervention.date_future',
+              422,
+              'Non è possibile registrare interventi futuri.',
+            );
+          }
+        }
+
+        // 4. Type existence (only if intervention_type_id provided and non-null).
+        if (body.intervention_type_id != null) {
+          const t = await tx.interventionType.findFirst({
+            where: { id: body.intervention_type_id },
+            select: { id: true },
+          });
+          if (!t) {
+            throw businessError('VALIDATION_ERROR', 422, 'Tipo intervento non valido.');
+          }
+        }
+
+        // 5. Build update data — only fields explicitly in body.
+        //    Empty body → data = {} → Prisma still touches updatedAt.
+        const data: {
+          interventionDate?: Date;
+          odometerKm?: number | null;
+          interventionTypeId?: string | null;
+          customType?: string | null;
+          description?: string;
+        } = {};
+        if (body.intervention_date !== undefined) {
+          data.interventionDate = new Date(`${body.intervention_date}T00:00:00.000Z`);
+        }
+        if ('odometer_km' in body) data.odometerKm = body.odometer_km!;
+        if ('intervention_type_id' in body) data.interventionTypeId = body.intervention_type_id!;
+        if ('custom_type' in body) data.customType = body.custom_type!;
+        if (body.description !== undefined) data.description = body.description;
+
+        const row = await tx.privateIntervention.update({
+          where: { id },
+          data,
+          select: detailSelect,
+        });
+
         return projectDetail(row);
       });
     },
