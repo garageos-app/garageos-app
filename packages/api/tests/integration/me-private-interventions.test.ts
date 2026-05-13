@@ -209,6 +209,102 @@ describe('GET /v1/me/private-interventions/:id (integration)', () => {
       description: 'Pre-transfer private record',
     });
   });
+
+  it('detail includes attachments[] array (empty when none)', async () => {
+    const cognitoSub = 'me-pi-att-empty-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pi-att-empty');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIATTEMPTY000001',
+      plate: 'PI100AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ attachments: [] });
+  });
+
+  it('detail includes 3 attachments sorted by createdAt asc', async () => {
+    const cognitoSub = 'me-pi-att-3-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pi-att-3');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIATT3000000001',
+      plate: 'PI101AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+    // Seed 3 attachments. We rely on the natural ORDER BY createdAt asc with
+    // a tiny sleep between inserts to keep ordering deterministic.
+    for (const fname of ['a.jpg', 'b.jpg', 'c.jpg']) {
+      await createAttachment({
+        ownerType: 'private_intervention',
+        ownerId: privateInterventionId,
+        customerId,
+        uploadedByCustomerId: customerId,
+        fileName: fname,
+        mimeType: 'image/jpeg',
+        sizeBytes: 1000,
+      });
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    // Also seed one that should be excluded (deletedAt or processed=false).
+    await createAttachment({
+      ownerType: 'private_intervention',
+      ownerId: privateInterventionId,
+      customerId,
+      uploadedByCustomerId: customerId,
+      fileName: 'pending.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 1000,
+      processed: false,
+    });
+    await createAttachment({
+      ownerType: 'private_intervention',
+      ownerId: privateInterventionId,
+      customerId,
+      uploadedByCustomerId: customerId,
+      fileName: 'deleted.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 1000,
+      deletedAt: new Date(),
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { attachments: Array<{ file_name: string }> };
+    expect(body.attachments.map((a) => a.file_name)).toEqual(['a.jpg', 'b.jpg', 'c.jpg']);
+  });
 });
 
 describe('GET /v1/me/vehicles/:id/private-interventions (integration)', () => {
@@ -420,6 +516,79 @@ describe('GET /v1/me/vehicles/:id/private-interventions (integration)', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { data: Array<{ description: string }> };
     expect(body.data.map((d) => d.description)).toEqual(['alive']);
+  });
+
+  it('list includes attachments_count per row (0/1/3 mix)', async () => {
+    const cognitoSub = 'me-pil-count-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pil-count');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PILISTCOUNT00001',
+      plate: 'PL100AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId: idZero } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+      description: 'zero',
+    });
+    const { privateInterventionId: idOne } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-11',
+      description: 'one',
+    });
+    const { privateInterventionId: idThree } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-12',
+      description: 'three',
+    });
+    await createAttachment({
+      ownerType: 'private_intervention',
+      ownerId: idOne,
+      customerId,
+      uploadedByCustomerId: customerId,
+    });
+    for (let i = 0; i < 3; i++) {
+      await createAttachment({
+        ownerType: 'private_intervention',
+        ownerId: idThree,
+        customerId,
+        uploadedByCustomerId: customerId,
+      });
+    }
+    // Soft-deleted attachment on idZero — must not count.
+    await createAttachment({
+      ownerType: 'private_intervention',
+      ownerId: idZero,
+      customerId,
+      uploadedByCustomerId: customerId,
+      deletedAt: new Date(),
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_LIST },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{ id: string; description: string; attachments_count: number }>;
+    };
+    // Sorted by interventionDate desc → three, one, zero.
+    expect(body.data.map((d) => ({ desc: d.description, count: d.attachments_count }))).toEqual([
+      { desc: 'three', count: 3 },
+      { desc: 'one', count: 1 },
+      { desc: 'zero', count: 0 },
+    ]);
   });
 });
 

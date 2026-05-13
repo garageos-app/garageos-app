@@ -102,6 +102,24 @@ function projectDetail(r: DetailRow) {
   };
 }
 
+type AttachmentForDetail = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: Date;
+};
+
+function serializeAttachmentForDetail(a: AttachmentForDetail) {
+  return {
+    id: a.id,
+    file_name: a.fileName,
+    mime_type: a.mimeType,
+    size_bytes: a.sizeBytes,
+    created_at: a.createdAt.toISOString(),
+  };
+}
+
 const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/me/private-interventions/:id — F-CLI-202
   app.get(
@@ -125,7 +143,28 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
             'Intervento privato non trovato.',
           );
         }
-        return projectDetail(row);
+
+        const attachments = await tx.attachment.findMany({
+          where: {
+            ownerType: 'private_intervention',
+            ownerId: id,
+            processed: true,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            fileName: true,
+            mimeType: true,
+            sizeBytes: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        return {
+          ...projectDetail(row),
+          attachments: attachments.map(serializeAttachmentForDetail),
+        };
       });
     },
   );
@@ -187,7 +226,28 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
 
         const hasMore = rows.length > limit;
         const page = hasMore ? rows.slice(0, limit) : rows;
-        const data = page.map(projectDetail);
+
+        // Single groupBy across page ids — avoids N+1 query.
+        const pageIds = page.map((r) => r.id);
+        const buckets =
+          pageIds.length > 0
+            ? await tx.attachment.groupBy({
+                by: ['ownerId'],
+                where: {
+                  ownerType: 'private_intervention',
+                  ownerId: { in: pageIds },
+                  processed: true,
+                  deletedAt: null,
+                },
+                _count: { _all: true },
+              })
+            : [];
+        const countById = new Map<string, number>(buckets.map((b) => [b.ownerId, b._count._all]));
+
+        const data = page.map((r) => ({
+          ...projectDetail(r),
+          attachments_count: countById.get(r.id) ?? 0,
+        }));
 
         const lastRow = page.at(-1);
         const nextCursor =
@@ -298,7 +358,7 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
         });
 
         reply.code(201);
-        return projectDetail(row);
+        return { ...projectDetail(row), attachments: [] };
       });
     },
   );
@@ -391,7 +451,27 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           select: detailSelect,
         });
 
-        return projectDetail(row);
+        const attachments = await tx.attachment.findMany({
+          where: {
+            ownerType: 'private_intervention',
+            ownerId: id,
+            processed: true,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            fileName: true,
+            mimeType: true,
+            sizeBytes: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        return {
+          ...projectDetail(row),
+          attachments: attachments.map(serializeAttachmentForDetail),
+        };
       });
     },
   );
