@@ -395,6 +395,40 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
       });
     },
   );
+
+  // DELETE /v1/me/private-interventions/:id — F-CLI-204 (soft delete)
+  app.delete(
+    '/v1/me/private-interventions/:id',
+    {
+      preHandler: [requireAuth, requireClientiPool, clientiContext],
+    },
+    async (request, reply) => {
+      const { id } = idParamSchema.parse(request.params);
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        // BR-084 soft delete. updateMany with deletedAt:null in the where
+        // predicate makes the operation idempotent: already-deleted rows
+        // match zero, count=0 → 404. Atomic single round trip.
+        const result = await tx.privateIntervention.updateMany({
+          where: { id, customerId, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+        if (result.count === 0) {
+          throw businessError(
+            'private_intervention.not_found',
+            404,
+            'Intervento privato non trovato.',
+          );
+        }
+
+        reply.code(204);
+        // Returning void from a Fastify handler with reply.code(204) sends
+        // an empty body. Returning {} would also work but is less idiomatic.
+        return;
+      });
+    },
+  );
 };
 
 export default mePrivateInterventionRoutes;

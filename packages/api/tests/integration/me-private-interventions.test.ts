@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
 import {
+  createAttachment,
   createCustomer,
   createOwnership,
   createPrivateIntervention,
@@ -1429,5 +1430,267 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
     });
 
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('DELETE /v1/me/private-interventions/:id (integration)', () => {
+  let app: FastifyInstance;
+  const TEST_IP_DELETE = '10.50.13.5';
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('204 happy path soft-deletes', async () => {
+    const cognitoSub = 'me-pid-ok-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pid-ok');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIDELOK0000000001',
+      plate: 'PD001AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_DELETE },
+    });
+
+    expect(res.statusCode).toBe(204);
+    expect(res.payload).toBe('');
+
+    // Verify deletedAt is set in DB.
+    const { rows } = await pgAdmin.query<{ deleted_at: Date | null }>(
+      `SELECT deleted_at FROM private_interventions WHERE id = $1`,
+      [privateInterventionId],
+    );
+    expect(rows[0]!.deleted_at).not.toBeNull();
+  });
+
+  it('404 DELETE on non-existent id', async () => {
+    const cognitoSub = 'me-pid-404-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/me/private-interventions/${randomUUID()}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_DELETE },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.not_found' });
+  });
+
+  it('404 DELETE on cross-customer private intervention (BR-080 RLS)', async () => {
+    const cognitoSubA = 'me-pid-cross-a-' + Math.random().toString(36).slice(2, 10);
+    const cognitoSubB = 'me-pid-cross-b-' + Math.random().toString(36).slice(2, 10);
+    const { customerId: customerIdA } = await createCustomer({ cognitoSub: cognitoSubA });
+    const { customerId: customerIdB } = await createCustomer({ cognitoSub: cognitoSubB });
+    const { tenantId } = await createTenantWithLocation('me-pid-cross');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIDELCROSS000001',
+      plate: 'PD002AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId: customerIdB });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId: customerIdB,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+
+    const tokenA = await signTestToken({
+      pool: 'clienti',
+      sub: cognitoSubA,
+      customerId: customerIdA,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${tokenA}`, 'x-forwarded-for': TEST_IP_DELETE },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.not_found' });
+
+    // Verify B's row was NOT modified.
+    const { rows } = await pgAdmin.query<{ deleted_at: Date | null }>(
+      `SELECT deleted_at FROM private_interventions WHERE id = $1`,
+      [privateInterventionId],
+    );
+    expect(rows[0]!.deleted_at).toBeNull();
+  });
+
+  it('404 DELETE on already-deleted (idempotency check)', async () => {
+    const cognitoSub = 'me-pid-idem-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pid-idem');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIDELIDEM0000001',
+      plate: 'PD003AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+      deletedAt: new Date('2026-03-11'),
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_DELETE },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.not_found' });
+  });
+
+  it('GET detail after DELETE returns 404', async () => {
+    const cognitoSub = 'me-pid-getafter-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pid-getafter');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIDELGET00000001',
+      plate: 'PD004AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_DELETE },
+    });
+    expect(del.statusCode).toBe(204);
+
+    const get = await app.inject({
+      method: 'GET',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_DELETE },
+    });
+    expect(get.statusCode).toBe(404);
+  });
+
+  it('GET list after DELETE excludes the row', async () => {
+    const cognitoSub = 'me-pid-listafter-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pid-listafter');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIDELLIST00000001',
+      plate: 'PD005AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+      description: 'to-delete',
+    });
+    await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-11',
+      description: 'to-keep',
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    await app.inject({
+      method: 'DELETE',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_DELETE },
+    });
+
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_DELETE },
+    });
+    expect(list.statusCode).toBe(200);
+    const body = list.json() as { data: Array<{ description: string }> };
+    expect(body.data.map((d) => d.description)).toEqual(['to-keep']);
+  });
+
+  it('DELETE does not cascade-delete attached files (orphan policy)', async () => {
+    const cognitoSub = 'me-pid-orphan-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pid-orphan');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIDELORPHAN00001',
+      plate: 'PD006AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const { privateInterventionId } = await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-03-10',
+    });
+    // Seed an attachment directly. customerId XOR per chk_attachment_owner_consistent.
+    const { attachmentId } = await createAttachment({
+      ownerType: 'private_intervention',
+      ownerId: privateInterventionId,
+      customerId,
+      uploadedByCustomerId: customerId,
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    await app.inject({
+      method: 'DELETE',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_DELETE },
+    });
+
+    // Verify attachment row still exists (no cascade soft delete).
+    const { rows } = await pgAdmin.query<{ id: string; deleted_at: Date | null }>(
+      `SELECT id, deleted_at FROM attachments WHERE id = $1`,
+      [attachmentId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.deleted_at).toBeNull();
   });
 });
