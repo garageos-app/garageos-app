@@ -47,7 +47,7 @@ const createBodySchema = z
     },
   );
 
-// Detail projection — also used by list and create response (Tasks 2 & 3).
+// Detail projection — reused by detail, list, and create responses.
 const detailSelect = {
   id: true,
   vehicleId: true,
