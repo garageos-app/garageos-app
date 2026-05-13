@@ -141,23 +141,12 @@ describe('GET /v1/attachments/:id/view-url', () => {
     expect(res.json().code).toBe('attachment.not_found');
   });
 
-  // -----------------------------------------------------------------------
-  // Scenario 4: 403 clienti pool
-  // -----------------------------------------------------------------------
-  it('returns 403 when caller is in the clienti pool', async () => {
-    const token = await signTestToken({
-      pool: 'clienti',
-      customerId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    });
-
-    const res = await app.inject({
-      method: 'GET',
-      url: '/v1/attachments/ffffffff-ffff-4fff-8fff-ffffffffffff/view-url',
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
-    });
-
-    expect(res.statusCode).toBe(403);
-  });
+  // Scenario 4 removed: the old `403 clienti pool` test asserted the now-
+  // obsolete `requireOfficinaPool` middleware reject. F2 Task 7 switched
+  // view-url to dualPool; clienti+private_intervention is the supported
+  // path. The replacement scenarios (clienti+intervention RLS-hidden 404,
+  // clienti+intervention_dispute deferred 422) live in the new describe
+  // block at the bottom of this file.
 
   // -----------------------------------------------------------------------
   // Scenario 5: 400 invalid UUID

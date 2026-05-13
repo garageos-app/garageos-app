@@ -452,6 +452,11 @@ export async function createAttachment(params: {
     processed = true,
     deletedAt = null,
   } = params;
+  // Build s3_key JS-side and pass as a separate param: using `$2` (uuid
+  // column) inside SQL concat would force PG to deduce it as text AND
+  // uuid simultaneously → "inconsistent types deduced" 42P08
+  // (feedback_pg_param_type_inference_cast).
+  const s3Key = `attachments/${ownerType}/${ownerId}/test.pdf`;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO attachments
        (id, owner_type, owner_id, tenant_id, customer_id,
@@ -460,7 +465,7 @@ export async function createAttachment(params: {
         processed, deleted_at, created_at)
      VALUES (gen_random_uuid(), $1::"AttachmentOwnerType", $2, $3, $4,
         $5, $6, $7, $8, $9,
-        'attachments/' || $1 || '/' || $2 || '/test.pdf', 'garageos-test',
+        $12, 'garageos-test',
         $10, $11, NOW())
      RETURNING id`,
     [
@@ -475,6 +480,7 @@ export async function createAttachment(params: {
       sizeBytes,
       processed,
       deletedAt,
+      s3Key,
     ],
   );
   return { attachmentId: rows[0]!.id };
