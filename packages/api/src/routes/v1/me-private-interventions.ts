@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
 import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor.js';
-import { todayUtcMidnight } from '../../lib/intervention-shared.js';
+import { assertNotFutureInterventionDate } from '../../lib/intervention-shared.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
@@ -299,15 +299,12 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
         }
 
         // BR-069 mirror: future-dated private interventions rejected at
-        // the same UTC-midnight anchor as officina interventions.ts:164.
-        const interventionDateUtc = new Date(`${body.intervention_date}T00:00:00.000Z`);
-        if (interventionDateUtc.getTime() > todayUtcMidnight().getTime()) {
-          throw businessError(
-            'private_intervention.date_future',
-            422,
-            'Non è possibile registrare interventi futuri.',
-          );
-        }
+        // the same UTC-midnight anchor as officina interventions.ts.
+        const interventionDateUtc = assertNotFutureInterventionDate(
+          body.intervention_date,
+          'private_intervention.date_future',
+          'Non è possibile registrare interventi futuri.',
+        );
 
         // Type existence check. RLS on intervention_types is permissive
         // (migration 20260427120000) — system-wide AND tenant-custom rows
@@ -407,14 +404,11 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
 
         // 3. Future-date guard (only if intervention_date in payload).
         if (body.intervention_date !== undefined) {
-          const dateUtc = new Date(`${body.intervention_date}T00:00:00.000Z`);
-          if (dateUtc.getTime() > todayUtcMidnight().getTime()) {
-            throw businessError(
-              'private_intervention.date_future',
-              422,
-              'Non è possibile registrare interventi futuri.',
-            );
-          }
+          assertNotFutureInterventionDate(
+            body.intervention_date,
+            'private_intervention.date_future',
+            'Non è possibile registrare interventi futuri.',
+          );
         }
 
         // 4. Type existence (only if intervention_type_id provided and non-null).

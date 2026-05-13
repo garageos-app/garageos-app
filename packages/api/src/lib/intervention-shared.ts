@@ -6,6 +6,8 @@
 // a single page-scoped `now` snapshot so all rows on the same response
 // report a consistent value.
 
+import { businessError } from './business-error.js';
+
 export const WIKI_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 export function isWikiWindowOpen(
@@ -51,4 +53,22 @@ export function normalizePartsReplaced(value: unknown): PartReplaced[] {
 export function todayUtcMidnight(): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+// Future-date guard. Validates that an `intervention_date` string
+// (YYYY-MM-DD) is not after today (UTC-midnight anchor). Used by both
+// officina and customer-side intervention endpoints. Caller supplies
+// the error code + message — officina uses BR-069-specific copy,
+// customer-side uses `private_intervention.date_future`. Returns the
+// parsed UTC Date on success so callers don't re-parse.
+export function assertNotFutureInterventionDate(
+  dateStr: string,
+  errorCode: string,
+  errorMsg: string,
+): Date {
+  const dateUtc = new Date(`${dateStr}T00:00:00.000Z`);
+  if (dateUtc.getTime() > todayUtcMidnight().getTime()) {
+    throw businessError(errorCode, 422, errorMsg);
+  }
+  return dateUtc;
 }
