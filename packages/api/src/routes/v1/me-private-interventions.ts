@@ -27,6 +27,26 @@ const listQuerySchema = z.object({
 
 const vehicleIdParamSchema = z.object({ id: z.uuid() });
 
+const createBodySchema = z
+  .object({
+    intervention_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'intervention_date deve essere YYYY-MM-DD'),
+    odometer_km: z.number().int().min(0).max(9_999_999).nullable(),
+    intervention_type_id: z.uuid().nullable(),
+    custom_type: z.string().min(1).max(150).nullable(),
+    description: z.string().min(1).max(5000),
+  })
+  .refine(
+    (b) =>
+      (b.intervention_type_id !== null && b.custom_type === null) ||
+      (b.intervention_type_id === null && b.custom_type !== null),
+    {
+      message: 'Specifica esattamente uno tra intervention_type_id e custom_type',
+      path: ['intervention_type_id'],
+    },
+  );
+
 // Detail projection — also used by list and create response (Tasks 2 & 3).
 const detailSelect = {
   id: true,
@@ -172,6 +192,55 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
             ...(nextCursor ? { cursor: nextCursor } : {}),
           },
         };
+      });
+    },
+  );
+
+  // POST /v1/me/vehicles/:id/private-interventions — F-CLI-203
+  app.post(
+    '/v1/me/vehicles/:id/private-interventions',
+    {
+      preHandler: [requireAuth, requireClientiPool, clientiContext],
+    },
+    async (request, reply) => {
+      const { id: vehicleId } = vehicleIdParamSchema.parse(request.params);
+      const body = createBodySchema.parse(request.body);
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        // BR-080 guard at create: customer must currently own the vehicle.
+        // 422 (not 404) differentiates "you can't act here" from "thing
+        // doesn't exist"; the distinct code lets the mobile UI surface
+        // a specific message.
+        const ownership = await tx.vehicleOwnership.findFirst({
+          where: { vehicleId, customerId, endedAt: null },
+          select: { id: true },
+        });
+        if (!ownership) {
+          throw businessError(
+            'private_intervention.vehicle_not_owned',
+            422,
+            'Puoi registrare interventi privati solo su veicoli che possiedi.',
+          );
+        }
+
+        // TODO Task 4: future-date guard + type existence + rate-limit.
+
+        const row = await tx.privateIntervention.create({
+          data: {
+            customerId,
+            vehicleId,
+            interventionTypeId: body.intervention_type_id,
+            customType: body.custom_type,
+            interventionDate: new Date(`${body.intervention_date}T00:00:00.000Z`),
+            odometerKm: body.odometer_km,
+            description: body.description,
+          },
+          select: detailSelect,
+        });
+
+        reply.code(201);
+        return projectDetail(row);
       });
     },
   );

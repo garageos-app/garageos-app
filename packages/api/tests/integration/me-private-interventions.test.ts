@@ -8,6 +8,7 @@ import {
   createPrivateIntervention,
   createTenantWithLocation,
   createVehicle,
+  ensureSystemInterventionType,
   resetDb,
 } from './helpers.js';
 import { signTestToken } from '../helpers/jwt.js';
@@ -413,5 +414,250 @@ describe('GET /v1/me/vehicles/:id/private-interventions (integration)', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { data: Array<{ description: string }> };
     expect(body.data.map((d) => d.description)).toEqual(['alive']);
+  });
+});
+
+describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
+  let app: FastifyInstance;
+  const TEST_IP_POST = '10.50.13.3';
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('creates a private intervention with custom_type (201)', async () => {
+    const cognitoSub = 'me-pip-custom-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-custom');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTCUST0000001',
+      plate: 'PP001AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: 43500,
+        intervention_type_id: null,
+        custom_type: 'Olio fai-da-te',
+        description: 'Cambio olio + filtro garage personale',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({
+      vehicle_id: vehicleId,
+      intervention_date: '2026-03-10',
+      odometer_km: 43500,
+      type: null,
+      custom_type: 'Olio fai-da-te',
+      description: 'Cambio olio + filtro garage personale',
+    });
+  });
+
+  it('creates a private intervention with intervention_type_id (201)', async () => {
+    const cognitoSub = 'me-pip-type-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-type');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTTYPE0000001',
+      plate: 'PP002AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const interventionType = await ensureSystemInterventionType('CAMBIO_OLIO');
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: 43500,
+        intervention_type_id: interventionType.id,
+        custom_type: null,
+        description: 'Cambio olio',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({
+      type: { id: interventionType.id, name_it: 'Cambio olio' },
+      custom_type: null,
+    });
+  });
+
+  it('returns 400 VALIDATION_ERROR when both intervention_type_id and custom_type are null', async () => {
+    const cognitoSub = 'me-pip-bothnull-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-bothnull');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTNULL0000001',
+      plate: 'PP003AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: null,
+        description: 'Senza tipo',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 VALIDATION_ERROR when both intervention_type_id and custom_type are set', async () => {
+    const cognitoSub = 'me-pip-both-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-both');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTBOTH0000001',
+      plate: 'PP004AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const interventionType = await ensureSystemInterventionType('TAGLIANDO');
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: interventionType.id,
+        custom_type: 'Custom',
+        description: 'Entrambi set',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 422 private_intervention.vehicle_not_owned for unowned vehicle (BR-080)', async () => {
+    const cognitoSub = 'me-pip-unown-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-unown');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTUNOWN000001',
+      plate: 'PP005AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    // No ownership for this customer.
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'fai-da-te',
+        description: 'Non posseduto',
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.vehicle_not_owned' });
+  });
+
+  it('returns 422 vehicle_not_owned for transferred vehicle (endedAt set)', async () => {
+    const cognitoSub = 'me-pip-trans-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { customerId: newOwnerId } = await createCustomer({
+      cognitoSub: 'me-pip-newown-' + Math.random().toString(36).slice(2, 10),
+    });
+    const { tenantId } = await createTenantWithLocation('me-pip-trans');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTTRANS000001',
+      plate: 'PP006AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId, endedAt: new Date('2026-01-01') });
+    await createOwnership({ vehicleId, customerId: newOwnerId });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'fai-da-te',
+        description: 'Veicolo trasferito',
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'private_intervention.vehicle_not_owned' });
   });
 });
