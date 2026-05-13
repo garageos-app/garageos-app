@@ -330,7 +330,7 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
       odometerKm: 50_000,
     });
 
-    // Officina creates at 15k. Pre-BR-083: 422 because max(10k, 50k)=50k > 15k.
+    // Officina creates at 15k. Pre-BR-083: 409 odometer_decrease_warning because max(10k, 50k)=50k > 15k.
     // Post-BR-083: 201 because only officina (10k) counts; 15k > 10k OK.
     const res = await app.inject({
       method: 'POST',

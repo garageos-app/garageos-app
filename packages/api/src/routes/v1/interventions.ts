@@ -30,9 +30,9 @@ function businessError(code: string, status: number, detail: string): FastifyErr
 }
 
 // BR-083: previous max km is computed ONLY across officina interventions.
-// Customer-side `private_interventions` are auto-dichiarati and less
+// Customer-side `private_interventions` are self-declared and less
 // reliable, so they do NOT concur to the BR-068 (km non-decreasing)
-// check. Reciproco — APPENDICE_F:416 — a private intervention may carry
+// check. Conversely — APPENDICE_F:416 — a private intervention may carry
 // any km without warning. Cancelled officina rows are excluded — they
 // do not bind future km.
 async function previousMaxOdometerKm(
@@ -165,11 +165,11 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        // BR-068: km must not decrease vs. previous interventions on this
-        // vehicle (officina + private). A decrease is a *warning*, not a
-        // hard failure: the workshop can confirm with `forceKmDecrease=true`,
-        // and the resulting row is flagged `kmAnomaly=true` so downstream
-        // analytics can surface the override.
+        // BR-068: km must not decrease vs. previous officina interventions on this
+        // vehicle (BR-083 excludes customer-side records). A decrease is a
+        // *warning*, not a hard failure: the workshop can confirm with
+        // `forceKmDecrease=true`, and the resulting row is flagged `kmAnomaly=true`
+        // so downstream analytics can surface the override.
         const prevMaxKm = await previousMaxOdometerKm(tx, vehicleId);
         let kmAnomaly = false;
         if (prevMaxKm !== null && body.odometerKm < prevMaxKm) {
