@@ -4,10 +4,10 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "ignoreDeprecations": "6.0",
+    "types": ["jest", "node"],
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["app/**/*", "src/**/*", "tests/**/*", "*.ts", "*.tsx"],
-  "files": []
+  "include": ["app/**/*", "src/**/*", "tests/**/*", "*.ts", "*.tsx"]
 }
