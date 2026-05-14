@@ -1,3 +1,12 @@
+// Default EXPO_PUBLIC_* env vars must be set BEFORE Jest spawns workers,
+// because babel-preset-expo's inline-env-vars plugin (active when
+// NODE_ENV !== 'development') replaces process.env.EXPO_PUBLIC_* with the
+// value seen at babel-jest transform time. Setting them inside setupFiles
+// would be too late — transforms happen before setupFiles execution.
+process.env.EXPO_PUBLIC_API_URL ??= 'https://api.test.example.com';
+process.env.EXPO_PUBLIC_COGNITO_CLIENTI_POOL_ID ??= 'eu-west-1_TestPool';
+process.env.EXPO_PUBLIC_COGNITO_CLIENTI_CLIENT_ID ??= 'testclientid';
+
 module.exports = {
   preset: 'jest-expo',
   setupFiles: ['<rootDir>/jest.setup.ts'],
