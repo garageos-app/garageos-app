@@ -154,4 +154,4 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @garageos/mobile test -- --coverage=false --watchAll=false
+      - run: pnpm --filter @garageos/mobile test --coverage=false --watchAll=false
