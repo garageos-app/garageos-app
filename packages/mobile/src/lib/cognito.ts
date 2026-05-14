@@ -1,3 +1,7 @@
+// RN polyfills must load BEFORE amazon-cognito-identity-js so SRP can use
+// secure crypto.getRandomValues (otherwise SDK falls back to an insecure RNG
+// and Cognito rejects the challenge with an opaque error).
+import './crypto-polyfill';
 import 'react-native-url-polyfill/auto';
 import {
   AuthenticationDetails,

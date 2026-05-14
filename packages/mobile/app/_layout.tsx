@@ -1,3 +1,6 @@
+// Polyfills MUST be the very first imports, before any module that depends
+// on global URL or crypto.getRandomValues (amazon-cognito-identity-js).
+import '@/lib/crypto-polyfill';
 import 'react-native-url-polyfill/auto';
 import { Stack } from 'expo-router';
 import { QueryClient } from '@tanstack/react-query';

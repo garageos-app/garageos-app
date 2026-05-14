@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "scheme": "garageos",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.garageos.mobile",
       "supportsTablet": false

@@ -17,4 +17,26 @@ config.resolver.nodeModulesPaths = [
 
 config.resolver.disableHierarchicalLookup = true;
 
+// Override amazon-cognito-identity-js's getRandomValues with our
+// expo-crypto-backed implementation. SDK's own native.js uses Math.random
+// fallback when global.nativeCallSyncHook is missing (Expo Go bridgeless).
+const cognitoRandomOverride = path.resolve(projectRoot, 'src/lib/cognito-random-override.js');
+const defaultResolver = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    moduleName === './getRandomValues' &&
+    context.originModulePath &&
+    context.originModulePath.includes('amazon-cognito-identity-js')
+  ) {
+    return {
+      filePath: cognitoRandomOverride,
+      type: 'sourceFile',
+    };
+  }
+  if (defaultResolver) {
+    return defaultResolver(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;
