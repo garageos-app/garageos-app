@@ -129,3 +129,29 @@ jobs:
         run: pnpm --filter infrastructure synth --quiet
       # Also exercise the assertion test suite — same prereqs.
       - run: pnpm --filter infrastructure test
+
+  mobile-typecheck:
+    name: Mobile typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @garageos/mobile typecheck
+
+  mobile-test:
+    name: Mobile tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @garageos/mobile test -- --coverage=false --watchAll=false
