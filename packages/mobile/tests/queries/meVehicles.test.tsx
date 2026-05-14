@@ -39,7 +39,7 @@ describe('useMeVehiclesList', () => {
     mockedHook.useApiClient.mockReturnValue({ fetch: apiFetch });
     const { result } = renderHook(() => useMeVehiclesList(), { wrapper: makeWrapper() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data?.[0].plate).toBe('AA000AA');
+    expect(result.current.data?.[0]?.plate).toBe('AA000AA');
     expect(apiFetch).toHaveBeenCalledWith('/v1/me/vehicles');
   });
 });
