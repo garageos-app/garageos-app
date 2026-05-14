@@ -6,6 +6,7 @@
     "ignoreDeprecations": "5.0",
     "types": ["jest", "node"],
     "typeRoots": ["./node_modules/@types"],
+    "preserveSymlinks": true,
     "paths": {
       "@/*": ["./src/*"]
     }
