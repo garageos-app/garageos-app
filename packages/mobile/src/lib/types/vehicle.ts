@@ -28,7 +28,7 @@ export type MeVehicleDetail = {
     make: string;
     model: string;
     version: string | null;
-    year: number | null;
+    year: number;
     registrationDate: string | null;
     vehicleType: string;
     fuelType: string;
