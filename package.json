@@ -54,7 +54,7 @@
       "prettier --write"
     ],
     "*": [
-      "secretlint"
+      "secretlint --no-glob"
     ]
   },
   "pnpm": {
