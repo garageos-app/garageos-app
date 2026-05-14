@@ -111,7 +111,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // value depends only on `status` (refs don't trigger re-renders); customerId
   // and email read from tokensRef inside the factory so they're fresh whenever
-  // status transitions cause a re-render.
+  // status transitions cause a re-render. Note: refresh() mutates tokensRef
+  // without setStatus, so customerId/email visible to consumers stay at their
+  // pre-refresh values — safe because Cognito refresh preserves the same
+  // custom:customer_id claim and email for the same user.
   const value = useMemo<AuthContextValue>(
     () => ({
       status,

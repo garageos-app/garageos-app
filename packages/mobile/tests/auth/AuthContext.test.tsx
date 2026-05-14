@@ -90,8 +90,10 @@ describe('AuthContext', () => {
     expect(mockedStorage.clearTokens).toHaveBeenCalled();
   });
 
-  it('drops corrupt stored tokens and bootstraps unauthenticated', async () => {
-    // secure-storage already filters malformed payloads and returns null
+  it('treats null storage result as unauthenticated (corrupt-payload path is in secure-storage)', async () => {
+    // secure-storage.readTokens already returns null for malformed payloads,
+    // so AuthContext just needs to handle that null path (covered structurally
+    // here; corrupt-payload filtering itself is unit-tested in secure-storage).
     mockedStorage.readTokens.mockResolvedValue(null);
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.status).toBe('unauthenticated'));
