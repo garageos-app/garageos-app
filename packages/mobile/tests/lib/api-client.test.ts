@@ -44,6 +44,8 @@ describe('createApiClient', () => {
     expect(res.data).toEqual([]);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledTimes(2);
+    const secondCall = (fetch as unknown as jest.Mock).mock.calls[1][1];
+    expect(secondCall.headers.Authorization).toBe('Bearer newtok');
   });
 
   it('triggers onAuthLost and throws when refresh fails', async () => {
@@ -80,6 +82,47 @@ describe('createApiClient', () => {
       code: 'network.unreachable',
       status: 0,
     });
+  });
+
+  it('triggers onAuthLost and throws when getIdToken returns null upfront', async () => {
+    const onAuthLost = jest.fn();
+    const refresh = jest.fn();
+    const client = createApiClient({
+      getIdToken: () => null,
+      refreshTokens: refresh,
+      onAuthLost,
+    });
+    await expect(client.fetch('/v1/me/vehicles')).rejects.toMatchObject({
+      name: 'ApiError',
+      code: 'auth.session_expired',
+      status: 401,
+    });
+    expect(onAuthLost).toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('triggers onAuthLost when retry after refresh also returns 401', async () => {
+    const onAuthLost = jest.fn();
+    const refresh = jest.fn(async () => 'newtok');
+    (fetch as unknown as jest.Mock).mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    });
+    const client = createApiClient({
+      getIdToken: () => 'old',
+      refreshTokens: refresh,
+      onAuthLost,
+    });
+    await expect(client.fetch('/v1/me/vehicles')).rejects.toMatchObject({
+      name: 'ApiError',
+      code: 'auth.session_expired',
+      status: 401,
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(onAuthLost).toHaveBeenCalled();
   });
 
   it('parses error_code + error_message from 4xx body', async () => {
