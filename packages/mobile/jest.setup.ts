@@ -1,0 +1,38 @@
+// expo-secure-store: in-memory mock to support round-trip tests.
+// The backing Map is exposed via a globalThis reset hook so jest.afterEach.ts
+// can clear it between tests — setupFiles runs once per worker, so module-level
+// state persists across `it()` blocks unless explicitly reset.
+jest.mock('expo-secure-store', () => {
+  const state = { store: new Map<string, string>() };
+  (globalThis as { __mobileMockReset?: () => Promise<void> }).__mobileMockReset = async () => {
+    state.store.clear();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await (AsyncStorage.default ?? AsyncStorage).clear();
+  };
+  return {
+    getItemAsync: jest.fn(async (key: string) => state.store.get(key) ?? null),
+    setItemAsync: jest.fn(async (key: string, value: string) => {
+      state.store.set(key, value);
+    }),
+    deleteItemAsync: jest.fn(async (key: string) => {
+      state.store.delete(key);
+    }),
+  };
+});
+
+// AsyncStorage: in-memory mock — jest.mock factory cannot use ESM import (must
+// be CJS require so Jest can hoist the call before module resolution).
+jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
+// expo-constants: empty extra config (env vars read directly via process.env.EXPO_PUBLIC_*)
+jest.mock('expo-constants', () => ({
+  default: {
+    expoConfig: {
+      extra: {},
+    },
+  },
+}));

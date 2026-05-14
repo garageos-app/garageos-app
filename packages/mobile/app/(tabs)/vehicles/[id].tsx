@@ -1,0 +1,195 @@
+import { useCallback, useState } from 'react';
+import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from 'react-native';
+import { useLocalSearchParams, Stack } from 'expo-router';
+import { useMeVehicleDetail } from '@/queries/meVehicles';
+import { useMeVehicleTimeline } from '@/queries/meVehicleTimeline';
+import { LoadingState } from '@/components/LoadingState';
+import { ErrorState } from '@/components/ErrorState';
+import { EmptyState } from '@/components/EmptyState';
+import { TimelineRow } from '@/components/TimelineRow';
+import { ApiError } from '@/lib/api-error';
+import { mapErrorToUserMessage } from '@/lib/error-messages';
+import { formatDate } from '@/lib/format';
+import { colors, spacing } from '@/theme/colors';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default function VehicleDetailScreen() {
+  const params = useLocalSearchParams<{ id: string }>();
+  const id = typeof params.id === 'string' ? params.id : '';
+  const validId = UUID_RE.test(id) ? id : '';
+  const [tab, setTab] = useState<'history' | 'tech'>('history');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const detail = useMeVehicleDetail(validId);
+  const timeline = useMeVehicleTimeline(validId);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([detail.refetch(), timeline.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [detail, timeline]);
+
+  if (!validId) {
+    return <ErrorState message="Veicolo non trovato o non più di tua proprietà." />;
+  }
+
+  if (detail.isLoading) return <LoadingState variant="fullscreen" />;
+
+  if (detail.isError) {
+    const code = detail.error instanceof ApiError ? detail.error.code : undefined;
+    return <ErrorState message={mapErrorToUserMessage(code)} onRetry={detail.refetch} />;
+  }
+
+  const v = detail.data!.vehicle;
+  const headerTitle = `${v.make} ${v.model}`;
+
+  return (
+    <>
+      <Stack.Screen options={{ title: headerTitle }} />
+      <ScrollView
+        style={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        <View style={styles.header}>
+          <View style={styles.iconWrap}>
+            <Text style={styles.icon}>🚗</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>{headerTitle}</Text>
+            <Text style={styles.plate}>{v.plate}</Text>
+            {v.year ? <Text style={styles.subtle}>Anno {v.year}</Text> : null}
+            <Text style={styles.subtle}>Codice: {v.garageCode}</Text>
+          </View>
+        </View>
+
+        <View style={styles.tabsRow}>
+          <Pressable
+            onPress={() => setTab('history')}
+            style={[styles.tabButton, tab === 'history' && styles.tabButtonActive]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.tabText, tab === 'history' && styles.tabTextActive]}>Storico</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setTab('tech')}
+            style={[styles.tabButton, tab === 'tech' && styles.tabButtonActive]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.tabText, tab === 'tech' && styles.tabTextActive]}>
+              Dati tecnici
+            </Text>
+          </Pressable>
+        </View>
+
+        {tab === 'history' ? (
+          <HistoryTab vehicleId={validId} timeline={timeline} />
+        ) : (
+          <TechTab vehicle={v} />
+        )}
+      </ScrollView>
+    </>
+  );
+}
+
+function HistoryTab({
+  timeline,
+}: {
+  vehicleId: string;
+  timeline: ReturnType<typeof useMeVehicleTimeline>;
+}) {
+  if (timeline.isLoading) return <LoadingState variant="list" />;
+  if (timeline.isError) {
+    const code = timeline.error instanceof ApiError ? timeline.error.code : undefined;
+    return <ErrorState message={mapErrorToUserMessage(code)} onRetry={timeline.refetch} />;
+  }
+  const items = timeline.data?.data ?? [];
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        title="Nessun intervento"
+        body="Non ci sono ancora interventi registrati per questo veicolo."
+      />
+    );
+  }
+  return (
+    <FlatList
+      data={items}
+      keyExtractor={(it) => `${it.kind}-${it.id}`}
+      renderItem={({ item }) => <TimelineRow item={item} />}
+      scrollEnabled={false}
+    />
+  );
+}
+
+function TechTab({
+  vehicle,
+}: {
+  vehicle: NonNullable<ReturnType<typeof useMeVehicleDetail>['data']>['vehicle'];
+}) {
+  const rows: Array<[string, string]> = [
+    ['Targa', vehicle.plate],
+    ['Codice GarageOS', vehicle.garageCode],
+    ['VIN', vehicle.vin],
+    ['Marca', vehicle.make],
+    ['Modello', vehicle.model],
+    ['Versione', vehicle.version ?? '—'],
+    ['Anno', vehicle.year ? String(vehicle.year) : '—'],
+    ['Data immatricolazione', formatDate(vehicle.registrationDate)],
+    ['Tipo', vehicle.vehicleType],
+    ['Alimentazione', vehicle.fuelType],
+    ['Cilindrata', vehicle.engineDisplacement ? `${vehicle.engineDisplacement} cc` : '—'],
+    ['Potenza', vehicle.powerKw ? `${vehicle.powerKw} kW` : '—'],
+    ['Colore', vehicle.color ?? '—'],
+    ['Certificato il', formatDate(vehicle.certifiedAt?.slice(0, 10))],
+  ];
+  return (
+    <View style={styles.techList}>
+      {rows.map(([label, value]) => (
+        <View key={label} style={styles.techRow}>
+          <Text style={styles.techLabel}>{label}</Text>
+          <Text style={styles.techValue}>{value}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  header: {
+    flexDirection: 'row',
+    padding: spacing.lg,
+    gap: spacing.md,
+    backgroundColor: colors.mutedBg,
+  },
+  iconWrap: { width: 64, height: 64, justifyContent: 'center', alignItems: 'center' },
+  icon: { fontSize: 48 },
+  title: { fontSize: 22, fontWeight: '700', color: colors.fg },
+  plate: { fontSize: 16, color: colors.fg, marginTop: 2 },
+  subtle: { fontSize: 13, color: colors.muted, marginTop: 2 },
+  tabsRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
+  tabButton: { flex: 1, paddingVertical: spacing.md, alignItems: 'center' },
+  tabButtonActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
+  tabText: { fontSize: 14, fontWeight: '500', color: colors.muted },
+  tabTextActive: { color: colors.primary, fontWeight: '600' },
+  techList: { padding: spacing.md, gap: spacing.sm },
+  techRow: {
+    flexDirection: 'row',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  techLabel: { flex: 1, fontSize: 14, color: colors.muted },
+  techValue: { flex: 1.5, fontSize: 14, color: colors.fg, textAlign: 'right' },
+});
