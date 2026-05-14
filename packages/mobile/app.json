@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "GarageOS",
+    "slug": "garageos-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "garageos",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "ios": {
+      "bundleIdentifier": "com.garageos.mobile",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "it.garageos.mobile"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

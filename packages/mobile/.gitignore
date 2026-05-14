@@ -1,0 +1,26 @@
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Native build outputs
+ios/
+android/
+
+# Metro
+.metro-cache/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS
+.DS_Store
+Thumbs.db
