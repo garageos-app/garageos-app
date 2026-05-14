@@ -6,10 +6,10 @@ export type MeVehicleSummary = {
   plateCountry: string;
   make: string;
   model: string;
-  year: number | null;
+  year: number;
   vehicleType: string;
   fuelType: string;
-  status: 'active' | 'sold' | 'scrapped' | string;
+  status: 'pending' | 'certified' | 'archived' | (string & {});
   currentOwnership: { id: string; startedAt: string };
 };
 
@@ -35,7 +35,7 @@ export type MeVehicleDetail = {
     engineDisplacement: number | null;
     powerKw: number | null;
     color: string | null;
-    status: string;
+    status: 'pending' | 'certified' | 'archived' | (string & {});
     certifiedAt: string | null;
     createdAt: string;
   };
@@ -64,7 +64,7 @@ export type TimelineItem =
       id: string;
       intervention_date: string;
       odometer_km: number;
-      custom_type: string;
+      custom_type: string | null;
       description: string | null;
       has_attachments: boolean;
       attachments_count: number;
@@ -72,5 +72,11 @@ export type TimelineItem =
 
 export type TimelineResponse = {
   data: TimelineItem[];
-  meta: { has_more: boolean; cursor?: string };
+  meta: {
+    has_more: boolean;
+    cursor?: string;
+    total_interventions: number;
+    shop_count: number;
+    private_count: number;
+  };
 };
