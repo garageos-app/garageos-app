@@ -63,9 +63,6 @@
       "@prisma/engines",
       "esbuild",
       "prisma"
-    ],
-    "overrides": {
-      "@garageos/mobile>@types/react": "18.3.28"
-    }
+    ]
   }
 }
