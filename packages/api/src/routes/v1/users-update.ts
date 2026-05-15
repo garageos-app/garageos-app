@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import { USER_ME_SELECT } from '../../lib/dtos/user-me.js';
+import { USER_ME_SELECT, serializeUserMe } from '../../lib/dtos/user-me.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -85,11 +85,12 @@ const userUpdateRoutes: FastifyPluginAsync = async (app) => {
         if ('lastName' in body) patch['lastName'] = body.lastName!;
         if ('phone' in body) patch['phone'] = body.phone ?? null;
 
-        return tx.user.update({
+        const updated = await tx.user.update({
           where: { id: existing.id },
           data: patch,
           select: USER_ME_SELECT,
         });
+        return serializeUserMe(updated);
       });
     },
   );

@@ -56,6 +56,18 @@ describe('presignPutObject', () => {
       }),
     ).rejects.toBeInstanceOf(S3UnavailableError);
   });
+
+  it('omits ContentLength condition when not provided', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    const url = await presignPutObject({
+      bucket: 'test-bucket',
+      key: 'avatars/users/u1.jpg',
+      contentType: 'image/jpeg',
+      expiresInSeconds: 900,
+    });
+    expect(url).toMatch(/^https:\/\/test-bucket\.s3\.[^/]+amazonaws\.com\/avatars\/users\/u1\.jpg/);
+    expect(url).toContain('X-Amz-Signature=');
+  });
 });
 
 describe('headObject', () => {
