@@ -6,6 +6,12 @@ import { ProfileForm } from './ProfileForm';
 import * as profileUpdateModule from '@/queries/profileUpdate';
 import type { ProfileMeDto } from '@/queries/profileMe';
 
+// AvatarSection has its own test suite; stub it here to avoid
+// pulling in useAuth/useApiFetch dependencies outside this unit's scope.
+vi.mock('./AvatarSection', () => ({
+  AvatarSection: () => <div data-testid="avatar-section-stub" />,
+}));
+
 const baseProfile: ProfileMeDto = {
   id: 'u-1',
   email: 'u@t.test',

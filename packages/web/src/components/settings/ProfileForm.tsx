@@ -12,6 +12,7 @@ import {
   type ProfileFormValues,
   type ProfileFormParsed,
 } from '@/lib/validators/profile';
+import { AvatarSection } from './AvatarSection';
 
 interface Props {
   profile: ProfileMeDto;
@@ -65,34 +66,37 @@ export function ProfileForm({ profile, formRef }: Props) {
   const { isDirty } = form.formState;
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-xl">
-      <div className="space-y-2">
-        <Label htmlFor="firstName">Nome</Label>
-        <Input id="firstName" {...form.register('firstName')} />
-        {form.formState.errors.firstName && (
-          <p className="text-sm text-red-600">{form.formState.errors.firstName.message}</p>
-        )}
-      </div>
+    <div className="max-w-xl">
+      <AvatarSection profile={profile} />
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="firstName">Nome</Label>
+          <Input id="firstName" {...form.register('firstName')} />
+          {form.formState.errors.firstName && (
+            <p className="text-sm text-red-600">{form.formState.errors.firstName.message}</p>
+          )}
+        </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="lastName">Cognome</Label>
-        <Input id="lastName" {...form.register('lastName')} />
-        {form.formState.errors.lastName && (
-          <p className="text-sm text-red-600">{form.formState.errors.lastName.message}</p>
-        )}
-      </div>
+        <div className="space-y-2">
+          <Label htmlFor="lastName">Cognome</Label>
+          <Input id="lastName" {...form.register('lastName')} />
+          {form.formState.errors.lastName && (
+            <p className="text-sm text-red-600">{form.formState.errors.lastName.message}</p>
+          )}
+        </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="phone">Telefono</Label>
-        <Input id="phone" {...form.register('phone')} placeholder="+39 ..." />
-        {form.formState.errors.phone && (
-          <p className="text-sm text-red-600">{form.formState.errors.phone.message}</p>
-        )}
-      </div>
+        <div className="space-y-2">
+          <Label htmlFor="phone">Telefono</Label>
+          <Input id="phone" {...form.register('phone')} placeholder="+39 ..." />
+          {form.formState.errors.phone && (
+            <p className="text-sm text-red-600">{form.formState.errors.phone.message}</p>
+          )}
+        </div>
 
-      <Button type="submit" disabled={!isDirty || mutation.isPending}>
-        {mutation.isPending ? 'Salvataggio...' : 'Salva'}
-      </Button>
-    </form>
+        <Button type="submit" disabled={!isDirty || mutation.isPending}>
+          {mutation.isPending ? 'Salvataggio...' : 'Salva'}
+        </Button>
+      </form>
+    </div>
   );
 }
