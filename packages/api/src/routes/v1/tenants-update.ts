@@ -41,7 +41,8 @@ const bodySchema = z
       .string()
       .regex(/^[+]?[0-9 ()-]{6,30}$/, 'Telefono non valido')
       .nullable(),
-    email: z.email('Email non valida').nullable(),
+    // Non-nullable in schema — cannot be cleared via PATCH.
+    email: z.email('Email non valida'),
   })
   .partial()
   .strict();
