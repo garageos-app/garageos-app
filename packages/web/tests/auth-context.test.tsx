@@ -43,10 +43,22 @@ vi.mock('amazon-cognito-identity-js', () => {
 vi.stubEnv('VITE_COGNITO_OFFICINE_POOL_ID', 'eu-central-1_test');
 vi.stubEnv('VITE_COGNITO_OFFICINE_CLIENT_ID', 'test-client-id');
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
 import { AuthProvider } from '@/auth/AuthContext';
 import { useAuth } from '@/auth/useAuth';
 
-const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+// AuthProvider now calls `useQueryClient()` to clear the React Query cache
+// on signOut (prevents cross-session avatar/profile bleed). Tests must wrap
+// AuthProvider with QueryClientProvider so the hook resolves.
+const wrapper = ({ children }: { children: ReactNode }) => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return (
+    <QueryClientProvider client={qc}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
+  );
+};
 
 beforeEach(() => {
   getCurrentUserMock.mockReset();
@@ -180,6 +192,44 @@ describe('AuthProvider signOut', () => {
 
     expect(signOutFn).toHaveBeenCalledTimes(1);
     expect(result.current.state.status).toBe('unauthenticated');
+  });
+
+  it('clears React Query cache to avoid cross-session bleed', async () => {
+    const signOutFn = vi.fn();
+    const fakeUser = {
+      getSession: (cb: (err: unknown, session: unknown) => void) => {
+        cb(null, {
+          isValid: () => true,
+          getIdToken: () => ({
+            payload: { email: 'giuseppe@officina-bianchi.it' },
+          }),
+        });
+      },
+      signOut: signOutFn,
+    };
+    getCurrentUserMock.mockReturnValue(fakeUser);
+
+    // Build a wrapper that exposes its QueryClient so the test can
+    // seed cache + assert clearance.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['users-me'], { firstName: 'PreviousUser', avatarUrl: 'leaky-url' });
+    expect(qc.getQueryData(['users-me'])).toBeDefined();
+
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>
+        <AuthProvider>{children}</AuthProvider>
+      </QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper: localWrapper });
+    await waitFor(() => expect(result.current.state.status).toBe('authenticated'));
+
+    act(() => {
+      result.current.signOut();
+    });
+
+    // Cache MUST be cleared so the next sign-in starts fresh.
+    expect(qc.getQueryData(['users-me'])).toBeUndefined();
   });
 });
 

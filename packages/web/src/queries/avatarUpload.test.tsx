@@ -276,7 +276,10 @@ describe('useAvatarUpload', () => {
 
     expect(result.current.state.phase).toBe('idle');
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['users-me'] });
-    expect(apiFetchMock).toHaveBeenCalledWith('/v1/users/me/avatar', { method: 'DELETE' });
+    expect(apiFetchMock).toHaveBeenCalledWith('/v1/users/me/avatar', {
+      method: 'DELETE',
+      body: '{}',
+    });
   });
 
   it('remove: DELETE failure → error state', async () => {
