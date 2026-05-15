@@ -12,6 +12,7 @@ import { CustomerDetail } from '@/pages/CustomerDetail';
 import { DeadlineDashboard } from '@/pages/DeadlineDashboard';
 import { InterventionCreate } from '@/pages/InterventionCreate';
 import { InterventionDetail } from '@/pages/InterventionDetail';
+import { Settings } from '@/pages/Settings';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
 
 const queryClient = new QueryClient({
@@ -42,6 +43,7 @@ export function App() {
                   <Route path="/customers/:id" element={<CustomerDetail />} />
                   <Route path="/interventions/:id" element={<InterventionDetail />} />
                   <Route path="/deadlines" element={<DeadlineDashboard />} />
+                  <Route path="/settings" element={<Settings />} />
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
