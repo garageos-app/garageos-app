@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 
-import { USER_ME_SELECT } from '../../lib/dtos/user-me.js';
+import { USER_ME_SELECT, serializeUserMe } from '../../lib/dtos/user-me.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -40,12 +40,13 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       // enforced this defense-in-depth at the RLS layer; post-0004
       // `users_read FOR SELECT USING (true)` is permissive, so the
       // tenant boundary is now an application-layer concern.
-      return app.withContext({ tenantId }, (tx) =>
-        tx.user.findFirstOrThrow({
+      return app.withContext({ tenantId }, async (tx) => {
+        const row = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
           select: USER_ME_SELECT,
-        }),
-      );
+        });
+        return serializeUserMe(row);
+      });
     },
   );
 };
