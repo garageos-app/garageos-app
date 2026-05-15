@@ -27,7 +27,7 @@ describe('cropAndResize', () => {
     }) as typeof HTMLCanvasElement.prototype.toBlob;
 
     // Stub Image load — fire onload synchronously next tick
-    Object.defineProperty(global, 'Image', {
+    Object.defineProperty(globalThis, 'Image', {
       writable: true,
       configurable: true,
       value: class {
