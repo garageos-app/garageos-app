@@ -12,6 +12,7 @@ import type { ProfileMeDto } from '@/queries/profileMe';
 import type { TenantMeDto } from '@/queries/tenantMe';
 import type { ProfileFormValues, ProfileFormParsed } from '@/lib/validators/profile';
 import type { TenantFormValues, TenantFormParsed } from '@/lib/validators/tenant';
+import type { ChangePasswordFormValues } from '@/lib/validators/password';
 
 // Stub sonner to avoid ESM import issues in JSDOM
 vi.mock('sonner', () => ({
@@ -25,6 +26,7 @@ vi.mock('sonner', () => ({
 // mocked so we can control the isDirty signal precisely.
 type ProfileFormRef = UseFormReturn<ProfileFormValues, unknown, ProfileFormParsed>;
 type TenantFormRef = UseFormReturn<TenantFormValues, unknown, TenantFormParsed>;
+type PasswordFormRef = UseFormReturn<ChangePasswordFormValues>;
 
 let capturedProfileFormRef: ((f: ProfileFormRef) => void) | undefined;
 
@@ -48,9 +50,9 @@ vi.mock('@/components/settings/ProfileForm', () => ({
 }));
 
 // Mock PasswordForm — capture formRef just like ProfileForm.
-let capturedPasswordFormRef: ((f: ProfileFormRef) => void) | undefined;
+let capturedPasswordFormRef: ((f: PasswordFormRef) => void) | undefined;
 vi.mock('@/components/settings/PasswordForm', () => ({
-  PasswordForm: ({ formRef }: { formRef?: (f: ProfileFormRef) => void }) => {
+  PasswordForm: ({ formRef }: { formRef?: (f: PasswordFormRef) => void }) => {
     capturedPasswordFormRef = formRef;
     return (
       <form>
@@ -150,12 +152,15 @@ function mockQueries() {
   } as unknown as ReturnType<typeof tenantMeModule.useTenantMe>);
 }
 
-/** Build a fake form API stub with controllable isDirty state. */
-function makeFakeFormRef(isDirty: boolean) {
+/** Build a fake form API stub with controllable isDirty state.
+ * Generic over the form ref type so the same helper works for
+ * ProfileFormRef, PasswordFormRef, etc. — the tests only ever
+ * exercise formState.isDirty and reset(). */
+function makeFakeFormRef<T = ProfileFormRef>(isDirty: boolean) {
   return {
     formState: { isDirty },
     reset: vi.fn(),
-  } as unknown as ProfileFormRef;
+  } as unknown as T;
 }
 
 describe('Settings page', () => {
@@ -254,7 +259,7 @@ describe('Settings page', () => {
       expect(capturedPasswordFormRef).toBeDefined();
     });
     // Inject a dirty password form ref
-    capturedPasswordFormRef?.(makeFakeFormRef(true));
+    capturedPasswordFormRef?.(makeFakeFormRef<PasswordFormRef>(true));
 
     // Now try to switch back to Profilo — should open dialog
     await user.click(screen.getByRole('tab', { name: 'Profilo' }));
@@ -271,7 +276,7 @@ describe('Settings page', () => {
     await waitFor(() => {
       expect(capturedPasswordFormRef).toBeDefined();
     });
-    const fakePasswordForm = makeFakeFormRef(true) as ProfileFormRef & {
+    const fakePasswordForm = makeFakeFormRef<PasswordFormRef>(true) as PasswordFormRef & {
       reset: ReturnType<typeof vi.fn>;
     };
     capturedPasswordFormRef?.(fakePasswordForm);
