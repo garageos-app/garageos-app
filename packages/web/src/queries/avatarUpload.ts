@@ -116,7 +116,11 @@ export function useAvatarUpload(): UseAvatarUploadResult {
   const remove = useCallback(async (): Promise<AvatarUploadResult> => {
     setState({ phase: 'requesting' });
     try {
-      await apiFetch<void>('/v1/users/me/avatar', { method: 'DELETE' });
+      // Empty `{}` body required: useApiFetch hard-codes
+      // `Content-Type: application/json`, and Fastify rejects empty bodies
+      // under that header with 400 "Body cannot be empty...". Same pattern
+      // as attachment confirm. The endpoint ignores the body server-side.
+      await apiFetch<void>('/v1/users/me/avatar', { method: 'DELETE', body: '{}' });
       await queryClient.invalidateQueries({ queryKey: ['users-me'] });
       setState({ phase: 'idle' });
       return { ok: true };

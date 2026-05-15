@@ -29,8 +29,8 @@ export function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
-        <AuthProvider>
-          <QueryClientProvider client={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
@@ -48,8 +48,8 @@ export function App() {
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-          </QueryClientProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </QueryClientProvider>
       </ThemeProvider>
     </BrowserRouter>
   );

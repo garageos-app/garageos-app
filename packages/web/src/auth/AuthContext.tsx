@@ -1,4 +1,5 @@
 import { createContext, useCallback, useEffect, useMemo, useReducer, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   AuthenticationDetails,
   CognitoUser,
@@ -98,6 +99,7 @@ export function userFromIdToken(idToken: { payload: Record<string, unknown> }): 
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, { status: 'idle' });
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const current = officineUserPool.getCurrentUser();
@@ -151,7 +153,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => {
     officineUserPool.getCurrentUser()?.signOut();
     dispatch({ type: 'SIGNOUT' });
-  }, []);
+    // Clear the React Query cache so the next session doesn't see the
+    // previous user's cached profile/avatar/etc. Without this, the
+    // ['users-me'] cache (and any other user-scoped query) bleeds across
+    // logout → login in the same browser tab until each entry's staleTime
+    // expires (5 min for users-me).
+    queryClient.clear();
+  }, [queryClient]);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {
     return new Promise((resolve) => {

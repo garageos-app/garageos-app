@@ -83,11 +83,17 @@ function post(token: string, path: string, body: object = {}) {
   });
 }
 
+// Mirrors the frontend's actual request shape: useApiFetch always sets
+// `Content-Type: application/json` regardless of method, and passes body `{}`
+// for DELETE (because Fastify's body parser rejects empty bodies under that
+// header with 400 "Body cannot be empty…"). Don't relax this in tests —
+// CI must reproduce the exact wire shape the browser sends.
 function del(token: string, path: string) {
   return app.inject({
     method: 'DELETE',
     url: path,
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    payload: '{}',
   });
 }
 
