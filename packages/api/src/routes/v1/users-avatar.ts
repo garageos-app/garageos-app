@@ -1,3 +1,4 @@
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { env } from '../../config/env.js';
@@ -7,6 +8,7 @@ import { USER_ME_SELECT, serializeUserMe } from '../../lib/dtos/user-me.js';
 import {
   S3ObjectNotFoundError,
   S3UnavailableError,
+  getS3Client,
   headObject,
   presignPutObject,
 } from '../../lib/s3.js';
@@ -148,6 +150,50 @@ const userAvatarRoutes: FastifyPluginAsync = async (app) => {
       });
 
       return reply.code(200).send(result);
+    },
+  );
+
+  // DELETE /v1/users/me/avatar
+  // Removes avatar: best-effort DeleteObject on S3 + UPDATE
+  // users.avatar_url = NULL. Idempotent: works whether avatar exists
+  // or not. S3 delete failures are logged but do not fail the request
+  // — the deterministic key means the orphaned object will be
+  // overwritten on the next upload.
+  app.delete(
+    '/v1/users/me/avatar',
+    {
+      preHandler: [requireAuth, requireOfficinaPool, tenantContext],
+    },
+    async (request, reply) => {
+      const tenantId = request.tenantId!;
+      const cognitoSub = request.userId!;
+
+      await app.withContext({ tenantId }, async (tx) => {
+        const user = await tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
+          select: { id: true },
+        });
+
+        const key = avatarKey(user.id);
+        const bucket = env.S3_ATTACHMENTS_BUCKET;
+
+        // Best-effort delete on S3. If it fails (network, eventual
+        // consistency, key already absent), the request still succeeds
+        // — the deterministic key means a future upload overwrites the
+        // orphan.
+        try {
+          await getS3Client().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+        } catch (err) {
+          request.log.warn({ err, key }, 'avatar S3 delete failed; ignoring');
+        }
+
+        await tx.user.update({
+          where: { id: user.id },
+          data: { avatarUrl: null },
+        });
+      });
+
+      return reply.code(204).send();
     },
   );
 };
