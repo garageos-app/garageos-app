@@ -37,6 +37,7 @@ describe('VerifyEmailSent screen', () => {
   });
 
   afterEach(() => {
+    jest.clearAllTimers();
     jest.useRealTimers();
   });
 
