@@ -31,21 +31,25 @@ export interface PresignedPutInput {
   bucket: string;
   key: string;
   contentType: string;
-  contentLength: number;
+  contentLength?: number;
   expiresInSeconds: number;
 }
 
-// presignPutObject signs a PUT URL with ContentType + ContentLength
-// conditions. The client MUST send those headers exactly when PUTting,
-// otherwise S3 rejects. Defense-in-depth vs upload manipulation
-// post-presign.
+// presignPutObject signs a PUT URL with ContentType condition (always)
+// and ContentLength condition (when provided). Clients MUST send those
+// headers exactly when PUTting, otherwise S3 rejects.
+//
+// ContentLength is required for attachment flows (size known at upload-url
+// time) but optional for avatar flow (Blob is generated client-side from
+// canvas with variable size). Defense-in-depth for unknown-length: the
+// deterministic per-user key + auth-gated endpoint prevent abuse.
 export async function presignPutObject(input: PresignedPutInput): Promise<string> {
   try {
     const command = new PutObjectCommand({
       Bucket: input.bucket,
       Key: input.key,
       ContentType: input.contentType,
-      ContentLength: input.contentLength,
+      ...(input.contentLength !== undefined ? { ContentLength: input.contentLength } : {}),
     });
     return await getSignedUrl(getS3Client(), command, { expiresIn: input.expiresInSeconds });
   } catch (cause) {
