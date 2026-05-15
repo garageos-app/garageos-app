@@ -1406,7 +1406,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 
 ---
 
-#### §3.4 Avatar endpoints (`/users/me/avatar/*`)
+#### Avatar endpoints (`/users/me/avatar/*`)
 
 Flusso 2-fase (analogo a `/attachments/upload-url` + `/confirm` di F-OFF-305 ma dedicato user-avatar, niente riga `attachments`):
 
