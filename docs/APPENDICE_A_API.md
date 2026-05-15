@@ -1306,7 +1306,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | GET | `/tenants/me` | F-OFF-007 | Tenant User | Info tenant corrente |
-| PATCH | `/tenants/me` | F-OFF-007 | Super Admin | Aggiorna dati tenant |
+| PATCH | `/tenants/me` | F-OFF-007 | Super Admin | **[DETTAGLIATO sotto]** Aggiorna dati tenant |
 | GET | `/tenants/me/locations` | F-OFF-003 | Tenant User | Lista location |
 | POST | `/tenants/me/locations` | F-OFF-003 | Super Admin | Crea location |
 | PATCH | `/tenants/me/locations/:id` | F-OFF-003 | Super Admin | Modifica location |
@@ -1315,18 +1315,94 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | GET | `/tenants/me/export` | F-OFF-704 | Super Admin | Export completo dati tenant (async, ritorna job ID) |
 | GET | `/tenants/me/export/:job_id` | F-OFF-704 | Super Admin | Stato export + URL download se pronto |
 
+#### PATCH /v1/tenants/me — Aggiorna dati tenant
+
+**Auth:** Super Admin (Cognito group `officine` con `role=super_admin`).
+
+**Request body** (partial, at least one field required):
+
+```json
+{
+  "businessName": "Officina Rossi SRL",
+  "addressLine": "Via Roma 1",
+  "city": "Milano",
+  "province": "MI",
+  "postalCode": "20100",
+  "phone": "+39 02 1234567",
+  "email": "info@rossi.test"
+}
+```
+
+**Editable fields:**
+- `businessName` (string, max 150)
+- `addressLine` (string, max 200)
+- `city` (string, max 100)
+- `province` (string, 2 char, auto-uppercased)
+- `postalCode` (string, max 10)
+- `phone` (string, E.164 format)
+- `email` (string, RFC 5322)
+
+**Non-editable fields** (read-only in response, must not be in body):
+- `vatNumber`, `status`, `plan`, `billingStatus`, `createdAt`
+
+**200 response:** same shape as `GET /v1/tenants/me`.
+
+**Errors:**
+- `400 VALIDATION_ERROR` — field validation failure
+- `422 tenants.me.update.empty_body` — body has no editable fields
+- `422 tenants.me.update.unknown_field` — body contains non-editable field (e.g. `vatNumber`)
+- `401 UNAUTHORIZED` — missing/invalid JWT
+- `403 auth.forbidden.wrong_pool` — JWT from clienti pool
+- `403 auth.forbidden.super_admin_required` — JWT role is not super_admin
+
+---
+
 ### 3.3 Users (officina)
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | GET | `/users/me` | F-OFF-007 | Tenant User | Profilo utente corrente |
-| PATCH | `/users/me` | F-OFF-007 | Tenant User | Aggiorna profilo |
+| PATCH | `/users/me` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Aggiorna profilo |
 | POST | `/users/me/avatar` | F-OFF-007 | Tenant User | Upload avatar |
 | GET | `/users` | F-OFF-004 | Super Admin | Lista utenti tenant |
 | POST | `/users/invitations` | F-OFF-004 | Super Admin | Invita nuovo utente |
 | DELETE | `/users/invitations/:id` | F-OFF-004 | Super Admin | Revoca invito |
 | PATCH | `/users/:id` | F-OFF-004 | Super Admin | Modifica ruolo/location/stato |
 | DELETE | `/users/:id` | F-OFF-004 | Super Admin | Rimuove utente (soft delete) |
+
+#### PATCH /v1/users/me — Aggiorna profilo utente
+
+**Auth:** Tenant User (any role in `officine` pool).
+
+**Request body** (partial, at least one field required):
+
+```json
+{
+  "firstName": "Marco",
+  "lastName": "Rossi",
+  "phone": "+39 333 1234567"
+}
+```
+
+**Editable fields:**
+- `firstName` (string, max 100)
+- `lastName` (string, max 100)
+- `phone` (string, E.164 format)
+
+**Non-editable fields** (read-only in response, must not be in body):
+- `email`, `role`, `tenantId`, `createdAt`, `cognitoSub`
+
+**200 response:** same shape as `GET /v1/users/me`.
+
+**Errors:**
+- `400 VALIDATION_ERROR` — field validation failure
+- `422 users.me.update.empty_body` — body has no editable fields
+- `422 users.me.update.unknown_field` — body contains non-editable field (e.g. `email`, `role`)
+- `401 UNAUTHORIZED` — missing/invalid JWT
+- `403 auth.forbidden.wrong_pool` — JWT from clienti pool
+- `404 NOT FOUND` — cross-tenant guard (cognitoSub belongs to different tenant)
+
+---
 
 ### 3.4 Customers (lato officina)
 
