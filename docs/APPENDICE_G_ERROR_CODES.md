@@ -208,6 +208,9 @@ Per fornire dati utili al client per gestire l'errore:
 | `user.not_found` | 404 | info | Utente non trovato | | |
 | `users.me.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/users/me con body vuoto o senza campi edibili | F-OFF-007 |
 | `users.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/users/me con chiave non in schema (es. email, role, tenantId) | F-OFF-007 |
+| `users.me.avatar.invalid_mime` | 422 | info | Tipo file non valido — richiesto JPEG | POST /v1/users/me/avatar/confirm — HeadObject contentType ≠ image/jpeg | F-OFF-007 |
+| `users.me.avatar.s3_unavailable` | 502 | error | Servizio storage temporaneamente non disponibile | POST /v1/users/me/avatar/upload-url o /confirm — S3 error | F-OFF-007 |
+| `users.me.avatar.upload_not_found` | 422 | info | File non trovato su S3 — upload non atterrato o scaduto | POST /v1/users/me/avatar/confirm — HeadObject NoSuchKey | F-OFF-007 |
 | `user.cannot_remove_last_super_admin` | 422 | error | Impossibile rimuovere l'ultimo amministratore | | BR-203 |
 | `user.role_change_would_orphan_tenant` | 422 | error | Cambio ruolo lascerebbe il tenant senza admin | | BR-203 |
 | `user.invitation.expired` | 410 | info | Invito scaduto | Token invitation > 7 giorni | |
@@ -911,6 +914,9 @@ user.cannot_remove_last_super_admin
 user.invitation.already_accepted
 user.invitation.email_mismatch
 user.invitation.expired
+users.me.avatar.invalid_mime
+users.me.avatar.s3_unavailable
+users.me.avatar.upload_not_found
 users.me.update.empty_body
 users.me.update.unknown_field
 user.not_found
@@ -939,7 +945,7 @@ vehicle.not_found
 vehicle.pending.duplicate_vin_certified
 ```
 
-**Totale: ~133 error code documentati in v1.0** (aggiornato post F-OFF-007 PATCH endpoints, +5 codici).
+**Totale: ~136 error code documentati in v1.0** (aggiornato post F-OFF-007 avatar endpoints, +3 codici).
 
 ---
 

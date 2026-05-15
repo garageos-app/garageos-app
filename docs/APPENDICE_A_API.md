@@ -1363,7 +1363,9 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 |---|---|---|---|---|
 | GET | `/users/me` | F-OFF-007 | Tenant User | Profilo utente corrente |
 | PATCH | `/users/me` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Aggiorna profilo |
-| POST | `/users/me/avatar` | F-OFF-007 | Tenant User | Upload avatar |
+| POST | `/users/me/avatar/upload-url` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto §3.4]** Genera presigned PUT URL per upload avatar |
+| POST | `/users/me/avatar/confirm` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto §3.4]** Conferma upload S3 e flippa `avatar_url` |
+| DELETE | `/users/me/avatar` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto §3.4]** Rimuove avatar (`avatar_url=NULL` + DeleteObject) |
 | GET | `/users` | F-OFF-004 | Super Admin | Lista utenti tenant |
 | POST | `/users/invitations` | F-OFF-004 | Super Admin | Invita nuovo utente |
 | DELETE | `/users/invitations/:id` | F-OFF-004 | Super Admin | Revoca invito |
@@ -1401,6 +1403,55 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 - `401 UNAUTHORIZED` — missing/invalid JWT
 - `403 auth.forbidden.wrong_pool` — JWT from clienti pool
 - `404 NOT FOUND` — cross-tenant guard (cognitoSub belongs to different tenant)
+
+---
+
+#### §3.4 Avatar endpoints (`/users/me/avatar/*`)
+
+Flusso 2-fase (analogo a `/attachments/upload-url` + `/confirm` di F-OFF-305 ma dedicato user-avatar, niente riga `attachments`):
+
+**1. `POST /v1/users/me/avatar/upload-url`**
+
+Restituisce un presigned PUT URL per la deterministic key `avatars/users/<user-id>.jpg`. Il client deve poi PUT-tare l'oggetto JPEG (output canvas client-side 512×512 ~85% quality) con header `Content-Type: image/jpeg` esatto.
+
+Request body: `{}` (vuoto).
+
+Response 200:
+```json
+{
+  "upload_url": "https://<bucket>.s3.eu-central-1.amazonaws.com/avatars/users/<uuid>.jpg?...",
+  "upload_method": "PUT",
+  "upload_headers": { "Content-Type": "image/jpeg" },
+  "expires_at": "2026-05-15T12:30:00Z"
+}
+```
+
+Errori: `users.me.avatar.s3_unavailable` (502).
+
+**2. `POST /v1/users/me/avatar/confirm`**
+
+Verifica HeadObject (deve esistere e avere mime `image/jpeg`), poi flippa `users.avatar_url = '<key>'`. Idempotente.
+
+Request body: `{}`.
+
+Response 200: USER_ME response shape con `avatarUrl` come URL presigned 15-min.
+
+Errori:
+- `users.me.avatar.upload_not_found` (422) — HeadObject restituisce NoSuchKey
+- `users.me.avatar.invalid_mime` (422) — HeadObject contentType ≠ `image/jpeg`
+- `users.me.avatar.s3_unavailable` (502)
+
+**3. `DELETE /v1/users/me/avatar`**
+
+Best-effort `DeleteObject` su S3 + UPDATE `users SET avatar_url = NULL`. Idempotente (S3 failures loggate, request comunque 204).
+
+Response 204 No Content.
+
+**Note storage**:
+- DB stora la S3 **key** (`avatars/users/<uuid>.jpg`), non l'URL.
+- L'API layer trasforma key → presigned 15-min URL nel response di GET/PATCH/confirm.
+- Riusa il bucket `S3_ATTACHMENTS_BUCKET` con prefix `avatars/users/`. Niente bucket pubblico.
+- Output sempre JPEG: il frontend converte qualsiasi input (JPEG/PNG/WebP, max 5 MB) a JPEG 512×512 via canvas prima dell'upload.
 
 ---
 
