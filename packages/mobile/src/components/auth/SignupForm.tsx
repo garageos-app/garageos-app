@@ -40,8 +40,8 @@ export function SignupForm({ onSubmit, onNavigateLogin }: SignupFormProps) {
       lastName: lastName.trim(),
     });
     setErrors(v);
-    setBanner(null);
     if (Object.keys(v).length > 0) return;
+    setBanner(null);
 
     setSubmitting(true);
     try {
