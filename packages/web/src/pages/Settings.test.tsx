@@ -47,6 +47,20 @@ vi.mock('@/components/settings/ProfileForm', () => ({
   },
 }));
 
+// Mock PasswordForm — capture formRef just like ProfileForm.
+let capturedPasswordFormRef: ((f: ProfileFormRef) => void) | undefined;
+vi.mock('@/components/settings/PasswordForm', () => ({
+  PasswordForm: ({ formRef }: { formRef?: (f: ProfileFormRef) => void }) => {
+    capturedPasswordFormRef = formRef;
+    return (
+      <form>
+        <label htmlFor="oldPassword">Password attuale</label>
+        <input id="oldPassword" type="password" />
+      </form>
+    );
+  },
+}));
+
 vi.mock('@/components/settings/TenantForm', () => ({
   TenantForm: ({
     tenant,
@@ -148,6 +162,7 @@ describe('Settings page', () => {
   beforeEach(() => {
     mockQueries();
     capturedProfileFormRef = undefined;
+    capturedPasswordFormRef = undefined;
   });
 
   it('renders both tabs for super_admin', () => {
@@ -221,5 +236,56 @@ describe('Settings page', () => {
     });
     // The form's reset was called
     expect(fakeForm.reset).toHaveBeenCalled();
+  });
+
+  it('renders Sicurezza tab for both super_admin and mechanic', () => {
+    mockAuthRole('mechanic');
+    render(wrap(<Settings />));
+    expect(screen.getByRole('tab', { name: 'Sicurezza' })).toBeInTheDocument();
+  });
+
+  it('dirty password form triggers AlertDialog on tab switch', async () => {
+    const user = userEvent.setup();
+    mockAuthRole('super_admin');
+    render(wrap(<Settings />));
+    // Switch first to Sicurezza so the form mounts and captures the ref
+    await user.click(screen.getByRole('tab', { name: 'Sicurezza' }));
+    await waitFor(() => {
+      expect(capturedPasswordFormRef).toBeDefined();
+    });
+    // Inject a dirty password form ref
+    capturedPasswordFormRef?.(makeFakeFormRef(true));
+
+    // Now try to switch back to Profilo — should open dialog
+    await user.click(screen.getByRole('tab', { name: 'Profilo' }));
+    await waitFor(() => {
+      expect(screen.getByText('Modifiche non salvate')).toBeInTheDocument();
+    });
+  });
+
+  it('discardChangesAndSwitch resets the password form too', async () => {
+    const user = userEvent.setup();
+    mockAuthRole('super_admin');
+    render(wrap(<Settings />));
+    await user.click(screen.getByRole('tab', { name: 'Sicurezza' }));
+    await waitFor(() => {
+      expect(capturedPasswordFormRef).toBeDefined();
+    });
+    const fakePasswordForm = makeFakeFormRef(true) as ProfileFormRef & {
+      reset: ReturnType<typeof vi.fn>;
+    };
+    capturedPasswordFormRef?.(fakePasswordForm);
+
+    // Switch to Profilo — dialog opens
+    await user.click(screen.getByRole('tab', { name: 'Profilo' }));
+    await waitFor(() => {
+      expect(screen.getByText('Modifiche non salvate')).toBeInTheDocument();
+    });
+    // Click "Continua senza salvare"
+    await user.click(screen.getByRole('button', { name: 'Continua senza salvare' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Modifiche non salvate')).not.toBeInTheDocument();
+    });
+    expect(fakePasswordForm.reset).toHaveBeenCalled();
   });
 });
