@@ -1334,13 +1334,13 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 ```
 
 **Editable fields:**
-- `businessName` (string, max 150)
-- `addressLine` (string, max 200)
-- `city` (string, max 100)
-- `province` (string, 2 char, auto-uppercased)
-- `postalCode` (string, max 10)
-- `phone` (string, E.164 format)
-- `email` (string, RFC 5322)
+- `businessName` (string, min 1, max 200)
+- `addressLine` (string, max 255, nullable)
+- `city` (string, max 100, nullable)
+- `province` (string, 2 char, auto-uppercased, nullable)
+- `postalCode` (string, esattamente 5 cifre, nullable)
+- `phone` (string, formato libero 6-30 caratteri `[+]?[0-9 ()-]`, nullable)
+- `email` (string, RFC 5322, non-nullable)
 
 **Non-editable fields** (read-only in response, must not be in body):
 - `vatNumber`, `status`, `plan`, `billingStatus`, `createdAt`
@@ -1385,9 +1385,9 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 ```
 
 **Editable fields:**
-- `firstName` (string, max 100)
-- `lastName` (string, max 100)
-- `phone` (string, E.164 format)
+- `firstName` (string, trim, min 1, max 100)
+- `lastName` (string, trim, min 1, max 100)
+- `phone` (string, formato libero 6-30 caratteri `[+]?[0-9 ()-]`, nullable)
 
 **Non-editable fields** (read-only in response, must not be in body):
 - `email`, `role`, `tenantId`, `createdAt`, `cognitoSub`
