@@ -35,6 +35,7 @@ import attachmentsRoutes from './routes/v1/attachments.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
 import mePrivateInterventionRoutes from './routes/v1/me-private-interventions.js';
 import userRoutes from './routes/v1/users.js';
+import userUpdateRoutes from './routes/v1/users-update.js';
 import customerDetailRoutes from './routes/v1/customers-detail.js';
 import customerUpdateRoutes from './routes/v1/customers-update.js';
 import customerRoutes from './routes/v1/customers.js';
@@ -126,6 +127,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(authPlugin, options.auth ?? {});
   await app.register(healthRoutes);
   await app.register(userRoutes);
+  await app.register(userUpdateRoutes);
   await app.register(tenantRoutes);
   await app.register(customerRoutes);
   await app.register(customerDetailRoutes);
