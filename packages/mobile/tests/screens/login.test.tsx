@@ -110,4 +110,12 @@ describe('Login screen', () => {
     fireEvent.press(button);
     expect(mockedCognito.signInSrp).toHaveBeenCalledTimes(1);
   });
+
+  it('navigates to /signup when "Registrati" link tapped', () => {
+    const push = jest.fn();
+    mockedRouter.mockReturnValue({ replace: jest.fn(), push });
+    renderLogin();
+    fireEvent.press(screen.getByText(/Non hai un account/));
+    expect(push).toHaveBeenCalledWith('/signup');
+  });
 });

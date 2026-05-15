@@ -119,7 +119,7 @@ export default function Login() {
           <Text style={styles.linkText}>Hai dimenticato la password?</Text>
         </Pressable>
         <Pressable
-          onPress={() => Alert.alert('Disponibile a breve')}
+          onPress={() => router.push('/signup')}
           style={styles.linkRow}
           accessibilityRole="link"
         >
