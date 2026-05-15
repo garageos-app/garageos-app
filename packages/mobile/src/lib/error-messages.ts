@@ -12,6 +12,17 @@ const MESSAGES: Record<string, string> = {
   'vehicle.timeline.not_owner': 'Solo il proprietario attivo può consultare la timeline.',
   'auth.session_expired': "Sessione scaduta. Effettua di nuovo l'accesso.",
   'network.unreachable': 'Connessione assente. Controlla la rete.',
+
+  // Signup domain codes (F-CLI-001)
+  'auth.signup.email_already_active':
+    'Un account con questa email è già registrato. Effettua il login.',
+  'auth.signup.password_policy_violation':
+    'La password non rispetta i requisiti: almeno 8 caratteri, una lettera minuscola e un numero.',
+  'auth.signup.tenant_signup_not_supported': 'La registrazione officina non è ancora disponibile.',
+  'auth.signup.cognito_unavailable':
+    'Servizio di autenticazione temporaneamente non disponibile. Riprova tra qualche istante.',
+  'auth.signup.rate_limited': 'Troppi tentativi di registrazione. Riprova tra qualche minuto.',
+  'auth.resend_verification.rate_limited': 'Troppi tentativi. Riprova tra qualche minuto.',
 };
 
 const FALLBACK = 'Si è verificato un errore. Riprova più tardi.';
