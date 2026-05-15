@@ -1,9 +1,15 @@
 import type { FastifyPluginAsync } from 'fastify';
 
 import { env } from '../../config/env.js';
-import { businessError } from '../../lib/business-error.js';
 import { AVATAR_PRESIGN_EXPIRY_SECONDS } from '../../lib/avatar-presign.js';
-import { S3UnavailableError, presignPutObject } from '../../lib/s3.js';
+import { businessError } from '../../lib/business-error.js';
+import { USER_ME_SELECT, serializeUserMe } from '../../lib/dtos/user-me.js';
+import {
+  S3ObjectNotFoundError,
+  S3UnavailableError,
+  headObject,
+  presignPutObject,
+} from '../../lib/s3.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -76,6 +82,72 @@ const userAvatarRoutes: FastifyPluginAsync = async (app) => {
         upload_headers: { 'Content-Type': 'image/jpeg' },
         expires_at: expiresAt,
       });
+    },
+  );
+
+  // POST /v1/users/me/avatar/confirm
+  // Body: {}. Verifies the object landed on S3 via HeadObject
+  // (mime must be image/jpeg) then flips users.avatar_url to the key.
+  // Idempotent: re-calling with the same key produces the same result.
+  app.post(
+    '/v1/users/me/avatar/confirm',
+    {
+      preHandler: [requireAuth, requireOfficinaPool, tenantContext],
+    },
+    async (request, reply) => {
+      const tenantId = request.tenantId!;
+      const cognitoSub = request.userId!;
+
+      const result = await app.withContext({ tenantId }, async (tx) => {
+        const user = await tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
+          select: { id: true },
+        });
+
+        const key = avatarKey(user.id);
+        const bucket = env.S3_ATTACHMENTS_BUCKET;
+
+        // HeadObject: verifies the object exists and matches mime. We
+        // do NOT enforce content-length (Blob size is variable) — abuse
+        // is mitigated by the deterministic per-user key and auth gate.
+        let head: { contentLength: number; contentType: string };
+        try {
+          head = await headObject(bucket, key);
+        } catch (err) {
+          if (err instanceof S3ObjectNotFoundError) {
+            throw businessError(
+              'users.me.avatar.upload_not_found',
+              422,
+              "File non trovato su S3 — l'upload non è atterrato o è scaduto.",
+            );
+          }
+          if (err instanceof S3UnavailableError) {
+            throw businessError(
+              'users.me.avatar.s3_unavailable',
+              502,
+              'Servizio storage temporaneamente non disponibile.',
+            );
+          }
+          throw err;
+        }
+
+        if (head.contentType !== 'image/jpeg') {
+          throw businessError(
+            'users.me.avatar.invalid_mime',
+            422,
+            'Il file caricato deve essere JPEG.',
+          );
+        }
+
+        const updated = await tx.user.update({
+          where: { id: user.id },
+          data: { avatarUrl: key },
+          select: USER_ME_SELECT,
+        });
+        return serializeUserMe(updated);
+      });
+
+      return reply.code(200).send(result);
     },
   );
 };

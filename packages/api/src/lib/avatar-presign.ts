@@ -2,9 +2,10 @@ import { env } from '../config/env.js';
 import { S3UnavailableError, presignGetObject } from './s3.js';
 import { businessError } from './business-error.js';
 
-// Avatar presigned GET URL expiry. 15 minutes mirrors the attachment
-// view-url flow (lib/attachments.ts). The web app caches /users/me via
-// React Query with staleTime=5min, so URLs refresh well before expiry.
+// Avatar presigned URL expiry (shared for both PUT upload-url and GET
+// view URLs). 15 minutes mirrors the attachment view-url flow
+// (lib/attachments.ts). The web app caches /users/me via React Query
+// with staleTime=5min, so URLs refresh well before expiry.
 export const AVATAR_PRESIGN_EXPIRY_SECONDS = 900;
 
 // Transforms a stored S3 key (e.g. 'avatars/users/<uuid>.jpg') into a
