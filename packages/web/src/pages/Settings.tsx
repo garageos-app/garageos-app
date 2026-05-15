@@ -12,15 +12,17 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PasswordForm } from '@/components/settings/PasswordForm';
 import { ProfileForm } from '@/components/settings/ProfileForm';
 import { TenantForm } from '@/components/settings/TenantForm';
 import { useAuth } from '@/auth/useAuth';
 import { useProfileMe } from '@/queries/profileMe';
 import { useTenantMe } from '@/queries/tenantMe';
+import type { ChangePasswordFormValues } from '@/lib/validators/password';
 import type { ProfileFormValues, ProfileFormParsed } from '@/lib/validators/profile';
 import type { TenantFormValues, TenantFormParsed } from '@/lib/validators/tenant';
 
-type TabId = 'profile' | 'tenant';
+type TabId = 'profile' | 'security' | 'tenant';
 
 export function Settings() {
   const { state } = useAuth();
@@ -39,6 +41,7 @@ export function Settings() {
     unknown,
     ProfileFormParsed
   > | null>(null);
+  const passwordFormRef = useRef<UseFormReturn<ChangePasswordFormValues> | null>(null);
   const tenantFormRef = useRef<UseFormReturn<TenantFormValues, unknown, TenantFormParsed> | null>(
     null,
   );
@@ -46,6 +49,7 @@ export function Settings() {
   function anyDirty(): boolean {
     return (
       profileFormRef.current?.formState.isDirty === true ||
+      passwordFormRef.current?.formState.isDirty === true ||
       tenantFormRef.current?.formState.isDirty === true
     );
   }
@@ -63,6 +67,7 @@ export function Settings() {
   function discardChangesAndSwitch() {
     if (!pendingTab) return;
     profileFormRef.current?.reset();
+    passwordFormRef.current?.reset();
     tenantFormRef.current?.reset();
     setActiveTab(pendingTab);
     setPendingTab(null);
@@ -75,6 +80,7 @@ export function Settings() {
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="profile">Profilo</TabsTrigger>
+          <TabsTrigger value="security">Sicurezza</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="tenant">Officina</TabsTrigger>}
         </TabsList>
 
@@ -89,6 +95,14 @@ export function Settings() {
               }}
             />
           )}
+        </TabsContent>
+
+        <TabsContent value="security" className="mt-6">
+          <PasswordForm
+            formRef={(f) => {
+              passwordFormRef.current = f;
+            }}
+          />
         </TabsContent>
 
         {isSuperAdmin && (
