@@ -1363,9 +1363,9 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 |---|---|---|---|---|
 | GET | `/users/me` | F-OFF-007 | Tenant User | Profilo utente corrente |
 | PATCH | `/users/me` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Aggiorna profilo |
-| POST | `/users/me/avatar/upload-url` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto §3.4]** Genera presigned PUT URL per upload avatar |
-| POST | `/users/me/avatar/confirm` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto §3.4]** Conferma upload S3 e flippa `avatar_url` |
-| DELETE | `/users/me/avatar` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto §3.4]** Rimuove avatar (`avatar_url=NULL` + DeleteObject) |
+| POST | `/users/me/avatar/upload-url` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Genera presigned PUT URL per upload avatar |
+| POST | `/users/me/avatar/confirm` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Conferma upload S3 e flippa `avatar_url` |
+| DELETE | `/users/me/avatar` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Rimuove avatar (`avatar_url=NULL` + DeleteObject) |
 | GET | `/users` | F-OFF-004 | Super Admin | Lista utenti tenant |
 | POST | `/users/invitations` | F-OFF-004 | Super Admin | Invita nuovo utente |
 | DELETE | `/users/invitations/:id` | F-OFF-004 | Super Admin | Revoca invito |

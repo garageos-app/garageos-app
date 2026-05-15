@@ -65,7 +65,7 @@ describe('presignPutObject', () => {
       contentType: 'image/jpeg',
       expiresInSeconds: 900,
     });
-    expect(url).toMatch(/^https:\/\/test-bucket\.s3\..*amazonaws\.com\/avatars\/users\/u1\.jpg/);
+    expect(url).toMatch(/^https:\/\/test-bucket\.s3\.[^/]+amazonaws\.com\/avatars\/users\/u1\.jpg/);
     expect(url).toContain('X-Amz-Signature=');
   });
 });
