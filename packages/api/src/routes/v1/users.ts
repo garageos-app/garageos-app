@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 
+import { USER_ME_SELECT } from '../../lib/dtos/user-me.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -42,19 +43,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       return app.withContext({ tenantId }, (tx) =>
         tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-            tenantId: true,
-            locationId: true,
-            avatarUrl: true,
-            phone: true,
-            status: true,
-            createdAt: true,
-          },
+          select: USER_ME_SELECT,
         }),
       );
     },

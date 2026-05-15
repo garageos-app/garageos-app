@@ -9,7 +9,7 @@ const navItems = [
   { id: 'interventions', label: 'Interventi', icon: Wrench, enabled: false },
   { id: 'deadlines', label: 'Scadenze', icon: Calendar, to: '/deadlines', enabled: true },
   { id: 'customers', label: 'Clienti', icon: Users, enabled: false },
-  { id: 'settings', label: 'Impostazioni', icon: Settings, enabled: false },
+  { id: 'settings', label: 'Impostazioni', icon: Settings, to: '/settings', enabled: true },
 ] as const;
 
 function isActiveFor(itemId: string, pathname: string): boolean {
@@ -18,6 +18,9 @@ function isActiveFor(itemId: string, pathname: string): boolean {
   }
   if (itemId === 'deadlines') {
     return pathname.startsWith('/deadlines');
+  }
+  if (itemId === 'settings') {
+    return pathname.startsWith('/settings');
   }
   return false;
 }

@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 
+import { TENANT_ME_SELECT } from '../../lib/dtos/tenant-me.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -30,21 +31,7 @@ const tenantRoutes: FastifyPluginAsync = async (app) => {
       return app.withContext({ tenantId }, (tx) =>
         tx.tenant.findUniqueOrThrow({
           where: { id: tenantId },
-          select: {
-            id: true,
-            businessName: true,
-            vatNumber: true,
-            email: true,
-            phone: true,
-            addressLine: true,
-            city: true,
-            province: true,
-            postalCode: true,
-            status: true,
-            plan: true,
-            billingStatus: true,
-            createdAt: true,
-          },
+          select: TENANT_ME_SELECT,
         }),
       );
     },
