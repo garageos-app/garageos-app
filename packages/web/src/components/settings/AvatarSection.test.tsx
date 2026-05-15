@@ -9,9 +9,9 @@ import type { ProfileMeDto } from '@/queries/profileMe';
 // Mock toast
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
-// Mock the hook
-const uploadMock = vi.fn();
-const removeMock = vi.fn();
+// Mock the hook — return { ok: true } by default so handlers branch correctly
+const uploadMock = vi.fn().mockResolvedValue({ ok: true });
+const removeMock = vi.fn().mockResolvedValue({ ok: true });
 const resetMock = vi.fn();
 const hookStateRef = { current: { phase: 'idle' as const } };
 vi.mock('@/queries/avatarUpload', () => ({
@@ -55,8 +55,8 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 beforeEach(() => {
-  uploadMock.mockReset();
-  removeMock.mockReset();
+  uploadMock.mockReset().mockResolvedValue({ ok: true });
+  removeMock.mockReset().mockResolvedValue({ ok: true });
   hookStateRef.current = { phase: 'idle' };
 });
 

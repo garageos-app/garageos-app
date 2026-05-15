@@ -21,9 +21,11 @@ interface UploadUrlResponse {
   expires_at: string;
 }
 
+export type AvatarUploadResult = { ok: true } | { ok: false; code: string; message: string };
+
 export interface UseAvatarUploadResult {
-  upload: (blob: Blob) => Promise<void>;
-  remove: () => Promise<void>;
+  upload: (blob: Blob) => Promise<AvatarUploadResult>;
+  remove: () => Promise<AvatarUploadResult>;
   state: AvatarUploadState;
   reset: () => void;
 }
@@ -59,7 +61,7 @@ export function useAvatarUpload(): UseAvatarUploadResult {
   }, []);
 
   const upload = useCallback(
-    async (blob: Blob) => {
+    async (blob: Blob): Promise<AvatarUploadResult> => {
       // Step 1 — presign
       setState({ phase: 'requesting' });
       let presign: UploadUrlResponse;
@@ -69,8 +71,9 @@ export function useAvatarUpload(): UseAvatarUploadResult {
           body: '{}',
         });
       } catch (e) {
-        setState(toErrorState(e));
-        return;
+        const err = toErrorState(e);
+        setState(err);
+        return { ok: false, code: err.code, message: err.message };
       }
 
       // Step 2 — direct S3 PUT via XHR (progress events)
@@ -85,8 +88,9 @@ export function useAvatarUpload(): UseAvatarUploadResult {
           xhrRef,
         );
       } catch (e) {
-        setState(toErrorState(e));
-        return;
+        const err = toErrorState(e);
+        setState(err);
+        return { ok: false, code: err.code, message: err.message };
       }
 
       // Step 3 — confirm (idempotent); body '{}' required because useApiFetch
@@ -99,21 +103,27 @@ export function useAvatarUpload(): UseAvatarUploadResult {
         });
         setState({ phase: 'success', profile });
         await queryClient.invalidateQueries({ queryKey: ['users-me'] });
+        return { ok: true };
       } catch (e) {
-        setState(toErrorState(e));
+        const err = toErrorState(e);
+        setState(err);
+        return { ok: false, code: err.code, message: err.message };
       }
     },
     [apiFetch, queryClient],
   );
 
-  const remove = useCallback(async () => {
+  const remove = useCallback(async (): Promise<AvatarUploadResult> => {
     setState({ phase: 'requesting' });
     try {
       await apiFetch<void>('/v1/users/me/avatar', { method: 'DELETE' });
       await queryClient.invalidateQueries({ queryKey: ['users-me'] });
       setState({ phase: 'idle' });
+      return { ok: true };
     } catch (e) {
-      setState(toErrorState(e));
+      const err = toErrorState(e);
+      setState(err);
+      return { ok: false, code: err.code, message: err.message };
     }
   }, [apiFetch, queryClient]);
 

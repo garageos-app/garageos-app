@@ -61,11 +61,11 @@ export function AvatarSection({ profile }: Props) {
       URL.revokeObjectURL(imageSrc);
       setImageSrc(null);
     }
-    await upload(blob);
-    if (state.phase === 'error') {
-      toast.error(state.message);
-    } else {
+    const result = await upload(blob);
+    if (result.ok) {
       toast.success('Foto profilo aggiornata.');
+    } else {
+      toast.error(result.message);
     }
     reset();
   }
@@ -80,11 +80,11 @@ export function AvatarSection({ profile }: Props) {
 
   async function handleRemoveConfirm() {
     setRemoveOpen(false);
-    await remove();
-    if (state.phase === 'error') {
-      toast.error(state.message);
-    } else {
+    const result = await remove();
+    if (result.ok) {
       toast.success('Foto profilo rimossa.');
+    } else {
+      toast.error(result.message);
     }
     reset();
   }

@@ -71,7 +71,7 @@ beforeEach(() => {
 // Subject under test
 // ---------------------------------------------------------------------------
 
-import { useAvatarUpload } from './avatarUpload';
+import { useAvatarUpload, type AvatarUploadResult } from './avatarUpload';
 import { ApiError } from '@/lib/api-client';
 
 function makeWrapper() {
@@ -114,7 +114,7 @@ describe('useAvatarUpload', () => {
     expect(result.current.state.phase).toBe('idle');
 
     const blob = new Blob(['x'], { type: 'image/jpeg' });
-    let uploadPromise!: Promise<void>;
+    let uploadPromise!: Promise<AvatarUploadResult>;
     act(() => {
       uploadPromise = result.current.upload(blob);
     });
@@ -146,10 +146,12 @@ describe('useAvatarUpload', () => {
       body: '{}',
     });
 
-    await uploadPromise;
+    const uploadResult = await uploadPromise;
 
     expect(result.current.state).toEqual({ phase: 'success', profile: PROFILE_OK });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['users-me'] });
+    // Verify return value (guards against stale-closure callers relying on state)
+    expect(uploadResult).toEqual({ ok: true });
   });
 
   it('progress events update state.progress during uploading phase', async () => {
@@ -182,14 +184,17 @@ describe('useAvatarUpload', () => {
     const { Wrapper } = makeWrapper();
     const { result } = renderHook(() => useAvatarUpload(), { wrapper: Wrapper });
 
+    let uploadResult: AvatarUploadResult | undefined;
     await act(async () => {
-      await result.current.upload(new Blob());
+      uploadResult = await result.current.upload(new Blob());
     });
 
     expect(result.current.state).toMatchObject({
       phase: 'error',
       code: 'users.me.avatar.s3_unavailable',
     });
+    // Verify return value carries the error — callers must not rely on stale state
+    expect(uploadResult).toMatchObject({ ok: false, code: 'users.me.avatar.s3_unavailable' });
   });
 
   it('S3 PUT 403 → error state with xhr.http_error code', async () => {
