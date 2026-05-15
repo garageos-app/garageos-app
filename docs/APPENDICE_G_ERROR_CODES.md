@@ -196,8 +196,8 @@ Per fornire dati utili al client per gestire l'errore:
 | Code | HTTP | Severity | Titolo | Quando | BR |
 |---|---|---|---|---|---|
 | `tenant.not_found` | 404 | info | Tenant non trovato | ID inesistente | |
-| `tenant.me.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/tenants/me con body vuoto o senza campi edibili | F-OFF-007 |
-| `tenant.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/tenants/me con chiave non in schema (es. vatNumber, status, plan) | F-OFF-007 |
+| `tenants.me.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/tenants/me con body vuoto o senza campi edibili | F-OFF-007 |
+| `tenants.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/tenants/me con chiave non in schema (es. vatNumber, status, plan) | F-OFF-007 |
 | `tenant.vat_number_duplicate` | 409 | info | P.IVA già registrata | VAT duplicata in creazione | |
 | `tenant.vat_number_invalid` | 400 | info | P.IVA non valida | Checksum P.IVA IT fallito | |
 | `tenant.billing.past_due` | 402 | warning | Pagamento in sospeso | Solo v1.1+ | |
@@ -206,8 +206,8 @@ Per fornire dati utili al client per gestire l'errore:
 | `location.cannot_remove_primary` | 422 | warning | Non puoi rimuovere la sede principale | Senza designarne un'altra | BR-201 |
 | `location.cannot_disable_last` | 422 | warning | Impossibile disattivare l'ultima sede attiva | | |
 | `user.not_found` | 404 | info | Utente non trovato | | |
-| `user.me.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/users/me con body vuoto o senza campi edibili | F-OFF-007 |
-| `user.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/users/me con chiave non in schema (es. email, role, tenantId) | F-OFF-007 |
+| `users.me.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/users/me con body vuoto o senza campi edibili | F-OFF-007 |
+| `users.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/users/me con chiave non in schema (es. email, role, tenantId) | F-OFF-007 |
 | `user.cannot_remove_last_super_admin` | 422 | error | Impossibile rimuovere l'ultimo amministratore | | BR-203 |
 | `user.role_change_would_orphan_tenant` | 422 | error | Cambio ruolo lascerebbe il tenant senza admin | | BR-203 |
 | `user.invitation.expired` | 410 | info | Invito scaduto | Token invitation > 7 giorni | |
@@ -889,8 +889,8 @@ system.push.send_failed
 system.s3.upload_failed
 system.scheduler.schedule_failed
 tenant.billing.past_due
-tenant.me.update.empty_body
-tenant.me.update.unknown_field
+tenants.me.update.empty_body
+tenants.me.update.unknown_field
 tenant.not_found
 tenant.vat_number_duplicate
 tenant.vat_number_invalid
@@ -911,8 +911,8 @@ user.cannot_remove_last_super_admin
 user.invitation.already_accepted
 user.invitation.email_mismatch
 user.invitation.expired
-user.me.update.empty_body
-user.me.update.unknown_field
+users.me.update.empty_body
+users.me.update.unknown_field
 user.not_found
 user.role_change_would_orphan_tenant
 validation.failed
