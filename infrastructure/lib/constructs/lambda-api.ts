@@ -90,7 +90,9 @@ export class LambdaApiConstruct extends Construct {
         actions: [
           'cognito-idp:AdminGetUser',
           'cognito-idp:AdminCreateUser',
+          'cognito-idp:AdminSetUserPassword',
           'cognito-idp:AdminUpdateUserAttributes',
+          'cognito-idp:AdminDeleteUser',
           'cognito-idp:ListUsers',
         ],
         resources: [props.officineUserPoolArn, props.clientiUserPoolArn],
