@@ -6,6 +6,9 @@ const MESSAGES: Record<string, string> = {
   LimitExceededException: 'Troppi tentativi. Riprova tra qualche minuto.',
   UserNotFoundException: 'Email o password non corretti.',
   InvalidPasswordException: 'Email o password non corretti.',
+  CodeMismatchException: "Codice non valido. Controlla l'email e riprova.",
+  ExpiredCodeException: 'Il codice è scaduto. Richiedi un nuovo codice.',
+  CodeDeliveryFailureException: "Errore nell'invio del codice. Riprova tra qualche minuto.",
 
   // API domain codes
   'me.vehicle.not_found': 'Veicolo non trovato o non più di tua proprietà.',
