@@ -76,6 +76,7 @@ export function useChangePassword(): UseChangePasswordResult {
         setIsPending(false);
       }
     },
+    // changePassword is module-scope; mutate captures only setIsPending (stable setter).
     [],
   );
 
