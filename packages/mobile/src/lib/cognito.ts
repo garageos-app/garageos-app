@@ -83,3 +83,64 @@ export function refreshSession(email: string, refreshToken: string): Promise<Sig
     );
   });
 }
+
+export type ForgotPasswordResult =
+  | { ok: true; deliveryMedium: 'EMAIL' | 'SMS' | 'UNKNOWN' }
+  | { ok: false; code: string };
+
+// Anti-enumeration: UserNotFoundException is treated as success so the UI
+// flow is identical for registered vs unregistered emails. The user typing
+// a wrong email will simply never receive a code and the next-screen confirm
+// will fail with CodeMismatchException. See spec §2.2.
+function extractDeliveryMedium(data: unknown): 'EMAIL' | 'SMS' | 'UNKNOWN' {
+  if (typeof data === 'object' && data !== null) {
+    const details = (data as { CodeDeliveryDetails?: { DeliveryMedium?: string } })
+      .CodeDeliveryDetails;
+    if (details?.DeliveryMedium === 'EMAIL') return 'EMAIL';
+    if (details?.DeliveryMedium === 'SMS') return 'SMS';
+  }
+  return 'UNKNOWN';
+}
+
+function extractErrorCode(err: unknown): string {
+  if (typeof err === 'object' && err !== null) {
+    const e = err as { code?: string; name?: string };
+    return e.code ?? e.name ?? 'UnknownError';
+  }
+  return 'UnknownError';
+}
+
+export function forgotPasswordRequest(email: string): Promise<ForgotPasswordResult> {
+  return new Promise((resolve) => {
+    const user = new CognitoUser({ Username: email, Pool: clientiUserPool });
+    user.forgotPassword({
+      onSuccess: (data: unknown) => {
+        resolve({ ok: true, deliveryMedium: extractDeliveryMedium(data) });
+      },
+      onFailure: (err: unknown) => {
+        const code = extractErrorCode(err);
+        if (code === 'UserNotFoundException') {
+          resolve({ ok: true, deliveryMedium: 'UNKNOWN' });
+          return;
+        }
+        resolve({ ok: false, code });
+      },
+    });
+  });
+}
+
+export type ConfirmForgotPasswordResult = { ok: true } | { ok: false; code: string };
+
+export function confirmForgotPassword(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<ConfirmForgotPasswordResult> {
+  return new Promise((resolve) => {
+    const user = new CognitoUser({ Username: email, Pool: clientiUserPool });
+    user.confirmPassword(code, newPassword, {
+      onSuccess: () => resolve({ ok: true }),
+      onFailure: (err: unknown) => resolve({ ok: false, code: extractErrorCode(err) }),
+    });
+  });
+}
