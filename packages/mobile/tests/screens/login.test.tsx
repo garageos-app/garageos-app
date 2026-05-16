@@ -114,4 +114,12 @@ describe('Login screen', () => {
     fireEvent.press(screen.getByText(/Non hai un account/));
     expect(push).toHaveBeenCalledWith('/signup');
   });
+
+  it('tapping "Hai dimenticato la password?" pushes /forgot-password', async () => {
+    const push = jest.fn();
+    mockedRouter.mockReturnValue({ replace: jest.fn(), push });
+    await renderLogin();
+    fireEvent.press(screen.getByText('Hai dimenticato la password?'));
+    expect(push).toHaveBeenCalledWith('/forgot-password');
+  });
 });

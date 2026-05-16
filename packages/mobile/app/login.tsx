@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -112,7 +111,7 @@ export default function Login() {
           )}
         </Pressable>
         <Pressable
-          onPress={() => Alert.alert('Disponibile a breve')}
+          onPress={() => router.push('/forgot-password')}
           style={styles.linkRow}
           accessibilityRole="link"
         >
