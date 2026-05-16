@@ -69,6 +69,21 @@ describe('forgotPasswordRequest', () => {
     });
   });
 
+  it('silences InvalidParameterException and resolves ok:true (unverified-email anti-enumeration)', async () => {
+    mockForgotPassword.mockImplementation(
+      (callbacks: { onFailure: (err: { code?: string; name?: string }) => void }) => {
+        callbacks.onFailure({
+          code: 'InvalidParameterException',
+          name: 'InvalidParameterException',
+        });
+      },
+    );
+    await expect(forgotPasswordRequest('unverified@example.com')).resolves.toEqual({
+      ok: true,
+      deliveryMedium: 'UNKNOWN',
+    });
+  });
+
   it('resolves ok:false on LimitExceededException', async () => {
     mockForgotPassword.mockImplementation(
       (callbacks: { onFailure: (err: { code?: string; name?: string }) => void }) => {

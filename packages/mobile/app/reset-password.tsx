@@ -13,7 +13,7 @@ export default function ResetPasswordScreen() {
   async function handleSubmit(payload: ResetPasswordPayload) {
     const result = await confirmForgotPassword(payload.email, payload.code, payload.newPassword);
     if (!result.ok) return result;
-    router.replace('/login');
+    router.replace({ pathname: '/login', params: { reset: '1' } });
     return { ok: true as const };
   }
 

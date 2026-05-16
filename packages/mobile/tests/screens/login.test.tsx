@@ -3,18 +3,20 @@ import Login from '../../app/login';
 import { renderWithAuth } from '../helpers/renderWithAuth';
 import * as cognito from '@/lib/cognito';
 import * as storage from '@/lib/secure-storage';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 jest.mock('@/lib/cognito');
 jest.mock('@/lib/secure-storage');
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(),
+  useLocalSearchParams: jest.fn(),
   Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 const mockedCognito = cognito as jest.Mocked<typeof cognito>;
 const mockedStorage = storage as jest.Mocked<typeof storage>;
 const mockedRouter = useRouter as jest.Mock;
+const mockedParams = useLocalSearchParams as jest.Mock;
 
 async function renderLogin() {
   return renderWithAuth(<Login />);
@@ -25,6 +27,7 @@ describe('Login screen', () => {
     jest.resetAllMocks();
     mockedStorage.readTokens.mockResolvedValue(null);
     mockedRouter.mockReturnValue({ replace: jest.fn(), push: jest.fn() });
+    mockedParams.mockReturnValue({});
   });
 
   it('shows validation when email empty', async () => {
@@ -121,5 +124,17 @@ describe('Login screen', () => {
     await renderLogin();
     fireEvent.press(screen.getByText('Hai dimenticato la password?'));
     expect(push).toHaveBeenCalledWith('/forgot-password');
+  });
+
+  it('renders success banner when ?reset=1 param is present', async () => {
+    mockedParams.mockReturnValue({ reset: '1' });
+    await renderLogin();
+    expect(screen.getByText(/Password aggiornata/)).toBeOnTheScreen();
+  });
+
+  it('does NOT render success banner when ?reset is absent', async () => {
+    mockedParams.mockReturnValue({});
+    await renderLogin();
+    expect(screen.queryByText(/Password aggiornata/)).toBeNull();
   });
 });

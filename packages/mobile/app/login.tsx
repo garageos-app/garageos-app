@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/useAuth';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import { colors, spacing } from '@/theme/colors';
@@ -20,6 +20,8 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function Login() {
   const { signIn } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{ reset?: string }>();
+  const justReset = params.reset === '1';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -59,6 +61,13 @@ export default function Login() {
           </View>
           <Text style={styles.wordmark}>GarageOS</Text>
         </View>
+        {justReset && !error ? (
+          <View style={styles.successBanner} accessibilityRole="alert">
+            <Text style={styles.successText}>
+              Password aggiornata. Effettua l&apos;accesso con la nuova password.
+            </Text>
+          </View>
+        ) : null}
         {error ? (
           <View style={styles.errorBanner} accessibilityRole="alert">
             <Text style={styles.errorText}>{error}</Text>
@@ -156,6 +165,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   fieldError: { fontSize: 12, color: colors.danger },
+  successBanner: {
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+  },
+  successText: { color: colors.primary, fontSize: 13 },
   errorBanner: {
     backgroundColor: colors.dangerBg,
     padding: spacing.md,

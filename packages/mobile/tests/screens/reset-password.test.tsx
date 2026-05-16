@@ -63,7 +63,10 @@ describe('/reset-password screen', () => {
       );
     });
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith('/login');
+      expect(replace).toHaveBeenCalledWith({
+        pathname: '/login',
+        params: { reset: '1' },
+      });
     });
   });
 

@@ -88,10 +88,11 @@ export type ForgotPasswordResult =
   | { ok: true; deliveryMedium: 'EMAIL' | 'SMS' | 'UNKNOWN' }
   | { ok: false; code: string };
 
-// Anti-enumeration: UserNotFoundException is treated as success so the UI
-// flow is identical for registered vs unregistered emails. The user typing
-// a wrong email will simply never receive a code and the next-screen confirm
-// will fail with CodeMismatchException. See spec §2.2.
+// Anti-enumeration: UserNotFoundException and InvalidParameterException are
+// both treated as success so the UI flow is identical for non-existent and
+// unverified-existent emails. The user typing a wrong/unverified email will
+// simply never receive a code and the next-screen confirm will fail with
+// CodeMismatchException. See spec §2.2.
 function extractDeliveryMedium(data: unknown): 'EMAIL' | 'SMS' | 'UNKNOWN' {
   if (typeof data === 'object' && data !== null) {
     const details = (data as { CodeDeliveryDetails?: { DeliveryMedium?: string } })
@@ -121,7 +122,7 @@ export function forgotPasswordRequest(email: string): Promise<ForgotPasswordResu
       },
       onFailure: (err: unknown) => {
         const code = extractErrorCode(err);
-        if (code === 'UserNotFoundException') {
+        if (code === 'UserNotFoundException' || code === 'InvalidParameterException') {
           resolve({ ok: true, deliveryMedium: 'UNKNOWN' });
           return;
         }
