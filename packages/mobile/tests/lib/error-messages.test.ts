@@ -56,4 +56,22 @@ describe('mapErrorToUserMessage', () => {
       'Troppi tentativi. Riprova tra qualche minuto.',
     );
   });
+
+  it('maps CodeMismatchException for password reset', () => {
+    expect(mapErrorToUserMessage('CodeMismatchException')).toBe(
+      "Codice non valido. Controlla l'email e riprova.",
+    );
+  });
+
+  it('maps ExpiredCodeException for password reset', () => {
+    expect(mapErrorToUserMessage('ExpiredCodeException')).toBe(
+      'Il codice è scaduto. Richiedi un nuovo codice.',
+    );
+  });
+
+  it('maps CodeDeliveryFailureException for password reset', () => {
+    expect(mapErrorToUserMessage('CodeDeliveryFailureException')).toBe(
+      "Errore nell'invio del codice. Riprova tra qualche minuto.",
+    );
+  });
 });
