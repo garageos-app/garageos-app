@@ -19,6 +19,9 @@ export const changePasswordFormSchema = z
     newPassword: passwordPolicySchema,
     confirmPassword: z.string().min(1, 'Campo obbligatorio'),
   })
+  // Refine order is intentional: confirm-mismatch is checked first because
+  // mistyping the confirm field is the most common user error — surface it
+  // before the reuse-old check, which is rarer and lower-priority for UX.
   .refine((v) => v.newPassword === v.confirmPassword, {
     path: ['confirmPassword'],
     message: 'Le password non coincidono',
