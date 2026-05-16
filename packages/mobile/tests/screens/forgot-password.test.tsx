@@ -45,9 +45,11 @@ describe('/forgot-password screen', () => {
     await waitFor(() => {
       expect(mockedCognito.forgotPasswordRequest).toHaveBeenCalledWith('mario.rossi@example.com');
     });
-    expect(push).toHaveBeenCalledWith({
-      pathname: '/reset-password',
-      params: { email: 'mario.rossi@example.com' },
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledWith({
+        pathname: '/reset-password',
+        params: { email: 'mario.rossi@example.com' },
+      });
     });
   });
 
