@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import Login from '../../app/login';
-import { AuthProvider } from '@/auth/AuthContext';
+import { renderWithAuth } from '../helpers/renderWithAuth';
 import * as cognito from '@/lib/cognito';
 import * as storage from '@/lib/secure-storage';
 import { useRouter } from 'expo-router';
@@ -16,12 +16,8 @@ const mockedCognito = cognito as jest.Mocked<typeof cognito>;
 const mockedStorage = storage as jest.Mocked<typeof storage>;
 const mockedRouter = useRouter as jest.Mock;
 
-function renderLogin() {
-  return render(
-    <AuthProvider>
-      <Login />
-    </AuthProvider>,
-  );
+async function renderLogin() {
+  return renderWithAuth(<Login />);
 }
 
 describe('Login screen', () => {
@@ -32,7 +28,7 @@ describe('Login screen', () => {
   });
 
   it('shows validation when email empty', async () => {
-    renderLogin();
+    await renderLogin();
     fireEvent.press(screen.getByRole('button', { name: 'Accedi' }));
     await waitFor(() => {
       expect(screen.getByText(/Email obbligatoria/)).toBeOnTheScreen();
@@ -41,7 +37,7 @@ describe('Login screen', () => {
   });
 
   it('shows validation on malformed email', async () => {
-    renderLogin();
+    await renderLogin();
     fireEvent.changeText(screen.getByPlaceholderText('Email'), 'not-an-email');
     fireEvent.changeText(screen.getByPlaceholderText('Password'), 'pwd123abc');
     fireEvent.press(screen.getByRole('button', { name: 'Accedi' }));
@@ -61,7 +57,7 @@ describe('Login screen', () => {
       customerId: 'cust',
       email: 'u@example.com',
     });
-    renderLogin();
+    await renderLogin();
     fireEvent.changeText(screen.getByPlaceholderText('Email'), 'u@example.com');
     fireEvent.changeText(screen.getByPlaceholderText('Password'), 'pwd123abc');
     fireEvent.press(screen.getByRole('button', { name: 'Accedi' }));
@@ -72,7 +68,7 @@ describe('Login screen', () => {
     mockedCognito.signInSrp.mockRejectedValue(
       Object.assign(new Error('not auth'), { code: 'NotAuthorizedException' }),
     );
-    renderLogin();
+    await renderLogin();
     fireEvent.changeText(screen.getByPlaceholderText('Email'), 'u@example.com');
     fireEvent.changeText(screen.getByPlaceholderText('Password'), 'wrong');
     fireEvent.press(screen.getByRole('button', { name: 'Accedi' }));
@@ -85,7 +81,7 @@ describe('Login screen', () => {
     mockedCognito.signInSrp.mockRejectedValue(
       Object.assign(new Error('not confirmed'), { code: 'UserNotConfirmedException' }),
     );
-    renderLogin();
+    await renderLogin();
     fireEvent.changeText(screen.getByPlaceholderText('Email'), 'u@example.com');
     fireEvent.changeText(screen.getByPlaceholderText('Password'), 'pwd123abc');
     fireEvent.press(screen.getByRole('button', { name: 'Accedi' }));
@@ -102,7 +98,7 @@ describe('Login screen', () => {
         // pending forever
       }) as ReturnType<typeof mockedCognito.signInSrp>,
     );
-    renderLogin();
+    await renderLogin();
     fireEvent.changeText(screen.getByPlaceholderText('Email'), 'u@example.com');
     fireEvent.changeText(screen.getByPlaceholderText('Password'), 'pwd123abc');
     const button = screen.getByRole('button', { name: 'Accedi' });
@@ -111,10 +107,10 @@ describe('Login screen', () => {
     expect(mockedCognito.signInSrp).toHaveBeenCalledTimes(1);
   });
 
-  it('navigates to /signup when "Registrati" link tapped', () => {
+  it('navigates to /signup when "Registrati" link tapped', async () => {
     const push = jest.fn();
     mockedRouter.mockReturnValue({ replace: jest.fn(), push });
-    renderLogin();
+    await renderLogin();
     fireEvent.press(screen.getByText(/Non hai un account/));
     expect(push).toHaveBeenCalledWith('/signup');
   });

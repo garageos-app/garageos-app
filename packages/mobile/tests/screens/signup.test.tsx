@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import Signup from '../../app/signup';
-import { AuthProvider } from '@/auth/AuthContext';
+import { renderWithAuth } from '../helpers/renderWithAuth';
 import * as signupQuery from '@/queries/signup';
 import * as cognito from '@/lib/cognito';
 import * as storage from '@/lib/secure-storage';
@@ -27,12 +27,8 @@ function fillForm() {
   fireEvent.changeText(screen.getByPlaceholderText('Cognome'), 'Rossi');
 }
 
-function renderSignup() {
-  return render(
-    <AuthProvider>
-      <Signup />
-    </AuthProvider>,
-  );
+async function renderSignup() {
+  return renderWithAuth(<Signup />);
 }
 
 describe('Signup screen', () => {
@@ -43,8 +39,8 @@ describe('Signup screen', () => {
     mockedRouter.mockReturnValue({ replace: jest.fn(), push: jest.fn(), back: jest.fn() });
   });
 
-  it('renders the SignupForm', () => {
-    renderSignup();
+  it('renders the SignupForm', async () => {
+    await renderSignup();
     expect(screen.getByRole('button', { name: 'Registrati' })).toBeOnTheScreen();
     expect(screen.getByPlaceholderText('Email')).toBeOnTheScreen();
   });
@@ -70,7 +66,7 @@ describe('Signup screen', () => {
       customerId: 'cust-1',
       email: 'mario.rossi@example.com',
     });
-    renderSignup();
+    await renderSignup();
     fillForm();
     fireEvent.press(screen.getByRole('button', { name: 'Registrati' }));
     await waitFor(() =>
@@ -94,7 +90,7 @@ describe('Signup screen', () => {
       code: 'auth.signup.email_already_active',
       message: 'Un account con questa email è già registrato.',
     });
-    renderSignup();
+    await renderSignup();
     fillForm();
     fireEvent.press(screen.getByRole('button', { name: 'Registrati' }));
     await waitFor(() => {
@@ -118,7 +114,7 @@ describe('Signup screen', () => {
       },
     });
     mockedCognito.signInSrp.mockRejectedValue(new Error('SRP transient'));
-    renderSignup();
+    await renderSignup();
     fillForm();
     fireEvent.press(screen.getByRole('button', { name: 'Registrati' }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/login'));
