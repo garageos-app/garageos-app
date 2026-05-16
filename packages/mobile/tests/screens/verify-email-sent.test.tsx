@@ -83,4 +83,19 @@ describe('VerifyEmailSent screen', () => {
     await waitFor(() => expect(mockedStorage.clearTokens).toHaveBeenCalled());
     expect(replace).toHaveBeenCalledWith('/login');
   });
+
+  it('shows mapped IT message on resend error and exposes a11y live region', async () => {
+    mockedSignup.resendVerification.mockResolvedValue({
+      ok: false,
+      code: 'auth.resend_verification.rate_limited',
+      message: 'ignored — screen uses mapErrorToUserMessage',
+    });
+    await renderScreen();
+    fireEvent.press(screen.getByRole('button', { name: /Invia di nuovo/ }));
+    await waitFor(() => {
+      expect(screen.getByText(/Troppi tentativi/)).toBeOnTheScreen();
+    });
+    // a11y: feedback Text exposes polite live region (M3)
+    expect(screen.getByText(/Troppi tentativi/).props.accessibilityLiveRegion).toBe('polite');
+  });
 });
