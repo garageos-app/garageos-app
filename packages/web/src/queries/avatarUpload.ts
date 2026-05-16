@@ -138,7 +138,7 @@ function putToS3(
   presign: UploadUrlResponse,
   blob: Blob,
   onProgress: (progress: number) => void,
-  xhrRef: React.MutableRefObject<XMLHttpRequest | null>,
+  xhrRef: React.RefObject<XMLHttpRequest | null>,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
