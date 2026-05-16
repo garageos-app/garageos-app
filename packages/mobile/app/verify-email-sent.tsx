@@ -79,7 +79,11 @@ export default function VerifyEmailSent() {
           Clicca sul link per confermare il tuo indirizzo.
         </Text>
 
-        {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}
+        {feedback ? (
+          <Text style={styles.feedback} accessibilityLiveRegion="polite">
+            {feedback}
+          </Text>
+        ) : null}
 
         <Pressable
           onPress={handleResend}
