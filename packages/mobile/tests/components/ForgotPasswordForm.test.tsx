@@ -50,6 +50,21 @@ describe('ForgotPasswordForm', () => {
     });
   });
 
+  it('guards against double submit', () => {
+    const onSubmit = jest.fn(
+      () =>
+        new Promise(() => {
+          // pending forever
+        }) as Promise<{ ok: true }>,
+    );
+    render(<ForgotPasswordForm onSubmit={onSubmit} onNavigateBack={jest.fn()} />);
+    fireEvent.changeText(screen.getByPlaceholderText('Email'), 'mario.rossi@example.com');
+    const button = screen.getByRole('button', { name: 'Invia codice' });
+    fireEvent.press(button);
+    fireEvent.press(button);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it('navigates back when "Torna al login" pressed', () => {
     const onBack = jest.fn();
     render(<ForgotPasswordForm onSubmit={jest.fn()} onNavigateBack={onBack} />);
