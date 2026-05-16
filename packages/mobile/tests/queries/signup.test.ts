@@ -140,6 +140,22 @@ describe('signupCustomer', () => {
     const result = await signupCustomer(input);
     expect(result).toMatchObject({ ok: false, code: 'http.500' });
   });
+
+  it('returns http.unexpected_body when 200 has no customer in body', async () => {
+    (fetch as unknown as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ foo: 'bar' }),
+    });
+
+    const result = await signupCustomer(input);
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'http.unexpected_body',
+      message: 'Si è verificato un errore. Riprova più tardi.',
+    });
+  });
 });
 
 describe('resendVerification', () => {
