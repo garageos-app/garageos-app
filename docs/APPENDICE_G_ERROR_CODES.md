@@ -810,6 +810,8 @@ attachment.upload.too_many
 attachment.upload.url_expired
 auth.2fa.invalid_code
 auth.2fa.required
+auth.forbidden.super_admin_required
+auth.forbidden.wrong_pool
 auth.login.account_inactive
 auth.login.account_locked
 auth.login.email_not_verified
@@ -818,8 +820,6 @@ auth.password.too_weak
 auth.password_reset.invalid_token
 auth.permission.denied
 auth.signup.email_already_registered
-auth.forbidden.super_admin_required
-auth.forbidden.wrong_pool
 auth.signup.email_domain_blocked
 auth.tenant.suspended
 auth.token.expired
