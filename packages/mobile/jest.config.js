@@ -22,5 +22,13 @@ module.exports = {
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/.expo/'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    // Force a single React instance. pnpm's `node-linker=hoisted` (required for
+    // Metro in this workspace) physically copies `react` into
+    // packages/mobile/node_modules/react, while `react-test-renderer` resolves
+    // `react` via the root `.pnpm/react@<ver>` symlink — yielding two instances
+    // and a null hooks dispatcher (`useState` throws). Pinning `react` to the
+    // local copy collapses both back to one instance. CI Linux uses symlinks
+    // throughout and is unaffected either way.
+    '^react$': '<rootDir>/node_modules/react',
   },
 };
