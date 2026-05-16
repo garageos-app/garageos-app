@@ -47,6 +47,16 @@ describe('forgotPasswordRequest', () => {
     });
   });
 
+  it('resolves ok:true with deliveryMedium SMS when SDK reports SMS', async () => {
+    mockForgotPassword.mockImplementation((callbacks: { onSuccess: (data: unknown) => void }) => {
+      callbacks.onSuccess({ CodeDeliveryDetails: { DeliveryMedium: 'SMS' } });
+    });
+    await expect(forgotPasswordRequest('u@example.com')).resolves.toEqual({
+      ok: true,
+      deliveryMedium: 'SMS',
+    });
+  });
+
   it('silences UserNotFoundException and resolves ok:true (anti-enumeration)', async () => {
     mockForgotPassword.mockImplementation(
       (callbacks: { onFailure: (err: { code?: string; name?: string }) => void }) => {

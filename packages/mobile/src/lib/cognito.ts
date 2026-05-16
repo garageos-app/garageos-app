@@ -114,6 +114,8 @@ export function forgotPasswordRequest(email: string): Promise<ForgotPasswordResu
   return new Promise((resolve) => {
     const user = new CognitoUser({ Username: email, Pool: clientiUserPool });
     user.forgotPassword({
+      // inputVerificationCode intentionally omitted — the SDK invokes onSuccess
+      // when the optional inputVerificationCode callback is absent.
       onSuccess: (data: unknown) => {
         resolve({ ok: true, deliveryMedium: extractDeliveryMedium(data) });
       },
