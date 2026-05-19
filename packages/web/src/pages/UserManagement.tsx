@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useInvitations, useRevokeInvitation, useUsers } from '@/queries/users-admin';
 
 import { InviteUserDialog } from '@/components/users/InviteUserDialog';
-// TODO (T16): import EditUserDialog from '@/components/users/EditUserDialog'
+import { EditUserDialog } from '@/components/users/EditUserDialog';
 
 export function UserManagement() {
   const usersQ = useUsers();
@@ -12,8 +12,7 @@ export function UserManagement() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Suppress unused-state warning until T16 wires up EditUserDialog
-  void editingId;
+  const editingUser = (usersQ.data?.users ?? []).find((u) => u.id === editingId) ?? null;
 
   if (usersQ.isLoading || invsQ.isLoading) return <div>Caricamento...</div>;
   if (usersQ.isError) return <div>Errore caricamento utenti.</div>;
@@ -65,7 +64,6 @@ export function UserManagement() {
                     {u.email} — {u.role} — {u.status}
                   </div>
                 </div>
-                {/* TODO (T16): open EditUserDialog */}
                 <Button variant="ghost" onClick={() => setEditingId(u.id)}>
                   Modifica
                 </Button>
@@ -76,7 +74,15 @@ export function UserManagement() {
       </section>
 
       <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} />
-      {/* TODO (T16): {editingId && <EditUserDialog userId={editingId} open onOpenChange={(o) => !o && setEditingId(null)} />} */}
+      {editingUser && (
+        <EditUserDialog
+          user={editingUser}
+          open={editingId !== null}
+          onOpenChange={(o) => {
+            if (!o) setEditingId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
