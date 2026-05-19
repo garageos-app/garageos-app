@@ -13,6 +13,7 @@ import { DeadlineDashboard } from '@/pages/DeadlineDashboard';
 import { InterventionCreate } from '@/pages/InterventionCreate';
 import { InterventionDetail } from '@/pages/InterventionDetail';
 import { Settings } from '@/pages/Settings';
+import { AcceptInvitation } from '@/pages/AcceptInvitation';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
 
 const queryClient = new QueryClient({
@@ -34,6 +35,7 @@ export function App() {
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/invitations/:token" element={<AcceptInvitation />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<Dashboard />} />
@@ -44,6 +46,7 @@ export function App() {
                   <Route path="/interventions/:id" element={<InterventionDetail />} />
                   <Route path="/deadlines" element={<DeadlineDashboard />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/settings/users" element={<Settings />} />
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
