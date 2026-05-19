@@ -154,15 +154,22 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
           throw err;
         }
 
-        // 4) Audit log — same transaction so it rolls back atomically if
+        // 4) Look up the inviting user's DB UUID so the audit row is
+        //    traceable to the Super Admin who triggered the action.
+        //    actorCognitoSub is an opaque Cognito string, not a UUID —
+        //    cannot be stored directly in the UUID audit_logs.actor_id column.
+        const actorUser = await tx.user.findFirst({
+          where: { cognitoSub: actorCognitoSub, tenantId },
+          select: { id: true },
+        });
+
+        // 5) Audit log — same transaction so it rolls back atomically if
         //    the invitation insert had failed above (defensive ordering).
         await tx.auditLog.create({
           data: {
             tenantId,
             actorType: 'user',
-            // actorId is a UUID in audit_logs but actorCognitoSub is a Cognito
-            // opaque string. Look up the DB user id for the audit row.
-            actorId: null, // best-effort: sub is opaque; handler avoids extra query
+            actorId: actorUser?.id ?? null,
             action: 'user_invitation_created',
             entityType: 'invitation',
             entityId: invitation.id,

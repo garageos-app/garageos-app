@@ -12,6 +12,7 @@ import { _resetSesClientForTests } from '../../src/lib/ses-client.js';
 import { buildTestServer } from './fixtures.js';
 import { createTenantWithLocation, createUser, resetDb } from './helpers.js';
 import { signTestToken } from '../helpers/jwt.js';
+import { pgAdmin } from './setup.js';
 
 const sesMock = mockClient(SESv2Client);
 
@@ -74,6 +75,25 @@ describe('POST /v1/users/invitations', () => {
 
     // SES send was called exactly once.
     expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(1);
+
+    // Audit log row must be created with actor traced to the inviting user.
+    const invitationId = body.invitation.id as string;
+    const { rows: auditRows } = await pgAdmin.query<{
+      action: string;
+      entity_type: string;
+      entity_id: string;
+      actor_id: string | null;
+    }>(
+      `SELECT action, entity_type, entity_id, actor_id
+         FROM audit_logs
+        WHERE entity_type = 'invitation' AND entity_id = $1
+        LIMIT 1`,
+      [invitationId],
+    );
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]!.action).toBe('user_invitation_created');
+    // actorId must be populated — the handler looks up the Super Admin's DB UUID.
+    expect(auditRows[0]!.actor_id).not.toBeNull();
   });
 
   it('rejects mechanic role without locationId (BR-204)', async () => {
@@ -230,9 +250,17 @@ describe('POST /v1/users/invitations', () => {
 
     // Best-effort: 201 even if SES failed.
     expect(res.statusCode).toBe(201);
-    // DB row must still exist.
+    // DB row must still exist — verified directly in the DB, not just via
+    // the response body (mirrors the feedback_integration_test_mirror_frontend_wire
+    // pattern: test what's actually persisted, not what the handler echoes back).
     const body = res.json() as { invitation: { id: string } };
     expect(body.invitation.id).toBeDefined();
+    const { rows: invRows } = await pgAdmin.query<{ id: string; target_email: string }>(
+      `SELECT id, target_email FROM invitations WHERE target_email = $1 LIMIT 1`,
+      ['nomail@sesfail.test'],
+    );
+    expect(invRows).toHaveLength(1);
+    expect(invRows[0]!.id).toBe(body.invitation.id);
   });
 
   it('blocks mechanic role with 403 (requireSuperAdmin)', async () => {
