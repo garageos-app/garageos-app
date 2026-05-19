@@ -5,11 +5,13 @@
 // Helper pattern mirrors invitations-public-read.test.ts (T8):
 //   buildTestServer / createTenantWithLocation / pgAdmin / resetDb.
 //
-// 4 cases:
+// 6 cases:
 //   1. Happy path — creates User, consumes invitation, returns user (no cognitoSub), audit log.
 //   2. Anti-enum 404 — unknown token → 404 user.invitation.not_found.
-//   3. Password policy + rollback — InvalidPasswordException → 422 + AdminDeleteUser called once.
-//   4. Email race 409 — existing active User with same email → 409 user.invitation.email_already_active.
+//   3. Anti-enum 404 — already-consumed invitation → 404.
+//   4. Anti-enum 404 — expired invitation → 404.
+//   5. Password policy + rollback — InvalidPasswordException → 422 + AdminDeleteUser called once.
+//   6. Email race 409 — existing active User with same email → 409 user.invitation.email_already_active.
 
 import {
   AdminCreateUserCommand,
