@@ -35,12 +35,12 @@ describe('requireSuperAdmin middleware', () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it('blocks mechanic with 403 + auth.forbidden.not_super_admin', async () => {
+  it('blocks mechanic with 403 + auth.forbidden.super_admin_required', async () => {
     const app = await buildApp('mechanic');
     const res = await app.inject({ method: 'GET', url: '/admin-route' });
     expect(res.statusCode).toBe(403);
     const body = res.json();
-    expect(body.code).toBe('auth.forbidden.not_super_admin');
+    expect(body.code).toBe('auth.forbidden.super_admin_required');
   });
 
   it('blocks request with missing userRole (chain misconfig) with 403', async () => {
