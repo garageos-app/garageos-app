@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useInvitations, useRevokeInvitation, useUsers } from '@/queries/users-admin';
 
-// TODO (T15): import InviteUserDialog from '@/components/users/InviteUserDialog'
+import { InviteUserDialog } from '@/components/users/InviteUserDialog';
 // TODO (T16): import EditUserDialog from '@/components/users/EditUserDialog'
 
 export function UserManagement() {
@@ -12,8 +12,7 @@ export function UserManagement() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Suppress unused-state warnings until T15/T16 wire up the dialogs
-  void inviteOpen;
+  // Suppress unused-state warning until T16 wires up EditUserDialog
   void editingId;
 
   if (usersQ.isLoading || invsQ.isLoading) return <div>Caricamento...</div>;
@@ -76,7 +75,7 @@ export function UserManagement() {
         )}
       </section>
 
-      {/* TODO (T15): <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} /> */}
+      <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} />
       {/* TODO (T16): {editingId && <EditUserDialog userId={editingId} open onOpenChange={(o) => !o && setEditingId(null)} />} */}
     </div>
   );

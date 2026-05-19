@@ -89,6 +89,20 @@ function mockQueries({
     isError: false,
     isSuccess: false,
   } as unknown as ReturnType<typeof usersAdminModule.useRevokeInvitation>);
+
+  // InviteUserDialog is now rendered by UserManagement (T15). Mock both hooks
+  // it uses so the dialog renders without AuthProvider or network.
+  vi.spyOn(usersAdminModule, 'useInviteUser').mockReturnValue({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  } as unknown as ReturnType<typeof usersAdminModule.useInviteUser>);
+
+  vi.spyOn(usersAdminModule, 'useLocations').mockReturnValue({
+    data: { locations: [] },
+    isPending: false,
+    isError: false,
+    isSuccess: true,
+  } as unknown as ReturnType<typeof usersAdminModule.useLocations>);
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

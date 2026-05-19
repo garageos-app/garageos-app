@@ -39,6 +39,13 @@ export interface InvitationPublicView {
   expiresAt: string;
 }
 
+export interface TenantLocation {
+  id: string;
+  name: string;
+  city: string;
+  isPrimary: boolean;
+}
+
 export interface InviteUserBody {
   email: string;
   firstName: string;
@@ -58,6 +65,15 @@ export interface AcceptInvitationBody {
 }
 
 // ─── Query hooks ──────────────────────────────────────────────────────────────
+
+/** GET /v1/tenants/me/locations — list active locations for the tenant (super_admin only). */
+export function useLocations() {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['tenant-locations'],
+    queryFn: () => apiFetch<{ locations: TenantLocation[] }>('/v1/tenants/me/locations'),
+  });
+}
 
 /** GET /v1/users — list all tenant users (super_admin only). */
 export function useUsers() {

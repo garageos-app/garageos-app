@@ -50,6 +50,7 @@ import customerUpdateRoutes from './routes/v1/customers-update.js';
 import customerRoutes from './routes/v1/customers.js';
 import tenantRoutes from './routes/v1/tenants.js';
 import tenantUpdateRoutes from './routes/v1/tenants-update.js';
+import { tenantsLocationsListRoutes } from './routes/v1/tenants-locations-list.js';
 import vehicleTimelineRoutes from './routes/v1/vehicles-timeline.js';
 import vehicleUpdateRoutes from './routes/v1/vehicles-update.js';
 import vehicleRoutes from './routes/v1/vehicles.js';
@@ -149,6 +150,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(usersAdminDeleteRoutes);
   await app.register(tenantRoutes);
   await app.register(tenantUpdateRoutes);
+  await app.register(tenantsLocationsListRoutes);
   await app.register(customerRoutes);
   await app.register(customerDetailRoutes);
   await app.register(customerUpdateRoutes);
