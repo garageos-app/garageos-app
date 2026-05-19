@@ -105,4 +105,24 @@ describe('Migration 0014 — invitations partial unique index', () => {
 
     expect(inv2Id).toBeDefined();
   });
+
+  it('allows two different tenants to each have a pending internal_user invitation for the same email', async () => {
+    const tenantA = await createTenant();
+    const tenantB = await createTenant();
+    await createInvitation({
+      tenantId: tenantA,
+      invitationType: 'internal_user',
+      targetEmail: 'shared@example.com',
+      token: 'cross-1',
+    });
+
+    const inv2Id = await createInvitation({
+      tenantId: tenantB,
+      invitationType: 'internal_user',
+      targetEmail: 'shared@example.com',
+      token: 'cross-2',
+    });
+
+    expect(inv2Id).toBeDefined();
+  });
 });
