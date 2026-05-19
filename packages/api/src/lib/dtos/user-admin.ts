@@ -1,7 +1,7 @@
 // F-OFF-004 admin-view DTO for users. Includes admin-only fields
 // (status, deletedAt, role, locationId) but never cognitoSub.
 
-import type { Prisma } from '@garageos/database';
+import type { Prisma, UserRole, UserStatus } from '@garageos/database';
 
 export const USER_ADMIN_SELECT = {
   id: true,
@@ -28,9 +28,9 @@ export type UserAdminWireDto = {
   email: string;
   firstName: string;
   lastName: string;
-  role: string;
+  role: UserRole;
   locationId: string | null;
-  status: string;
+  status: UserStatus;
   phone: string | null;
   avatarUrl: string | null;
   lastLoginAt: string | null;

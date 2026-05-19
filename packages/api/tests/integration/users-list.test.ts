@@ -114,7 +114,8 @@ describe('GET /v1/users — admin list', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json() as { users: { email: string }[] };
-    // sa1's tenant has only sa1 — t2's admin must not appear
+    // Validates application-layer tenant scoping (users RLS is SELECT permissive
+    // — handler enforces tenant filter via where: { tenantId }).
     expect(body.users).toHaveLength(1);
     expect(body.users[0]!.email).toBe('sa1@t1.test');
   });
