@@ -44,6 +44,7 @@ import { usersInvitationsRevokeRoutes } from './routes/v1/users-invitations-revo
 import { invitationsPublicReadRoutes } from './routes/v1/invitations-public-read.js';
 import { invitationsPublicAcceptRoutes } from './routes/v1/invitations-public-accept.js';
 import { usersAdminUpdateRoutes } from './routes/v1/users-admin-update.js';
+import { usersAdminDeleteRoutes } from './routes/v1/users-admin-delete.js';
 import customerDetailRoutes from './routes/v1/customers-detail.js';
 import customerUpdateRoutes from './routes/v1/customers-update.js';
 import customerRoutes from './routes/v1/customers.js';
@@ -145,6 +146,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(invitationsPublicReadRoutes);
   await app.register(invitationsPublicAcceptRoutes);
   await app.register(usersAdminUpdateRoutes);
+  await app.register(usersAdminDeleteRoutes);
   await app.register(tenantRoutes);
   await app.register(tenantUpdateRoutes);
   await app.register(customerRoutes);
