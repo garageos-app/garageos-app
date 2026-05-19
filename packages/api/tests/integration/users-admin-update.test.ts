@@ -8,13 +8,14 @@
 //   buildTestServer / createTenantWithLocation / createUser / signTestToken / pgAdmin / resetDb.
 // Cognito stubbed with aws-sdk-client-mock + _resetCognitoClientForTests().
 //
-// 6 cases:
+// 7 cases:
 //   1. Role change mechanic → super_admin: 200, Cognito sync called, audit log.
 //   2. BR-203: demoting last super_admin → 409 user.last_super_admin.
 //   3. BR-204: mechanic role without locationId → 422 user.location_required_for_mechanic.
 //   4. BR-203: status=inactive on last super_admin → 409 user.last_super_admin.
 //   5. 403 for non-admin (mechanic) caller.
 //   6. 404 for cross-tenant target.
+//   7. locationId-only change: Cognito receives custom:location_id but NOT custom:role.
 
 import {
   AdminUpdateUserAttributesCommand,
@@ -85,9 +86,9 @@ describe('PATCH /v1/users/:id — role change mechanic → super_admin', () => {
     const body = res.json() as { user: Record<string, unknown> };
     expect(body.user.role).toBe('super_admin');
 
-    // Cognito sync called with custom:role attribute.
+    // Cognito sync called exactly once with custom:role attribute.
     const cognitoCalls = cognitoMock.commandCalls(AdminUpdateUserAttributesCommand);
-    expect(cognitoCalls.length).toBeGreaterThan(0);
+    expect(cognitoCalls.length).toBe(1);
     const attrs = cognitoCalls[0]?.args[0]?.input.UserAttributes ?? [];
     expect(attrs).toEqual(expect.arrayContaining([{ Name: 'custom:role', Value: 'super_admin' }]));
 
@@ -276,5 +277,85 @@ describe('PATCH /v1/users/:id — 404 cross-tenant', () => {
     });
 
     expect(res.statusCode).toBe(404);
+  });
+});
+
+// ─── locationId-only change ───────────────────────────────────────────────────
+
+describe('PATCH /v1/users/:id locationId-only', () => {
+  const TEST_IP = '10.20.30.16';
+
+  it('changes locationId only, syncs Cognito with custom:location_id but NOT custom:role, emits audit', async () => {
+    const { tenantId, locationId: locationAId } = await createTenantWithLocation('ua-loc-a');
+    const adminSub = `sa-loc-${crypto.randomUUID()}`;
+    await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
+    const { userId: mechId } = await createUser({
+      tenantId,
+      cognitoSub: `mech-loc-${crypto.randomUUID()}`,
+      email: 'mech-loc@test.it',
+      role: 'mechanic',
+      locationId: locationAId,
+    });
+
+    // Create a second location within the SAME tenant (not a new tenant).
+    // The location_invalid guard (line 119-126 of the handler) requires the
+    // locationId to belong to the caller's tenant and be active.
+    const { rows: locRows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO locations
+         (id, tenant_id, name, address_line, city, province, postal_code,
+          country, is_primary, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, 'Sede B', 'Via Test 2', 'Roma', 'RM',
+          '00100', 'IT', false, 'active'::"LocationStatus", NOW(), NOW())
+       RETURNING id`,
+      [tenantId],
+    );
+    const locationBId = locRows[0]!.id;
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/users/${mechId}`,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: TEST_IP,
+      // Only locationId — no role field.
+      payload: { locationId: locationBId },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { user: Record<string, unknown> };
+    expect(body.user.locationId).toBe(locationBId);
+
+    // Cognito sync called exactly once with custom:location_id.
+    const cognitoCalls = cognitoMock.commandCalls(AdminUpdateUserAttributesCommand);
+    expect(cognitoCalls.length).toBe(1);
+    const attrs = cognitoCalls[0]?.args[0]?.input.UserAttributes ?? [];
+    expect(attrs).toEqual(
+      expect.arrayContaining([{ Name: 'custom:location_id', Value: locationBId }]),
+    );
+    // custom:role must NOT be present when only locationId was changed.
+    expect(attrs.some((a) => a.Name === 'custom:role')).toBe(false);
+
+    // Audit row for location change, not role change.
+    const { rows: auditRows } = await pgAdmin.query<{ action: string; entity_id: string }>(
+      `SELECT action, entity_id FROM audit_logs
+        WHERE entity_type = 'user' AND entity_id = $1 AND action = 'user_location_changed'`,
+      [mechId],
+    );
+    expect(auditRows).toHaveLength(1);
+
+    // No spurious user_role_changed row.
+    const { rows: roleAuditRows } = await pgAdmin.query<{ action: string }>(
+      `SELECT action FROM audit_logs
+        WHERE entity_type = 'user' AND entity_id = $1 AND action = 'user_role_changed'`,
+      [mechId],
+    );
+    expect(roleAuditRows).toHaveLength(0);
   });
 });
