@@ -234,11 +234,14 @@ describe('POST /v1/invitations/:token/accept — password policy + rollback', ()
     cognito.on(AdminSetUserPasswordCommand).rejects(pwErr);
     cognito.on(AdminDeleteUserCommand).resolves({});
 
+    // Password passes Zod min(8) so Cognito gets the call — the mocked
+    // AdminSetUserPasswordCommand then rejects with InvalidPasswordException
+    // and the handler maps that to 422 user.invitation.accept_password_policy.
     const res = await app.inject({
       method: 'POST',
       url: '/v1/invitations/weak-tok/accept',
       remoteAddress: TEST_IP,
-      payload: { password: 'weak' },
+      payload: { password: 'weakweak' },
     });
 
     expect(res.statusCode).toBe(422);
