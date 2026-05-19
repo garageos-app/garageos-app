@@ -21,7 +21,6 @@ export function UserManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Utenti</h2>
-        {/* TODO (T15): open InviteUserDialog on click */}
         <Button onClick={() => setInviteOpen(true)}>Invita utente</Button>
       </div>
 
