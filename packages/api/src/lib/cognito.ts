@@ -10,6 +10,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider';
 
 import { env } from '../config/env.js';
+import type { UserRole } from '../middleware/tenant-context.js';
 
 // Lazy singleton — Cognito SDK clients are heavy (HTTP/2 connections,
 // credential providers) and we want exactly one per Lambda warm
@@ -158,7 +159,7 @@ export interface CreateOfficineCognitoUserArgs {
   firstName: string;
   lastName: string;
   tenantId: string;
-  role: 'super_admin' | 'mechanic';
+  role: UserRole;
   locationId: string | null;
 }
 
@@ -188,7 +189,9 @@ export async function createOfficineCognitoUser(
       }),
     );
     const sub = out.User?.Attributes?.find((a) => a.Name === 'sub')?.Value;
-    if (!sub) throw new Error('cognito sub missing from AdminCreateUser response');
+    if (!sub) {
+      throw new CognitoUnavailableError('cognito sub missing from AdminCreateUser response');
+    }
     return { cognitoSub: sub };
   } catch (err) {
     if (err instanceof UsernameExistsException) {
@@ -235,7 +238,7 @@ export async function setOfficineCognitoPassword(args: {
 export async function updateOfficineUserRoleAndLocation(args: {
   poolId: string;
   email: string;
-  role?: 'super_admin' | 'mechanic';
+  role?: UserRole;
   locationId?: string | null;
 }): Promise<void> {
   const attributes: { Name: string; Value: string }[] = [];

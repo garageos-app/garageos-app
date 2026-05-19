@@ -111,4 +111,13 @@ describe('Cognito officine user lifecycle helpers', () => {
     expect(attrs.find((a) => a.Name === 'custom:role')).toBeUndefined();
     expect(attrs.find((a) => a.Name === 'custom:location_id')?.Value).toBe('loc-99');
   });
+
+  it('updateOfficineUserRoleAndLocation makes no API call when both role and locationId are undefined', async () => {
+    cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
+    await updateOfficineUserRoleAndLocation({
+      poolId: 'pool-officine',
+      email: 'mario@example.com',
+    });
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand).length).toBe(0);
+  });
 });
