@@ -134,6 +134,16 @@ export function AcceptInvitation() {
               <span className="text-muted-foreground">Ruolo</span>
               <span className="font-medium">{ROLE_LABEL[invitation.role] ?? invitation.role}</span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Officina</span>
+              <span className="font-medium">{invitation.tenantName}</span>
+            </div>
+            {invitation.locationName !== null && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Sede</span>
+                <span className="font-medium">{invitation.locationName}</span>
+              </div>
+            )}
           </div>
         )}
 

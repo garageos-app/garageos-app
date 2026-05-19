@@ -32,11 +32,12 @@ vi.mock('sonner', () => ({
 const TOKEN = 'test-token-abc123';
 
 const mockInvitation: InvitationPublicView = {
-  token: TOKEN,
   targetEmail: 'mario@officina.test',
   firstName: 'Mario',
   lastName: 'Rossi',
   role: 'mechanic',
+  locationName: 'Sede Nord',
+  tenantName: 'Officina Rossi',
   expiresAt: '2026-05-26T10:00:00Z',
 };
 
@@ -117,6 +118,20 @@ describe('AcceptInvitation page', () => {
     expect(screen.getByText('Mario Rossi')).toBeInTheDocument();
     expect(screen.getByText('mario@officina.test')).toBeInTheDocument();
     expect(screen.getByText('Meccanico')).toBeInTheDocument();
+    expect(screen.getByText('Officina Rossi')).toBeInTheDocument();
+    expect(screen.getByText('Sede Nord')).toBeInTheDocument();
+  });
+
+  it('does not render Sede row when locationName is null (super_admin role)', () => {
+    const superAdminInvitation: InvitationPublicView = {
+      ...mockInvitation,
+      role: 'super_admin',
+      locationName: null,
+    };
+    mockHooks({ invitationData: superAdminInvitation });
+    render(wrap(<AcceptInvitation />));
+    expect(screen.queryByText('Sede')).not.toBeInTheDocument();
+    expect(screen.getByText('Super Admin')).toBeInTheDocument();
   });
 
   it('renders password and confirm password inputs', () => {

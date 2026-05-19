@@ -31,11 +31,12 @@ export interface Invitation {
 
 /** Shape returned by GET /v1/invitations/:token (public, pre-accept read). */
 export interface InvitationPublicView {
-  token: string;
   targetEmail: string;
   firstName: string;
   lastName: string;
   role: 'super_admin' | 'mechanic';
+  locationName: string | null;
+  tenantName: string;
   expiresAt: string;
 }
 
@@ -109,6 +110,7 @@ export function useInvitation(token: string) {
         code?: unknown;
         detail?: unknown;
         message?: unknown;
+        invitation?: unknown;
       };
       if (!res.ok) {
         const code = typeof body?.code === 'string' ? body.code : `http.${res.status}`;
@@ -120,7 +122,7 @@ export function useInvitation(token: string) {
               : `Errore ${res.status}`;
         throw new ApiError(code, res.status, message);
       }
-      return body as InvitationPublicView;
+      return body.invitation as InvitationPublicView;
     },
     enabled: Boolean(token),
     retry: false,
