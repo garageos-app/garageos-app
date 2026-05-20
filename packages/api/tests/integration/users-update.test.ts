@@ -127,9 +127,11 @@ describe('PATCH /v1/users/me (integration)', () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it('404: cognitoSub valid but other tenantId (cross-tenant guard)', async () => {
+  it('401: cognitoSub valid but other tenantId (T7 middleware)', async () => {
     // Two tenants. Caller JWT carries tenantA but the user row with the
-    // same cognitoSub lives under tenantB.
+    // same cognitoSub lives under tenantB. T7 tenantContext middleware
+    // performs (cognitoSub, tenantId) lookup — the row is not found under
+    // tenantA → 401 before the handler is reached.
     const { tenantId: tenantA } = await createTenantWithLocation('cross-A');
     const { tenantId: tenantB } = await createTenantWithLocation('cross-B');
     const cognitoSub = `cross-sub-${crypto.randomUUID()}`;
@@ -146,6 +148,6 @@ describe('PATCH /v1/users/me (integration)', () => {
       role: 'mechanic',
     });
     const res = await patch(token, { firstName: 'X' });
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(401);
   });
 });

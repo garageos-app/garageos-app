@@ -28,7 +28,7 @@ describe('tenant-context — user status reactive lookup', () => {
   const TEST_IP = '10.20.50.1';
 
   it('rejects authenticated requests after target is soft-deleted (status=inactive + deletedAt)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('mw-soft');
+    const { tenantId } = await createTenantWithLocation('mw-soft');
 
     // Two super_admin so we can soft-delete one safely (no BR-203 issue).
     const otherSub = `sa-keep-${crypto.randomUUID()}`;
@@ -39,21 +39,19 @@ describe('tenant-context — user status reactive lookup', () => {
       role: 'super_admin',
     });
 
-    const targetSub = `mech-target-${crypto.randomUUID()}`;
+    const targetSub = `sa-target-${crypto.randomUUID()}`;
     const { userId: targetId } = await createUser({
       tenantId,
       cognitoSub: targetSub,
-      email: 'mech-target@test.it',
-      role: 'mechanic',
-      locationId,
+      email: 'sa-target@test.it',
+      role: 'super_admin',
     });
 
     const targetToken = await signTestToken({
       pool: 'officine',
       sub: targetSub,
       tenantId,
-      role: 'mechanic',
-      locationId,
+      role: 'super_admin',
     });
 
     // Pre-soft-delete: request works.
@@ -81,7 +79,7 @@ describe('tenant-context — user status reactive lookup', () => {
   });
 
   it('rejects authenticated requests after PATCH status=inactive (no deletedAt)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('mw-inact');
+    const { tenantId } = await createTenantWithLocation('mw-inact');
 
     const otherSub = `sa-other-${crypto.randomUUID()}`;
     await createUser({
@@ -91,21 +89,19 @@ describe('tenant-context — user status reactive lookup', () => {
       role: 'super_admin',
     });
 
-    const targetSub = `mech-inact-${crypto.randomUUID()}`;
+    const targetSub = `sa-inact-${crypto.randomUUID()}`;
     const { userId: targetId } = await createUser({
       tenantId,
       cognitoSub: targetSub,
-      email: 'mech-inact@test.it',
-      role: 'mechanic',
-      locationId,
+      email: 'sa-inact@test.it',
+      role: 'super_admin',
     });
 
     const targetToken = await signTestToken({
       pool: 'officine',
       sub: targetSub,
       tenantId,
-      role: 'mechanic',
-      locationId,
+      role: 'super_admin',
     });
 
     // Inactivate via direct DB update (sim PATCH status=inactive effect).

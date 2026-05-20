@@ -112,11 +112,23 @@ describe('DELETE /v1/users/:id — happy path soft-delete', () => {
 });
 
 // ─── BR-203: deleting last active super_admin ────────────────────────────────
+//
+// NOTE: The serial BR-203 "last super_admin" path is no longer reachable via
+// legitimate non-concurrent requests after the T7 reactive middleware was
+// introduced (F-OFF-004 follow-ups Item 1). An actor whose DB row is
+// soft-deleted is blocked at tenantContext middleware (401) before reaching
+// the BR-203 check in the route handler.
+//
+// The concurrent-race scenario (two simultaneous DELETE requests) is covered
+// separately in: tests/integration/users-admin-br-203-race.test.ts
+//
+// This test is repurposed to verify the T7 middleware behavior itself:
+// a soft-deleted actor's JWT is rejected at middleware regardless of intent.
 
 describe('DELETE /v1/users/:id — BR-203 last super_admin guard', () => {
   const TEST_IP = '10.20.31.11';
 
-  it('returns 409 user.last_super_admin when only one active super_admin remains', async () => {
+  it('returns 401 when actor has been soft-deleted (T7 middleware closes JWT-vs-DB discrepancy)', async () => {
     const { tenantId } = await createTenantWithLocation('del-br203');
 
     // Actor: a second super_admin who will issue the DELETE.
@@ -162,8 +174,8 @@ describe('DELETE /v1/users/:id — BR-203 last super_admin guard', () => {
       remoteAddress: TEST_IP,
     });
 
-    expect(res.statusCode).toBe(409);
-    expect((res.json() as { code: string }).code).toBe('user.last_super_admin');
+    // T7 middleware: actor row is inactive+deletedAt → 401 before BR-203 fires.
+    expect(res.statusCode).toBe(401);
   });
 });
 
