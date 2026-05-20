@@ -156,7 +156,11 @@ export function useRevokeInvitation() {
   const apiFetch = useApiFetch();
   const qc = useQueryClient();
   return useMutation<void, ApiError, string>({
-    mutationFn: (id) => apiFetch<void>(`/v1/users/invitations/${id}`, { method: 'DELETE' }),
+    // body: '{}' — apiFetch hardcodes Content-Type: application/json and
+    // Fastify rejects requests with that header but no body. See
+    // queries/avatarUpload.ts:123 for the same workaround.
+    mutationFn: (id) =>
+      apiFetch<void>(`/v1/users/invitations/${id}`, { method: 'DELETE', body: '{}' }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['invitations'] });
       toast.success('Invito revocato');
@@ -192,7 +196,9 @@ export function useDeleteUser() {
   const apiFetch = useApiFetch();
   const qc = useQueryClient();
   return useMutation<void, ApiError, string>({
-    mutationFn: (id) => apiFetch<void>(`/v1/users/${id}`, { method: 'DELETE' }),
+    // body: '{}' — apiFetch hardcodes Content-Type: application/json and
+    // Fastify rejects requests with that header but no body.
+    mutationFn: (id) => apiFetch<void>(`/v1/users/${id}`, { method: 'DELETE', body: '{}' }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['users'] });
       toast.success('Utente rimosso');
