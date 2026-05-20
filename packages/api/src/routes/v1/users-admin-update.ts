@@ -25,7 +25,7 @@ import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 import { requireSuperAdmin } from '../../middleware/require-super-admin.js';
-import { updateOfficineUserRoleAndLocation } from '../../lib/cognito.js';
+import { signOutOfficineUser, updateOfficineUserRoleAndLocation } from '../../lib/cognito.js';
 import { USER_ADMIN_SELECT, serializeUserAdmin } from '../../lib/dtos/user-admin.js';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
@@ -66,7 +66,14 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
         // Lookup target user (same tenant, not soft-deleted).
         const target = await tx.user.findFirst({
           where: { id: targetId, tenantId, deletedAt: null },
-          select: { id: true, email: true, role: true, locationId: true, status: true },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            locationId: true,
+            status: true,
+            cognitoSub: true,
+          },
         });
         if (!target) {
           throw businessError('user.not_found', 404, 'Utente non trovato.');
@@ -189,8 +196,11 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
         return {
           user: updated,
           targetEmail: target.email,
+          targetCognitoSub: target.cognitoSub,
           roleChanged: body.role !== undefined && body.role !== target.role,
           locationChanged: body.locationId !== undefined && body.locationId !== target.locationId,
+          statusBecameInactive:
+            body.status !== undefined && target.status === 'active' && body.status === 'inactive',
         };
       });
 
@@ -209,6 +219,25 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
           request.log.error(
             { err, targetId },
             'cognito user attribute sync failed (DB updated; takes effect on next JWT refresh)',
+          );
+        }
+      }
+
+      // Item 1 proactive: invalidate all Cognito refresh tokens on
+      // active → inactive transition. Best-effort, independent from the
+      // role/location sync above. See follow-ups spec 2026-05-20.
+      // The truthy check on targetCognitoSub is defensive; users.cognito_sub
+      // is non-nullable at the schema level.
+      if (result.statusBecameInactive && result.targetCognitoSub) {
+        try {
+          await signOutOfficineUser({
+            poolId: env.COGNITO_OFFICINE_POOL_ID,
+            email: result.targetEmail,
+          });
+        } catch (err) {
+          request.log.error(
+            { err, targetId },
+            'cognito global signout on status=inactive failed (DB updated; user retains access until access token TTL)',
           );
         }
       }

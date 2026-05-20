@@ -19,6 +19,7 @@
 
 import {
   AdminUpdateUserAttributesCommand,
+  AdminUserGlobalSignOutCommand,
   CognitoIdentityProviderClient,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { mockClient } from 'aws-sdk-client-mock';
@@ -48,6 +49,7 @@ beforeEach(async () => {
   cognitoMock.reset();
   _resetCognitoClientForTests();
   cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
+  cognitoMock.on(AdminUserGlobalSignOutCommand).resolves({});
 });
 
 // ─── Role change mechanic → super_admin ──────────────────────────────────────
@@ -357,5 +359,97 @@ describe('PATCH /v1/users/:id locationId-only', () => {
       [mechId],
     );
     expect(roleAuditRows).toHaveLength(0);
+  });
+});
+
+// ─── Item 1 proactive: Cognito GlobalSignOut on status active → inactive ─────
+
+describe('PATCH /v1/users/:id — Cognito GlobalSignOut on status active → inactive', () => {
+  const TEST_IP = '10.20.32.50';
+
+  it('calls AdminUserGlobalSignOutCommand when status transitions active → inactive', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('upd-cog-inact');
+
+    const adminSub = `sa-upd-cog-${crypto.randomUUID()}`;
+    await createUser({
+      tenantId,
+      cognitoSub: adminSub,
+      email: 'admin-upd-cog@test.it',
+      role: 'super_admin',
+    });
+
+    const targetSub = `mech-upd-cog-${crypto.randomUUID()}`;
+    const { userId: targetId } = await createUser({
+      tenantId,
+      cognitoSub: targetSub,
+      email: 'mech-upd-cog@test.it',
+      role: 'mechanic',
+      locationId,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/users/${targetId}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { status: 'inactive' },
+      remoteAddress: TEST_IP,
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    const calls = cognitoMock.commandCalls(AdminUserGlobalSignOutCommand);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args[0].input.Username).toBe('mech-upd-cog@test.it');
+  });
+
+  it('does NOT call AdminUserGlobalSignOutCommand on role-only PATCH (status unchanged active)', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('upd-cog-rolesonly');
+
+    const adminSub = `sa-upd-roles-${crypto.randomUUID()}`;
+    await createUser({
+      tenantId,
+      cognitoSub: adminSub,
+      email: 'admin-upd-roles@test.it',
+      role: 'super_admin',
+    });
+
+    const targetSub = `mech-upd-roles-${crypto.randomUUID()}`;
+    const { userId: targetId } = await createUser({
+      tenantId,
+      cognitoSub: targetSub,
+      email: 'mech-upd-roles@test.it',
+      role: 'mechanic',
+      locationId,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/users/${targetId}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { role: 'super_admin', locationId: null },
+      remoteAddress: TEST_IP,
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    // Existing updateOfficineUserRoleAndLocation call uses
+    // AdminUpdateUserAttributesCommand — assert specifically that
+    // signout was NOT called for role-only change.
+    const signoutCalls = cognitoMock.commandCalls(AdminUserGlobalSignOutCommand);
+    expect(signoutCalls).toHaveLength(0);
   });
 });
