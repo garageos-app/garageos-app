@@ -502,6 +502,9 @@ describe('PATCH /v1/users/:id — Cognito GlobalSignOut on status active → ina
 
     // PATCH in DB succeeded; Cognito signout failed best-effort.
     expect(res.statusCode).toBe(200);
+
+    // Independence: disable still fires even when signOut threw.
+    expect(cognitoMock.commandCalls(AdminDisableUserCommand)).toHaveLength(1);
   });
 
   it('still returns 200 even if AdminDisableUserCommand throws (best-effort)', async () => {

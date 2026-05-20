@@ -375,6 +375,9 @@ describe('DELETE /v1/users/:id — Cognito GlobalSignOut proactive lockout', () 
 
     // Soft-delete in DB succeeded; Cognito signout failed best-effort.
     expect(res.statusCode).toBe(204);
+
+    // Independence: disable still fires even when signOut threw.
+    expect(cognitoMock.commandCalls(AdminDisableUserCommand)).toHaveLength(1);
   });
 
   it('still returns 204 even if AdminDisableUserCommand throws (best-effort)', async () => {
