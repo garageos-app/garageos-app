@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 
+import { hashToken } from '../../src/lib/secure-tokens.js';
 import { buildTestServer } from './fixtures.js';
 import { createTenantWithLocation, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
@@ -38,10 +39,11 @@ async function createInvitation(params: {
     expiresAt = new Date(Date.now() + 7 * 86400000),
     acceptedAt = null,
   } = params;
+  const tokenHash = hashToken(token);
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO invitations
        (id, tenant_id, invitation_type, target_email, first_name, last_name,
-        role, location_id, token, expires_at, accepted_at, created_at)
+        role, location_id, token_hash, expires_at, accepted_at, created_at)
      VALUES (gen_random_uuid(), $1, $2::"InvitationType", $3, $4, $5,
         $6::"UserRole", $7, $8, $9, $10, NOW())
      RETURNING id`,
@@ -53,7 +55,7 @@ async function createInvitation(params: {
       lastName,
       role,
       locationId,
-      token,
+      tokenHash,
       expiresAt,
       acceptedAt,
     ],
@@ -74,14 +76,15 @@ async function createCustomerAppInvitation(params: {
     token = `tok-${crypto.randomUUID()}`,
     expiresAt = new Date(Date.now() + 7 * 86400000),
   } = params;
+  const tokenHash = hashToken(token);
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO invitations
        (id, tenant_id, invitation_type, target_email,
-        token, expires_at, created_at)
+        token_hash, expires_at, created_at)
      VALUES (gen_random_uuid(), $1, 'customer_app'::"InvitationType", $2,
         $3, $4, NOW())
      RETURNING id`,
-    [tenantId, targetEmail, token, expiresAt],
+    [tenantId, targetEmail, tokenHash, expiresAt],
   );
   return { invitationId: rows[0]!.id, token };
 }

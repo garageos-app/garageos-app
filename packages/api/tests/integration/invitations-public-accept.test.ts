@@ -25,6 +25,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { _resetCognitoClientForTests } from '../../src/lib/cognito.js';
+import { hashToken } from '../../src/lib/secure-tokens.js';
 import { buildTestServer } from './fixtures.js';
 import { createTenantWithLocation, createUser, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
@@ -76,14 +77,25 @@ async function createInvitation(params: {
     expiresAt = new Date(Date.now() + 7 * 86400000),
     acceptedAt = null,
   } = params;
+  const tokenHash = hashToken(token);
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO invitations
        (id, tenant_id, invitation_type, target_email, first_name, last_name,
-        role, location_id, token, expires_at, accepted_at, created_at)
+        role, location_id, token_hash, expires_at, accepted_at, created_at)
      VALUES (gen_random_uuid(), $1, 'internal_user'::"InvitationType", $2, $3, $4,
         $5::"UserRole", $6, $7, $8, $9, NOW())
      RETURNING id`,
-    [tenantId, targetEmail, firstName, lastName, role, locationId, token, expiresAt, acceptedAt],
+    [
+      tenantId,
+      targetEmail,
+      firstName,
+      lastName,
+      role,
+      locationId,
+      tokenHash,
+      expiresAt,
+      acceptedAt,
+    ],
   );
   return { invitationId: rows[0]!.id };
 }
