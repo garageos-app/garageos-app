@@ -33,7 +33,7 @@ const VEHICLE_ID = '88888888-8888-4888-8888-888888888888';
 //   - tx.attachment.create → returns the created row
 
 interface MockTx {
-  user: { findFirstOrThrow: ReturnType<typeof vi.fn> };
+  user: { findFirstOrThrow: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   intervention: {
     findFirstOrThrow: ReturnType<typeof vi.fn>;
     findUniqueOrThrow: ReturnType<typeof vi.fn>;
@@ -52,6 +52,8 @@ function buildMockTx(overrides: Partial<MockTx> = {}): MockTx {
   return {
     user: {
       findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID, role: 'super_admin' }),
+      // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
+      findFirst: vi.fn().mockResolvedValue({ id: USER_ID }),
       ...overrides.user,
     },
     intervention: {
@@ -788,6 +790,7 @@ describe('POST /v1/attachments/:id/confirm — cross-pool', () => {
       {
         user: {
           findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID }),
+          findFirst: vi.fn().mockResolvedValue({ id: USER_ID }),
         },
         attachment: {
           create: vi.fn(),

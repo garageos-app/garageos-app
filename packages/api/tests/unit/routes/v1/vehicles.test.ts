@@ -16,7 +16,7 @@ const CUSTOMER_ID = '55555555-5555-4555-8555-555555555555';
 const LOCATION_ID = '66666666-6666-4666-8666-666666666666';
 
 interface FakePrisma {
-  user: { findFirstOrThrow: ReturnType<typeof vi.fn> };
+  user: { findFirstOrThrow: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   location: { findUnique: ReturnType<typeof vi.fn> };
   vehicle: {
     findMany: ReturnType<typeof vi.fn>;
@@ -52,6 +52,8 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
   return {
     user: {
       findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID, locationId: LOCATION_ID }),
+      // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
+      findFirst: vi.fn().mockResolvedValue({ id: USER_ID }),
     },
     location: {
       findUnique: vi.fn().mockResolvedValue({ id: LOCATION_ID, tenantId: TENANT_ID }),

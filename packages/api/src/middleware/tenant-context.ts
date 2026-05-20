@@ -69,6 +69,36 @@ export async function tenantContext(request: FastifyRequest, reply: FastifyReply
     request.locationId = loc;
   }
 
+  // F-OFF-004 follow-ups Item 1 (security regression closure):
+  // Cognito access tokens remain valid until their TTL (~1h default)
+  // even after a super_admin soft-deletes or sets status=inactive on the
+  // user. Reactive DB lookup here makes the API surface the source of
+  // truth — disabled/deleted users get 401 on the next request regardless
+  // of access-token freshness.
+  //
+  // Companion proactive measure: users-admin-delete + users-admin-update
+  // call AdminUserGlobalSignOut to invalidate refresh tokens.
+  //
+  // No new error code: response shape matches existing JWT failures
+  // (401 Unauthorized) to avoid leaking the distinction between
+  // "token expired" and "user disabled" to clients.
+  const userRow = await request.server.prisma.user.findFirst({
+    where: {
+      cognitoSub: parsed.data.sub,
+      tenantId: parsed.data['custom:tenant_id'],
+      status: 'active',
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!userRow) {
+    request.log.warn(
+      { cognitoSub: parsed.data.sub, tenantId: parsed.data['custom:tenant_id'] },
+      'tenant-context: user inactive or deleted — denying request',
+    );
+    throw unauthorizedError('User inactive or not found');
+  }
+
   void reply;
 }
 

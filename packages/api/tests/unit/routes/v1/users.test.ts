@@ -30,7 +30,10 @@ interface AppDeps {
 
 async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   const findFirstOrThrow = deps.findFirstOrThrow ?? vi.fn().mockResolvedValue(USER_ROW);
-  const fakePrisma = { user: { findFirstOrThrow } };
+  // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
+  const fakePrisma = {
+    user: { findFirstOrThrow, findFirst: vi.fn().mockResolvedValue({ id: USER_ROW.id }) },
+  };
   const fakeWithContext = vi.fn(async (_ctx, fn) => fn(fakePrisma));
 
   const defaultVerifier: JwtVerifier = {
@@ -164,7 +167,10 @@ describe('GET /v1/users/me', () => {
   it('invokes withContext with the tenantId from the JWT', async () => {
     // Spy on the withContext argument — we need a fresh inline fake
     const findFirstOrThrow = vi.fn().mockResolvedValue(USER_ROW);
-    const fakePrisma = { user: { findFirstOrThrow } };
+    // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
+    const fakePrisma = {
+      user: { findFirstOrThrow, findFirst: vi.fn().mockResolvedValue({ id: USER_ROW.id }) },
+    };
     const withContextSpy = vi.fn(async (_ctx, fn) => fn(fakePrisma));
 
     const app2 = Fastify({ logger: false });

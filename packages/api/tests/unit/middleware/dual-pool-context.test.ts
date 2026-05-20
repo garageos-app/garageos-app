@@ -1,6 +1,6 @@
 import sensible from '@fastify/sensible';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { dualPoolContext } from '../../../src/middleware/dual-pool-context.js';
 import type { AuthPool, CognitoIdTokenPayload } from '../../../src/plugins/auth.js';
@@ -9,6 +9,12 @@ import { registerErrorHandler } from '../../../src/plugins/error-handler.js';
 const TENANT_ID = '00000000-0000-4000-8000-00000000000a';
 const CUSTOMER_ID = '00000000-0000-4000-8000-00000000000b';
 const COGNITO_SUB = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+// Prisma stub required by tenantContext (officine pool path) for the
+// F-OFF-004 reactive user-status lookup. Default returns active user.
+const prismaStub = {
+  user: { findFirst: vi.fn() },
+};
 
 interface SetupOpts {
   authPool: AuthPool | undefined;
@@ -19,6 +25,7 @@ async function buildApp(opts: SetupOpts): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
   registerErrorHandler(app);
+  app.decorate('prisma', prismaStub as unknown as never);
   app.get(
     '/_probe',
     {
@@ -45,6 +52,8 @@ describe('dualPoolContext middleware', () => {
 
   beforeEach(() => {
     app = undefined;
+    prismaStub.user.findFirst.mockReset();
+    prismaStub.user.findFirst.mockResolvedValue({ id: 'default-user-uuid' });
   });
 
   afterEach(async () => {
