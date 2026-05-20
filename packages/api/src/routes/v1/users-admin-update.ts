@@ -25,7 +25,11 @@ import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 import { requireSuperAdmin } from '../../middleware/require-super-admin.js';
-import { signOutOfficineUser, updateOfficineUserRoleAndLocation } from '../../lib/cognito.js';
+import {
+  disableOfficineUser,
+  signOutOfficineUser,
+  updateOfficineUserRoleAndLocation,
+} from '../../lib/cognito.js';
 import { USER_ADMIN_SELECT, serializeUserAdmin } from '../../lib/dtos/user-admin.js';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
@@ -223,11 +227,9 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      // Item 1 proactive: invalidate all Cognito refresh tokens on
-      // active → inactive transition. Best-effort, independent from the
-      // role/location sync above. See follow-ups spec 2026-05-20.
-      // The truthy check on targetCognitoSub is defensive; users.cognito_sub
-      // is non-nullable at the schema level.
+      // Item 1 (PR1) + Item 5 (PR2) proactive: invalidate refresh tokens
+      // AND disable the user on active→inactive transition. Same rationale
+      // as users-admin-delete.ts — see that file for the comment.
       if (result.statusBecameInactive && result.targetCognitoSub) {
         try {
           await signOutOfficineUser({
@@ -238,6 +240,17 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
           request.log.error(
             { err, targetId },
             'cognito global signout on status=inactive failed (DB updated; user retains access until access token TTL)',
+          );
+        }
+        try {
+          await disableOfficineUser({
+            poolId: env.COGNITO_OFFICINE_POOL_ID,
+            email: result.targetEmail,
+          });
+        } catch (err) {
+          request.log.error(
+            { err, targetId },
+            'cognito user disable on status=inactive failed (DB updated; user may successfully re-login until next disable retry)',
           );
         }
       }

@@ -17,7 +17,7 @@ import { z } from 'zod';
 
 import { env } from '../../config/env.js';
 import { businessError } from '../../lib/business-error.js';
-import { signOutOfficineUser } from '../../lib/cognito.js';
+import { disableOfficineUser, signOutOfficineUser } from '../../lib/cognito.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -118,10 +118,12 @@ export const usersAdminDeleteRoutes: FastifyPluginAsync = async (app) => {
         return { email: target.email, cognitoSub: target.cognitoSub };
       });
 
-      // Item 1 proactive: invalidate all Cognito refresh tokens for the
-      // target. Best-effort — DB soft-delete is the source of truth and
-      // the reactive tenant-context lookup closes the residual window.
-      // The truthy check is defensive; users.cognito_sub is non-nullable
+      // Item 1 (PR1) + Item 5 (PR2) proactive: invalidate refresh tokens
+      // AND disable the user so re-login attempts surface Cognito's native
+      // "User is disabled" error (treated as wrong-password by the frontend,
+      // preserves anti-enum at the API surface). Both calls are best-effort
+      // independent — DB soft-delete is the source of truth. The truthy
+      // check on cognitoSub is defensive; users.cognito_sub is non-nullable
       // at the schema level (PR #111 populates it on invitation accept).
       if (targetInfo.cognitoSub) {
         try {
@@ -133,6 +135,17 @@ export const usersAdminDeleteRoutes: FastifyPluginAsync = async (app) => {
           request.log.error(
             { err, targetId },
             'cognito global signout failed (DB soft-delete already committed; user retains access until access token TTL)',
+          );
+        }
+        try {
+          await disableOfficineUser({
+            poolId: env.COGNITO_OFFICINE_POOL_ID,
+            email: targetInfo.email,
+          });
+        } catch (err) {
+          request.log.error(
+            { err, targetId },
+            'cognito user disable failed (DB soft-delete already committed; user may successfully re-login until next disable retry)',
           );
         }
       }
