@@ -121,7 +121,8 @@ export const usersAdminDeleteRoutes: FastifyPluginAsync = async (app) => {
       // Item 1 proactive: invalidate all Cognito refresh tokens for the
       // target. Best-effort — DB soft-delete is the source of truth and
       // the reactive tenant-context lookup closes the residual window.
-      // Skip if target never accepted invitation (no cognito_sub).
+      // The truthy check is defensive; users.cognito_sub is non-nullable
+      // at the schema level (PR #111 populates it on invitation accept).
       if (targetInfo.cognitoSub) {
         try {
           await signOutOfficineUser({
