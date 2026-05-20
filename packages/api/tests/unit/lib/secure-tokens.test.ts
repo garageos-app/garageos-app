@@ -21,6 +21,10 @@ describe('secure-tokens.hashToken', () => {
   it('different inputs yield different hashes', () => {
     expect(hashToken('a')).not.toBe(hashToken('b'));
   });
+
+  it('handles empty string with the known SHA-256 of empty input', () => {
+    expect(hashToken('')).toBe('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+  });
 });
 
 describe('secure-tokens.generateInvitationToken', () => {
@@ -34,7 +38,10 @@ describe('secure-tokens.generateInvitationToken', () => {
     // randomUUID() = 36 chars (8-4-4-4-12 with 4 dashes) + randomUUID().replace('-','') = 32 chars
     // total = 68 chars
     expect(plaintext).toHaveLength(68);
-    expect(plaintext).toMatch(/^[0-9a-f-]+$/);
+    // Strict shape: <UUID-with-dashes><UUID-without-dashes>
+    expect(plaintext).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[0-9a-f]{32}$/,
+    );
   });
 
   it('two invocations produce different plaintexts (uniqueness)', () => {
