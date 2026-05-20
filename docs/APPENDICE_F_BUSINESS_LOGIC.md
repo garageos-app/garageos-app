@@ -775,6 +775,8 @@ Il Super Admin può invitare nuovi utenti via email. Il flusso effettivo (F-OFF-
 5. Backend chiama `AdminCreateUser` + `AdminSetUserPassword` in Cognito, crea riga `users` con `status='active'` e `cognito_sub` popolato, marca `invitations.accepted_at`
 6. Se link scada prima dell'attivazione: `invitation.expires_at < now()` → 410 Gone, super_admin deve creare un nuovo invito
 
+> **Storage del token** (post PR2, 2026-05-20): il token del magic-link è memorizzato hashato (SHA-256) at-rest in `invitations.token_hash`. Il plaintext esiste soltanto nell'URL del magic-link spedito via SES e nel body della richiesta `AcceptInvitation`. La CLI operatore `scripts/admin/get-invitation-link.ts` ruota il token a ogni invocazione (riga di audit `user_invitation_token_rotated`). Vedi `docs/superpowers/specs/2026-05-20-pr2-token-hash-admin-disable-design.md`.
+
 ### BR-207 — Rimozione utente
 Super Admin può rimuovere un utente (soft delete, `status=inactive` + `deleted_at`).
 
