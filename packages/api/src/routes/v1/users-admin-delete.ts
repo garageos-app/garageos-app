@@ -15,7 +15,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
+import { env } from '../../config/env.js';
 import { businessError } from '../../lib/business-error.js';
+import { signOutOfficineUser } from '../../lib/cognito.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -36,7 +38,7 @@ export const usersAdminDeleteRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = request.tenantId!;
       const actorCognitoSub = request.userId!;
 
-      await app.withContext({ role: 'admin' as const }, async (tx) => {
+      const targetInfo = await app.withContext({ role: 'admin' as const }, async (tx) => {
         // Look up the actor's DB UUID so the audit log actor_id column
         // (UUID) is correctly populated — cognitoSub is opaque, NOT a UUID.
         // Same pattern as users-admin-update.ts.
@@ -57,7 +59,7 @@ export const usersAdminDeleteRoutes: FastifyPluginAsync = async (app) => {
         // Lookup target (same tenant, not already soft-deleted).
         const target = await tx.user.findFirst({
           where: { id: targetId, tenantId, deletedAt: null },
-          select: { id: true, email: true, role: true, status: true },
+          select: { id: true, email: true, role: true, status: true, cognitoSub: true },
         });
         if (!target) {
           throw businessError('user.not_found', 404, 'Utente non trovato.');
@@ -112,7 +114,27 @@ export const usersAdminDeleteRoutes: FastifyPluginAsync = async (app) => {
             ipAddress: request.ip,
           },
         });
+
+        return { email: target.email, cognitoSub: target.cognitoSub };
       });
+
+      // Item 1 proactive: invalidate all Cognito refresh tokens for the
+      // target. Best-effort — DB soft-delete is the source of truth and
+      // the reactive tenant-context lookup closes the residual window.
+      // Skip if target never accepted invitation (no cognito_sub).
+      if (targetInfo.cognitoSub) {
+        try {
+          await signOutOfficineUser({
+            poolId: env.COGNITO_OFFICINE_POOL_ID,
+            email: targetInfo.email,
+          });
+        } catch (err) {
+          request.log.error(
+            { err, targetId },
+            'cognito global signout failed (DB soft-delete already committed; user retains access until access token TTL)',
+          );
+        }
+      }
 
       return reply.code(204).send();
     },
