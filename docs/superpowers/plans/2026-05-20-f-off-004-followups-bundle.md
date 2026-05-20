@@ -61,7 +61,7 @@ Replace the existing BR-206 section (linee 769-776) with the corrected flow:
 ### BR-206 — Invito utenti
 Il Super Admin può invitare nuovi utenti via email. Il flusso effettivo (F-OFF-004):
 1. Super Admin compila form: email, nome, cognome, ruolo, location
-2. Sistema crea riga `invitations` con token valido 7 giorni — **NON** crea ancora una riga `users` (l'enum `users.status` non ha `'invited'`)
+2. Sistema crea riga `invitations` con token valido 7 giorni — **NON** crea ancora una riga `users`
 3. Email inviata con magic-link a `/accept-invitation?token=...`
 4. Invitato clicca → GET `/v1/invitations/:token` mostra dettagli → POST `/v1/invitations/:token/accept` con password
 5. Backend chiama `AdminCreateUser` + `AdminSetUserPassword` in Cognito, crea riga `users` con `status='active'` e `cognito_sub` popolato, marca `invitations.accepted_at`

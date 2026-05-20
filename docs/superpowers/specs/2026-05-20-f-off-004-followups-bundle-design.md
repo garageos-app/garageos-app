@@ -139,7 +139,7 @@ if (locked.length === 0) throw ...
 **A:**
 ```
 1. Super Admin compila form: email, nome, cognome, ruolo, location
-2. Sistema crea riga `invitations` con token valido 7 giorni (NO user row, no status='invited' — quel valore enum non esiste)
+2. Sistema crea riga `invitations` con token valido 7 giorni (NO user row al momento dell'invito)
 3. Email inviata con magic-link a /accept-invitation?token=...
 4. Invitato clicca → GET /v1/invitations/:token mostra dettagli → POST /v1/invitations/:token/accept con password
 5. Backend chiama AdminCreateUser + AdminSetUserPassword in Cognito, crea riga `users` con status='active' e cognito_sub popolato, marca invitation.accepted_at
