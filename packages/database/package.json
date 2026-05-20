@@ -14,6 +14,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./client": {
+      "types": "./prisma/generated/prisma/client/client.ts",
+      "default": "./prisma/generated/prisma/client/client.ts"
     }
   },
   "scripts": {

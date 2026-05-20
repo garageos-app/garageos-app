@@ -27,7 +27,12 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { PrismaPg } from '@prisma/adapter-pg';
 
-import { PrismaClient } from '@garageos/database';
+// Import PrismaClient directly from the generated client to skip
+// @garageos/database's index re-export, which eagerly initializes a
+// default singleton (client.ts:48) that throws if DATABASE_URL is
+// not set. Operator scripts run with only DIRECT_URL — same pattern
+// as packages/database/prisma/seed.ts which uses the relative path.
+import { PrismaClient } from '@garageos/database/client';
 
 const DEFAULT_BASE = 'https://app.garageos.aifollyadvisor.com';
 
@@ -60,7 +65,14 @@ async function main() {
   }
 
   const baseUrl = process.env.WEB_BASE_URL ?? DEFAULT_BASE;
-  const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL });
+  // ssl rejectUnauthorized:false — the Supabase pooler cert chain is not
+  // in the local Windows trust store by default. Operator-only CLI hits
+  // a hard-coded Supabase hostname, so MITM risk is acceptable. Avoids
+  // requiring NODE_TLS_REJECT_UNAUTHORIZED=0 in the operator's shell.
+  const adapter = new PrismaPg({
+    connectionString: process.env.DIRECT_URL,
+    ssl: { rejectUnauthorized: false },
+  });
   const prisma = new PrismaClient({ adapter });
 
   try {

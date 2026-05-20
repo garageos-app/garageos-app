@@ -5,6 +5,9 @@
     "types": ["node"],
     "noEmit": true,
     "paths": {
+      "@garageos/database/client": [
+        "../../packages/database/prisma/generated/prisma/client/client.ts"
+      ],
       "@garageos/database": ["../../packages/database/src/index.ts"],
       "@garageos/database/*": ["../../packages/database/src/*.ts"]
     }

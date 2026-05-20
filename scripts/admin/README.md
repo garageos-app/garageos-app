@@ -38,6 +38,14 @@ pnpm tsx scripts/admin/get-invitation-link.ts mario@example.com
 pnpm tsx scripts/admin/get-invitation-link.ts mario@example.com --tenant abc-uuid
 ```
 
+`DIRECT_URL` is the only required env var. The script imports
+`PrismaClient` from `@garageos/database/client` (subpath bypassing
+the eager singleton that would otherwise require `DATABASE_URL`)
+and the PrismaPg adapter is configured with
+`ssl: { rejectUnauthorized: false }` so the Supabase pooler cert
+chain does not require `NODE_TLS_REJECT_UNAUTHORIZED=0` in the
+operator's shell.
+
 ### Exit codes
 
 | Code | Meaning                                                                    |
