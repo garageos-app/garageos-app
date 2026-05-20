@@ -25,6 +25,7 @@ import {
   deleteCognitoUser,
   setOfficineCognitoPassword,
 } from '../../lib/cognito.js';
+import { hashToken } from '../../lib/secure-tokens.js';
 import {
   USER_ADMIN_SELECT,
   type UserAdminRow,
@@ -63,7 +64,7 @@ export const invitationsPublicAcceptRoutes: FastifyPluginAsync = async (app) => 
       // so callers cannot distinguish between them.
       const invitation = await app.withContext({ role: 'admin' as const }, async (tx) => {
         const inv = await tx.invitation.findUnique({
-          where: { token: parsedParams.data.token },
+          where: { tokenHash: hashToken(parsedParams.data.token) },
           select: {
             id: true,
             tenantId: true,

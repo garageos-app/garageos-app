@@ -18,6 +18,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
+import { hashToken } from '../../lib/secure-tokens.js';
 
 const ParamsSchema = z.object({ token: z.string().min(1).max(200) });
 
@@ -31,7 +32,7 @@ export const invitationsPublicReadRoutes: FastifyPluginAsync = async (app) => {
 
     const result = await app.withContext({ role: 'admin' as const }, async (tx) => {
       const inv = await tx.invitation.findUnique({
-        where: { token: parsed.data.token },
+        where: { tokenHash: hashToken(parsed.data.token) },
         select: {
           id: true,
           tenantId: true,

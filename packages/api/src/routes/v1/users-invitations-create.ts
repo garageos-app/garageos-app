@@ -14,7 +14,6 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { randomUUID } from 'node:crypto';
 
 import { Prisma } from '@garageos/database';
 import { businessError } from '../../lib/business-error.js';
@@ -23,6 +22,7 @@ import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 import { requireSuperAdmin } from '../../middleware/require-super-admin.js';
 import { sendInvitationEmail } from '../../lib/ses-client.js';
+import { generateInvitationToken } from '../../lib/secure-tokens.js';
 import { INVITATION_ADMIN_SELECT, serializeInvitationAdmin } from '../../lib/dtos/invitation.js';
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -85,7 +85,7 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
       // role: 'admin' bypasses RLS USING clauses that would deny writes to
       // tenants this transaction has no ownership relation to. Required pattern
       // per feedback_withcontext_empty_blocks_rls_writes.
-      const result = await app.withContext({ role: 'admin' as const }, async (tx) => {
+      const txResult = await app.withContext({ role: 'admin' as const }, async (tx) => {
         // 1) Email collision check — reject if an active (non-deleted) user in
         //    this tenant already has this email.
         const existingUser = await tx.user.findFirst({
@@ -118,7 +118,7 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
         // 3) Generate token + insert invitation row. P2002 on the partial unique
         //    index (uq_invitations_pending_internal from migration 20260519000000)
         //    means a pending invitation already exists — BR-206.
-        const token = randomUUID() + randomUUID().replace(/-/g, '');
+        const { plaintext: tokenPlaintext, hash: tokenHash } = generateInvitationToken();
         const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
 
         let invitation;
@@ -132,15 +132,10 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
               lastName: body.lastName,
               role: body.role,
               locationId: body.locationId,
-              token,
+              tokenHash,
               expiresAt,
             },
-            select: {
-              ...INVITATION_ADMIN_SELECT,
-              // token selected here only to build the magic-link URL; it is
-              // stripped by the serializer before the response is sent.
-              token: true,
-            },
+            select: INVITATION_ADMIN_SELECT,
           });
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -183,8 +178,12 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        return invitation;
+        // tokenPlaintext is returned so the outer scope can build the
+        // magic-link URL; it never lands in the DB row or the response.
+        return { invitation, tokenPlaintext };
       });
+
+      const { invitation: result, tokenPlaintext } = txResult;
 
       // ─── Best-effort SES send (outside DB tx) ────────────────────────────────
       // Same pattern as auth-signup.ts Phase 4: failure logs + continues,
@@ -216,7 +215,7 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
           invitedByName: inviter ? `${inviter.firstName} ${inviter.lastName}` : 'GarageOS',
           tenantName: tenant?.businessName ?? 'GarageOS',
           role: body.role,
-          magicLinkUrl: `${WEB_BASE_URL}/invitations/${result.token}`,
+          magicLinkUrl: `${WEB_BASE_URL}/invitations/${tokenPlaintext}`,
         });
       } catch (err) {
         request.log.error(
@@ -225,12 +224,10 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
         );
       }
 
-      // Strip token from response — plaintext token must never be returned.
-      const { token: _token, ...rowWithoutToken } = result;
-      void _token;
-
+      // Plaintext token never leaves the SES email body; tokenHash is not in
+      // INVITATION_ADMIN_SELECT, so no stripping needed.
       return reply.code(201).send({
-        invitation: serializeInvitationAdmin(rowWithoutToken),
+        invitation: serializeInvitationAdmin(result),
       });
     },
   );

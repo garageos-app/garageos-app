@@ -72,6 +72,29 @@ describe('POST /v1/users/invitations', () => {
     expect(body.invitation.expiresAt).toBeDefined();
     // Plaintext token must never be exposed in the response (security invariant).
     expect(body.invitation).not.toHaveProperty('token');
+    // Plaintext token never leaves the SES email body; tokenHash is not in
+    // INVITATION_ADMIN_SELECT, so neither field appears in the response.
+    expect(body.invitation).not.toHaveProperty('tokenHash');
+
+    // DB-side: the invitation row stores a 64-char hex token_hash and
+    // does NOT have a legacy `token` column.
+    const { rows: dbRows } = await pgAdmin.query<{
+      token_hash: string;
+      legacy_token_exists: boolean;
+    }>(
+      `SELECT
+         token_hash,
+         EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'invitations' AND column_name = 'token'
+         ) AS legacy_token_exists
+       FROM invitations
+       WHERE id = $1`,
+      [body.invitation.id as string],
+    );
+    expect(dbRows).toHaveLength(1);
+    expect(dbRows[0]!.token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(dbRows[0]!.legacy_token_exists).toBe(false);
 
     // SES send was called exactly once.
     expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(1);
