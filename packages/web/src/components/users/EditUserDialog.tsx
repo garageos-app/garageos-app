@@ -210,196 +210,199 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* ── Section 1: Change Role ──────────────────────────────────────── */}
-          <section>
-            <h3 className="font-medium mb-3">Cambia ruolo</h3>
-            <form onSubmit={roleForm.handleSubmit(onRoleSubmit)} noValidate className="space-y-3">
-              {roleError && (
-                <div
-                  className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm"
-                  role="alert"
-                  data-testid="role-error"
-                >
-                  {roleError}
-                </div>
-              )}
-
-              <div>
-                <Label htmlFor="edit-role">Ruolo</Label>
-                <Select
-                  value={selectedRole ?? ''}
-                  onValueChange={(v) =>
-                    roleForm.setValue('role', v as ChangeRoleValues['role'], {
-                      shouldValidate: true,
-                    })
-                  }
-                >
-                  <SelectTrigger id="edit-role">
-                    <SelectValue placeholder="Seleziona ruolo…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="super_admin">Super Admin</SelectItem>
-                    <SelectItem value="mechanic">Meccanico</SelectItem>
-                  </SelectContent>
-                </Select>
-                {roleErrors.role && (
-                  <p className="text-sm text-red-600 mt-1">{roleErrors.role.message}</p>
-                )}
-              </div>
-
-              {/* Location selector only shown when role is mechanic — BR-204. */}
-              {selectedRole === 'mechanic' && (
-                <div>
-                  <Label htmlFor="edit-role-location">Sede *</Label>
-                  <Select
-                    value={roleForm.watch('locationId') ?? ''}
-                    onValueChange={(v) =>
-                      roleForm.setValue('locationId', v || null, { shouldValidate: true })
-                    }
-                  >
-                    <SelectTrigger id="edit-role-location">
-                      <SelectValue placeholder="Seleziona sede…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {locations.map((loc) => (
-                        <SelectItem key={loc.id} value={loc.id}>
-                          {loc.name}
-                          {loc.city ? ` — ${loc.city}` : ''}
-                          {loc.isPrimary ? ' (principale)' : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {roleErrors.locationId && (
-                    <p className="text-sm text-red-600 mt-1">{roleErrors.locationId.message}</p>
-                  )}
-                </div>
-              )}
-
-              <Button type="submit" size="sm" disabled={roleForm.formState.isSubmitting}>
-                {roleForm.formState.isSubmitting ? 'Salvataggio…' : 'Salva ruolo'}
-              </Button>
-            </form>
-          </section>
-
-          <hr />
-
-          {/* ── Section 2: Change Location ─────────────────────────────────── */}
-          <section>
-            <h3 className="font-medium mb-3">Cambia sede</h3>
-            <form
-              onSubmit={locationForm.handleSubmit(onLocationSubmit)}
-              noValidate
-              className="space-y-3"
-            >
-              {locationError && (
-                <div
-                  className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm"
-                  role="alert"
-                  data-testid="location-error"
-                >
-                  {locationError}
-                </div>
-              )}
-
-              <div>
-                <Label htmlFor="edit-location">Sede</Label>
-                <Select
-                  value={locationForm.watch('locationId') ?? ''}
-                  onValueChange={(v) =>
-                    locationForm.setValue('locationId', v, { shouldValidate: true })
-                  }
-                >
-                  <SelectTrigger id="edit-location">
-                    <SelectValue placeholder="Seleziona sede…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations.map((loc) => (
-                      <SelectItem key={loc.id} value={loc.id}>
-                        {loc.name}
-                        {loc.city ? ` — ${loc.city}` : ''}
-                        {loc.isPrimary ? ' (principale)' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {locationErrors.locationId && (
-                  <p className="text-sm text-red-600 mt-1">{locationErrors.locationId.message}</p>
-                )}
-              </div>
-
-              <Button type="submit" size="sm" disabled={locationForm.formState.isSubmitting}>
-                {locationForm.formState.isSubmitting ? 'Salvataggio…' : 'Salva sede'}
-              </Button>
-            </form>
-          </section>
-
-          <hr />
-
-          {/* ── Section 3: Deactivate ───────────────────────────────────────── */}
-          {/* Hide the deactivate action entirely when the user is already
-              inactive — the backend filters `deletedAt: null` so clicking
-              would yield a confusing 404 user.not_found. Reactivation is
-              a separate (deferred) decision; see PR description. */}
-          {user.status === 'active' && (
-            <section>
-              <h3 className="font-medium mb-3">Disattiva utente</h3>
-
-              {deactivateError && (
-                <div
-                  className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm mb-3"
-                  role="alert"
-                  data-testid="deactivate-error"
-                >
-                  {deactivateError}
-                </div>
-              )}
-
-              {!confirmDeactivate ? (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setConfirmDeactivate(true)}
-                  data-testid="deactivate-button"
-                >
-                  Disattiva utente
-                </Button>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Sei sicuro? L&apos;utente perderà immediatamente l&apos;accesso.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={deleteMut.isPending}
-                      onClick={() => void handleDeactivate()}
-                      data-testid="deactivate-confirm-button"
-                    >
-                      {deleteMut.isPending ? 'Disattivazione…' : 'Conferma disattivazione'}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={deleteMut.isPending}
-                      onClick={() => setConfirmDeactivate(false)}
-                    >
-                      Annulla
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
-
-          {user.status === 'inactive' && (
+          {user.status === 'inactive' ? (
             <section data-testid="inactive-notice">
               <h3 className="font-medium mb-2">Utente disattivato</h3>
               <p className="text-sm text-muted-foreground">
-                Questo utente è disattivato. La riattivazione non è ancora supportata.
+                Questo utente è disattivato e non può essere modificato. La riattivazione non è
+                ancora supportata.
               </p>
             </section>
+          ) : (
+            <>
+              {/* ── Section 1: Change Role ──────────────────────────────────────── */}
+              <section>
+                <h3 className="font-medium mb-3">Cambia ruolo</h3>
+                <form
+                  onSubmit={roleForm.handleSubmit(onRoleSubmit)}
+                  noValidate
+                  className="space-y-3"
+                >
+                  {roleError && (
+                    <div
+                      className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm"
+                      role="alert"
+                      data-testid="role-error"
+                    >
+                      {roleError}
+                    </div>
+                  )}
+
+                  <div>
+                    <Label htmlFor="edit-role">Ruolo</Label>
+                    <Select
+                      value={selectedRole ?? ''}
+                      onValueChange={(v) =>
+                        roleForm.setValue('role', v as ChangeRoleValues['role'], {
+                          shouldValidate: true,
+                        })
+                      }
+                    >
+                      <SelectTrigger id="edit-role">
+                        <SelectValue placeholder="Seleziona ruolo…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="super_admin">Super Admin</SelectItem>
+                        <SelectItem value="mechanic">Meccanico</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {roleErrors.role && (
+                      <p className="text-sm text-red-600 mt-1">{roleErrors.role.message}</p>
+                    )}
+                  </div>
+
+                  {/* Location selector only shown when role is mechanic — BR-204. */}
+                  {selectedRole === 'mechanic' && (
+                    <div>
+                      <Label htmlFor="edit-role-location">Sede *</Label>
+                      <Select
+                        value={roleForm.watch('locationId') ?? ''}
+                        onValueChange={(v) =>
+                          roleForm.setValue('locationId', v || null, { shouldValidate: true })
+                        }
+                      >
+                        <SelectTrigger id="edit-role-location">
+                          <SelectValue placeholder="Seleziona sede…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {locations.map((loc) => (
+                            <SelectItem key={loc.id} value={loc.id}>
+                              {loc.name}
+                              {loc.city ? ` — ${loc.city}` : ''}
+                              {loc.isPrimary ? ' (principale)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {roleErrors.locationId && (
+                        <p className="text-sm text-red-600 mt-1">{roleErrors.locationId.message}</p>
+                      )}
+                    </div>
+                  )}
+
+                  <Button type="submit" size="sm" disabled={roleForm.formState.isSubmitting}>
+                    {roleForm.formState.isSubmitting ? 'Salvataggio…' : 'Salva ruolo'}
+                  </Button>
+                </form>
+              </section>
+
+              <hr />
+
+              {/* ── Section 2: Change Location ─────────────────────────────────── */}
+              <section>
+                <h3 className="font-medium mb-3">Cambia sede</h3>
+                <form
+                  onSubmit={locationForm.handleSubmit(onLocationSubmit)}
+                  noValidate
+                  className="space-y-3"
+                >
+                  {locationError && (
+                    <div
+                      className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm"
+                      role="alert"
+                      data-testid="location-error"
+                    >
+                      {locationError}
+                    </div>
+                  )}
+
+                  <div>
+                    <Label htmlFor="edit-location">Sede</Label>
+                    <Select
+                      value={locationForm.watch('locationId') ?? ''}
+                      onValueChange={(v) =>
+                        locationForm.setValue('locationId', v, { shouldValidate: true })
+                      }
+                    >
+                      <SelectTrigger id="edit-location">
+                        <SelectValue placeholder="Seleziona sede…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {locations.map((loc) => (
+                          <SelectItem key={loc.id} value={loc.id}>
+                            {loc.name}
+                            {loc.city ? ` — ${loc.city}` : ''}
+                            {loc.isPrimary ? ' (principale)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {locationErrors.locationId && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {locationErrors.locationId.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <Button type="submit" size="sm" disabled={locationForm.formState.isSubmitting}>
+                    {locationForm.formState.isSubmitting ? 'Salvataggio…' : 'Salva sede'}
+                  </Button>
+                </form>
+              </section>
+
+              <hr />
+
+              {/* ── Section 3: Deactivate ───────────────────────────────────────── */}
+              <section>
+                <h3 className="font-medium mb-3">Disattiva utente</h3>
+
+                {deactivateError && (
+                  <div
+                    className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm mb-3"
+                    role="alert"
+                    data-testid="deactivate-error"
+                  >
+                    {deactivateError}
+                  </div>
+                )}
+
+                {!confirmDeactivate ? (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setConfirmDeactivate(true)}
+                    data-testid="deactivate-button"
+                  >
+                    Disattiva utente
+                  </Button>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Sei sicuro? L&apos;utente perderà immediatamente l&apos;accesso.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={deleteMut.isPending}
+                        onClick={() => void handleDeactivate()}
+                        data-testid="deactivate-confirm-button"
+                      >
+                        {deleteMut.isPending ? 'Disattivazione…' : 'Conferma disattivazione'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={deleteMut.isPending}
+                        onClick={() => setConfirmDeactivate(false)}
+                      >
+                        Annulla
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </>
           )}
         </div>
 
