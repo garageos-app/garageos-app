@@ -1,10 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { UseFormReturn } from 'react-hook-form';
 
 import { Settings } from './Settings';
+
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => navigateMock,
+  };
+});
 import * as authModule from '@/auth/useAuth';
 import * as profileMeModule from '@/queries/profileMe';
 import * as tenantMeModule from '@/queries/tenantMe';
@@ -112,9 +122,13 @@ const tenant: TenantMeDto = {
   createdAt: '2026-05-15T00:00:00Z',
 };
 
-function wrap(ui: React.ReactNode) {
+function wrap(ui: React.ReactNode, { initialPath = '/settings' }: { initialPath?: string } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>;
+  return (
+    <MemoryRouter initialEntries={[initialPath]}>
+      <QueryClientProvider client={qc}>{ui}</QueryClientProvider>
+    </MemoryRouter>
+  );
 }
 
 // Mock useAuth — AuthContext uses state.status discriminator, not state.kind.
@@ -168,6 +182,7 @@ describe('Settings page', () => {
     mockQueries();
     capturedProfileFormRef = undefined;
     capturedPasswordFormRef = undefined;
+    navigateMock.mockReset();
   });
 
   it('renders both tabs for super_admin', () => {

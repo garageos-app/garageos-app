@@ -205,17 +205,27 @@ Per fornire dati utili al client per gestire l'errore:
 | `location.not_in_tenant` | 422 | warning | Location non appartiene al tenant | Tentativo cross-tenant | |
 | `location.cannot_remove_primary` | 422 | warning | Non puoi rimuovere la sede principale | Senza designarne un'altra | BR-201 |
 | `location.cannot_disable_last` | 422 | warning | Impossibile disattivare l'ultima sede attiva | | |
-| `user.not_found` | 404 | info | Utente non trovato | | |
+| `user.not_found` | 404 | info | Utente non trovato | GET, PATCH, DELETE /v1/users/:id — target mancante o cross-tenant | F-OFF-004 |
+| `user.cannot_delete_self_via_admin` | 422 | warning | Non puoi rimuovere te stesso da qui | DELETE /v1/users/:id — actor == target | F-OFF-004 |
+| `user.last_super_admin` | 409 | error | Impossibile rimuovere/declassare l'ultimo amministratore | DELETE o PATCH /v1/users/:id che lascerebbe il tenant senza super_admin attivi | F-OFF-004, BR-203 |
+| `user.location_required_for_mechanic` | 422 | warning | Un meccanico deve essere assegnato a una sede | POST /v1/users/invitations o PATCH /v1/users/:id con role=mechanic e locationId null | F-OFF-004, BR-204 |
+| `user.location_invalid` | 422 | warning | Sede non valida o inattiva | PATCH /v1/users/:id con locationId non appartenente al tenant o status!=active | F-OFF-004 |
+| `user.invitation.not_found` | 404 | info | Invito non trovato | Token non esistente, tipo errato, scaduto o già consumato (anti-enum: tutti i casi restituiscono 404) | F-OFF-004 |
+| `user.invitation.email_already_active` | 409 | info | Account con questa email già attivo | POST /v1/users/invitations o POST /v1/invitations/:token/accept — utente già esistente nel tenant | F-OFF-004 |
+| `user.invitation.duplicate_pending` | 409 | info | Esiste già un invito pendente per questa email | POST /v1/users/invitations — violazione indice parziale uq_invitations_pending_internal (BR-206) | F-OFF-004, BR-206 |
+| `user.invitation.location_invalid` | 422 | warning | Sede non valida o inattiva | POST /v1/users/invitations — locationId non appartiene al tenant o status!=active | F-OFF-004 |
+| `user.invitation.accept_password_policy` | 422 | warning | Password non conforme ai requisiti | POST /v1/invitations/:token/accept — Cognito rifiuta la password per policy | F-OFF-004 |
+| `user.invitation.cognito_unavailable` | 502 | error | Servizio di autenticazione temporaneamente non disponibile | POST /v1/invitations/:token/accept — Cognito AdminCreateUser o AdminSetUserPassword fallisce | F-OFF-004 |
+| `user.invitation.already_accepted` | 410 | info | Invito già accettato o revocato | DELETE /v1/users/invitations/:id su invito già tombstonato (acceptedAt != null) | F-OFF-004 |
+| `user.invitation.expired` | 410 | info | Invito scaduto | Token invitation > 7 giorni (v1.0 spec — anti-enum: collapsed to not_found in public endpoints) | |
+| `user.invitation.email_mismatch` | 403 | warning | Email non corrisponde all'invito | Sign-up con email diversa | |
 | `users.me.avatar.invalid_mime` | 422 | info | Tipo file non valido — richiesto JPEG | POST /v1/users/me/avatar/confirm — HeadObject contentType ≠ image/jpeg | F-OFF-007 |
 | `users.me.avatar.s3_unavailable` | 502 | error | Servizio storage temporaneamente non disponibile | POST /v1/users/me/avatar/upload-url o /confirm — S3 error | F-OFF-007 |
 | `users.me.avatar.upload_not_found` | 422 | info | File non trovato su S3 — upload non atterrato o scaduto | POST /v1/users/me/avatar/confirm — HeadObject NoSuchKey | F-OFF-007 |
 | `users.me.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/users/me con body vuoto o senza campi edibili | F-OFF-007 |
 | `users.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/users/me con chiave non in schema (es. email, role, tenantId) | F-OFF-007 |
-| `user.cannot_remove_last_super_admin` | 422 | error | Impossibile rimuovere l'ultimo amministratore | | BR-203 |
-| `user.role_change_would_orphan_tenant` | 422 | error | Cambio ruolo lascerebbe il tenant senza admin | | BR-203 |
-| `user.invitation.expired` | 410 | info | Invito scaduto | Token invitation > 7 giorni | |
-| `user.invitation.already_accepted` | 409 | info | Invito già accettato | Invitation già usata | |
-| `user.invitation.email_mismatch` | 403 | warning | Email non corrisponde all'invito | Sign-up con email diversa | |
+| ~~`user.cannot_remove_last_super_admin`~~ | — | — | *Stale spec code — non implementato* | Sostituito da `user.last_super_admin` in F-OFF-004 | BR-203 |
+| ~~`user.role_change_would_orphan_tenant`~~ | — | — | *Stale spec code — non implementato* | Sostituito da `user.last_super_admin` in F-OFF-004 | BR-203 |
 
 ### 3.4 Customer
 
@@ -910,17 +920,25 @@ transfer.creation.not_current_owner
 transfer.creation.vehicle_not_certified
 transfer.not_found
 transfer.rejection.not_permitted
-user.cannot_remove_last_super_admin
+user.cannot_delete_self_via_admin
+user.invitation.accept_password_policy
 user.invitation.already_accepted
+user.invitation.cognito_unavailable
+user.invitation.duplicate_pending
+user.invitation.email_already_active
 user.invitation.email_mismatch
 user.invitation.expired
+user.invitation.location_invalid
+user.invitation.not_found
+user.last_super_admin
+user.location_invalid
+user.location_required_for_mechanic
+user.not_found
 users.me.avatar.invalid_mime
 users.me.avatar.s3_unavailable
 users.me.avatar.upload_not_found
 users.me.update.empty_body
 users.me.update.unknown_field
-user.not_found
-user.role_change_would_orphan_tenant
 validation.failed
 validation.schema_mismatch
 vehicle.access.forbidden
@@ -945,7 +963,7 @@ vehicle.not_found
 vehicle.pending.duplicate_vin_certified
 ```
 
-**Totale: ~136 error code documentati in v1.0** (aggiornato post F-OFF-007 avatar endpoints, +3 codici).
+**Totale: ~147 error code documentati in v1.0** (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`).
 
 ---
 

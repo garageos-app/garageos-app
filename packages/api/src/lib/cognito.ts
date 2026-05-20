@@ -10,6 +10,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider';
 
 import { env } from '../config/env.js';
+import type { UserRole } from '../middleware/tenant-context.js';
 
 // Lazy singleton — Cognito SDK clients are heavy (HTTP/2 connections,
 // credential providers) and we want exactly one per Lambda warm
@@ -139,6 +140,134 @@ export async function markCustomerEmailVerified(args: {
       UserAttributes: [{ Name: 'email_verified', Value: 'true' }],
     }),
   );
+}
+
+// F-OFF-004 — officine pool user lifecycle.
+//
+// Same shape as the customer helpers above, with two differences:
+//   1. MessageAction=SUPPRESS at AdminCreateUser (we already sent our own
+//      invite email via SES at invite-time; Cognito should not send its
+//      default invitation email).
+//   2. email_verified is set to 'true' immediately — the invitation flow
+//      proves possession of the email by requiring the magic-link click.
+//
+// See spec §4.2 + §4.5 for rationale.
+
+export interface CreateOfficineCognitoUserArgs {
+  poolId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  tenantId: string;
+  role: UserRole;
+  locationId: string | null;
+}
+
+export async function createOfficineCognitoUser(
+  args: CreateOfficineCognitoUserArgs,
+): Promise<{ cognitoSub: string }> {
+  const attributes: { Name: string; Value: string }[] = [
+    { Name: 'email', Value: args.email },
+    { Name: 'email_verified', Value: 'true' },
+    { Name: 'given_name', Value: args.firstName },
+    { Name: 'family_name', Value: args.lastName },
+    { Name: 'custom:tenant_id', Value: args.tenantId },
+    { Name: 'custom:role', Value: args.role },
+  ];
+  if (args.locationId) {
+    attributes.push({ Name: 'custom:location_id', Value: args.locationId });
+  }
+
+  try {
+    const client = getCognitoClient();
+    const out = await client.send(
+      new AdminCreateUserCommand({
+        UserPoolId: args.poolId,
+        Username: args.email,
+        UserAttributes: attributes,
+        MessageAction: 'SUPPRESS',
+      }),
+    );
+    const sub = out.User?.Attributes?.find((a) => a.Name === 'sub')?.Value;
+    if (!sub) {
+      throw new CognitoUnavailableError('cognito sub missing from AdminCreateUser response');
+    }
+    return { cognitoSub: sub };
+  } catch (err) {
+    if (err instanceof UsernameExistsException) {
+      throw new CognitoEmailAlreadyExistsError('Cognito user already exists for this email');
+    }
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+}
+
+export async function setOfficineCognitoPassword(args: {
+  poolId: string;
+  email: string;
+  password: string;
+}): Promise<void> {
+  try {
+    const client = getCognitoClient();
+    await client.send(
+      new AdminSetUserPasswordCommand({
+        UserPoolId: args.poolId,
+        Username: args.email,
+        Password: args.password,
+        Permanent: true,
+      }),
+    );
+  } catch (err) {
+    if (err instanceof InvalidPasswordException) {
+      throw new CognitoInvalidPasswordError('Cognito password policy violation');
+    }
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+}
+
+// Update role and/or location on an existing officine Cognito user.
+// Callers pass undefined for a field they don't want to touch.
+// null on locationId means "clear" — Cognito attributes can't be unset,
+// so we set the empty string. The tenant-context Zod schema treats
+// empty string and undefined identically (custom:location_id optional).
+export async function updateOfficineUserRoleAndLocation(args: {
+  poolId: string;
+  email: string;
+  role?: UserRole;
+  locationId?: string | null;
+}): Promise<void> {
+  const attributes: { Name: string; Value: string }[] = [];
+  if (args.role !== undefined) {
+    attributes.push({ Name: 'custom:role', Value: args.role });
+  }
+  if (args.locationId !== undefined) {
+    attributes.push({
+      Name: 'custom:location_id',
+      Value: args.locationId === null ? '' : args.locationId,
+    });
+  }
+  if (attributes.length === 0) return;
+
+  try {
+    const client = getCognitoClient();
+    await client.send(
+      new AdminUpdateUserAttributesCommand({
+        UserPoolId: args.poolId,
+        Username: args.email,
+        UserAttributes: attributes,
+      }),
+    );
+  } catch (err) {
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
 }
 
 // Idempotent — swallows UserNotFoundException so callers can use this in

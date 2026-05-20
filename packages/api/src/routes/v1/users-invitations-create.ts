@@ -1,0 +1,237 @@
+// POST /v1/users/invitations — F-OFF-004 Super Admin invitation endpoint.
+//
+// Creates an internal_user invitation row and sends a magic-link email via
+// SES (best-effort). Implements:
+//   BR-204: mechanic role requires a valid locationId
+//   BR-206: partial unique index prevents duplicate pending internal_user
+//           invitations for the same (tenant, email) pair
+//
+// Auth chain: requireAuth → requireOfficinaPool → tenantContext → requireSuperAdmin
+// Rate limit: 10 per hour per tenant (prevents invitation spam).
+//
+// The plaintext token is used only to build the magic-link URL and is never
+// returned in the API response — the serializer omits it by design.
+
+import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
+
+import { Prisma } from '@garageos/database';
+import { businessError } from '../../lib/business-error.js';
+import { requireAuth } from '../../middleware/require-auth.js';
+import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
+import { tenantContext } from '../../middleware/tenant-context.js';
+import { requireSuperAdmin } from '../../middleware/require-super-admin.js';
+import { sendInvitationEmail } from '../../lib/ses-client.js';
+import { INVITATION_ADMIN_SELECT, serializeInvitationAdmin } from '../../lib/dtos/invitation.js';
+
+const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const WEB_BASE_URL = process.env.WEB_BASE_URL ?? 'https://app.garageos.aifollyadvisor.com';
+
+const InviteBodySchema = z.object({
+  email: z
+    .string()
+    .email()
+    .max(255)
+    .transform((s) => s.trim().toLowerCase()),
+  firstName: z
+    .string()
+    .min(1)
+    .max(100)
+    .transform((s) => s.trim()),
+  lastName: z
+    .string()
+    .min(1)
+    .max(100)
+    .transform((s) => s.trim()),
+  role: z.enum(['super_admin', 'mechanic']),
+  locationId: z.string().uuid().nullable(),
+});
+
+export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
+  app.post(
+    '/v1/users/invitations',
+    {
+      preHandler: [requireAuth, requireOfficinaPool, tenantContext, requireSuperAdmin],
+      config: {
+        rateLimit: {
+          // 10 invitations per hour per tenant — generous for legitimate use,
+          // prevents abuse of SES send quotas.
+          max: 10,
+          timeWindow: '1 hour',
+          keyGenerator: (request) => `invite:${request.tenantId ?? request.ip}`,
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsed = InviteBodySchema.safeParse(request.body);
+      if (!parsed.success) throw parsed.error;
+      const body = parsed.data;
+
+      // BR-204: mechanic role requires a location assignment.
+      if (body.role === 'mechanic' && !body.locationId) {
+        throw businessError(
+          'user.location_required_for_mechanic',
+          422,
+          'Un meccanico deve essere assegnato a una sede.',
+        );
+      }
+
+      const tenantId = request.tenantId!;
+      // request.userId is the Cognito sub (opaque string) — see tenant-context.ts.
+      const actorCognitoSub = request.userId!;
+
+      // ─── DB transaction ──────────────────────────────────────────────────────
+      // role: 'admin' bypasses RLS USING clauses that would deny writes to
+      // tenants this transaction has no ownership relation to. Required pattern
+      // per feedback_withcontext_empty_blocks_rls_writes.
+      const result = await app.withContext({ role: 'admin' as const }, async (tx) => {
+        // 1) Email collision check — reject if an active (non-deleted) user in
+        //    this tenant already has this email.
+        const existingUser = await tx.user.findFirst({
+          where: { tenantId, email: body.email, deletedAt: null },
+          select: { id: true },
+        });
+        if (existingUser) {
+          throw businessError(
+            'user.invitation.email_already_active',
+            409,
+            'Un account con questa email esiste già nel sistema. Effettua il login.',
+          );
+        }
+
+        // 2) Optional: validate that locationId belongs to the caller's tenant.
+        if (body.locationId) {
+          const loc = await tx.location.findFirst({
+            where: { id: body.locationId, tenantId, status: 'active', deletedAt: null },
+            select: { id: true },
+          });
+          if (!loc) {
+            throw businessError(
+              'user.invitation.location_invalid',
+              422,
+              'Sede non valida o inattiva.',
+            );
+          }
+        }
+
+        // 3) Generate token + insert invitation row. P2002 on the partial unique
+        //    index (uq_invitations_pending_internal from migration 20260519000000)
+        //    means a pending invitation already exists — BR-206.
+        const token = randomUUID() + randomUUID().replace(/-/g, '');
+        const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
+
+        let invitation;
+        try {
+          invitation = await tx.invitation.create({
+            data: {
+              tenantId,
+              invitationType: 'internal_user',
+              targetEmail: body.email,
+              firstName: body.firstName,
+              lastName: body.lastName,
+              role: body.role,
+              locationId: body.locationId,
+              token,
+              expiresAt,
+            },
+            select: {
+              ...INVITATION_ADMIN_SELECT,
+              // token selected here only to build the magic-link URL; it is
+              // stripped by the serializer before the response is sent.
+              token: true,
+            },
+          });
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            // BR-206: partial unique index uq_invitations_pending_internal
+            throw businessError(
+              'user.invitation.duplicate_pending',
+              409,
+              'Esiste già un invito pendente per questa email.',
+            );
+          }
+          throw err;
+        }
+
+        // 4) Look up the inviting user's DB UUID so the audit row is
+        //    traceable to the Super Admin who triggered the action.
+        //    actorCognitoSub is an opaque Cognito string, not a UUID —
+        //    cannot be stored directly in the UUID audit_logs.actor_id column.
+        const actorUser = await tx.user.findFirst({
+          where: { cognitoSub: actorCognitoSub, tenantId },
+          select: { id: true },
+        });
+
+        // 5) Audit log — same transaction so it rolls back atomically if
+        //    the invitation insert had failed above (defensive ordering).
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            actorType: 'user',
+            actorId: actorUser?.id ?? null,
+            action: 'user_invitation_created',
+            entityType: 'invitation',
+            entityId: invitation.id,
+            metadata: {
+              actorCognitoSub,
+              targetEmail: body.email,
+              role: body.role,
+              locationId: body.locationId,
+            },
+            ipAddress: request.ip,
+          },
+        });
+
+        return invitation;
+      });
+
+      // ─── Best-effort SES send (outside DB tx) ────────────────────────────────
+      // Same pattern as auth-signup.ts Phase 4: failure logs + continues,
+      // DB row already persisted. Inviter name fetched with a separate admin
+      // context query to avoid extending the tx.
+      const [tenant, inviter] = await Promise.all([
+        app
+          .withContext({ role: 'admin' as const }, (tx) =>
+            tx.tenant.findUnique({
+              where: { id: tenantId },
+              select: { businessName: true },
+            }),
+          )
+          .catch(() => null),
+        app
+          .withContext({ role: 'admin' as const }, (tx) =>
+            tx.user.findFirst({
+              where: { cognitoSub: actorCognitoSub, tenantId },
+              select: { firstName: true, lastName: true },
+            }),
+          )
+          .catch(() => null),
+      ]);
+
+      try {
+        await sendInvitationEmail({
+          toAddress: body.email,
+          invitedFirstName: body.firstName,
+          invitedByName: inviter ? `${inviter.firstName} ${inviter.lastName}` : 'GarageOS',
+          tenantName: tenant?.businessName ?? 'GarageOS',
+          role: body.role,
+          magicLinkUrl: `${WEB_BASE_URL}/invitations/${result.token}`,
+        });
+      } catch (err) {
+        request.log.error(
+          { err, invitationId: result.id },
+          'invitation SES send failed (best-effort, row persisted)',
+        );
+      }
+
+      // Strip token from response — plaintext token must never be returned.
+      const { token: _token, ...rowWithoutToken } = result;
+      void _token;
+
+      return reply.code(201).send({
+        invitation: serializeInvitationAdmin(rowWithoutToken),
+      });
+    },
+  );
+};

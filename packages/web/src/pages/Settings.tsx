@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { UseFormReturn } from 'react-hook-form';
 
 import {
@@ -15,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PasswordForm } from '@/components/settings/PasswordForm';
 import { ProfileForm } from '@/components/settings/ProfileForm';
 import { TenantForm } from '@/components/settings/TenantForm';
+import { UserManagement } from '@/pages/UserManagement';
 import { useAuth } from '@/auth/useAuth';
 import { useProfileMe } from '@/queries/profileMe';
 import { useTenantMe } from '@/queries/tenantMe';
@@ -22,7 +24,12 @@ import type { ChangePasswordFormValues } from '@/lib/validators/password';
 import type { ProfileFormValues, ProfileFormParsed } from '@/lib/validators/profile';
 import type { TenantFormValues, TenantFormParsed } from '@/lib/validators/tenant';
 
-type TabId = 'profile' | 'security' | 'tenant';
+type TabId = 'profile' | 'security' | 'tenant' | 'users';
+
+function pathnameToTab(pathname: string): TabId {
+  if (pathname === '/settings/users') return 'users';
+  return 'profile';
+}
 
 export function Settings() {
   const { state } = useAuth();
@@ -31,10 +38,13 @@ export function Settings() {
   const role = state.status === 'authenticated' ? state.user.role : undefined;
   const isSuperAdmin = role === 'super_admin';
 
+  const location = useLocation();
+  const navigate = useNavigate();
   const profileQuery = useProfileMe();
   const tenantQuery = useTenantMe({ enabled: isSuperAdmin });
 
-  const [activeTab, setActiveTab] = useState<TabId>('profile');
+  // Derive the active tab from the URL so that /settings/users opens the Utenti tab.
+  const [activeTab, setActiveTab] = useState<TabId>(() => pathnameToTab(location.pathname));
   const [pendingTab, setPendingTab] = useState<TabId | null>(null);
   const profileFormRef = useRef<UseFormReturn<
     ProfileFormValues,
@@ -54,6 +64,10 @@ export function Settings() {
     );
   }
 
+  function tabToPath(tab: TabId): string {
+    return tab === 'users' ? '/settings/users' : '/settings';
+  }
+
   function handleTabChange(next: string) {
     const nextTab = next as TabId;
     if (nextTab === activeTab) return;
@@ -61,6 +75,7 @@ export function Settings() {
       setPendingTab(nextTab);
     } else {
       setActiveTab(nextTab);
+      navigate(tabToPath(nextTab), { replace: true });
     }
   }
 
@@ -70,6 +85,7 @@ export function Settings() {
     passwordFormRef.current?.reset();
     tenantFormRef.current?.reset();
     setActiveTab(pendingTab);
+    navigate(tabToPath(pendingTab), { replace: true });
     setPendingTab(null);
   }
 
@@ -82,6 +98,7 @@ export function Settings() {
           <TabsTrigger value="profile">Profilo</TabsTrigger>
           <TabsTrigger value="security">Sicurezza</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="tenant">Officina</TabsTrigger>}
+          {isSuperAdmin && <TabsTrigger value="users">Utenti</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="profile" className="mt-6">
@@ -119,6 +136,12 @@ export function Settings() {
                 }}
               />
             )}
+          </TabsContent>
+        )}
+
+        {isSuperAdmin && (
+          <TabsContent value="users" className="mt-6">
+            <UserManagement />
           </TabsContent>
         )}
       </Tabs>

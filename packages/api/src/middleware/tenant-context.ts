@@ -31,7 +31,7 @@ const officineClaimsSchema = z.object({
   sub: z.string().min(1),
   'custom:tenant_id': z.uuid(),
   'custom:role': z.enum(['super_admin', 'mechanic']),
-  'custom:location_id': z.uuid().optional(),
+  'custom:location_id': z.union([z.uuid(), z.literal('')]).optional(),
 });
 
 export type UserRole = z.infer<typeof officineClaimsSchema>['custom:role'];
@@ -65,7 +65,7 @@ export async function tenantContext(request: FastifyRequest, reply: FastifyReply
   request.tenantId = parsed.data['custom:tenant_id'];
   request.userRole = parsed.data['custom:role'];
   const loc = parsed.data['custom:location_id'];
-  if (loc !== undefined) {
+  if (loc !== undefined && loc !== '') {
     request.locationId = loc;
   }
 

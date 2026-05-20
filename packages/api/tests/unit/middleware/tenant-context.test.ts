@@ -170,4 +170,20 @@ describe('tenantContext middleware (JWT-backed)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
   });
+
+  it('treats custom:location_id empty string as absent (F-OFF-004 clear)', async () => {
+    // updateOfficineUserRoleAndLocation sets custom:location_id='' to
+    // "clear" the attribute (Cognito does not support unsetting attrs).
+    // The middleware must accept '' and leave request.locationId undefined.
+    app = await buildApp({
+      sub: COGNITO_SUB,
+      'custom:tenant_id': TENANT_ID,
+      'custom:role': 'super_admin',
+      'custom:location_id': '',
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/_probe' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ userRole: 'super_admin', locationId: null });
+  });
 });

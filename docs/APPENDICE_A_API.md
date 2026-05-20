@@ -1307,7 +1307,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 |---|---|---|---|---|
 | GET | `/tenants/me` | F-OFF-007 | Tenant User | Info tenant corrente |
 | PATCH | `/tenants/me` | F-OFF-007 | Super Admin | **[DETTAGLIATO sotto]** Aggiorna dati tenant |
-| GET | `/tenants/me/locations` | F-OFF-003 | Tenant User | Lista location |
+| GET | `/tenants/me/locations` | F-OFF-003, F-OFF-004 | Tenant User (Super Admin for F-OFF-004 scope) | **[DETTAGLIATO sotto per F-OFF-004]** Lista location attive (usata anche da InviteUserDialog) |
 | POST | `/tenants/me/locations` | F-OFF-003 | Super Admin | Crea location |
 | PATCH | `/tenants/me/locations/:id` | F-OFF-003 | Super Admin | Modifica location |
 | DELETE | `/tenants/me/locations/:id` | F-OFF-003 | Super Admin | Disattiva location (soft delete) |
@@ -1366,11 +1366,12 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | POST | `/users/me/avatar/upload-url` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Genera presigned PUT URL per upload avatar |
 | POST | `/users/me/avatar/confirm` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Conferma upload S3 e flippa `avatar_url` |
 | DELETE | `/users/me/avatar` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Rimuove avatar (`avatar_url=NULL` + DeleteObject) |
-| GET | `/users` | F-OFF-004 | Super Admin | Lista utenti tenant |
-| POST | `/users/invitations` | F-OFF-004 | Super Admin | Invita nuovo utente |
-| DELETE | `/users/invitations/:id` | F-OFF-004 | Super Admin | Revoca invito |
-| PATCH | `/users/:id` | F-OFF-004 | Super Admin | Modifica ruolo/location/stato |
-| DELETE | `/users/:id` | F-OFF-004 | Super Admin | Rimuove utente (soft delete) |
+| GET | `/users` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Lista utenti tenant |
+| POST | `/users/invitations` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Invita nuovo utente |
+| GET | `/users/invitations` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Lista inviti pendenti |
+| DELETE | `/users/invitations/:id` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Revoca invito |
+| PATCH | `/users/:id` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Modifica ruolo/location/stato |
+| DELETE | `/users/:id` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Rimuove utente (soft delete) |
 
 #### PATCH /v1/users/me — Aggiorna profilo utente
 
@@ -1452,6 +1453,364 @@ Response 204 No Content.
 - L'API layer trasforma key → presigned 15-min URL nel response di GET/PATCH/confirm.
 - Riusa il bucket `S3_ATTACHMENTS_BUCKET` con prefix `avatars/users/`. Niente bucket pubblico.
 - Output sempre JPEG: il frontend converte qualsiasi input (JPEG/PNG/WebP, max 5 MB) a JPEG 512×512 via canvas prima dell'upload.
+
+---
+
+#### F-OFF-004: Gestione utenti e inviti (Super Admin)
+
+> **Nota spec reconciliation:** la spec originale citava il codice di errore `auth.forbidden.not_super_admin`. Questo codice **non esiste** nell'implementazione. Il codice corretto (già in uso da F-OFF-007, slice L, PR #102) è `auth.forbidden.super_admin_required` (vedi §3.3 APPENDICE_G). Tutti gli endpoint F-OFF-004 restituiscono `403 auth.forbidden.super_admin_required` quando il JWT non ha `role=super_admin`.
+
+Il DTO **UserAdmin** usato nelle risposte ha la seguente shape:
+
+```json
+{
+  "id": "uuid",
+  "email": "marco@officina.it",
+  "firstName": "Marco",
+  "lastName": "Rossi",
+  "role": "super_admin",
+  "locationId": "uuid | null",
+  "status": "active",
+  "phone": "+39 333 1234567 | null",
+  "avatarUrl": "https://presigned-url... | null",
+  "lastLoginAt": "2026-05-19T10:00:00.000Z | null",
+  "createdAt": "2026-04-01T09:00:00.000Z",
+  "updatedAt": "2026-05-01T12:00:00.000Z",
+  "deletedAt": "null | ISO8601"
+}
+```
+
+Il DTO **InvitationAdmin** usato nelle risposte ha la seguente shape:
+
+```json
+{
+  "id": "uuid",
+  "targetEmail": "nuovo@officina.it",
+  "firstName": "Luca | null",
+  "lastName": "Ferrari | null",
+  "role": "mechanic | null",
+  "locationId": "uuid | null",
+  "expiresAt": "2026-05-26T10:00:00.000Z",
+  "acceptedAt": "null | ISO8601",
+  "createdAt": "2026-05-19T10:00:00.000Z"
+}
+```
+
+**Auth comune a tutti gli endpoint F-OFF-004:** Tenant User con `role=super_admin` nel pool `officine`.
+
+---
+
+#### GET /v1/users — Lista utenti tenant
+
+Restituisce tutti gli utenti del tenant del chiamante (attivi, inattivi e soft-deleted). Il client filtra lato UI per `status`.
+
+**Auth:** Super Admin.
+
+**Request:** nessun body, nessun query param.
+
+**Response 200:**
+```json
+{
+  "users": [
+    {
+      "id": "a1b2c3d4-...",
+      "email": "marco@officina.it",
+      "firstName": "Marco",
+      "lastName": "Rossi",
+      "role": "super_admin",
+      "locationId": null,
+      "status": "active",
+      "phone": null,
+      "avatarUrl": null,
+      "lastLoginAt": "2026-05-19T08:30:00.000Z",
+      "createdAt": "2026-04-01T09:00:00.000Z",
+      "updatedAt": "2026-05-01T12:00:00.000Z",
+      "deletedAt": null
+    }
+  ]
+}
+```
+
+**Errori:**
+- `401 UNAUTHORIZED` — JWT mancante/invalido
+- `403 auth.forbidden.wrong_pool` — JWT da pool clienti
+- `403 auth.forbidden.super_admin_required` — JWT role != super_admin
+
+---
+
+#### POST /v1/users/invitations — Crea invito utente
+
+Crea un `invitation` row di tipo `internal_user` e invia email magic-link via SES (best-effort). Il token plaintext non viene mai restituito nella risposta.
+
+**Auth:** Super Admin.
+
+**Rate limit:** 10 inviti per ora per tenant.
+
+**Request body:**
+```json
+{
+  "email": "nuovo@officina.it",
+  "firstName": "Luca",
+  "lastName": "Ferrari",
+  "role": "mechanic",
+  "locationId": "b2c3d4e5-..."
+}
+```
+
+Campi:
+- `email` — email dell'invitato (trim + lowercase)
+- `firstName` / `lastName` — max 100 caratteri
+- `role` — `"super_admin"` | `"mechanic"`
+- `locationId` — UUID della sede, `null` se `role=super_admin`; **obbligatorio** se `role=mechanic` (BR-204)
+
+**Response 201:**
+```json
+{
+  "invitation": {
+    "id": "c3d4e5f6-...",
+    "targetEmail": "nuovo@officina.it",
+    "firstName": "Luca",
+    "lastName": "Ferrari",
+    "role": "mechanic",
+    "locationId": "b2c3d4e5-...",
+    "expiresAt": "2026-05-26T10:00:00.000Z",
+    "acceptedAt": null,
+    "createdAt": "2026-05-19T10:00:00.000Z"
+  }
+}
+```
+
+**Errori:**
+- `400 VALIDATION_ERROR` — campo mancante o formato errato
+- `401 UNAUTHORIZED` — JWT mancante/invalido
+- `403 auth.forbidden.super_admin_required` — JWT role != super_admin
+- `409 user.invitation.email_already_active` — un utente attivo con questa email esiste già nel tenant
+- `409 user.invitation.duplicate_pending` — esiste già un invito pendente per (tenant, email) — BR-206
+- `422 user.location_required_for_mechanic` — role=mechanic ma locationId assente — BR-204
+- `422 user.invitation.location_invalid` — locationId non appartiene al tenant o non attiva
+
+---
+
+#### GET /v1/users/invitations — Lista inviti pendenti
+
+Restituisce gli inviti `internal_user` non ancora accettati e non scaduti del tenant del chiamante.
+
+**Auth:** Super Admin.
+
+**Request:** nessun body, nessun query param.
+
+**Response 200:**
+```json
+{
+  "invitations": [
+    {
+      "id": "c3d4e5f6-...",
+      "targetEmail": "nuovo@officina.it",
+      "firstName": "Luca",
+      "lastName": "Ferrari",
+      "role": "mechanic",
+      "locationId": "b2c3d4e5-...",
+      "expiresAt": "2026-05-26T10:00:00.000Z",
+      "acceptedAt": null,
+      "createdAt": "2026-05-19T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Errori:**
+- `401 UNAUTHORIZED` — JWT mancante/invalido
+- `403 auth.forbidden.super_admin_required` — JWT role != super_admin
+
+---
+
+#### DELETE /v1/users/invitations/:id — Revoca invito
+
+Tombstons l'invito impostando `acceptedAt = now()`. Il log di audit distingue revoca da accettazione tramite il campo `action`.
+
+**Auth:** Super Admin.
+
+**Response 204 No Content.**
+
+**Errori:**
+- `401 UNAUTHORIZED` — JWT mancante/invalido
+- `403 auth.forbidden.super_admin_required` — JWT role != super_admin
+- `404 user.invitation.not_found` — ID non esiste o cross-tenant
+- `410 user.invitation.already_accepted` — invito già accettato o revocato in precedenza
+
+---
+
+#### GET /v1/invitations/:token — Lettura pubblica invito (pre-fill form)
+
+Endpoint pubblico (nessun JWT). Restituisce i campi necessari al form di accettazione. Tutti i casi invalidi (token inesistente, tipo errato, scaduto, già consumato) restituiscono `404 user.invitation.not_found` per anti-enum.
+
+**Auth:** nessuna.
+
+**Params:**
+- `:token` — magic-link token (stringa, max 200 caratteri)
+
+**Response 200:**
+```json
+{
+  "invitation": {
+    "targetEmail": "nuovo@officina.it",
+    "firstName": "Luca",
+    "lastName": "Ferrari",
+    "role": "mechanic",
+    "tenantName": "Officina Verdi",
+    "locationName": "Sede Milano",
+    "expiresAt": "2026-05-26T10:00:00.000Z"
+  }
+}
+```
+
+Campi interni (`id`, `locationId`, `tenantId`, `acceptedAt`, `createdAt`, `token`) NON esposti.
+
+**Errori:**
+- `404 user.invitation.not_found` — anti-enum: token non trovato, tipo errato, scaduto o già consumato
+
+---
+
+#### POST /v1/invitations/:token/accept — Accettazione pubblica invito
+
+Endpoint pubblico (nessun JWT). Il bearer dell'URL è il token stesso. Crea l'account Cognito e l'utente DB in 4 fasi con rollback su Cognito in caso di errore. Il client deve fare un login separato dopo la 201 per ottenere il JWT.
+
+**Auth:** nessuna.
+
+**Rate limit:** 5 tentativi per minuto per IP.
+
+**Params:**
+- `:token` — magic-link token
+
+**Request body:**
+```json
+{
+  "password": "SecureP@ss123"
+}
+```
+
+**Response 201:**
+```json
+{
+  "user": {
+    "id": "a1b2c3d4-...",
+    "email": "nuovo@officina.it",
+    "firstName": "Luca",
+    "lastName": "Ferrari",
+    "role": "mechanic",
+    "locationId": "b2c3d4e5-...",
+    "status": "active",
+    "phone": null,
+    "avatarUrl": null,
+    "lastLoginAt": null,
+    "createdAt": "2026-05-19T10:00:00.000Z",
+    "updatedAt": "2026-05-19T10:00:00.000Z",
+    "deletedAt": null
+  }
+}
+```
+
+**Fasi interne:**
+1. Read + pre-flight check (no writes; anti-enum 404 su tutti i casi invalidi)
+2. Cognito `AdminCreateUser` SUPPRESS → estrae `cognitoSub`
+3. Cognito `AdminSetUserPassword` Permanent (rollback `AdminDeleteUser` se fallisce)
+4. DB transaction: insert `User` + consuma `invitation` + `audit_log`
+
+**Errori:**
+- `400 VALIDATION_ERROR` — campo mancante o password < 8 caratteri
+- `404 user.invitation.not_found` — anti-enum (vedi sopra)
+- `409 user.invitation.email_already_active` — account già esistente per questa email
+- `422 user.invitation.accept_password_policy` — password rifiutata da Cognito per policy
+- `502 user.invitation.cognito_unavailable` — Cognito temporaneamente non disponibile
+
+---
+
+#### PATCH /v1/users/:id — Modifica utente (admin)
+
+Modifica `role`, `locationId` e/o `status` di un utente del tenant. Almeno un campo richiesto. Cognito attributi sincronizzati best-effort dopo il commit DB.
+
+**Auth:** Super Admin.
+
+**Params:**
+- `:id` — UUID dell'utente target
+
+**Request body** (almeno un campo):
+```json
+{
+  "role": "super_admin",
+  "locationId": "b2c3d4e5-...",
+  "status": "inactive"
+}
+```
+
+Campi:
+- `role` — `"super_admin"` | `"mechanic"` (optional)
+- `locationId` — UUID | `null` (optional)
+- `status` — `"active"` | `"inactive"` (optional)
+
+**Response 200:**
+```json
+{
+  "user": { "...UserAdmin DTO..." }
+}
+```
+
+**Errori:**
+- `400 VALIDATION_ERROR` — nessun campo fornito o valore non valido
+- `401 UNAUTHORIZED` — JWT mancante/invalido
+- `403 auth.forbidden.super_admin_required` — JWT role != super_admin
+- `404 user.not_found` — utente non trovato o cross-tenant
+- `409 user.last_super_admin` — modifica lascerebbe il tenant senza super_admin attivi — BR-203
+- `422 user.location_required_for_mechanic` — role=mechanic ma locationId risultante è null — BR-204
+- `422 user.location_invalid` — locationId non appartiene al tenant o non attiva
+
+---
+
+#### DELETE /v1/users/:id — Rimozione utente (soft delete)
+
+Imposta `status=inactive` e `deletedAt=now()`. Non cancella fisicamente. L'utente non può fare login dopo il soft-delete.
+
+**Auth:** Super Admin.
+
+**Params:**
+- `:id` — UUID dell'utente target
+
+**Response 204 No Content.**
+
+**Errori:**
+- `401 UNAUTHORIZED` — JWT mancante/invalido
+- `403 auth.forbidden.super_admin_required` — JWT role != super_admin
+- `404 user.not_found` — utente non trovato o già soft-deleted o cross-tenant
+- `409 user.last_super_admin` — rimozione lascerebbe il tenant senza super_admin attivi — BR-203
+- `422 user.cannot_delete_self_via_admin` — l'actor non può rimuovere se stesso tramite questo endpoint
+
+---
+
+#### GET /v1/tenants/me/locations — Lista location attive (F-OFF-004 scope)
+
+Restituisce le location `status=active` non soft-deleted del tenant corrente. Usato da `InviteUserDialog` per popolare il select sede al momento dell'invito.
+
+**Auth:** Super Admin (per utilizzo F-OFF-004; il medesimo endpoint è listato anche in F-OFF-003 per Tenant User).
+
+**Response 200:**
+```json
+{
+  "locations": [
+    {
+      "id": "b2c3d4e5-...",
+      "name": "Sede Milano",
+      "city": "Milano",
+      "isPrimary": true
+    }
+  ]
+}
+```
+
+Ordine: sede primaria prima (`isPrimary DESC`), poi alfabetico per nome.
+
+**Errori:**
+- `401 UNAUTHORIZED` — JWT mancante/invalido
+- `403 auth.forbidden.super_admin_required` — JWT role != super_admin
 
 ---
 
@@ -1598,7 +1957,8 @@ L'`owner_type=intervention` resta officina-only.
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | GET | `/health` | - | None | Health check (per load balancer) |
-| GET | `/invitations/:token` | F-OFF-004, F-OFF-205 | None | Dettagli invito prima di accettarlo |
+| GET | `/invitations/:token` | F-OFF-004, F-OFF-205 | None | **[DETTAGLIATO §3.3 F-OFF-004]** Dettagli invito prima di accettarlo |
+| POST | `/invitations/:token/accept` | F-OFF-004 | None | **[DETTAGLIATO §3.3 F-OFF-004]** Accettazione invito con scelta password |
 | GET | `/public/vehicles/:share_token` | F-CLI-502 | None | Vista storico condiviso |
 | GET | `/v1/openapi.json` | - | None | OpenAPI spec |
 
