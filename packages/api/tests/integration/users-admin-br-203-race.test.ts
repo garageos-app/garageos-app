@@ -160,3 +160,73 @@ describe('BR-203 — concurrent DELETE race', () => {
     expect(parseInt(rows[0]!.count, 10)).toBe(1);
   });
 });
+
+describe('BR-203 — concurrent PATCH demote race', () => {
+  it('two concurrent PATCH demote on last two super_admin → one 200, one 409', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('br203-patch-race');
+
+    const subA = `sa-patch-a-${crypto.randomUUID()}`;
+    const subB = `sa-patch-b-${crypto.randomUUID()}`;
+    const { userId: idA } = await createUser({
+      tenantId,
+      cognitoSub: subA,
+      email: 'patch-a@test.it',
+      role: 'super_admin',
+    });
+    const { userId: idB } = await createUser({
+      tenantId,
+      cognitoSub: subB,
+      email: 'patch-b@test.it',
+      role: 'super_admin',
+    });
+
+    const tokenA = await signTestToken({
+      pool: 'officine',
+      sub: subA,
+      tenantId,
+      role: 'super_admin',
+    });
+    const tokenB = await signTestToken({
+      pool: 'officine',
+      sub: subB,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    // A demotes B to mechanic; B demotes A to mechanic, concurrently.
+    // Mechanic requires location_id, so we provide one.
+    const [resA, resB] = await Promise.all([
+      app.inject({
+        method: 'PATCH',
+        url: `/v1/users/${idB}`,
+        headers: { authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' },
+        payload: { role: 'mechanic', locationId },
+        remoteAddress: '10.20.41.1',
+      }),
+      app.inject({
+        method: 'PATCH',
+        url: `/v1/users/${idA}`,
+        headers: { authorization: `Bearer ${tokenB}`, 'content-type': 'application/json' },
+        payload: { role: 'mechanic', locationId },
+        remoteAddress: '10.20.41.2',
+      }),
+    ]);
+
+    const codes = [resA.statusCode, resB.statusCode].sort((x, y) => x - y);
+    expect(codes).toEqual([200, 409]);
+
+    const failedRes = resA.statusCode === 409 ? resA : resB;
+    expect(failedRes.json().code).toBe('user.last_super_admin');
+
+    // pgAdmin is a raw pg.Client wrapper (not Prisma) — use raw SQL.
+    const { rows } = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM users
+        WHERE tenant_id = $1
+          AND role = 'super_admin'
+          AND status = 'active'
+          AND deleted_at IS NULL`,
+      [tenantId],
+    );
+    expect(parseInt(rows[0]!.count, 10)).toBe(1);
+  });
+});

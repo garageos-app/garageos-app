@@ -86,26 +86,34 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        // BR-203: guard against leaving the tenant with zero active super_admins.
-        // Fires only when the target IS currently an active super_admin AND the
-        // new state would no longer be an active super_admin (either role changed
-        // away from super_admin, or status changed to inactive). See BR-203.
+        // BR-203: race-safe guard against leaving the tenant with zero active
+        // super_admins. Fires only when target IS currently an active super_admin
+        // AND the new state would no longer be an active super_admin (either
+        // role changed away from super_admin, or status changed to inactive).
+        //
+        // Lock ALL active super_admins in the tenant (INCLUDING the target).
+        // Locking the disjoint set `id <> targetId` would let two concurrent
+        // cross-demotes (Tx-A locks {B'}, Tx-B locks {A'}) proceed to UPDATE
+        // and deadlock on cross-row locks at UPDATE time. Locking the FULL
+        // set guarantees mutual exclusion: the second tx blocks at SELECT,
+        // wakes up post-commit, sees the demoted peer, and hits the guard
+        // correctly. Check is `length <= 1` because the only remaining row
+        // may be the target itself. See BR-203.
         const isLosingAdmin =
           target.role === 'super_admin' &&
           target.status === 'active' &&
           (newRole !== 'super_admin' || newStatus !== 'active');
 
         if (isLosingAdmin) {
-          const remainingAdmins = await tx.user.count({
-            where: {
-              tenantId,
-              role: 'super_admin',
-              status: 'active',
-              deletedAt: null,
-              id: { not: targetId },
-            },
-          });
-          if (remainingAdmins === 0) {
+          const locked = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM users
+            WHERE tenant_id = ${tenantId}::uuid
+              AND role = 'super_admin'
+              AND status = 'active'
+              AND deleted_at IS NULL
+            FOR UPDATE
+          `;
+          if (locked.length <= 1) {
             throw businessError(
               'user.last_super_admin',
               409,
