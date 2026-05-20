@@ -452,4 +452,46 @@ describe('PATCH /v1/users/:id — Cognito GlobalSignOut on status active → ina
     const signoutCalls = cognitoMock.commandCalls(AdminUserGlobalSignOutCommand);
     expect(signoutCalls).toHaveLength(0);
   });
+
+  it('still returns 200 even if Cognito GlobalSignOut throws (best-effort)', async () => {
+    // Override the default-success mock for this single test.
+    cognitoMock.on(AdminUserGlobalSignOutCommand).rejects(new Error('Cognito down'));
+
+    const { tenantId, locationId } = await createTenantWithLocation('upd-cog-inact-fail');
+
+    const adminSub = `sa-upd-fail-${crypto.randomUUID()}`;
+    await createUser({
+      tenantId,
+      cognitoSub: adminSub,
+      email: 'admin-upd-fail@test.it',
+      role: 'super_admin',
+    });
+
+    const targetSub = `mech-upd-fail-${crypto.randomUUID()}`;
+    const { userId: targetId } = await createUser({
+      tenantId,
+      cognitoSub: targetSub,
+      email: 'mech-upd-fail@test.it',
+      role: 'mechanic',
+      locationId,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/users/${targetId}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { status: 'inactive' },
+      remoteAddress: TEST_IP,
+    });
+
+    // PATCH in DB succeeded; Cognito signout failed best-effort.
+    expect(res.statusCode).toBe(200);
+  });
 });
