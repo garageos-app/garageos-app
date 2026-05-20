@@ -65,17 +65,23 @@ export const usersAdminDeleteRoutes: FastifyPluginAsync = async (app) => {
 
         // BR-203: guard against leaving the tenant with zero active super_admins.
         // Fires only when target IS currently an active super_admin. See BR-203.
+        //
+        // SELECT FOR UPDATE locks the candidate rows; a second concurrent tx
+        // executing the same SELECT blocks until this tx commits, then re-reads
+        // the updated state. The target row itself is locked by the UPDATE
+        // below (Prisma issues row-level lock on UPDATE). Together this makes
+        // the count-then-update atomic.
         if (target.role === 'super_admin' && target.status === 'active') {
-          const remaining = await tx.user.count({
-            where: {
-              tenantId,
-              role: 'super_admin',
-              status: 'active',
-              deletedAt: null,
-              id: { not: targetId },
-            },
-          });
-          if (remaining === 0) {
+          const locked = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM users
+            WHERE tenant_id = ${tenantId}::uuid
+              AND role = 'super_admin'
+              AND status = 'active'
+              AND deleted_at IS NULL
+              AND id <> ${targetId}::uuid
+            FOR UPDATE
+          `;
+          if (locked.length === 0) {
             throw businessError(
               'user.last_super_admin',
               409,
