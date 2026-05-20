@@ -18,6 +18,7 @@ import {
   AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
   CognitoIdentityProviderClient,
+  InvalidPasswordException,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { mockClient } from 'aws-sdk-client-mock';
 import type { FastifyInstance } from 'fastify';
@@ -229,9 +230,12 @@ describe('POST /v1/invitations/:token/accept — password policy + rollback', ()
       token: 'weak-tok',
     });
 
-    const pwErr = new Error('Password does not meet requirements');
-    pwErr.name = 'InvalidPasswordException';
-    cognito.on(AdminSetUserPasswordCommand).rejects(pwErr);
+    cognito.on(AdminSetUserPasswordCommand).rejects(
+      new InvalidPasswordException({
+        message: 'Password does not meet requirements',
+        $metadata: {},
+      }),
+    );
     cognito.on(AdminDeleteUserCommand).resolves({});
 
     // Password passes Zod min(8) so Cognito gets the call — the mocked
