@@ -1388,10 +1388,11 @@ describe('tenant-context — user status reactive lookup', () => {
     expect(okRes.statusCode).toBe(200);
 
     // Soft-delete via DB (bypass admin endpoint to keep the test focused).
-    await pgAdmin.user.update({
-      where: { id: targetId },
-      data: { status: 'inactive', deletedAt: new Date() },
-    });
+    // pgAdmin is a raw pg.Client wrapper, so use SQL instead of Prisma-style.
+    await pgAdmin.query(
+      `UPDATE users SET status = 'inactive', deleted_at = now() WHERE id = $1`,
+      [targetId],
+    );
 
     // Post-soft-delete: same valid JWT now fails with 401.
     const koRes = await app.inject({
@@ -1432,10 +1433,8 @@ describe('tenant-context — user status reactive lookup', () => {
     });
 
     // Inactivate via direct DB update (sim PATCH status=inactive effect).
-    await pgAdmin.user.update({
-      where: { id: targetId },
-      data: { status: 'inactive' }, // no deletedAt — just inactive
-    });
+    // pgAdmin is a raw pg.Client wrapper, so use SQL instead of Prisma-style.
+    await pgAdmin.query(`UPDATE users SET status = 'inactive' WHERE id = $1`, [targetId]);
 
     const res = await app.inject({
       method: 'GET',
