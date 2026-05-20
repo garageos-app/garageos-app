@@ -11,8 +11,10 @@ SET accepted_at = NOW()
 WHERE invitation_type = 'internal_user'
   AND accepted_at IS NULL;
 
--- Step 2: emit one audit row per tombstoned invitation. Bounded by the
--- 5-second timestamp window to avoid double-counting previously-accepted rows.
+-- Step 2: emit one audit row per tombstoned invitation. NOW() is invariant
+-- within a single transaction (Prisma wraps migrations in one), so every row
+-- Step 1 just tombstoned has accepted_at = NOW() exactly. Equality predicate
+-- removes the theoretical false-positive of auditing a pre-existing accept.
 INSERT INTO audit_logs (
   id, tenant_id, actor_type, action, entity_type, entity_id, metadata, ip_address, created_at
 )
@@ -29,7 +31,7 @@ SELECT
 FROM invitations
 WHERE invitation_type = 'internal_user'
   AND accepted_at IS NOT NULL
-  AND accepted_at > (NOW() - INTERVAL '5 seconds');
+  AND accepted_at = NOW();
 
 -- Step 3: drop the plaintext column. The pre-existing @unique index
 -- (Prisma generated `invitations_token_key`) is dropped implicitly.

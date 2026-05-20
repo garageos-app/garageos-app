@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
+import { resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 
 // Migration 20260520120000 — invitations token hashing.
@@ -9,6 +10,10 @@ import { pgAdmin } from './setup.js';
 // time only and is verified via the operator smoke runbook §1).
 
 describe('Migration 0016 — invitations token_hash', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
   it('drops the legacy token column', async () => {
     const { rows } = await pgAdmin.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns
@@ -64,11 +69,14 @@ describe('Migration 0016 — invitations token_hash', () => {
       [tenantId, 'b@example.test'],
     );
 
-    const { rows: count } = await pgAdmin.query<{ c: string }>(
-      `SELECT count(*)::text AS c FROM invitations WHERE token_hash IS NULL AND tenant_id = $1`,
+    const { rows } = await pgAdmin.query<{ target_email: string }>(
+      `SELECT target_email FROM invitations
+       WHERE token_hash IS NULL AND tenant_id = $1
+       ORDER BY target_email`,
       [tenantId],
     );
-    expect(parseInt(count[0]!.c, 10)).toBe(2);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.target_email)).toEqual(['a@example.test', 'b@example.test']);
   });
 
   it('rejects two invitations with the same non-null token_hash', async () => {
