@@ -63,14 +63,17 @@ export const usersAdminDeleteRoutes: FastifyPluginAsync = async (app) => {
           throw businessError('user.not_found', 404, 'Utente non trovato.');
         }
 
-        // BR-203: guard against leaving the tenant with zero active super_admins.
-        // Fires only when target IS currently an active super_admin. See BR-203.
+        // BR-203: race-safe guard against leaving the tenant with zero active
+        // super_admins. Fires only when target IS currently an active super_admin.
         //
-        // SELECT FOR UPDATE locks the candidate rows; a second concurrent tx
-        // executing the same SELECT blocks until this tx commits, then re-reads
-        // the updated state. The target row itself is locked by the UPDATE
-        // below (Prisma issues row-level lock on UPDATE). Together this makes
-        // the count-then-update atomic.
+        // Lock ALL active super_admins in the tenant (INCLUDING the target).
+        // Locking the disjoint set `id <> targetId` would let two concurrent
+        // cross-deletes (Tx-A locks {B'}, Tx-B locks {A'}) proceed to UPDATE
+        // and deadlock on cross-row locks at UPDATE time. Locking the FULL
+        // set guarantees mutual exclusion: the second tx blocks at SELECT,
+        // wakes up post-commit, sees the deactivated peer, and hits the
+        // guard correctly. Check is `length <= 1` because the only remaining
+        // row may be the target itself.
         if (target.role === 'super_admin' && target.status === 'active') {
           const locked = await tx.$queryRaw<Array<{ id: string }>>`
             SELECT id FROM users
@@ -78,10 +81,9 @@ export const usersAdminDeleteRoutes: FastifyPluginAsync = async (app) => {
               AND role = 'super_admin'
               AND status = 'active'
               AND deleted_at IS NULL
-              AND id <> ${targetId}::uuid
             FOR UPDATE
           `;
-          if (locked.length === 0) {
+          if (locked.length <= 1) {
             throw businessError(
               'user.last_super_admin',
               409,
