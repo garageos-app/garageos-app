@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { useUsers, useInviteUser } from './users-admin';
+import { useUsers, useInviteUser, useRevokeInvitation, useDeleteUser } from './users-admin';
 import type { AdminUser, Invitation } from './users-admin';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -143,5 +143,54 @@ describe('useInviteUser', () => {
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+});
+
+// Regression guard: apiFetch hardcodes Content-Type: application/json and
+// Fastify rejects DELETE requests with that header but no body. Both
+// DELETE mutations must pass `body: '{}'`. See:
+//   packages/web/src/queries/avatarUpload.ts:123 for prior incident.
+
+describe('useRevokeInvitation', () => {
+  beforeEach(() => {
+    apiFetchMock.mockClear();
+  });
+
+  it("sends DELETE with body: '{}' so Fastify accepts the request", async () => {
+    apiFetchMock.mockResolvedValueOnce(undefined);
+
+    const qc = makeQc();
+    const { result } = renderHook(() => useRevokeInvitation(), { wrapper: wrap(qc) });
+
+    result.current.mutate('inv-id-123');
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/v1/users/invitations/inv-id-123', {
+      method: 'DELETE',
+      body: '{}',
+    });
+  });
+});
+
+describe('useDeleteUser', () => {
+  beforeEach(() => {
+    apiFetchMock.mockClear();
+  });
+
+  it("sends DELETE with body: '{}' so Fastify accepts the request", async () => {
+    apiFetchMock.mockResolvedValueOnce(undefined);
+
+    const qc = makeQc();
+    const { result } = renderHook(() => useDeleteUser(), { wrapper: wrap(qc) });
+
+    result.current.mutate('user-id-456');
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/v1/users/user-id-456', {
+      method: 'DELETE',
+      body: '{}',
+    });
   });
 });
