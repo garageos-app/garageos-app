@@ -217,11 +217,11 @@ describe('LambdaApiConstruct', () => {
     expect(JSON.stringify(arnValue)).toContain('garageos-api');
   });
 
-  it('execution role has secretsmanager:GetSecretValue, the 4 cognito-idp:Admin* actions, and s3:GetObject + s3:PutObject', () => {
-    // Find the inline policy attached to the execution role and check
-    // its statements. Presence: secretsmanager:GetSecretValue +
-    // 4 cognito-idp Admin/List actions + s3:GetObject + s3:PutObject
-    // (pre-emptive grant added in PR 23).
+  it('execution role has secretsmanager + cognito-idp Admin* + ListUsers + s3:GetObject + s3:PutObject', () => {
+    // Find the inline policy attached to the execution role and check its
+    // statements. Presence: secretsmanager:GetSecretValue + cognito-idp
+    // Admin/List actions (CRUD + SignOut + Disable for F-OFF-004 PR1/PR2) +
+    // s3:GetObject + s3:PutObject (pre-emptive grant added in PR 23).
     const policies = template.findResources('AWS::IAM::Policy');
     const inlineStatements = Object.values(policies).flatMap(
       (res) => res.Properties.PolicyDocument.Statement as Array<{ Action: string | string[] }>,
@@ -232,7 +232,11 @@ describe('LambdaApiConstruct', () => {
     expect(allActions).toContain('secretsmanager:GetSecretValue');
     expect(allActions).toContain('cognito-idp:AdminGetUser');
     expect(allActions).toContain('cognito-idp:AdminCreateUser');
+    expect(allActions).toContain('cognito-idp:AdminSetUserPassword');
     expect(allActions).toContain('cognito-idp:AdminUpdateUserAttributes');
+    expect(allActions).toContain('cognito-idp:AdminDeleteUser');
+    expect(allActions).toContain('cognito-idp:AdminDisableUser');
+    expect(allActions).toContain('cognito-idp:AdminUserGlobalSignOut');
     expect(allActions).toContain('cognito-idp:ListUsers');
     expect(allActions).toContain('s3:GetObject');
     expect(allActions).toContain('s3:PutObject');
