@@ -2,7 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
-import { createTenantWithLocation, ensureSystemInterventionType, resetDb } from './helpers.js';
+import {
+  createTenantWithLocation,
+  createUser,
+  ensureSystemInterventionType,
+  resetDb,
+} from './helpers.js';
 import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
@@ -30,12 +35,28 @@ describe('GET /v1/intervention-types (integration)', () => {
     await ensureSystemInterventionType('REVISIONE');
   });
 
-  async function authedRequest(tenantId: string) {
+  // Hardcoded sub shared across all authedRequest calls. tenant-context
+  // middleware now requires an active users row matching cognitoSub ×
+  // tenantId, so each caller must seed a user with this sub before
+  // invoking authedRequest (resetDb wipes users between tests so a
+  // per-test seed in each it() block is required).
+  const AUTHED_SUB = '11111111-1111-4111-8111-111111111111';
+
+  async function authedRequest(tenantId: string, locationId: string) {
+    // Seed the user so tenant-context middleware finds an active row.
+    await createUser({
+      tenantId,
+      cognitoSub: AUTHED_SUB,
+      email: 'test-mechanic@test.it',
+      role: 'mechanic',
+      locationId,
+    });
     const token = await signTestToken({
       pool: 'officine',
-      sub: '11111111-1111-4111-8111-111111111111',
+      sub: AUTHED_SUB,
       tenantId,
       role: 'mechanic',
+      locationId,
     });
     return app.inject({
       method: 'GET',
@@ -45,8 +66,8 @@ describe('GET /v1/intervention-types (integration)', () => {
   }
 
   it('returns system-wide types only for fresh tenant', async () => {
-    const { tenantId } = await createTenantWithLocation('itypes-fresh');
-    const res = await authedRequest(tenantId);
+    const { tenantId, locationId } = await createTenantWithLocation('itypes-fresh');
+    const res = await authedRequest(tenantId, locationId);
     expect(res.statusCode).toBe(200);
     const json = res.json() as {
       data: Array<{ code: string; custom: boolean; tenantId?: unknown }>;
@@ -57,7 +78,7 @@ describe('GET /v1/intervention-types (integration)', () => {
   });
 
   it('includes tenant custom rows alongside system', async () => {
-    const { tenantId } = await createTenantWithLocation('itypes-custom');
+    const { tenantId, locationId } = await createTenantWithLocation('itypes-custom');
     await pgAdmin.query(
       `INSERT INTO intervention_types
         (id, tenant_id, code, name_it, description, icon, category, suggests_deadline,
@@ -66,7 +87,7 @@ describe('GET /v1/intervention-types (integration)', () => {
         'other'::"InterventionTypeCategory", false, NOW(), NOW())`,
       [tenantId],
     );
-    const res = await authedRequest(tenantId);
+    const res = await authedRequest(tenantId, locationId);
     expect(res.statusCode).toBe(200);
     const json = res.json() as { data: Array<{ code: string; custom: boolean }> };
     const custom = json.data.find((r) => r.code === 'CUSTOM_FOO');
@@ -76,7 +97,7 @@ describe('GET /v1/intervention-types (integration)', () => {
 
   it('isolates tenant custom rows cross-tenant', async () => {
     const { tenantId: tenantA } = await createTenantWithLocation('itypes-a');
-    const { tenantId: tenantB } = await createTenantWithLocation('itypes-b');
+    const { tenantId: tenantB, locationId: locationB } = await createTenantWithLocation('itypes-b');
     await pgAdmin.query(
       `INSERT INTO intervention_types
         (id, tenant_id, code, name_it, description, icon, category, suggests_deadline,
@@ -85,14 +106,14 @@ describe('GET /v1/intervention-types (integration)', () => {
         'other'::"InterventionTypeCategory", false, NOW(), NOW())`,
       [tenantA],
     );
-    const res = await authedRequest(tenantB);
+    const res = await authedRequest(tenantB, locationB);
     const json = res.json() as { data: Array<{ code: string }> };
     expect(json.data.find((r) => r.code === 'TENANT_A_ONLY')).toBeUndefined();
   });
 
   it('orders by category enum-order ASC then nameIt ASC', async () => {
-    const { tenantId } = await createTenantWithLocation('itypes-order');
-    const res = await authedRequest(tenantId);
+    const { tenantId, locationId } = await createTenantWithLocation('itypes-order');
+    const res = await authedRequest(tenantId, locationId);
     const json = res.json() as { data: Array<{ category: string; nameIt: string }> };
     // Prisma `orderBy: { category: 'asc' }` on a Postgres enum column orders by
     // enum *definition* order, not alphabetical. Mirror the InterventionTypeCategory
