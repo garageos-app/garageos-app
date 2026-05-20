@@ -3,6 +3,7 @@ import {
   AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
   AdminUpdateUserAttributesCommand,
+  AdminUserGlobalSignOutCommand,
   CognitoIdentityProviderClient,
   InvalidPasswordException,
   UsernameExistsException,
@@ -277,6 +278,37 @@ export async function deleteCognitoUser(args: { poolId: string; email: string })
   try {
     await client.send(
       new AdminDeleteUserCommand({ UserPoolId: args.poolId, Username: args.email }),
+    );
+  } catch (err) {
+    if (err instanceof UserNotFoundException) return;
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+}
+
+// Invalidates ALL refresh tokens for the given user in the officine pool.
+// Used as a "proactive lockout" companion to soft-delete and PATCH
+// status=inactive (F-OFF-004 follow-ups Item 1). Access tokens already
+// in circulation remain valid until their TTL, but the reactive lookup
+// in tenant-context closes that residual window at the API surface.
+//
+// Idempotent — swallows UserNotFoundException so callers can use this
+// safely on users who never accepted their invitation (cognito_sub
+// would still be populated post-accept, so this case is rare; defensive
+// anyway).
+//
+// See docs/superpowers/specs/2026-05-20-f-off-004-followups-bundle-design.md
+// Item 1 proactive section.
+export async function signOutOfficineUser(args: { poolId: string; email: string }): Promise<void> {
+  const client = getCognitoClient();
+  try {
+    await client.send(
+      new AdminUserGlobalSignOutCommand({
+        UserPoolId: args.poolId,
+        Username: args.email,
+      }),
     );
   } catch (err) {
     if (err instanceof UserNotFoundException) return;
