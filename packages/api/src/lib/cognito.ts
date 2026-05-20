@@ -1,6 +1,7 @@
 import {
   AdminCreateUserCommand,
   AdminDeleteUserCommand,
+  AdminDisableUserCommand,
   AdminSetUserPasswordCommand,
   AdminUpdateUserAttributesCommand,
   AdminUserGlobalSignOutCommand,
@@ -306,6 +307,38 @@ export async function signOutOfficineUser(args: { poolId: string; email: string 
   try {
     await client.send(
       new AdminUserGlobalSignOutCommand({
+        UserPoolId: args.poolId,
+        Username: args.email,
+      }),
+    );
+  } catch (err) {
+    if (err instanceof UserNotFoundException) return;
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+}
+
+// Disables the Cognito user in the officine pool. Subsequent
+// AdminInitiateAuth calls return NotAuthorizedException with the
+// native "User is disabled" message — same surface as a wrong
+// password from outside, preserving anti-enum at the auth layer.
+//
+// Used in tandem with signOutOfficineUser on soft-delete and on
+// status: active→inactive transitions:
+//   signOutOfficineUser  → invalidates active refresh tokens
+//   disableOfficineUser  → blocks re-login attempts
+//
+// Idempotent — swallows UserNotFoundException so callers can use
+// this in best-effort post-tx paths without prior existence checks.
+//
+// See docs/superpowers/specs/2026-05-20-pr2-token-hash-admin-disable-design.md §2.3.
+export async function disableOfficineUser(args: { poolId: string; email: string }): Promise<void> {
+  const client = getCognitoClient();
+  try {
+    await client.send(
+      new AdminDisableUserCommand({
         UserPoolId: args.poolId,
         Username: args.email,
       }),
