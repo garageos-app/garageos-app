@@ -106,6 +106,18 @@ const MECHANIC_USER: AdminUser = {
   deletedAt: null,
 };
 
+const INACTIVE_USER: AdminUser = {
+  id: 'user-inactive-1',
+  email: 'disattivato@officina.it',
+  firstName: 'Lucia',
+  lastName: 'Bianchi',
+  role: 'mechanic',
+  locationId: 'loc-1',
+  status: 'inactive',
+  createdAt: '2026-01-01T00:00:00Z',
+  deletedAt: '2026-05-20T07:50:00Z',
+};
+
 // ─── UI Tests ─────────────────────────────────────────────────────────────────
 
 describe('EditUserDialog UI', () => {
@@ -301,5 +313,21 @@ describe('EditUserDialog UI', () => {
     );
     // Dialog must remain open.
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  // ── Inactive users: deactivate action must be hidden ───────────────────────
+  // Regression guard: clicking "Disattiva utente" on an already-inactive user
+  // would yield 404 user.not_found because the backend filters deletedAt: null.
+  // Reactivation is a separate (deferred) decision; for now we just hide the
+  // action and surface a notice.
+
+  it('hides the deactivate section and shows an inactive notice when status="inactive"', () => {
+    render(<EditUserDialog user={INACTIVE_USER} open={true} onOpenChange={() => {}} />, {
+      wrapper: wrap,
+    });
+
+    expect(screen.queryByTestId('deactivate-button')).not.toBeInTheDocument();
+    expect(screen.getByTestId('inactive-notice')).toBeInTheDocument();
+    expect(screen.getByText(/utente disattivato/i)).toBeInTheDocument();
   });
 });

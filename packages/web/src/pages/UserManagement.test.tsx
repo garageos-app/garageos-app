@@ -164,4 +164,46 @@ describe('UserManagement page', () => {
       expect(revokeMutateMock).toHaveBeenCalledWith(mockInvitation.id);
     });
   });
+
+  // ── Inactive users: hidden by default, revealed via toggle ─────────────────
+
+  const inactiveUser: AdminUser = {
+    id: crypto.randomUUID(),
+    email: 'disattivato@officina.test',
+    firstName: 'Lucia',
+    lastName: 'Bianchi',
+    role: 'mechanic',
+    locationId: null,
+    status: 'inactive',
+    createdAt: '2026-05-01T10:00:00Z',
+    deletedAt: '2026-05-20T07:50:00Z',
+  };
+
+  it('hides inactive users by default and shows the toggle when at least one inactive exists', () => {
+    mockQueries({ users: [mockUser, inactiveUser] });
+    render(wrap(<UserManagement />));
+
+    expect(screen.getByText('Mario Rossi')).toBeInTheDocument();
+    expect(screen.queryByText('Lucia Bianchi')).not.toBeInTheDocument();
+    expect(screen.getByTestId('toggle-show-inactive')).toBeInTheDocument();
+    expect(screen.getByText(/Mostra utenti disattivati \(1\)/)).toBeInTheDocument();
+  });
+
+  it('does not render the toggle when there are no inactive users', () => {
+    mockQueries({ users: [mockUser] });
+    render(wrap(<UserManagement />));
+
+    expect(screen.queryByTestId('toggle-show-inactive')).not.toBeInTheDocument();
+  });
+
+  it('reveals inactive users when toggle is checked', async () => {
+    const user = userEvent.setup();
+    mockQueries({ users: [mockUser, inactiveUser] });
+    render(wrap(<UserManagement />));
+
+    await user.click(screen.getByTestId('toggle-show-inactive'));
+
+    expect(screen.getByText('Lucia Bianchi')).toBeInTheDocument();
+    expect(screen.getByText('Disattivato')).toBeInTheDocument();
+  });
 });

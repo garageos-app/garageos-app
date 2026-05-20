@@ -337,55 +337,70 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
           <hr />
 
           {/* ── Section 3: Deactivate ───────────────────────────────────────── */}
-          <section>
-            <h3 className="font-medium mb-3">Disattiva utente</h3>
+          {/* Hide the deactivate action entirely when the user is already
+              inactive — the backend filters `deletedAt: null` so clicking
+              would yield a confusing 404 user.not_found. Reactivation is
+              a separate (deferred) decision; see PR description. */}
+          {user.status === 'active' && (
+            <section>
+              <h3 className="font-medium mb-3">Disattiva utente</h3>
 
-            {deactivateError && (
-              <div
-                className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm mb-3"
-                role="alert"
-                data-testid="deactivate-error"
-              >
-                {deactivateError}
-              </div>
-            )}
-
-            {!confirmDeactivate ? (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setConfirmDeactivate(true)}
-                data-testid="deactivate-button"
-              >
-                Disattiva utente
-              </Button>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Sei sicuro? L&apos;utente perderà immediatamente l&apos;accesso.
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={deleteMut.isPending}
-                    onClick={() => void handleDeactivate()}
-                    data-testid="deactivate-confirm-button"
-                  >
-                    {deleteMut.isPending ? 'Disattivazione…' : 'Conferma disattivazione'}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={deleteMut.isPending}
-                    onClick={() => setConfirmDeactivate(false)}
-                  >
-                    Annulla
-                  </Button>
+              {deactivateError && (
+                <div
+                  className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm mb-3"
+                  role="alert"
+                  data-testid="deactivate-error"
+                >
+                  {deactivateError}
                 </div>
-              </div>
-            )}
-          </section>
+              )}
+
+              {!confirmDeactivate ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setConfirmDeactivate(true)}
+                  data-testid="deactivate-button"
+                >
+                  Disattiva utente
+                </Button>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Sei sicuro? L&apos;utente perderà immediatamente l&apos;accesso.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deleteMut.isPending}
+                      onClick={() => void handleDeactivate()}
+                      data-testid="deactivate-confirm-button"
+                    >
+                      {deleteMut.isPending ? 'Disattivazione…' : 'Conferma disattivazione'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={deleteMut.isPending}
+                      onClick={() => setConfirmDeactivate(false)}
+                    >
+                      Annulla
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          {user.status === 'inactive' && (
+            <section data-testid="inactive-notice">
+              <h3 className="font-medium mb-2">Utente disattivato</h3>
+              <p className="text-sm text-muted-foreground">
+                Questo utente è disattivato. La riattivazione non è ancora supportata.
+              </p>
+            </section>
+          )}
         </div>
 
         <DialogFooter>
