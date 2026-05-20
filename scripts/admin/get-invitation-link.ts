@@ -104,10 +104,10 @@ async function main() {
         data: {
           tenantId: inv.tenantId,
           actorType: 'system',
-          action: 'invitation_token_rotated_by_operator',
+          action: 'user_invitation_token_rotated',
           entityType: 'invitation',
           entityId: inv.id,
-          metadata: { reason: 'ses_sandbox_workaround' },
+          metadata: { reason: 'ses_sandbox_workaround', actor: 'operator_cli' },
         },
       });
     });
