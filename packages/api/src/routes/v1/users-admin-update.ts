@@ -25,7 +25,7 @@ import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 import { requireSuperAdmin } from '../../middleware/require-super-admin.js';
-import { updateOfficineUserRoleAndLocation } from '../../lib/cognito.js';
+import { signOutOfficineUser, updateOfficineUserRoleAndLocation } from '../../lib/cognito.js';
 import { USER_ADMIN_SELECT, serializeUserAdmin } from '../../lib/dtos/user-admin.js';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
@@ -66,7 +66,14 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
         // Lookup target user (same tenant, not soft-deleted).
         const target = await tx.user.findFirst({
           where: { id: targetId, tenantId, deletedAt: null },
-          select: { id: true, email: true, role: true, locationId: true, status: true },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            locationId: true,
+            status: true,
+            cognitoSub: true,
+          },
         });
         if (!target) {
           throw businessError('user.not_found', 404, 'Utente non trovato.');
@@ -86,26 +93,34 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        // BR-203: guard against leaving the tenant with zero active super_admins.
-        // Fires only when the target IS currently an active super_admin AND the
-        // new state would no longer be an active super_admin (either role changed
-        // away from super_admin, or status changed to inactive). See BR-203.
+        // BR-203: race-safe guard against leaving the tenant with zero active
+        // super_admins. Fires only when target IS currently an active super_admin
+        // AND the new state would no longer be an active super_admin (either
+        // role changed away from super_admin, or status changed to inactive).
+        //
+        // Lock ALL active super_admins in the tenant (INCLUDING the target).
+        // Locking the disjoint set `id <> targetId` would let two concurrent
+        // cross-demotes (Tx-A locks {B'}, Tx-B locks {A'}) proceed to UPDATE
+        // and deadlock on cross-row locks at UPDATE time. Locking the FULL
+        // set guarantees mutual exclusion: the second tx blocks at SELECT,
+        // wakes up post-commit, sees the demoted peer, and hits the guard
+        // correctly. Check is `length <= 1` because the only remaining row
+        // may be the target itself. See BR-203.
         const isLosingAdmin =
           target.role === 'super_admin' &&
           target.status === 'active' &&
           (newRole !== 'super_admin' || newStatus !== 'active');
 
         if (isLosingAdmin) {
-          const remainingAdmins = await tx.user.count({
-            where: {
-              tenantId,
-              role: 'super_admin',
-              status: 'active',
-              deletedAt: null,
-              id: { not: targetId },
-            },
-          });
-          if (remainingAdmins === 0) {
+          const locked = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM users
+            WHERE tenant_id = ${tenantId}::uuid
+              AND role = 'super_admin'
+              AND status = 'active'
+              AND deleted_at IS NULL
+            FOR UPDATE
+          `;
+          if (locked.length <= 1) {
             throw businessError(
               'user.last_super_admin',
               409,
@@ -181,8 +196,11 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
         return {
           user: updated,
           targetEmail: target.email,
+          targetCognitoSub: target.cognitoSub,
           roleChanged: body.role !== undefined && body.role !== target.role,
           locationChanged: body.locationId !== undefined && body.locationId !== target.locationId,
+          statusBecameInactive:
+            body.status !== undefined && target.status === 'active' && body.status === 'inactive',
         };
       });
 
@@ -201,6 +219,25 @@ export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {
           request.log.error(
             { err, targetId },
             'cognito user attribute sync failed (DB updated; takes effect on next JWT refresh)',
+          );
+        }
+      }
+
+      // Item 1 proactive: invalidate all Cognito refresh tokens on
+      // active → inactive transition. Best-effort, independent from the
+      // role/location sync above. See follow-ups spec 2026-05-20.
+      // The truthy check on targetCognitoSub is defensive; users.cognito_sub
+      // is non-nullable at the schema level.
+      if (result.statusBecameInactive && result.targetCognitoSub) {
+        try {
+          await signOutOfficineUser({
+            poolId: env.COGNITO_OFFICINE_POOL_ID,
+            email: result.targetEmail,
+          });
+        } catch (err) {
+          request.log.error(
+            { err, targetId },
+            'cognito global signout on status=inactive failed (DB updated; user retains access until access token TTL)',
           );
         }
       }

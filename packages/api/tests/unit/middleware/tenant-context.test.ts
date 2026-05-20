@@ -1,6 +1,6 @@
 import sensible from '@fastify/sensible';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PROBLEM_JSON_CONTENT_TYPE } from '../../../src/config/constants.js';
 import { tenantContext } from '../../../src/middleware/tenant-context.js';
@@ -16,10 +16,19 @@ const COGNITO_SUB = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 
 type JwtStub = Partial<CognitoIdTokenPayload> | undefined;
 
+// Module-level Prisma stub. Each test sets findFirst behavior; tenantContext
+// reads request.server.prisma so we decorate the test app with this stub.
+// Default mock in beforeEach returns an active user so the EXISTING tests
+// (which don't care about status lookup) continue to pass.
+const prismaStub = {
+  user: { findFirst: vi.fn() },
+};
+
 async function buildApp(jwt: JwtStub): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
   registerErrorHandler(app);
+  app.decorate('prisma', prismaStub as unknown as never);
   app.get(
     '/_probe',
     {
@@ -47,6 +56,8 @@ describe('tenantContext middleware (JWT-backed)', () => {
 
   beforeEach(() => {
     app = undefined;
+    prismaStub.user.findFirst.mockReset();
+    prismaStub.user.findFirst.mockResolvedValue({ id: 'default-user-uuid' });
   });
 
   afterEach(async () => {
@@ -185,5 +196,53 @@ describe('tenantContext middleware (JWT-backed)', () => {
     const res = await app.inject({ method: 'GET', url: '/_probe' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ userRole: 'super_admin', locationId: null });
+  });
+
+  describe('user status lookup (F-OFF-004 follow-ups Item 1)', () => {
+    it('returns 200 when user is active and not deleted', async () => {
+      prismaStub.user.findFirst.mockResolvedValueOnce({ id: 'user-uuid' });
+      app = await buildApp({
+        sub: COGNITO_SUB,
+        'custom:tenant_id': TENANT_ID,
+        'custom:role': 'mechanic',
+      });
+
+      const res = await app.inject({ method: 'GET', url: '/_probe' });
+      expect(res.statusCode).toBe(200);
+      expect(prismaStub.user.findFirst).toHaveBeenCalledWith({
+        where: {
+          cognitoSub: COGNITO_SUB,
+          tenantId: TENANT_ID,
+          status: 'active',
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+    });
+
+    it('returns 401 when user lookup returns null (inactive or deleted)', async () => {
+      prismaStub.user.findFirst.mockResolvedValueOnce(null);
+      app = await buildApp({
+        sub: COGNITO_SUB,
+        'custom:tenant_id': TENANT_ID,
+        'custom:role': 'mechanic',
+      });
+
+      const res = await app.inject({ method: 'GET', url: '/_probe' });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('does not leak whether user is missing vs deleted in response body', async () => {
+      prismaStub.user.findFirst.mockResolvedValueOnce(null);
+      app = await buildApp({
+        sub: COGNITO_SUB,
+        'custom:tenant_id': TENANT_ID,
+        'custom:role': 'mechanic',
+      });
+
+      const res = await app.inject({ method: 'GET', url: '/_probe' });
+      const body = res.json();
+      expect(body.code).toBe('UNAUTHORIZED');
+    });
   });
 });

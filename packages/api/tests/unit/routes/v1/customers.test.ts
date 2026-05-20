@@ -13,12 +13,17 @@ const CUSTOMER_ID = '55555555-5555-4555-8555-555555555555';
 
 interface FakePrisma {
   customer: { findMany: ReturnType<typeof vi.fn> };
+  user: { findFirst: ReturnType<typeof vi.fn> };
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
   return {
     customer: {
       findMany: vi.fn().mockResolvedValue([]),
+    },
+    user: {
+      // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
+      findFirst: vi.fn().mockResolvedValue({ id: 'user-uuid' }),
     },
     ...overrides,
   };

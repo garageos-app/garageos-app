@@ -767,13 +767,13 @@ Un Meccanico **deve** avere `location_id` popolato (assegnato a una sede specifi
 - Registrare interventi solo nella propria location
 
 ### BR-206 — Invito utenti
-Il Super Admin può invitare nuovi utenti via email. Il flusso:
+Il Super Admin può invitare nuovi utenti via email. Il flusso effettivo (F-OFF-004):
 1. Super Admin compila form: email, nome, cognome, ruolo, location
-2. Sistema crea `user` con `status=invited`, `cognito_sub=NULL`
-3. Sistema crea `invitation` con token valido 7 giorni
-4. Email inviata con link di attivazione
-5. Invitato clicca → imposta password in Cognito → `cognito_sub` popolato → `status=active`
-6. Se link scade prima dell'attivazione: `invitation.expires_at < now()` → non più usabile, invito da rifare
+2. Sistema crea riga `invitations` con token valido 7 giorni — **NON** crea ancora una riga `users`
+3. Email inviata con magic-link a `/accept-invitation?token=...`
+4. Invitato clicca → GET `/v1/invitations/:token` mostra dettagli → POST `/v1/invitations/:token/accept` con password
+5. Backend chiama `AdminCreateUser` + `AdminSetUserPassword` in Cognito, crea riga `users` con `status='active'` e `cognito_sub` popolato, marca `invitations.accepted_at`
+6. Se link scada prima dell'attivazione: `invitation.expires_at < now()` → 410 Gone, super_admin deve creare un nuovo invito
 
 ### BR-207 — Rimozione utente
 Super Admin può rimuovere un utente (soft delete, `status=inactive` + `deleted_at`).

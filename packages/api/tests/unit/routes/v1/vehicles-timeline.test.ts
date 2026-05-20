@@ -47,6 +47,7 @@ interface FakePrisma {
   intervention: { findMany: ReturnType<typeof vi.fn> };
   privateIntervention: { findMany: ReturnType<typeof vi.fn> };
   attachment: { groupBy: ReturnType<typeof vi.fn> };
+  user: { findFirst: ReturnType<typeof vi.fn> };
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
@@ -58,6 +59,10 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     intervention: { findMany: vi.fn().mockResolvedValue([SHOP_ROW_1, SHOP_ROW_2_DISPUTED]) },
     privateIntervention: { findMany: vi.fn().mockResolvedValue([PRIVATE_ROW_1]) },
     attachment: { groupBy: vi.fn().mockResolvedValue([]) },
+    user: {
+      // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
+      findFirst: vi.fn().mockResolvedValue({ id: 'user-uuid' }),
+    },
     ...overrides,
   };
 }

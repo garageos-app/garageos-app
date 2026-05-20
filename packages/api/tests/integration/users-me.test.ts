@@ -62,9 +62,10 @@ describe('GET /v1/users/me (integration)', () => {
     });
   });
 
-  it('returns 404 when no user row matches the JWT cognito_sub', async () => {
+  it('returns 401 when no user row matches the JWT cognito_sub (T7 middleware short-circuit)', async () => {
     const { tenantId } = await createTenantWithLocation('users-me-noone');
-    // No user inserted — findFirstOrThrow lands in P2025.
+    // No user inserted — T7 tenantContext middleware cannot find the user row
+    // and returns 401 before the handler is reached.
 
     const token = await signTestToken({
       pool: 'officine',
@@ -78,21 +79,19 @@ describe('GET /v1/users/me (integration)', () => {
       headers: { authorization: `Bearer ${token}` },
     });
 
-    expect(res.statusCode).toBe(404);
-    expect(res.json()).toMatchObject({
-      type: 'https://api.garageos.it/errors/NOT_FOUND',
-      status: 404,
-    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().code).toBe('UNAUTHORIZED');
   });
 
-  it('cross-tenant isolation: tenant A token cannot read tenant B user (RLS)', async () => {
+  it('cross-tenant isolation: tenant A token cannot read tenant B user (T7 middleware enforcement)', async () => {
     const { tenantId: tenantA } = await createTenantWithLocation('users-me-isolation-A');
     const { tenantId: tenantB } = await createTenantWithLocation('users-me-isolation-B');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
-    // User belongs to Tenant B; the token carries Tenant A's tenantId
-    // claim. Post-0004 `users_read` is permissive — the app-layer
-    // (cognitoSub, tenantId) where-clause filters the row out so
-    // findFirstOrThrow lands on P2025 → 404.
+    // User belongs to Tenant B; the token carries Tenant A's tenantId claim.
+    // T7 tenantContext middleware performs (cognitoSub, tenantId) lookup — the
+    // row is not found under tenantA → 401 before the handler is reached.
+    // Cross-tenant isolation is still enforced; the mechanism moved from
+    // RLS-as-empty-result to middleware-as-401.
     await createUser({ tenantId: tenantB, cognitoSub });
 
     const token = await signTestToken({
@@ -107,7 +106,7 @@ describe('GET /v1/users/me (integration)', () => {
       headers: { authorization: `Bearer ${token}` },
     });
 
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(401);
   });
 
   it('does not expose cognito_sub, deletedAt, or updatedAt in the response', async () => {

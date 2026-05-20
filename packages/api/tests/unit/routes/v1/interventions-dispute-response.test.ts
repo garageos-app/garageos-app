@@ -20,7 +20,7 @@ const VALID_RESPONSE =
   "L'intervento è stato eseguito come da preventivo firmato il 2026-04-20; in allegato il foglio di lavoro.";
 
 interface FakePrisma {
-  user: { findFirstOrThrow: ReturnType<typeof vi.fn> };
+  user: { findFirstOrThrow: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   intervention: {
     findUniqueOrThrow: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
@@ -101,6 +101,8 @@ function buildFakePrisma(o: FakePrismaOverrides = {}): FakePrisma {
   return {
     user: {
       findFirstOrThrow: vi.fn().mockResolvedValue(buildUserRow(o.userRole ?? 'super_admin')),
+      // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
+      findFirst: vi.fn().mockResolvedValue({ id: USER_ID }),
     },
     intervention: {
       findUniqueOrThrow: vi

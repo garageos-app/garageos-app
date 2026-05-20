@@ -13,13 +13,21 @@
 //   4. 404 not found: DELETE non-existent UUID → 404 user.not_found.
 //   5. 404 cross-tenant: DELETE another tenant's user → 404.
 
+import {
+  AdminUserGlobalSignOutCommand,
+  CognitoIdentityProviderClient,
+} from '@aws-sdk/client-cognito-identity-provider';
+import { mockClient } from 'aws-sdk-client-mock';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { _resetCognitoClientForTests } from '../../src/lib/cognito.js';
 import { buildTestServer } from './fixtures.js';
 import { createTenantWithLocation, createUser, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
+
+const cognitoMock = mockClient(CognitoIdentityProviderClient);
 
 let app: FastifyInstance;
 
@@ -33,6 +41,9 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetDb();
+  cognitoMock.reset();
+  _resetCognitoClientForTests();
+  cognitoMock.on(AdminUserGlobalSignOutCommand).resolves({});
 });
 
 // ─── Happy path: non-last super_admin deleted ────────────────────────────────
@@ -101,11 +112,23 @@ describe('DELETE /v1/users/:id — happy path soft-delete', () => {
 });
 
 // ─── BR-203: deleting last active super_admin ────────────────────────────────
+//
+// NOTE: The serial BR-203 "last super_admin" path is no longer reachable via
+// legitimate non-concurrent requests after the T7 reactive middleware was
+// introduced (F-OFF-004 follow-ups Item 1). An actor whose DB row is
+// soft-deleted is blocked at tenantContext middleware (401) before reaching
+// the BR-203 check in the route handler.
+//
+// The concurrent-race scenario (two simultaneous DELETE requests) is covered
+// separately in: tests/integration/users-admin-br-203-race.test.ts
+//
+// This test is repurposed to verify the T7 middleware behavior itself:
+// a soft-deleted actor's JWT is rejected at middleware regardless of intent.
 
 describe('DELETE /v1/users/:id — BR-203 last super_admin guard', () => {
   const TEST_IP = '10.20.31.11';
 
-  it('returns 409 user.last_super_admin when only one active super_admin remains', async () => {
+  it('returns 401 when actor has been soft-deleted (T7 middleware closes JWT-vs-DB discrepancy)', async () => {
     const { tenantId } = await createTenantWithLocation('del-br203');
 
     // Actor: a second super_admin who will issue the DELETE.
@@ -151,8 +174,8 @@ describe('DELETE /v1/users/:id — BR-203 last super_admin guard', () => {
       remoteAddress: TEST_IP,
     });
 
-    expect(res.statusCode).toBe(409);
-    expect((res.json() as { code: string }).code).toBe('user.last_super_admin');
+    // T7 middleware: actor row is inactive+deletedAt → 401 before BR-203 fires.
+    expect(res.statusCode).toBe(401);
   });
 });
 
@@ -260,5 +283,91 @@ describe('DELETE /v1/users/:id — 404 cross-tenant', () => {
 
     expect(res.statusCode).toBe(404);
     expect((res.json() as { code: string }).code).toBe('user.not_found');
+  });
+});
+
+// ─── Item 1 proactive: Cognito GlobalSignOut on soft-delete ──────────────────
+
+describe('DELETE /v1/users/:id — Cognito GlobalSignOut proactive lockout', () => {
+  const TEST_IP = '10.20.31.50';
+
+  it('calls AdminUserGlobalSignOutCommand on the target after soft-delete', async () => {
+    const { tenantId } = await createTenantWithLocation('del-cog');
+
+    const adminSub = `sa-cog-${crypto.randomUUID()}`;
+    await createUser({
+      tenantId,
+      cognitoSub: adminSub,
+      email: 'admin-cog@test.it',
+      role: 'super_admin',
+    });
+
+    const targetSub = `sa-target-cog-${crypto.randomUUID()}`;
+    const { userId: targetId } = await createUser({
+      tenantId,
+      cognitoSub: targetSub,
+      email: 'target-cog@test.it',
+      role: 'super_admin',
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/users/${targetId}`,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: TEST_IP,
+    });
+
+    expect(res.statusCode).toBe(204);
+
+    const calls = cognitoMock.commandCalls(AdminUserGlobalSignOutCommand);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args[0].input.Username).toBe('target-cog@test.it');
+  });
+
+  it('still returns 204 even if Cognito GlobalSignOut throws (best-effort)', async () => {
+    // Override the default-success mock for this single test.
+    cognitoMock.on(AdminUserGlobalSignOutCommand).rejects(new Error('Cognito down'));
+
+    const { tenantId } = await createTenantWithLocation('del-cog-fail');
+
+    const adminSub = `sa-cog-fail-${crypto.randomUUID()}`;
+    await createUser({
+      tenantId,
+      cognitoSub: adminSub,
+      email: 'admin-cog-fail@test.it',
+      role: 'super_admin',
+    });
+
+    const targetSub = `sa-target-cog-fail-${crypto.randomUUID()}`;
+    const { userId: targetId } = await createUser({
+      tenantId,
+      cognitoSub: targetSub,
+      email: 'target-cog-fail@test.it',
+      role: 'super_admin',
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/users/${targetId}`,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: TEST_IP,
+    });
+
+    // Soft-delete in DB succeeded; Cognito signout failed best-effort.
+    expect(res.statusCode).toBe(204);
   });
 });
