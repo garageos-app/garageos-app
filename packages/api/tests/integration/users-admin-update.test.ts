@@ -18,6 +18,7 @@
 //   7. locationId-only change: Cognito receives custom:location_id but NOT custom:role.
 
 import {
+  AdminDisableUserCommand,
   AdminUpdateUserAttributesCommand,
   AdminUserGlobalSignOutCommand,
   CognitoIdentityProviderClient,
@@ -50,6 +51,7 @@ beforeEach(async () => {
   _resetCognitoClientForTests();
   cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
   cognitoMock.on(AdminUserGlobalSignOutCommand).resolves({});
+  cognitoMock.on(AdminDisableUserCommand).resolves({});
 });
 
 // ─── Role change mechanic → super_admin ──────────────────────────────────────
@@ -407,6 +409,10 @@ describe('PATCH /v1/users/:id — Cognito GlobalSignOut on status active → ina
     const calls = cognitoMock.commandCalls(AdminUserGlobalSignOutCommand);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args[0].input.Username).toBe('mech-upd-cog@test.it');
+
+    const disableCalls = cognitoMock.commandCalls(AdminDisableUserCommand);
+    expect(disableCalls).toHaveLength(1);
+    expect(disableCalls[0]!.args[0].input.Username).toBe('mech-upd-cog@test.it');
   });
 
   it('does NOT call AdminUserGlobalSignOutCommand on role-only PATCH (status unchanged active)', async () => {
@@ -451,6 +457,9 @@ describe('PATCH /v1/users/:id — Cognito GlobalSignOut on status active → ina
     // signout was NOT called for role-only change.
     const signoutCalls = cognitoMock.commandCalls(AdminUserGlobalSignOutCommand);
     expect(signoutCalls).toHaveLength(0);
+
+    const disableCallsRoleOnly = cognitoMock.commandCalls(AdminDisableUserCommand);
+    expect(disableCallsRoleOnly).toHaveLength(0);
   });
 
   it('still returns 200 even if Cognito GlobalSignOut throws (best-effort)', async () => {
@@ -493,5 +502,54 @@ describe('PATCH /v1/users/:id — Cognito GlobalSignOut on status active → ina
 
     // PATCH in DB succeeded; Cognito signout failed best-effort.
     expect(res.statusCode).toBe(200);
+
+    // Independence: disable still fires even when signOut threw.
+    expect(cognitoMock.commandCalls(AdminDisableUserCommand)).toHaveLength(1);
+  });
+
+  it('still returns 200 even if AdminDisableUserCommand throws (best-effort)', async () => {
+    // Override the default-success mock for this single test. GlobalSignOut
+    // succeeds; only Disable throws — verifies the two try/catch blocks are
+    // independent (one failure does not skip the other).
+    cognitoMock.on(AdminDisableUserCommand).rejects(new Error('Cognito down'));
+
+    const { tenantId, locationId } = await createTenantWithLocation('upd-disable-fail');
+
+    const adminSub = `sa-upd-disable-${crypto.randomUUID()}`;
+    await createUser({
+      tenantId,
+      cognitoSub: adminSub,
+      email: 'admin-upd-disable@test.it',
+      role: 'super_admin',
+    });
+
+    const targetSub = `mech-upd-disable-${crypto.randomUUID()}`;
+    const { userId: targetId } = await createUser({
+      tenantId,
+      cognitoSub: targetSub,
+      email: 'mech-upd-disable@test.it',
+      role: 'mechanic',
+      locationId,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/users/${targetId}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { status: 'inactive' },
+      remoteAddress: '10.20.33.11',
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    expect(cognitoMock.commandCalls(AdminUserGlobalSignOutCommand)).toHaveLength(1);
+    expect(cognitoMock.commandCalls(AdminDisableUserCommand)).toHaveLength(1);
   });
 });

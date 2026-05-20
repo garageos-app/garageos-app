@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { resetDb } from './helpers.js';
@@ -33,15 +35,22 @@ describe('Migration 0014 — invitations partial unique index', () => {
     token: string;
     acceptedAt?: Date | null;
   }): Promise<string> {
+    // Migration 0016 dropped the plaintext `token` column and replaced it
+    // with `token_hash`. These tests still pass distinct plaintext
+    // identifiers ('token-A', 'tok-1', ...) to exercise the partial unique
+    // index on (tenant_id, target_email); the hash is deterministic so
+    // distinct inputs → distinct hashes, preserving the original test
+    // semantics without touching the assertions.
+    const tokenHash = createHash('sha256').update(opts.token).digest('hex');
     const { rows } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO invitations
-         (id, tenant_id, invitation_type, target_email, token, expires_at, accepted_at,
+         (id, tenant_id, invitation_type, target_email, token_hash, expires_at, accepted_at,
           created_at)
        VALUES
          (gen_random_uuid(), $1, $2::"InvitationType", $3, $4,
           NOW() + INTERVAL '7 days', $5, NOW())
        RETURNING id`,
-      [opts.tenantId, opts.invitationType, opts.targetEmail, opts.token, opts.acceptedAt ?? null],
+      [opts.tenantId, opts.invitationType, opts.targetEmail, tokenHash, opts.acceptedAt ?? null],
     );
     return rows[0]!.id;
   }

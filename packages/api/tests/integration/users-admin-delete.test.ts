@@ -14,6 +14,7 @@
 //   5. 404 cross-tenant: DELETE another tenant's user → 404.
 
 import {
+  AdminDisableUserCommand,
   AdminUserGlobalSignOutCommand,
   CognitoIdentityProviderClient,
 } from '@aws-sdk/client-cognito-identity-provider';
@@ -44,6 +45,7 @@ beforeEach(async () => {
   cognitoMock.reset();
   _resetCognitoClientForTests();
   cognitoMock.on(AdminUserGlobalSignOutCommand).resolves({});
+  cognitoMock.on(AdminDisableUserCommand).resolves({});
 });
 
 // ─── Happy path: non-last super_admin deleted ────────────────────────────────
@@ -329,6 +331,10 @@ describe('DELETE /v1/users/:id — Cognito GlobalSignOut proactive lockout', () 
     const calls = cognitoMock.commandCalls(AdminUserGlobalSignOutCommand);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args[0].input.Username).toBe('target-cog@test.it');
+
+    const disableCalls = cognitoMock.commandCalls(AdminDisableUserCommand);
+    expect(disableCalls).toHaveLength(1);
+    expect(disableCalls[0]!.args[0].input.Username).toBe('target-cog@test.it');
   });
 
   it('still returns 204 even if Cognito GlobalSignOut throws (best-effort)', async () => {
@@ -369,5 +375,53 @@ describe('DELETE /v1/users/:id — Cognito GlobalSignOut proactive lockout', () 
 
     // Soft-delete in DB succeeded; Cognito signout failed best-effort.
     expect(res.statusCode).toBe(204);
+
+    // Independence: disable still fires even when signOut threw.
+    expect(cognitoMock.commandCalls(AdminDisableUserCommand)).toHaveLength(1);
+  });
+
+  it('still returns 204 even if AdminDisableUserCommand throws (best-effort)', async () => {
+    // Override the default-success mock for this single test. GlobalSignOut
+    // succeeds; only Disable throws — verifies the two try/catch blocks are
+    // independent (one failure does not skip the other).
+    cognitoMock.on(AdminDisableUserCommand).rejects(new Error('Cognito down'));
+
+    const { tenantId, locationId } = await createTenantWithLocation('del-disable-fail');
+
+    const adminSub = `sa-del-disable-${crypto.randomUUID()}`;
+    await createUser({
+      tenantId,
+      cognitoSub: adminSub,
+      email: 'admin-del-disable@test.it',
+      role: 'super_admin',
+    });
+
+    const targetSub = `mech-del-disable-${crypto.randomUUID()}`;
+    const { userId: targetId } = await createUser({
+      tenantId,
+      cognitoSub: targetSub,
+      email: 'mech-del-disable@test.it',
+      role: 'mechanic',
+      locationId,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/users/${targetId}`,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: '10.20.33.10',
+    });
+
+    expect(res.statusCode).toBe(204);
+
+    expect(cognitoMock.commandCalls(AdminUserGlobalSignOutCommand)).toHaveLength(1);
+    expect(cognitoMock.commandCalls(AdminDisableUserCommand)).toHaveLength(1);
   });
 });

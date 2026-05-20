@@ -492,9 +492,12 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
         // Invitation: only when the customer is not already linked to an
         // app account (no cognito_sub) AND the caller asked for one.
         // The actual SES send lives in a later PR — here we only write the
-        // row so the sender job has something to pick up. `token` is an
-        // opaque URL-safe string; signed/expiring tokens land alongside
-        // the SES integration.
+        // row so the sender job has something to pick up. token_hash is
+        // intentionally left NULL: the customer_app accept flow is not yet
+        // wired (F-CLI-001 verify-email handles the customer journey), so
+        // no token is generated or stored. When the customer_app deep-link
+        // flow lands, it will populate token_hash here, mirroring the
+        // internal_user invitation pattern (see lib/invitation-tokens.ts).
         let invitationResponse: {
           id: string;
           target_email: string;
@@ -511,7 +514,6 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
               targetEmail: customer.email,
               vehicleId: vehicle.id,
               customerId: customer.id,
-              token: `inv_${vehicle.id}_${Date.now()}`,
               expiresAt,
             },
             select: { id: true, targetEmail: true, expiresAt: true },
