@@ -321,13 +321,19 @@ describe('EditUserDialog UI', () => {
   // Reactivation is a separate (deferred) decision; for now we just hide the
   // action and surface a notice.
 
-  it('hides the deactivate section and shows an inactive notice when status="inactive"', () => {
+  it('hides ALL action sections (role/location/deactivate) and shows only inactive notice when status="inactive"', () => {
     render(<EditUserDialog user={INACTIVE_USER} open={true} onOpenChange={() => {}} />, {
       wrapper: wrap,
     });
 
+    // No edit sections rendered
+    expect(screen.queryByText('Cambia ruolo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cambia sede')).not.toBeInTheDocument();
     expect(screen.queryByTestId('deactivate-button')).not.toBeInTheDocument();
+
+    // Only inactive notice rendered
     expect(screen.getByTestId('inactive-notice')).toBeInTheDocument();
     expect(screen.getByText(/utente disattivato/i)).toBeInTheDocument();
+    expect(screen.getByText(/non pu(o|ò) essere modificato/i)).toBeInTheDocument();
   });
 });
