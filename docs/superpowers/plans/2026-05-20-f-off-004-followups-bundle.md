@@ -286,16 +286,23 @@ Modify `packages/api/src/routes/v1/users-admin-delete.ts`, sostituendo il blocco
         // below (Prisma issues row-level lock on UPDATE). Together this makes
         // the count-then-update atomic.
         if (target.role === 'super_admin' && target.status === 'active') {
+          // Lock ALL active super_admins in the tenant (including the target).
+          // Locking the disjoint set `id <> targetId` would let two concurrent
+          // cross-deletes (A locks {B'}, B locks {A'}) proceed to UPDATE and
+          // deadlock on the cross-row lock at UPDATE time. Locking the FULL
+          // set guarantees mutual exclusion: the second tx blocks here at
+          // SELECT, wakes up post-commit, sees the deactivated peer, and
+          // hits the guard correctly. Check is `length <= 1` because the
+          // only remaining row may be the target itself.
           const locked = await tx.$queryRaw<Array<{ id: string }>>`
             SELECT id FROM users
             WHERE tenant_id = ${tenantId}::uuid
               AND role = 'super_admin'
               AND status = 'active'
               AND deleted_at IS NULL
-              AND id <> ${targetId}::uuid
             FOR UPDATE
           `;
-          if (locked.length === 0) {
+          if (locked.length <= 1) {
             throw businessError(
               'user.last_super_admin',
               409,
@@ -448,16 +455,23 @@ Modify `packages/api/src/routes/v1/users-admin-update.ts`, sostituendo il blocco
           (newRole !== 'super_admin' || newStatus !== 'active');
 
         if (isLosingAdmin) {
+          // Lock ALL active super_admins in the tenant (including the target).
+          // Locking the disjoint set `id <> targetId` would let two concurrent
+          // cross-deletes (A locks {B'}, B locks {A'}) proceed to UPDATE and
+          // deadlock on the cross-row lock at UPDATE time. Locking the FULL
+          // set guarantees mutual exclusion: the second tx blocks here at
+          // SELECT, wakes up post-commit, sees the deactivated peer, and
+          // hits the guard correctly. Check is `length <= 1` because the
+          // only remaining row may be the target itself.
           const locked = await tx.$queryRaw<Array<{ id: string }>>`
             SELECT id FROM users
             WHERE tenant_id = ${tenantId}::uuid
               AND role = 'super_admin'
               AND status = 'active'
               AND deleted_at IS NULL
-              AND id <> ${targetId}::uuid
             FOR UPDATE
           `;
-          if (locked.length === 0) {
+          if (locked.length <= 1) {
             throw businessError(
               'user.last_super_admin',
               409,
@@ -856,16 +870,23 @@ a:
 
         // BR-203: race-safe SELECT FOR UPDATE guard (see Item 2).
         if (target.role === 'super_admin' && target.status === 'active') {
+          // Lock ALL active super_admins in the tenant (including the target).
+          // Locking the disjoint set `id <> targetId` would let two concurrent
+          // cross-deletes (A locks {B'}, B locks {A'}) proceed to UPDATE and
+          // deadlock on the cross-row lock at UPDATE time. Locking the FULL
+          // set guarantees mutual exclusion: the second tx blocks here at
+          // SELECT, wakes up post-commit, sees the deactivated peer, and
+          // hits the guard correctly. Check is `length <= 1` because the
+          // only remaining row may be the target itself.
           const locked = await tx.$queryRaw<Array<{ id: string }>>`
             SELECT id FROM users
             WHERE tenant_id = ${tenantId}::uuid
               AND role = 'super_admin'
               AND status = 'active'
               AND deleted_at IS NULL
-              AND id <> ${targetId}::uuid
             FOR UPDATE
           `;
-          if (locked.length === 0) {
+          if (locked.length <= 1) {
             throw businessError(
               'user.last_super_admin',
               409,

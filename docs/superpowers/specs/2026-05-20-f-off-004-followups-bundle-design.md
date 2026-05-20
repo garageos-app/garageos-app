@@ -107,18 +107,17 @@ const locked = await tx.$queryRaw<Array<{ id: string }>>`
     AND role = 'super_admin'
     AND status = 'active'
     AND deleted_at IS NULL
-    AND id <> ${targetId}::uuid
   FOR UPDATE
 `;
-if (locked.length === 0) throw ...
+if (locked.length <= 1) throw ...
 ```
 
 **Perché funziona:**
-- `FOR UPDATE` acquisisce row-level lock su tutti i candidati.
-- La seconda tx concorrente, eseguendo lo stesso `SELECT FOR UPDATE`, blocca finché la prima committa.
-- Post-commit della prima tx, la seconda rilegge stato aggiornato (la riga UPDATE'd in tx1 ora ha `status='inactive'` o `role='mechanic'`), il filtro non la include più, `locked.length === 0` → throw 409.
+- `FOR UPDATE` acquisisce row-level lock su TUTTI gli active super_admin del tenant (target incluso).
+- Locking del set disgiunto `id <> targetId` invece causerebbe due cross-delete concorrenti a lockare set disgiunti `{A}` e `{B}`, procedere entrambi alla `UPDATE`, e deadlockare sui lock incrociati a UPDATE time (Postgres aborta una tx con `40P01 deadlock detected`, l'API restituisce 500 invece di 409 — invariante preservata ma response sbagliata).
+- Locking del set COMPLETO: la seconda tx blocca sulla SELECT, si sveglia post-commit, rilegge lo stato (il peer è ora `status='inactive'`), e il filtro restituisce `locked.length === 1` (solo il target stesso) → throw 409.
 
-**Target row:** già lockata implicitamente dall'`UPDATE` Prisma successivo. Non serve `FOR UPDATE` esplicito sul target — l'update Prisma stesso fa row lock.
+**Check `length <= 1`:** il "set lockato" include il target stesso. Se `length <= 1` significa che l'unica riga active è il target → la sua disattivazione lascerebbe il tenant senza super_admin.
 
 **Caveat:** richiede che il check FOR UPDATE avvenga **dentro la stessa tx** che fa l'UPDATE finale. Già è così in entrambi i file (`prisma.$transaction(async (tx) => {...})`).
 
