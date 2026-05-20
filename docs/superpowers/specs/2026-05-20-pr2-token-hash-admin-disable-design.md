@@ -8,6 +8,8 @@
 **Companion plan** (next): `docs/superpowers/plans/2026-05-20-pr2-token-hash-admin-disable.md`
 **Predecessor PR**: #115 (F-OFF-004 follow-ups PR1: reactive auth + FOR UPDATE race + BR-206 wording)
 
+> **Note — audit action rename during implementation**: occurrences of `invitation_token_rotated_by_operator` in this document refer to the audit action that shipped as `user_invitation_token_rotated`. The rename happened at implementation time for naming consistency with the existing `user_invitation_created` + `user_invitation_accepted` audit action family. All references below have been retroactively aligned to the shipped name.
+
 ---
 
 ## 1. Scope
@@ -72,7 +74,7 @@ Order at the call site: `signOutOfficineUser` first (close active-token window),
 
 Post-hash, the DB no longer stores plaintext, so the existing `get-invitation-link.ts` script (which read `invitation.token` and built the URL) can no longer function. Options considered:
 
-- **A. Rotate-on-extract** (chosen): script generates new `{plaintext, hash}`, UPDATEs `token_hash`, emits `invitation_token_rotated_by_operator` audit row, prints the new URL. Each invocation invalidates any prior URL for that invitation.
+- **A. Rotate-on-extract** (chosen): script generates new `{plaintext, hash}`, UPDATEs `token_hash`, emits `user_invitation_token_rotated` audit row, prints the new URL. Each invocation invalidates any prior URL for that invitation.
 - B. Authenticated admin endpoint `POST /v1/users/invitations/:id/resend`: cleaner audit trail (actor = real super_admin) and reuses route logic, but adds endpoint surface + needs UI hook or curl-with-JWT operator workflow. Defer to post-pilot.
 - C. Surface plaintext at create-time in response body to the super_admin: single-shot exposure to authenticated caller; risk of accidentally logging the URL in server-side error monitoring. Rejected.
 
@@ -316,7 +318,7 @@ await prisma.$transaction(async (tx) => {
     data: {
       tenantId: invitation.tenantId,
       actorType: 'system',
-      action: 'invitation_token_rotated_by_operator',
+      action: 'user_invitation_token_rotated',
       entityType: 'invitation',
       entityId: invitation.id,
       metadata: { reason: 'ses_sandbox_workaround' },
@@ -396,7 +398,7 @@ No new error codes. PR2 reuses existing surfaces:
 ### 6.3 Operator CLI smoke (manual, post-merge)
 
 - Run `pnpm tsx scripts/admin/get-invitation-link.ts <email>` against a freshly-created invitation.
-- Verify: output URL works; running the script a second time yields a DIFFERENT URL; the first URL is now 404; `SELECT * FROM audit_logs WHERE action = 'invitation_token_rotated_by_operator'` shows 2 rows.
+- Verify: output URL works; running the script a second time yields a DIFFERENT URL; the first URL is now 404; `SELECT * FROM audit_logs WHERE action = 'user_invitation_token_rotated'` shows 2 rows.
 
 ### 6.4 Smoke runbook (operator post-merge, web app on production)
 

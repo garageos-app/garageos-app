@@ -45,7 +45,7 @@
 
 ## Critical adaptations (apply throughout)
 
-1. **`audit_logs.action` is a free-form string column** (NOT a Postgres enum) — confirmed by `migrations-0014.test.ts` and PR1 patterns. New actions `user_invitation_expired_by_migration` and `invitation_token_rotated_by_operator` can be inserted without schema change.
+1. **`audit_logs.action` is a free-form string column** (NOT a Postgres enum) — confirmed by `migrations-0014.test.ts` and PR1 patterns. New actions `user_invitation_expired_by_migration` and `user_invitation_token_rotated` can be inserted without schema change.
 
 2. **`audit_logs.actor_type` is a string column** with PR1 using `'system'` for non-user actors — re-use that value for the tombstone audit rows and CLI rotation audit row.
 
@@ -688,7 +688,7 @@ EOF
 **Files:**
 - Modify: `scripts/admin/get-invitation-link.ts`
 
-**Goal:** CLI generates a fresh token on each invocation, UPDATEs `token_hash`, emits an `invitation_token_rotated_by_operator` audit row, prints the new URL.
+**Goal:** CLI generates a fresh token on each invocation, UPDATEs `token_hash`, emits an `user_invitation_token_rotated` audit row, prints the new URL.
 
 - [ ] **Step 1: Check whether `@garageos/api/lib/secure-tokens` is exported**
 
@@ -809,7 +809,7 @@ async function main() {
         data: {
           tenantId: inv.tenantId,
           actorType: 'system',
-          action: 'invitation_token_rotated_by_operator',
+          action: 'user_invitation_token_rotated',
           entityType: 'invitation',
           entityId: inv.id,
           metadata: { reason: 'ses_sandbox_workaround' },
@@ -1644,7 +1644,7 @@ WHERE entity_type = 'invitation' AND action LIKE '%token%'
 ORDER BY created_at DESC LIMIT 5;
 ```
 
-Expected: `invitation_token_rotated_by_operator` rows for steps 2 and 3.
+Expected: `user_invitation_token_rotated` rows for steps 2 and 3.
 
 ### Status
 
