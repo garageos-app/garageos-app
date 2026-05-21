@@ -1,0 +1,359 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  performOwnershipTransfer,
+  type OwnershipTransferInput,
+} from '../../../src/lib/ownership-transfer.js';
+
+// FakePrisma stub for performOwnershipTransfer.
+// Uses vi.fn().mockImplementation with typed local interfaces so the
+// parameters stay typed without `any`. The tx cast to `never` at call
+// sites is the accepted pattern in this codebase (see dispute-attachments.test.ts).
+
+interface StubVehicle {
+  id: string;
+  tenantId: string;
+  status: string;
+}
+interface StubOwnership {
+  id: string;
+  vehicleId: string;
+  customerId: string;
+  endedAt: Date | null;
+}
+interface StubTransfer {
+  id: string;
+  vehicleId: string;
+  status: string;
+}
+interface StubCustomer {
+  id: string;
+  email: string;
+}
+interface StubRelation {
+  tenantId: string;
+  customerId: string;
+  interventionCount: number;
+}
+interface StubAccessLog {
+  tenantId: string;
+  vehicleId: string;
+  userId: string;
+  action: string;
+}
+
+interface StubState {
+  vehicles: Map<string, StubVehicle>;
+  ownerships: Map<string, StubOwnership>;
+  transfers: Map<string, StubTransfer>;
+  customers: Map<string, StubCustomer>;
+  relations: Map<string, StubRelation>;
+  accessLogs: StubAccessLog[];
+}
+
+interface VehicleFindFirstWhere {
+  id: string;
+  tenantId: string;
+}
+interface OwnershipFindFirstWhere {
+  vehicleId: string;
+  endedAt: null;
+}
+interface OwnershipUpdateWhere {
+  id: string;
+}
+interface OwnershipCreateData {
+  vehicleId: string;
+  customerId: string;
+  startedAt: Date;
+  transferReason: string;
+  transferNotes: string | null;
+}
+interface TransferFindFirstWhere {
+  vehicleId: string;
+  status: { in: string[] };
+}
+interface TransferCreateData {
+  vehicleId: string;
+  fromCustomerId: string;
+  toCustomerId: string;
+  method: string;
+  status: string;
+  expiresAt: Date;
+  completedAt: Date;
+}
+interface CustomerFindUniqueWhere {
+  id: string;
+}
+interface CustomerFindFirstWhere {
+  email: string;
+}
+interface CustomerCreateData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  codiceFiscale: string | null;
+  isBusiness: boolean;
+  businessName: string | null;
+  vatNumber: string | null;
+}
+interface CustomerTenantRelationUpsertWhere {
+  tenantId_customerId: { tenantId: string; customerId: string };
+}
+interface CustomerTenantRelationCreateData {
+  tenantId: string;
+  customerId: string;
+  interventionCount: number;
+}
+interface AccessLogCreateData {
+  vehicleId: string;
+  tenantId: string;
+  userId: string;
+  action: string;
+}
+
+function makeStub() {
+  const state: StubState = {
+    vehicles: new Map(),
+    ownerships: new Map(),
+    transfers: new Map(),
+    customers: new Map(),
+    relations: new Map(),
+    accessLogs: [],
+  };
+
+  const tx = {
+    vehicle: {
+      findFirst: vi.fn().mockImplementation(({ where }: { where: VehicleFindFirstWhere }) => {
+        for (const v of state.vehicles.values()) {
+          if (v.id === where.id && v.tenantId === where.tenantId) return Promise.resolve(v);
+        }
+        return Promise.resolve(null);
+      }),
+    },
+    vehicleOwnership: {
+      findFirst: vi.fn().mockImplementation(({ where }: { where: OwnershipFindFirstWhere }) => {
+        for (const o of state.ownerships.values()) {
+          if (o.vehicleId === where.vehicleId && o.endedAt === null) return Promise.resolve(o);
+        }
+        return Promise.resolve(null);
+      }),
+      update: vi
+        .fn()
+        .mockImplementation(
+          ({ where, data }: { where: OwnershipUpdateWhere; data: Partial<StubOwnership> }) => {
+            const o = state.ownerships.get(where.id);
+            if (o) Object.assign(o, data);
+            return Promise.resolve(o);
+          },
+        ),
+      create: vi.fn().mockImplementation(({ data }: { data: OwnershipCreateData }) => {
+        const id = `own-${state.ownerships.size + 1}`;
+        const row: StubOwnership = {
+          id,
+          vehicleId: data.vehicleId,
+          customerId: data.customerId,
+          endedAt: null,
+        };
+        state.ownerships.set(id, row);
+        return Promise.resolve({ id, customerId: data.customerId, startedAt: data.startedAt });
+      }),
+    },
+    vehicleTransfer: {
+      findFirst: vi.fn().mockImplementation(({ where }: { where: TransferFindFirstWhere }) => {
+        for (const t of state.transfers.values()) {
+          if (t.vehicleId === where.vehicleId && where.status.in.includes(t.status)) {
+            return Promise.resolve(t);
+          }
+        }
+        return Promise.resolve(null);
+      }),
+      create: vi.fn().mockImplementation(({ data }: { data: TransferCreateData }) => {
+        const id = `tr-${state.transfers.size + 1}`;
+        const row: StubTransfer = { id, vehicleId: data.vehicleId, status: data.status };
+        state.transfers.set(id, row);
+        return Promise.resolve({ id, completedAt: data.completedAt });
+      }),
+    },
+    customer: {
+      findUnique: vi
+        .fn()
+        .mockImplementation(({ where }: { where: CustomerFindUniqueWhere }) =>
+          Promise.resolve(state.customers.get(where.id) ?? null),
+        ),
+      findFirst: vi.fn().mockImplementation(({ where }: { where: CustomerFindFirstWhere }) => {
+        for (const c of state.customers.values()) {
+          if (c.email === where.email) return Promise.resolve(c);
+        }
+        return Promise.resolve(null);
+      }),
+      create: vi.fn().mockImplementation(({ data }: { data: CustomerCreateData }) => {
+        const id = `c-${state.customers.size + 1}`;
+        const row: StubCustomer = { id, email: data.email };
+        state.customers.set(id, row);
+        return Promise.resolve({ id });
+      }),
+    },
+    customerTenantRelation: {
+      upsert: vi
+        .fn()
+        .mockImplementation(
+          ({
+            where,
+            create,
+          }: {
+            where: CustomerTenantRelationUpsertWhere;
+            update: Record<string, never>;
+            create: CustomerTenantRelationCreateData;
+          }) => {
+            const key = `${where.tenantId_customerId.tenantId}:${where.tenantId_customerId.customerId}`;
+            if (!state.relations.has(key)) state.relations.set(key, create);
+            return Promise.resolve({ id: key });
+          },
+        ),
+    },
+    accessLog: {
+      create: vi.fn().mockImplementation(({ data }: { data: AccessLogCreateData }) => {
+        state.accessLogs.push(data);
+        return Promise.resolve(data);
+      }),
+    },
+  };
+
+  return { tx, state };
+}
+
+const baseInput: OwnershipTransferInput = {
+  vehicleId: 'v1',
+  tenantId: 't1',
+  actorUserId: 'u1',
+  recipient: { kind: 'existing', customerId: 'c-recipient' },
+  reason: 'purchase',
+  notes: null,
+};
+
+describe('performOwnershipTransfer', () => {
+  let env: ReturnType<typeof makeStub>;
+
+  beforeEach(() => {
+    env = makeStub();
+    env.state.vehicles.set('v1', { id: 'v1', tenantId: 't1', status: 'certified' });
+    env.state.ownerships.set('own-current', {
+      id: 'own-current',
+      vehicleId: 'v1',
+      customerId: 'c-cedente',
+      endedAt: null,
+    });
+    env.state.customers.set('c-cedente', { id: 'c-cedente', email: 'cedente@example.com' });
+    env.state.customers.set('c-recipient', { id: 'c-recipient', email: 'recipient@example.com' });
+  });
+
+  it('happy path: existing recipient produces complete result', async () => {
+    const result = await performOwnershipTransfer(env.tx as never, baseInput);
+    expect(result.transfer.status).toBe('completed');
+    expect(result.ownership.customerId).toBe('c-recipient');
+    expect(env.state.ownerships.get('own-current')!.endedAt).not.toBeNull();
+    expect(env.state.accessLogs).toHaveLength(1);
+    expect(env.state.accessLogs[0].action).toBe('ownership_transfer');
+    expect(env.state.accessLogs[0].vehicleId).toBe('v1');
+    expect(env.state.accessLogs[0].userId).toBe('u1');
+  });
+
+  it('happy path: new recipient creates customer', async () => {
+    const input: OwnershipTransferInput = {
+      ...baseInput,
+      recipient: {
+        kind: 'new',
+        firstName: 'Anna',
+        lastName: 'Rossi',
+        email: 'anna@example.com',
+      },
+    };
+    const result = await performOwnershipTransfer(env.tx as never, input);
+    expect(result.transfer.status).toBe('completed');
+    expect(env.tx.customer.create).toHaveBeenCalled();
+  });
+
+  it('new recipient with matching email reuses existing customer', async () => {
+    env.state.customers.set('c-existing', { id: 'c-existing', email: 'reuse@example.com' });
+    const input: OwnershipTransferInput = {
+      ...baseInput,
+      recipient: {
+        kind: 'new',
+        firstName: 'Mario',
+        lastName: 'Bianchi',
+        email: 'reuse@example.com',
+      },
+    };
+    const result = await performOwnershipTransfer(env.tx as never, input);
+    expect(result.ownership.customerId).toBe('c-existing');
+    expect(env.tx.customer.create).not.toHaveBeenCalled();
+  });
+
+  it('404 vehicle.not_found when vehicle missing in tenant', async () => {
+    env.state.vehicles.clear();
+    await expect(performOwnershipTransfer(env.tx as never, baseInput)).rejects.toMatchObject({
+      name: 'vehicle.not_found',
+      statusCode: 404,
+    });
+  });
+
+  it('422 pending_not_transferable when vehicle.status=pending', async () => {
+    env.state.vehicles.set('v1', { id: 'v1', tenantId: 't1', status: 'pending' });
+    await expect(performOwnershipTransfer(env.tx as never, baseInput)).rejects.toMatchObject({
+      name: 'vehicle.transfer.pending_not_transferable',
+      statusCode: 422,
+    });
+  });
+
+  it('422 archived when vehicle.status=archived', async () => {
+    env.state.vehicles.set('v1', { id: 'v1', tenantId: 't1', status: 'archived' });
+    await expect(performOwnershipTransfer(env.tx as never, baseInput)).rejects.toMatchObject({
+      name: 'vehicle.transfer.archived',
+      statusCode: 422,
+    });
+  });
+
+  it('422 no_active_ownership when ownerships empty', async () => {
+    env.state.ownerships.clear();
+    await expect(performOwnershipTransfer(env.tx as never, baseInput)).rejects.toMatchObject({
+      name: 'vehicle.transfer.no_active_ownership',
+      statusCode: 422,
+    });
+  });
+
+  it('409 active_transfer_exists when pending transfer present', async () => {
+    env.state.transfers.set('tr-pending', {
+      id: 'tr-pending',
+      vehicleId: 'v1',
+      status: 'pending_recipient',
+    });
+    await expect(performOwnershipTransfer(env.tx as never, baseInput)).rejects.toMatchObject({
+      name: 'vehicle.transfer.active_transfer_exists',
+      statusCode: 409,
+    });
+  });
+
+  it('409 same_owner when recipient is current owner', async () => {
+    const input: OwnershipTransferInput = {
+      ...baseInput,
+      recipient: { kind: 'existing', customerId: 'c-cedente' },
+    };
+    await expect(performOwnershipTransfer(env.tx as never, input)).rejects.toMatchObject({
+      name: 'vehicle.transfer.same_owner',
+      statusCode: 409,
+    });
+  });
+
+  it('422 recipient_not_found when existing customerId missing', async () => {
+    const input: OwnershipTransferInput = {
+      ...baseInput,
+      recipient: { kind: 'existing', customerId: 'c-ghost' },
+    };
+    await expect(performOwnershipTransfer(env.tx as never, input)).rejects.toMatchObject({
+      name: 'vehicle.transfer.recipient_not_found',
+      statusCode: 422,
+    });
+  });
+});
