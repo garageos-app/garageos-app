@@ -10,15 +10,17 @@
 //   buildTestServer / createTenantWithLocation / createUser / signTestToken / pgAdmin / resetDb.
 // Cognito stubbed with aws-sdk-client-mock + _resetCognitoClientForTests().
 //
-// 8 cases:
+// 10 cases:
 //   1. Happy path body vuoto: 200, status=active, deletedAt=null, AdminEnableUser called.
-//   2. Audit row asserts: action=user_reactivated, actor_id, metadata fields.
+//   2. Audit row asserts: action=user_reactivated, actor_id, metadata fields (incl. previousStatus + previousDeletedAt).
 //   3. Override role + locationId=null: 200, Cognito attrs sync, audit metadata overrides.
 //   4. locationId stale: 422 user.location_invalid; retry with fresh L2 → 200.
 //   5. BR-204 override mechanic + null location: 422 user.location_required_for_mechanic.
 //   6. Active user: 404 user.not_found (deletedAt=null defended by where-clause).
 //   7. Cross-tenant target: 404 user.not_found.
 //   8. Mechanic caller: 403 (requireSuperAdmin guard).
+//   9. Cognito AdminEnableUser fails: 200 + x-cognito-sync-failed header, DB committed.
+//  10. Cognito AdminUpdateUserAttributes fails (override): 200 + header, DB committed with override.
 
 import {
   AdminEnableUserCommand,
@@ -122,6 +124,9 @@ describe('POST /v1/users/:id/reactivate — happy path body vuoto', () => {
 
     // No attribute sync when body is empty (no overrides).
     expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
+
+    // No Cognito sync failure on happy path.
+    expect(res.headers['x-cognito-sync-failed']).toBeUndefined();
   });
 });
 
@@ -182,6 +187,10 @@ describe('POST /v1/users/:id/reactivate — audit row', () => {
     expect(meta.targetEmail).toBe('mech-reac-audit@test.it');
     expect(meta.roleOverridden).toBe(false);
     expect(meta.locationOverridden).toBe(false);
+    expect(meta.previousStatus).toBe('inactive');
+    expect(typeof meta.previousDeletedAt).toBe('string');
+    // The ISO-8601 format check (light): contains 'T' and 'Z'.
+    expect(meta.previousDeletedAt).toMatch(/T.*Z$/);
   });
 });
 
@@ -503,5 +512,109 @@ describe('POST /v1/users/:id/reactivate — 403 for mechanic caller', () => {
     });
 
     expect(res.statusCode).toBe(403);
+  });
+});
+
+// ─── Cognito AdminEnableUser failure ─────────────────────────────────────────
+
+describe('POST /v1/users/:id/reactivate — Cognito AdminEnableUser failure', () => {
+  const TEST_IP = '10.21.30.18';
+
+  it('returns 200 with x-cognito-sync-failed header when AdminEnableUser throws', async () => {
+    // Setup same as happy path
+    const { tenantId, locationId } = await createTenantWithLocation('cogfail-enable');
+    const adminSub = `sa-cogfail-enable-${crypto.randomUUID()}`;
+    await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
+    const { userId: mechId } = await createUser({
+      tenantId,
+      cognitoSub: `mech-cogfail-enable-${crypto.randomUUID()}`,
+      email: 'mech-cogfail-enable@test.it',
+      role: 'mechanic',
+      locationId,
+    });
+    await softDeleteUser(mechId);
+
+    // Override Cognito mock to make enable throw (use ServiceException, NOT UserNotFoundException
+    // — the helper swallows UserNotFoundException internally per cognito.ts:376, which would
+    // NOT trip the route-level catch).
+    cognitoMock.on(AdminEnableUserCommand).rejects(new Error('cognito service unavailable'));
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/users/${mechId}/reactivate`,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: TEST_IP,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['x-cognito-sync-failed']).toBe('true');
+
+    // DB still committed (source of truth).
+    const { rows: userRows } = await pgAdmin.query<{ status: string; deleted_at: Date | null }>(
+      'SELECT status, deleted_at FROM users WHERE id = $1',
+      [mechId],
+    );
+    expect(userRows[0]?.status).toBe('active');
+    expect(userRows[0]?.deleted_at).toBeNull();
+  });
+});
+
+// ─── Cognito AdminUpdateUserAttributes failure ───────────────────────────────
+
+describe('POST /v1/users/:id/reactivate — Cognito AdminUpdateUserAttributes failure', () => {
+  const TEST_IP = '10.21.30.19';
+
+  it('returns 200 with x-cognito-sync-failed header when override fails but enable succeeds', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('cogfail-attr');
+    const adminSub = `sa-cogfail-attr-${crypto.randomUUID()}`;
+    await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
+    const { userId: mechId } = await createUser({
+      tenantId,
+      cognitoSub: `mech-cogfail-attr-${crypto.randomUUID()}`,
+      email: 'mech-cogfail-attr@test.it',
+      role: 'mechanic',
+      locationId,
+    });
+    await softDeleteUser(mechId);
+
+    // enable succeeds, attribute update fails.
+    cognitoMock.on(AdminEnableUserCommand).resolves({});
+    cognitoMock.on(AdminUpdateUserAttributesCommand).rejects(new Error('cognito attr boom'));
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/users/${mechId}/reactivate`,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: TEST_IP,
+      payload: { role: 'super_admin', locationId: null },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['x-cognito-sync-failed']).toBe('true');
+
+    // DB still committed with the override.
+    const { rows: userRows } = await pgAdmin.query<{ role: string; location_id: string | null }>(
+      'SELECT role, location_id FROM users WHERE id = $1',
+      [mechId],
+    );
+    expect(userRows[0]?.role).toBe('super_admin');
+    expect(userRows[0]?.location_id).toBeNull();
+
+    // Both Cognito calls happened.
+    expect(cognitoMock.commandCalls(AdminEnableUserCommand)).toHaveLength(1);
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(1);
   });
 });
