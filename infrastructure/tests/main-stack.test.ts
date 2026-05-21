@@ -220,7 +220,7 @@ describe('LambdaApiConstruct', () => {
   it('execution role has secretsmanager + cognito-idp Admin* + ListUsers + s3:GetObject + s3:PutObject', () => {
     // Find the inline policy attached to the execution role and check its
     // statements. Presence: secretsmanager:GetSecretValue + cognito-idp
-    // Admin/List actions (CRUD + SignOut + Disable for F-OFF-004 PR1/PR2) +
+    // Admin/List actions (CRUD + SignOut + Disable + Enable for F-OFF-004 PR1/PR2 + #118 reactivation) +
     // s3:GetObject + s3:PutObject (pre-emptive grant added in PR 23).
     const policies = template.findResources('AWS::IAM::Policy');
     const inlineStatements = Object.values(policies).flatMap(
@@ -236,6 +236,7 @@ describe('LambdaApiConstruct', () => {
     expect(allActions).toContain('cognito-idp:AdminUpdateUserAttributes');
     expect(allActions).toContain('cognito-idp:AdminDeleteUser');
     expect(allActions).toContain('cognito-idp:AdminDisableUser');
+    expect(allActions).toContain('cognito-idp:AdminEnableUser');
     expect(allActions).toContain('cognito-idp:AdminUserGlobalSignOut');
     expect(allActions).toContain('cognito-idp:ListUsers');
     expect(allActions).toContain('s3:GetObject');
