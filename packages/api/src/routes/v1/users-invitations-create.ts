@@ -24,7 +24,7 @@ import { requireSuperAdmin } from '../../middleware/require-super-admin.js';
 import { sendInvitationEmail } from '../../lib/ses-client.js';
 import { generateInvitationToken } from '../../lib/secure-tokens.js';
 import { INVITATION_ADMIN_SELECT, serializeInvitationAdmin } from '../../lib/dtos/invitation.js';
-import { getOfficineUserByEmail } from '../../lib/cognito.js';
+import { getOfficineUserByEmail, CognitoUnavailableError } from '../../lib/cognito.js';
 import { env } from '../../config/env.js';
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -83,48 +83,56 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
       // request.userId is the Cognito sub (opaque string) — see tenant-context.ts.
       const actorCognitoSub = request.userId!;
 
-      // ─── DB transaction ──────────────────────────────────────────────────────
+      // ─── Block 1 (DB tx): step 1 collision check only ───────────────────────
       // role: 'admin' bypasses RLS USING clauses that would deny writes to
       // tenants this transaction has no ownership relation to. Required pattern
       // per feedback_withcontext_empty_blocks_rls_writes.
-      const txResult = await app.withContext({ role: 'admin' as const }, async (tx) => {
-        // 1) DB collision check nel tenant corrente — INCLUDE soft-deleted.
-        //    Discriminiamo a posteriori: active → email_already_active;
-        //    soft-deleted → email_soft_deleted_in_tenant (operator deve usare
-        //    POST /v1/users/:id/reactivate, non /invitations).
-        //    See spec 2026-05-21-user-reactivation-design.md §4.2.
-        const existingUser = await tx.user.findFirst({
+      //
+      // 1) DB collision check nel tenant corrente — INCLUDE soft-deleted.
+      //    Discriminiamo a posteriori: active → email_already_active;
+      //    soft-deleted → email_soft_deleted_in_tenant (operator deve usare
+      //    POST /v1/users/:id/reactivate, non /invitations).
+      //    See spec 2026-05-21-user-reactivation-design.md §4.2.
+      const existingUser = await app.withContext({ role: 'admin' as const }, async (tx) => {
+        return tx.user.findFirst({
           where: { tenantId, email: body.email },
           select: { id: true, deletedAt: true },
         });
-        if (existingUser) {
-          if (existingUser.deletedAt !== null) {
-            throw businessError(
-              'user.invitation.email_soft_deleted_in_tenant',
-              409,
-              'Questa email appartiene a un utente disattivato. Riattivalo da Impostazioni → Utenti.',
-            );
-          }
+      });
+
+      if (existingUser) {
+        if (existingUser.deletedAt !== null) {
           throw businessError(
-            'user.invitation.email_already_active',
+            'user.invitation.email_soft_deleted_in_tenant',
             409,
-            'Un account con questa email esiste già nel sistema. Effettua il login.',
+            'Questa email appartiene a un utente disattivato. Riattivalo da Impostazioni → Utenti.',
           );
         }
+        throw businessError(
+          'user.invitation.email_already_active',
+          409,
+          'Un account con questa email esiste già nel sistema. Effettua il login.',
+        );
+      }
 
-        // 1bis) Cross-tenant early-check via Cognito.
-        // Email assente in DB tenant corrente; hit Cognito = utente in altro tenant.
-        // (Pool Officine è single-pool: email è alias globale.)
-        // The Cognito call is non-DB async I/O — keeping it inside the tx is
-        // intentional so a failure rolls back any uncommitted state (none
-        // here yet, but defensive against future step reordering).
-        let cognitoUser;
-        try {
-          cognitoUser = await getOfficineUserByEmail({
-            poolId: env.COGNITO_OFFICINE_POOL_ID,
-            email: body.email,
-          });
-        } catch (err) {
+      // ─── Block 1bis (OUTSIDE tx): Cognito early-check ────────────────────────
+      // Out-of-tx pattern mirrors users-admin-update.ts / users-admin-delete.ts /
+      // auth-signup.ts — network call must not hold an open Postgres tx
+      // (risks P2028 on slow Cognito).
+      // TOCTOU between this read and the invitation.create below is already
+      // covered by the P2002 partial unique index catch in block 2.
+      //
+      // 1bis) Cross-tenant early-check via Cognito.
+      // Email assente in DB tenant corrente; hit Cognito = utente in altro tenant.
+      // (Pool Officine è single-pool: email è alias globale.)
+      let cognitoUser;
+      try {
+        cognitoUser = await getOfficineUserByEmail({
+          poolId: env.COGNITO_OFFICINE_POOL_ID,
+          email: body.email,
+        });
+      } catch (err) {
+        if (err instanceof CognitoUnavailableError) {
           request.log.error({ err }, 'cognito lookup failed at invitation create');
           throw businessError(
             'auth.cognito_unavailable',
@@ -132,14 +140,18 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
             'Servizio di autenticazione temporaneamente non disponibile.',
           );
         }
-        if (cognitoUser.exists) {
-          throw businessError(
-            'user.invitation.email_in_other_tenant',
-            409,
-            "Questa email risulta già registrata in un'altra officina. Contatta il supporto.",
-          );
-        }
+        throw err;
+      }
+      if (cognitoUser.exists) {
+        throw businessError(
+          'user.invitation.email_in_other_tenant',
+          409,
+          "Questa email risulta già registrata in un'altra officina. Contatta il supporto.",
+        );
+      }
 
+      // ─── Block 2 (DB tx): steps 2 (location) + 3 (token/invitation) + 4-5 (audit) ─
+      const txResult = await app.withContext({ role: 'admin' as const }, async (tx) => {
         // 2) Optional: validate that locationId belongs to the caller's tenant.
         if (body.locationId) {
           const loc = await tx.location.findFirst({
