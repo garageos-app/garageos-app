@@ -110,8 +110,8 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
         });
       });
 
-      const vehicle = await app.prisma.vehicle.findFirstOrThrow({
-        where: { id: vehicleId, tenantId },
+      const vehicle = await app.prisma.vehicle.findUniqueOrThrow({
+        where: { id: vehicleId },
         select: vehicleDetailSelect,
       });
 

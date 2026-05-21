@@ -14,7 +14,8 @@ import {
 
 interface StubVehicle {
   id: string;
-  tenantId: string;
+  certifiedByTenantId: string | null;
+  createdByTenantId: string | null;
   status: string;
 }
 interface StubOwnership {
@@ -55,7 +56,7 @@ interface StubState {
 
 interface VehicleFindFirstWhere {
   id: string;
-  tenantId: string;
+  OR?: Array<{ certifiedByTenantId?: string; createdByTenantId?: string }>;
 }
 interface OwnershipFindFirstWhere {
   vehicleId: string;
@@ -127,11 +128,21 @@ function makeStub() {
 
   const tx = {
     vehicle: {
-      findFirst: vi.fn().mockImplementation(({ where }: { where: VehicleFindFirstWhere }) => {
+      findFirst: vi.fn().mockImplementation(async ({ where }: { where: VehicleFindFirstWhere }) => {
         for (const v of state.vehicles.values()) {
-          if (v.id === where.id && v.tenantId === where.tenantId) return Promise.resolve(v);
+          if (v.id !== where.id) continue;
+          if (where.OR) {
+            const match = where.OR.some(
+              (o) =>
+                (o.certifiedByTenantId !== undefined &&
+                  v.certifiedByTenantId === o.certifiedByTenantId) ||
+                (o.createdByTenantId !== undefined && v.createdByTenantId === o.createdByTenantId),
+            );
+            if (!match) continue;
+          }
+          return v;
         }
-        return Promise.resolve(null);
+        return null;
       }),
     },
     vehicleOwnership: {
@@ -240,7 +251,12 @@ describe('performOwnershipTransfer', () => {
 
   beforeEach(() => {
     env = makeStub();
-    env.state.vehicles.set('v1', { id: 'v1', tenantId: 't1', status: 'certified' });
+    env.state.vehicles.set('v1', {
+      id: 'v1',
+      certifiedByTenantId: 't1',
+      createdByTenantId: 't1',
+      status: 'certified',
+    });
     env.state.ownerships.set('own-current', {
       id: 'own-current',
       vehicleId: 'v1',
@@ -339,7 +355,12 @@ describe('performOwnershipTransfer', () => {
   });
 
   it('422 pending_not_transferable when vehicle.status=pending', async () => {
-    env.state.vehicles.set('v1', { id: 'v1', tenantId: 't1', status: 'pending' });
+    env.state.vehicles.set('v1', {
+      id: 'v1',
+      certifiedByTenantId: 't1',
+      createdByTenantId: 't1',
+      status: 'pending',
+    });
     await expect(performOwnershipTransfer(env.tx as never, baseInput)).rejects.toMatchObject({
       name: 'vehicle.transfer.pending_not_transferable',
       statusCode: 422,
@@ -347,7 +368,12 @@ describe('performOwnershipTransfer', () => {
   });
 
   it('422 archived when vehicle.status=archived', async () => {
-    env.state.vehicles.set('v1', { id: 'v1', tenantId: 't1', status: 'archived' });
+    env.state.vehicles.set('v1', {
+      id: 'v1',
+      certifiedByTenantId: 't1',
+      createdByTenantId: 't1',
+      status: 'archived',
+    });
     await expect(performOwnershipTransfer(env.tx as never, baseInput)).rejects.toMatchObject({
       name: 'vehicle.transfer.archived',
       statusCode: 422,

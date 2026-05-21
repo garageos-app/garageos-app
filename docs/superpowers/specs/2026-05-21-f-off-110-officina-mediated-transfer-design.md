@@ -174,7 +174,7 @@ Both additive, no table rewrite.
 |---|---|---|
 | 400 | `validation_error` | Zod parse fail |
 | 401 | `auth.token_*` | gateway middleware |
-| 403 | `auth.role_forbidden` | non super_admin/mechanic |
+| 403 | `vehicle.transfer.role_denied` | non super_admin/mechanic |
 | 404 | `vehicle.not_found` | vehicle id non visibile al tenant (RLS-as-404, `findFirst({id,tenantId})` + null check) |
 | 422 | `vehicle.transfer.pending_not_transferable` | BR-046 vehicle.status=pending |
 | 422 | `vehicle.transfer.archived` | vehicle.status=archived |

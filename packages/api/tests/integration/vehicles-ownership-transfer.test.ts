@@ -314,6 +314,78 @@ describe('POST /v1/vehicles/:id/ownership-transfer (integration)', () => {
     expect(res.json().code).toBe('vehicle.transfer.active_transfer_exists');
   });
 
+  it('200: new recipient isBusiness=true persists businessName + vatNumber', async () => {
+    const s = await setupScenario();
+    const newEmail = `biz-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.it`;
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${s.vehicleId}/ownership-transfer`,
+      headers: { authorization: `Bearer ${s.actorJwt}` },
+      payload: {
+        recipient: {
+          kind: 'new',
+          firstName: 'Acme',
+          lastName: 'SRL',
+          email: newEmail,
+          isBusiness: true,
+          businessName: 'Acme SRL',
+          vatNumber: 'IT12345678901',
+        },
+        reason: 'company_assignment',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    // Verify business fields persisted via pgAdmin (raw query on customers)
+    const { rows } = await pgAdmin.query<{
+      is_business: boolean;
+      business_name: string;
+      vat_number: string;
+    }>(`SELECT is_business, business_name, vat_number FROM customers WHERE email = $1`, [newEmail]);
+    const row = rows[0];
+    expect(row).toBeDefined();
+    expect(row!.is_business).toBe(true);
+    expect(row!.business_name).toBe('Acme SRL');
+    expect(row!.vat_number).toBe('IT12345678901');
+  });
+
+  it('403: customer pool JWT rejected by requireOfficinaPool', async () => {
+    const s = await setupScenario();
+    const customerJwt = await signTestToken({
+      pool: 'clienti',
+      sub: 'cust-jwt-' + Math.random().toString(36).slice(2, 8),
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${s.vehicleId}/ownership-transfer`,
+      headers: { authorization: `Bearer ${customerJwt}` },
+      payload: {
+        recipient: { kind: 'existing', customerId: s.cessionario.customerId },
+        reason: 'purchase',
+      },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('422: no_active_ownership when vehicle has no active owner', async () => {
+    const s = await setupScenario();
+    // End the current ownership (orphan the vehicle) via pgAdmin
+    await pgAdmin.query(
+      `UPDATE vehicle_ownerships SET ended_at = NOW() WHERE vehicle_id = $1 AND ended_at IS NULL`,
+      [s.vehicleId],
+    );
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${s.vehicleId}/ownership-transfer`,
+      headers: { authorization: `Bearer ${s.actorJwt}` },
+      payload: {
+        recipient: { kind: 'existing', customerId: s.cessionario.customerId },
+        reason: 'purchase',
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('vehicle.transfer.no_active_ownership');
+  });
+
   it('BR-045 privacy: post-transfer GET /vehicles/:id returns only new owner', async () => {
     const s = await setupScenario();
     const txfer = await app.inject({
