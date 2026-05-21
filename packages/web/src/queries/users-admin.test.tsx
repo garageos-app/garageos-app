@@ -3,7 +3,13 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { useUsers, useInviteUser, useRevokeInvitation, useDeleteUser } from './users-admin';
+import {
+  useUsers,
+  useInviteUser,
+  useRevokeInvitation,
+  useDeleteUser,
+  useReactivateUser,
+} from './users-admin';
 import type { AdminUser, Invitation } from './users-admin';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -191,6 +197,51 @@ describe('useDeleteUser', () => {
     expect(apiFetchMock).toHaveBeenCalledWith('/v1/users/user-id-456', {
       method: 'DELETE',
       body: '{}',
+    });
+  });
+});
+
+describe('useReactivateUser', () => {
+  beforeEach(() => {
+    apiFetchMock.mockClear();
+  });
+
+  it('POST /v1/users/:id/reactivate con body vuoto e invalida la query users', async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      user: { ...mockUser, status: 'active', deletedAt: null },
+    });
+
+    const qc = makeQc();
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    const { result } = renderHook(() => useReactivateUser(), { wrapper: wrap(qc) });
+
+    await result.current.mutateAsync({ id: 'user-id-1', body: {} });
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/v1/users/user-id-1/reactivate', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['users'] });
+    });
+  });
+
+  it('POST con role + locationId override invia il payload corretto', async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      user: { ...mockUser, status: 'active', deletedAt: null },
+    });
+
+    const qc = makeQc();
+    const { result } = renderHook(() => useReactivateUser(), { wrapper: wrap(qc) });
+
+    await result.current.mutateAsync({
+      id: 'user-id-1',
+      body: { role: 'super_admin', locationId: null },
+    });
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/v1/users/user-id-1/reactivate', {
+      method: 'POST',
+      body: JSON.stringify({ role: 'super_admin', locationId: null }),
     });
   });
 });

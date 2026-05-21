@@ -78,3 +78,35 @@ Expected: `user_invitation_token_rotated` rows for steps 2 and 3 with `metadata.
 - [ ] Step 2 — disable+login behavior verified (after CDK deploy)
 - [ ] Step 3 — CLI rotate-on-extract verified
 - [ ] Pending invitations re-invited (if pre-flight N > 0)
+
+---
+
+## §PR3 — Reactivation flow smoke (2026-05-21 slice)
+
+**Setup**: web app prod, Super Admin loggato (es. `admin@demo-giuseppe.test`), almeno un mechanic attivo `mechanic-secondary@demo-giuseppe.test` + 1 location secondaria active in tenant Giuseppe.
+
+1. `/settings/users` → identifica `mechanic-secondary@demo-giuseppe.test`.
+2. Click row → EditUserDialog → click "Disattiva utente" → step conferma → "Conferma disattivazione". Verifica: user in sezione inactive nel list.
+3. Click row inactive → EditUserDialog → vedi nuova section "Riattiva utente" (NON la notice "non ancora supportata" vecchia).
+4. Click "Riattiva utente" → step conferma con preview email + ruolo IT + nome sede.
+5. Click "Conferma riattivazione" → toast success → dialog close → list refresh.
+6. Verifica: user di nuovo in sezione active, locationId originale, role originale.
+7. Logout admin. Login con `mechanic-secondary@demo-giuseppe.test` + password pre-deactivation → access granted.
+8. **Edge location stale**: come admin, ri-disattiva il mechanic. Vai a `/settings/locations` (se UI esiste) e disattiva la sua sede originale, OPPURE esegui manualmente:
+   ```sql
+   UPDATE locations SET status='inactive'::"LocationStatus", deleted_at=NOW() WHERE id='<L1-uuid>';
+   ```
+   Ri-apri EditUserDialog sul user inactive → click "Riattiva utente" → conferma. Vedi messaggio "Sede non valida" + dropdown "Seleziona nuova sede" → seleziona L2 → "Conferma riattivazione" → success.
+9. **Edge already_active**: replay POST via curl:
+   ```bash
+   curl -X POST https://api.garageos.aifollyadvisor.com/v1/users/<active-user-id>/reactivate \
+        -H "Authorization: Bearer $SUPER_ADMIN_JWT" \
+        -H "Content-Type: application/json" \
+        -d '{}'
+   ```
+   Expected: `422 user.already_active`.
+10. **Soft-deleted re-invite 409**: come Super Admin, prova a invitare di nuovo `mechanic-secondary@demo-giuseppe.test` mentre è soft-deleted → POST `/v1/users/invitations` → `409 user.invitation.email_soft_deleted_in_tenant`. UI mostra "Riattivalo da Impostazioni → Utenti".
+11. **Cross-tenant 409**: SOLO se esiste un secondo tenant nel seed pilot. Come Super Admin di tenant B, prova a invitare `mechanic-test@demo-giuseppe.test` → POST `/v1/users/invitations` → `409 user.invitation.email_in_other_tenant`. Se nessun tenant secondario è disponibile, **skip lo step** + nota che l'invariante è coperta da test integration `users-invitations-create.test.ts`.
+12. **Cleanup**: ripristina seed state (mechanic-secondary attivo, L1 ripristinata se toccata, eventuali invitation row create eliminate via DB).
+
+**Esito atteso**: 0 Critical, 0 Important, eventualmente Minor sulla copy IT del messaggio.

@@ -35,6 +35,7 @@ import {
 import { ApiError } from '@/lib/api-client';
 import { translateError } from '@/lib/error-messages';
 import { type AdminUser, useUpdateUser, useDeleteUser, useLocations } from '@/queries/users-admin';
+import { ReactivateSection } from './ReactivateSection';
 
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
 
@@ -211,13 +212,11 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
 
         <div className="space-y-6">
           {user.status === 'inactive' ? (
-            <section data-testid="inactive-notice">
-              <h3 className="font-medium mb-2">Utente disattivato</h3>
-              <p className="text-sm text-muted-foreground">
-                Questo utente è disattivato e non può essere modificato. La riattivazione non è
-                ancora supportata.
-              </p>
-            </section>
+            <ReactivateSection
+              user={user}
+              locations={locations}
+              onSuccess={() => handleClose(false)}
+            />
           ) : (
             <>
               {/* ── Section 1: Change Role ──────────────────────────────────────── */}

@@ -2,6 +2,8 @@ import {
   AdminCreateUserCommand,
   AdminDeleteUserCommand,
   AdminDisableUserCommand,
+  AdminEnableUserCommand,
+  AdminGetUserCommand,
   AdminSetUserPasswordCommand,
   AdminUpdateUserAttributesCommand,
   AdminUserGlobalSignOutCommand,
@@ -345,6 +347,73 @@ export async function disableOfficineUser(args: { poolId: string; email: string 
     );
   } catch (err) {
     if (err instanceof UserNotFoundException) return;
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+}
+
+// Re-enables a previously disabled Cognito user in the officine pool.
+// Mirror of `disableOfficineUser` — used by the reactivation flow
+// (POST /v1/users/:id/reactivate) to lift the AdminDisableUser side
+// effect of the soft-delete.
+//
+// Idempotent: swallows UserNotFoundException so callers can use this
+// in best-effort post-tx paths without prior existence checks.
+//
+// See docs/superpowers/specs/2026-05-21-user-reactivation-design.md §2.4.
+export async function enableOfficineUser(args: { poolId: string; email: string }): Promise<void> {
+  const client = getCognitoClient();
+  try {
+    await client.send(
+      new AdminEnableUserCommand({
+        UserPoolId: args.poolId,
+        Username: args.email,
+      }),
+    );
+  } catch (err) {
+    if (err instanceof UserNotFoundException) return;
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+}
+
+// Looks up a Cognito user in the officine pool by email. Returns
+// a discriminated `{exists, sub?, attributes?}` shape rather than
+// throwing on not-found, because that case is a normal control-flow
+// branch for the cross-tenant invitation early-check.
+//
+// Throws CognitoUnavailableError on any other Cognito error so the
+// caller can map to 502 `auth.cognito_unavailable`.
+//
+// See docs/superpowers/specs/2026-05-21-user-reactivation-design.md §4.2.
+export async function getOfficineUserByEmail(args: {
+  poolId: string;
+  email: string;
+}): Promise<{ exists: false } | { exists: true; sub: string; attributes: Record<string, string> }> {
+  const client = getCognitoClient();
+  try {
+    const resp = await client.send(
+      new AdminGetUserCommand({
+        UserPoolId: args.poolId,
+        Username: args.email,
+      }),
+    );
+    const attributes: Record<string, string> = {};
+    for (const a of resp.UserAttributes ?? []) {
+      if (a.Name && a.Value !== undefined) attributes[a.Name] = a.Value;
+    }
+    const sub = attributes['sub'];
+    if (!sub) {
+      throw new CognitoUnavailableError('AdminGetUser response missing sub attribute');
+    }
+    return { exists: true, sub, attributes };
+  } catch (err) {
+    if (err instanceof UserNotFoundException) return { exists: false };
+    if (err instanceof CognitoUnavailableError) throw err;
     throw new CognitoUnavailableError(
       err instanceof Error ? err.message : 'Cognito SDK error',
       err,

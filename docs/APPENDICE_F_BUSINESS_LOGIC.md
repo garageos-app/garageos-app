@@ -784,6 +784,8 @@ Super Admin può rimuovere un utente (soft delete, `status=inactive` + `deleted_
 - I suoi interventi passati **restano visibili** (l'intervento X è stato registrato dal meccanico Y, storicità preservata)
 - Le sue scadenze create restano aperte
 
+**La rimozione è reversibile via BR-212 nello stesso tenant.**
+
 ### BR-208 — Self-delete
 Un utente può rimuovere se stesso (`DELETE /users/me`), ma:
 - Se è l'ultimo Super Admin: errore (BR-203)
@@ -802,6 +804,31 @@ Un tenant in stato `suspended` (da admin o per billing):
 
 ### BR-211 — Cancellazione tenant
 Un tenant `cancelled` mantiene i dati per **10 anni** (retention legale/fiscale) poi cancellazione completa via job scheduled.
+
+### BR-212 — Riattivazione utente (F-OFF-004 slice 2026-05-21)
+Super Admin può riattivare un utente soft-deleted (`status=inactive`, `deleted_at IS NOT NULL`) nel proprio tenant via `POST /v1/users/:id/reactivate`.
+
+**Effetto:**
+- `deleted_at = NULL`, `status = 'active'`
+- `AdminEnableUser` su Cognito (re-enable user)
+- Optional override `{role?, locationId?}` per ri-decidere ruolo/sede al rientro
+- Audit log `action='user_reactivated'`
+
+**Vincoli:**
+- BR-204 ricontrollato: mechanic richiede location active obbligatoria
+- BR-203 non applicabile (reactivate aggiunge un super_admin, mai sottrae)
+
+**Limitazione cross-tenant**: BR-212 risolve solo same-tenant. Per cross-tenant cohabitation vedi BR-213 (out-of-scope v1).
+
+### BR-213 — Cross-tenant email collision (F-OFF-004 slice 2026-05-21)
+Cognito Officine è single-pool (`eu-central-1_9Rd7nGpH8`) quindi email è alias globalmente unico nel pool.
+
+**Conseguenza:**
+- Un meccanico X attivo in Officina A NON può essere invitato in Officina B mentre X è attivo (Cognito `UsernameExistsException`).
+- Anche dopo soft-delete in A, X non può essere invitato in B finché il Cognito user esiste.
+- `POST /v1/users/invitations` rileva il caso via Cognito `AdminGetUser` early-check e restituisce `409 user.invitation.email_in_other_tenant`.
+
+**Out-of-scope v1**: cross-tenant cohabitation richiederebbe rearchitect Cognito (pool-per-tenant o `custom:tenant_ids` list-attribute). Tracciato come F-OFF-XXX futuro.
 
 ---
 
