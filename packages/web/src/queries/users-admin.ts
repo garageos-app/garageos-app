@@ -61,6 +61,11 @@ export interface UpdateUserBody {
   status?: 'active' | 'inactive';
 }
 
+export interface ReactivateUserBody {
+  role?: 'super_admin' | 'mechanic';
+  locationId?: string | null;
+}
+
 export interface AcceptInvitationBody {
   password: string;
 }
@@ -202,6 +207,26 @@ export function useDeleteUser() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['users'] });
       toast.success('Utente rimosso');
+    },
+    onError: (err) => {
+      toast.error(translateError(err.code, err.message));
+    },
+  });
+}
+
+/** POST /v1/users/:id/reactivate — re-enable a soft-deleted user (BR-211). */
+export function useReactivateUser() {
+  const apiFetch = useApiFetch();
+  const qc = useQueryClient();
+  return useMutation<{ user: AdminUser }, ApiError, { id: string; body: ReactivateUserBody }>({
+    mutationFn: ({ id, body }) =>
+      apiFetch<{ user: AdminUser }>(`/v1/users/${id}/reactivate`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['users'] });
+      toast.success('Utente riattivato');
     },
     onError: (err) => {
       toast.error(translateError(err.code, err.message));
