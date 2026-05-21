@@ -20,7 +20,8 @@
 //
 // Spec: docs/superpowers/specs/2026-05-21-f-off-110-officina-mediated-transfer-design.md
 
-import type { Prisma, PrismaClient } from '@garageos/database';
+import { Prisma } from '@garageos/database';
+import type { PrismaClient } from '@garageos/database';
 
 import { businessError } from './business-error.js';
 
@@ -121,12 +122,7 @@ async function resolveRecipient(
     });
     return { toCustomerId: created.id };
   } catch (err: unknown) {
-    if (
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      (err as { code: unknown }).code === 'P2002'
-    ) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       const refetched = await tx.customer.findFirst({
         where: { email: recipient.email },
         select: { id: true },
@@ -238,6 +234,9 @@ export async function performOwnershipTransfer(
       toCustomerId,
       method: 'officina_mediated',
       status: 'completed',
+      // expiresAt is NOT NULL in schema (designed for mobile BR-043 multi-step
+      // flow). For officina_mediated single-step it's semantically unused —
+      // set to now() so an `expiresAt > now()` filter never matches this row.
       expiresAt: now,
       completedAt: now,
     },
