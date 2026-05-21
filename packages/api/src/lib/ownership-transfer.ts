@@ -34,11 +34,14 @@ export type RecipientInput =
       firstName: string;
       lastName: string;
       email: string;
-      phone?: string | null;
-      codiceFiscale?: string | null;
-      isBusiness?: boolean;
-      businessName?: string | null;
-      vatNumber?: string | null;
+      // exactOptionalPropertyTypes: Zod infers `string | null | undefined`
+      // for `.nullable().optional()` fields; adding | undefined here avoids
+      // an `as RecipientInput` cast at the call site.
+      phone?: string | null | undefined;
+      codiceFiscale?: string | null | undefined;
+      isBusiness?: boolean | undefined;
+      businessName?: string | null | undefined;
+      vatNumber?: string | null | undefined;
     };
 
 export interface OwnershipTransferInput {

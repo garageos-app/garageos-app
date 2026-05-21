@@ -8,6 +8,7 @@
 // RLS context: role: 'admin' for writes (memory feedback_withcontext_empty_blocks_rls_writes).
 //
 // Error codes (see APPENDICE_G):
+//   vehicle.transfer.role_denied              — 403
 //   vehicle.not_found                         — 404
 //   vehicle.transfer.pending_not_transferable — 422 BR-046
 //   vehicle.transfer.archived                 — 422
@@ -20,7 +21,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import { performOwnershipTransfer, type RecipientInput } from '../../lib/ownership-transfer.js';
+import { performOwnershipTransfer } from '../../lib/ownership-transfer.js';
 import { vehicleDetailSelect } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -78,7 +79,11 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
 
       const role = request.userRole;
       if (role !== 'super_admin' && role !== 'mechanic') {
-        throw businessError('auth.role_forbidden', 403, 'Ruolo non autorizzato.');
+        throw businessError(
+          'vehicle.transfer.role_denied',
+          403,
+          'Ruolo non autorizzato per il trasferimento.',
+        );
       }
 
       const tenantId = request.tenantId!;
@@ -87,28 +92,25 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
       const body = parsedBody.data;
 
       const result = await app.withContext({ role: 'admin' as const }, async (tx) => {
-        // Resolve cognitoSub → DB user.id (required NOT NULL for AccessLog).
-        // tenant-context middleware already validated user exists+active+
-        // same-tenant, so this is a tight refetch (not a guard).
-        const actor = await tx.user.findFirst({
+        // tenant-context middleware already validated the user exists+active+
+        // same-tenant — refetch the DB id (required for AccessLog FK).
+        // findFirstOrThrow throws P2025 → 500 if absent (treat as unexpected).
+        const actor = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId, deletedAt: null },
           select: { id: true },
         });
-        if (!actor) {
-          throw businessError('auth.user_not_found', 401, 'Utente non trovato.');
-        }
 
         return performOwnershipTransfer(tx, {
           vehicleId,
           tenantId,
           actorUserId: actor.id,
-          recipient: body.recipient as RecipientInput,
+          recipient: body.recipient,
           reason: body.reason,
           notes: body.notes ?? null,
         });
       });
 
-      const vehicle = await app.prisma.vehicle.findFirst({
+      const vehicle = await app.prisma.vehicle.findFirstOrThrow({
         where: { id: vehicleId, tenantId },
         select: vehicleDetailSelect,
       });
