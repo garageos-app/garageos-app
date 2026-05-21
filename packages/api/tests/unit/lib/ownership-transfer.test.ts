@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { Prisma } from '@garageos/database';
+
 import {
   performOwnershipTransfer,
   type OwnershipTransferInput,
@@ -273,6 +275,7 @@ describe('performOwnershipTransfer', () => {
     const result = await performOwnershipTransfer(env.tx as never, input);
     expect(result.transfer.status).toBe('completed');
     expect(env.tx.customer.create).toHaveBeenCalled();
+    expect(result.ownership.customerId).toBe('c-3');
   });
 
   it('new recipient with matching email reuses existing customer', async () => {
@@ -289,6 +292,41 @@ describe('performOwnershipTransfer', () => {
     const result = await performOwnershipTransfer(env.tx as never, input);
     expect(result.ownership.customerId).toBe('c-existing');
     expect(env.tx.customer.create).not.toHaveBeenCalled();
+  });
+
+  it('new recipient P2002 race: concurrent insert resolves via refetch', async () => {
+    // Pre-seed the customer that will be "found" by the refetch (simulating
+    // a concurrent transaction that inserted this customer between our
+    // findFirst and create calls).
+    env.state.customers.set('c-race', { id: 'c-race', email: 'race@example.com' });
+
+    // Force the code path: customer.findFirst returns null on first call
+    // (pre-create lookup misses), then finds c-race on the refetch after P2002.
+    let findFirstCalled = 0;
+    env.tx.customer.findFirst.mockImplementation(
+      async ({ where }: { where: { email?: string; id?: string } }) => {
+        findFirstCalled++;
+        if (findFirstCalled === 1) return null; // pre-create lookup misses
+        // refetch finds c-race
+        if (where.email === 'race@example.com') return { id: 'c-race', email: 'race@example.com' };
+        return null;
+      },
+    );
+
+    // Make customer.create throw P2002
+    const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: '5',
+    });
+    env.tx.customer.create.mockRejectedValueOnce(p2002);
+
+    const input: OwnershipTransferInput = {
+      ...baseInput,
+      recipient: { kind: 'new', firstName: 'X', lastName: 'Y', email: 'race@example.com' },
+    };
+    const result = await performOwnershipTransfer(env.tx as never, input);
+    expect(result.ownership.customerId).toBe('c-race');
+    expect(env.tx.customer.create).toHaveBeenCalledTimes(1);
   });
 
   it('404 vehicle.not_found when vehicle missing in tenant', async () => {
