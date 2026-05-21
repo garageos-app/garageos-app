@@ -94,6 +94,7 @@ export class LambdaApiConstruct extends Construct {
           'cognito-idp:AdminUpdateUserAttributes',
           'cognito-idp:AdminDeleteUser',
           'cognito-idp:AdminDisableUser',
+          'cognito-idp:AdminEnableUser',
           'cognito-idp:AdminUserGlobalSignOut',
           'cognito-idp:ListUsers',
         ],
