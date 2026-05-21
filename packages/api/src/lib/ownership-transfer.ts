@@ -7,7 +7,9 @@
 // AccessLog row.
 //
 // Pre-conditions (callers MUST ensure tenant scoping BEFORE calling):
-//   - vehicle.tenantId === actor tenant (checked at route via findFirst)
+//   - vehicle.createdByTenantId OR vehicle.certifiedByTenantId === actor tenant
+//     (matches RLS UPDATE policy on vehicles). For BR-049 officina-mediated
+//     transfer, officine can only transfer vehicles they created or certified.
 //   - actorUserId is the DB user.id (NOT cognitoSub) — route resolves
 //     this via tenant-context (cognitoSub + tenantId → user.id).
 //
@@ -150,7 +152,10 @@ export async function performOwnershipTransfer(
 ): Promise<OwnershipTransferResult> {
   // Step 1: verify vehicle status (RLS-scoped via withContext at caller)
   const vehicle = await tx.vehicle.findFirst({
-    where: { id: input.vehicleId, tenantId: input.tenantId },
+    where: {
+      id: input.vehicleId,
+      OR: [{ certifiedByTenantId: input.tenantId }, { createdByTenantId: input.tenantId }],
+    },
     select: { id: true, status: true },
   });
   if (!vehicle) {

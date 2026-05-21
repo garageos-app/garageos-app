@@ -257,9 +257,10 @@ describe('performOwnershipTransfer', () => {
     expect(result.ownership.customerId).toBe('c-recipient');
     expect(env.state.ownerships.get('own-current')!.endedAt).not.toBeNull();
     expect(env.state.accessLogs).toHaveLength(1);
-    expect(env.state.accessLogs[0].action).toBe('ownership_transfer');
-    expect(env.state.accessLogs[0].vehicleId).toBe('v1');
-    expect(env.state.accessLogs[0].userId).toBe('u1');
+    const log = env.state.accessLogs[0]!;
+    expect(log.action).toBe('ownership_transfer');
+    expect(log.vehicleId).toBe('v1');
+    expect(log.userId).toBe('u1');
   });
 
   it('happy path: new recipient creates customer', async () => {
