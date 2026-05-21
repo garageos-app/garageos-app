@@ -26,6 +26,7 @@ const {
   mockUpdateMutateAsync,
   mockDeleteMutateAsync,
   mockDeleteIsPending,
+  mockReactivateMutateAsync,
   mockToastSuccess,
   mockToastError,
   mockUseLocations,
@@ -33,6 +34,7 @@ const {
   mockUpdateMutateAsync: vi.fn(),
   mockDeleteMutateAsync: vi.fn(),
   mockDeleteIsPending: { value: false },
+  mockReactivateMutateAsync: vi.fn(),
   mockToastSuccess: vi.fn(),
   mockToastError: vi.fn(),
   mockUseLocations: vi.fn(),
@@ -63,6 +65,12 @@ vi.mock('@/queries/users-admin', async () => {
     useDeleteUser: () => ({
       mutateAsync: mockDeleteMutateAsync,
       isPending: mockDeleteIsPending.value,
+    }),
+    useReactivateUser: () => ({
+      mutateAsync: mockReactivateMutateAsync,
+      isPending: false,
+      isError: false,
+      error: null,
     }),
     useLocations: mockUseLocations,
   };
@@ -125,6 +133,7 @@ describe('EditUserDialog UI', () => {
     mockUpdateMutateAsync.mockReset();
     mockDeleteMutateAsync.mockReset();
     mockDeleteIsPending.value = false;
+    mockReactivateMutateAsync.mockReset();
     mockToastSuccess.mockReset();
     mockToastError.mockReset();
     mockUseLocations.mockReturnValue({
@@ -315,25 +324,26 @@ describe('EditUserDialog UI', () => {
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
-  // ── Inactive users: deactivate action must be hidden ───────────────────────
-  // Regression guard: clicking "Disattiva utente" on an already-inactive user
-  // would yield 404 user.not_found because the backend filters deletedAt: null.
-  // Reactivation is a separate (deferred) decision; for now we just hide the
-  // action and surface a notice.
+  // ── Inactive users: ReactivateSection is rendered ──────────────────────────
+  // Section component owns its own state + mutation; this test just verifies
+  // the dialog mounts the section when status='inactive' and hides the
+  // role/location/deactivate sections (which would 404 against deletedAt:null).
 
-  it('hides ALL action sections (role/location/deactivate) and shows only inactive notice when status="inactive"', () => {
+  it('renders ReactivateSection for inactive user, hides role/location/deactivate sections', () => {
     render(<EditUserDialog user={INACTIVE_USER} open={true} onOpenChange={() => {}} />, {
       wrapper: wrap,
     });
 
-    // No edit sections rendered
+    // Edit sections hidden
     expect(screen.queryByText('Cambia ruolo')).not.toBeInTheDocument();
     expect(screen.queryByText('Cambia sede')).not.toBeInTheDocument();
     expect(screen.queryByTestId('deactivate-button')).not.toBeInTheDocument();
 
-    // Only inactive notice rendered
-    expect(screen.getByTestId('inactive-notice')).toBeInTheDocument();
-    expect(screen.getByText(/utente disattivato/i)).toBeInTheDocument();
-    expect(screen.getByText(/non pu(o|ò) essere modificato/i)).toBeInTheDocument();
+    // ReactivateSection mounted
+    expect(screen.getByTestId('reactivate-section')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^riattiva utente$/i })).toBeInTheDocument();
+
+    // Old static notice is GONE
+    expect(screen.queryByTestId('inactive-notice')).not.toBeInTheDocument();
   });
 });
