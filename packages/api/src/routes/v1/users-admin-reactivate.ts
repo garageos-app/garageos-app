@@ -9,7 +9,7 @@
 //
 // Business rules enforced:
 //   BR-204 — mechanic location required
-//   BR-211 — riattivazione utente (vedi APPENDICE_F)
+//   BR-212 — riattivazione utente (vedi APPENDICE_F)
 //
 // Error codes:
 //   user.not_found                       — 404: target non soft-deleted o cross-tenant

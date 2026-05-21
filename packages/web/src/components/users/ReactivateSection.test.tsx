@@ -1,4 +1,4 @@
-// ReactivateSection tests — F-OFF-004 reactivation slice (BR-211).
+// ReactivateSection tests — F-OFF-004 reactivation slice (BR-212).
 //
 // Per memory feedback_radix_tabs_user_event_not_fire_event: Radix Select
 // portals do not open in JSDOM via fireEvent — use userEvent.click().

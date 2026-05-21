@@ -214,7 +214,7 @@ export function useDeleteUser() {
   });
 }
 
-/** POST /v1/users/:id/reactivate — re-enable a soft-deleted user (BR-211). */
+/** POST /v1/users/:id/reactivate — re-enable a soft-deleted user (BR-212). */
 export function useReactivateUser() {
   const apiFetch = useApiFetch();
   const qc = useQueryClient();

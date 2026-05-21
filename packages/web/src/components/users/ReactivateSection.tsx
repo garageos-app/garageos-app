@@ -1,4 +1,4 @@
-// ReactivateSection — F-OFF-004 reactivation slice (BR-211).
+// ReactivateSection — F-OFF-004 reactivation slice (BR-212).
 //
 // Section embedded in EditUserDialog when user.status === 'inactive'.
 // 2-step UI: primary button → confirm step con preview + Select condizionale

@@ -4,7 +4,7 @@
 // Auth chain: requireAuth → requireOfficinaPool → tenantContext → requireSuperAdmin
 // Business rules enforced:
 //   BR-204 — mechanic role requires locationId
-//   BR-211 — riattivazione utente
+//   BR-212 — riattivazione utente
 //
 // Helper pattern mirrors users-admin-delete.test.ts / users-admin-update.test.ts:
 //   buildTestServer / createTenantWithLocation / createUser / signTestToken / pgAdmin / resetDb.
