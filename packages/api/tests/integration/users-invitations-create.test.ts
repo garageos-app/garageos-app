@@ -7,7 +7,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { mockClient } from 'aws-sdk-client-mock';
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import {
+  AdminGetUserCommand,
+  CognitoIdentityProviderClient,
+  UserNotFoundException,
+} from '@aws-sdk/client-cognito-identity-provider';
 import { _resetSesClientForTests } from '../../src/lib/ses-client.js';
+import { _resetCognitoClientForTests } from '../../src/lib/cognito.js';
 
 import { buildTestServer } from './fixtures.js';
 import { createTenantWithLocation, createUser, resetDb } from './helpers.js';
@@ -15,6 +21,7 @@ import { signTestToken } from '../helpers/jwt.js';
 import { pgAdmin } from './setup.js';
 
 const sesMock = mockClient(SESv2Client);
+const cognitoMock = mockClient(CognitoIdentityProviderClient);
 
 describe('POST /v1/users/invitations', () => {
   let app: FastifyInstance;
@@ -32,6 +39,17 @@ describe('POST /v1/users/invitations', () => {
     _resetSesClientForTests();
     sesMock.reset();
     sesMock.on(SendEmailCommand).resolves({});
+    // Same pattern for Cognito client: reset the singleton so the mock
+    // intercepts the fresh CognitoIdentityProviderClient. Default behavior
+    // is "user not in pool" — the step 1bis cross-tenant check then
+    // treats the email as new and continues the flow (status quo for the
+    // happy-path / BR-204 / duplicate-pending / SES-fail cases that
+    // predate the cross-tenant guard).
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+    cognitoMock
+      .on(AdminGetUserCommand)
+      .rejects(new UserNotFoundException({ message: 'not found', $metadata: {} }));
   });
 
   it('creates an invitation + sends SES email (happy path)', async () => {
@@ -318,5 +336,159 @@ describe('POST /v1/users/invitations', () => {
 
     expect(res.statusCode).toBe(403);
     expect(res.json().code).toBe('auth.forbidden.super_admin_required');
+  });
+});
+
+// ─── Cross-tenant detection (F-OFF-004 reactivation slice) ────────────────────
+// Step 1 now discriminates active vs soft-deleted same-tenant collisions.
+// Step 1bis (new): Cognito early-check for cross-tenant collision in the
+// single Officine pool. See spec 2026-05-21-user-reactivation-design.md §4.2.
+
+describe('POST /v1/users/invitations — cross-tenant detection (F-OFF-004 reactivation slice)', () => {
+  const TEST_IP = '10.21.30.20';
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+    _resetSesClientForTests();
+    sesMock.reset();
+    sesMock.on(SendEmailCommand).resolves({});
+    cognitoMock.reset();
+    _resetCognitoClientForTests();
+    // No default Cognito mock here — each test sets its own expectation
+    // (hit / throw / "should not be called").
+  });
+
+  it('Cognito hit + no DB user → 409 user.invitation.email_in_other_tenant, no invitation row, no SES send', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('crosstenant');
+    const adminSub = `sa-crosstenant-${crypto.randomUUID()}`;
+    await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
+
+    cognitoMock.on(AdminGetUserCommand).resolves({
+      Username: 'cross@x.test',
+      UserAttributes: [
+        { Name: 'sub', Value: 'cognito-cross-sub' },
+        { Name: 'email', Value: 'cross@x.test' },
+      ],
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/users/invitations',
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: TEST_IP,
+      payload: {
+        email: 'cross@x.test',
+        firstName: 'A',
+        lastName: 'B',
+        role: 'mechanic',
+        locationId,
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { code: string }).code).toBe('user.invitation.email_in_other_tenant');
+    const { rows } = await pgAdmin.query<{ c: string }>(
+      'SELECT COUNT(*)::text AS c FROM invitations WHERE target_email = $1',
+      ['cross@x.test'],
+    );
+    expect(rows[0]?.c).toBe('0');
+    // SES must not be invoked when the invitation tx fails.
+    expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+  });
+
+  it('Cognito throws → 502 auth.cognito_unavailable, no invitation row', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('cogfail');
+    const adminSub = `sa-cogfail-${crypto.randomUUID()}`;
+    await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
+
+    cognitoMock.on(AdminGetUserCommand).rejects(new Error('cognito service unavailable'));
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/users/invitations',
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: TEST_IP,
+      payload: {
+        email: 'new-cogfail@x.test',
+        firstName: 'A',
+        lastName: 'B',
+        role: 'mechanic',
+        locationId,
+      },
+    });
+
+    expect(res.statusCode).toBe(502);
+    expect((res.json() as { code: string }).code).toBe('auth.cognito_unavailable');
+    const { rows } = await pgAdmin.query<{ c: string }>(
+      'SELECT COUNT(*)::text AS c FROM invitations WHERE target_email = $1',
+      ['new-cogfail@x.test'],
+    );
+    expect(rows[0]?.c).toBe('0');
+  });
+
+  it('Same-tenant soft-deleted user → 409 user.invitation.email_soft_deleted_in_tenant, Cognito NOT called', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('softdel-reinvite');
+    const adminSub = `sa-softdel-${crypto.randomUUID()}`;
+    await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
+    const { userId: mechId } = await createUser({
+      tenantId,
+      cognitoSub: `mech-softdel-${crypto.randomUUID()}`,
+      email: 'softdel@x.test',
+      role: 'mechanic',
+      locationId,
+    });
+    // Soft-delete the mechanic.
+    await pgAdmin.query(
+      'UPDATE users SET status = \'inactive\'::"UserStatus", deleted_at = NOW() WHERE id = $1',
+      [mechId],
+    );
+
+    // Cognito mock: should not be called. Set rejects so we'd detect a stray call.
+    cognitoMock.on(AdminGetUserCommand).rejects(new Error('should not be called'));
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: adminSub,
+      tenantId,
+      role: 'super_admin',
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/users/invitations',
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: TEST_IP,
+      payload: {
+        email: 'softdel@x.test',
+        firstName: 'A',
+        lastName: 'B',
+        role: 'mechanic',
+        locationId,
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { code: string }).code).toBe(
+      'user.invitation.email_soft_deleted_in_tenant',
+    );
+    expect(cognitoMock.commandCalls(AdminGetUserCommand)).toHaveLength(0);
   });
 });
