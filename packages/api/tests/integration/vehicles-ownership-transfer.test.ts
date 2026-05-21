@@ -298,7 +298,8 @@ describe('POST /v1/vehicles/:id/ownership-transfer (integration)', () => {
           'initiated_by_seller'::"TransferMethod",
           'pending_recipient'::"TransferStatus",
           NOW() + INTERVAL '7 days', NOW(), NOW())`,
-      [s.vehicleId, `PENDING-${Date.now()}`],
+      // transfer_code is VARCHAR(20); keep payload <=20 chars (10-digit ms suffix fits).
+      [s.vehicleId, `P-${Date.now().toString().slice(-10)}`],
     );
 
     const res = await app.inject({

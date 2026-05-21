@@ -112,7 +112,9 @@ async function resolveRecipient(
         lastName: recipient.lastName,
         email: recipient.email,
         phone: recipient.phone ?? null,
-        codiceFiscale: recipient.codiceFiscale ?? null,
+        // Customer schema field is `taxCode` (DB column `tax_code`);
+        // the route-facing API accepts the IT-friendly name `codiceFiscale`.
+        taxCode: recipient.codiceFiscale ?? null,
         isBusiness: recipient.isBusiness ?? false,
         businessName: recipient.businessName ?? null,
         vatNumber: recipient.vatNumber ?? null,
