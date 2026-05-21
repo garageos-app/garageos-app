@@ -327,6 +327,13 @@ Per fornire dati utili al client per gestire l'errore:
 | `transfer.claim_without_seller.libretto_required` | 400 | info | Libretto di circolazione obbligatorio | | BR-044 |
 | `transfer.claim_without_seller.ocr_mismatch` | 422 | warning | Dati libretto non corrispondono | Review manuale | BR-044 |
 | `transfer.rejection.not_permitted` | 403 | warning | Non puoi rifiutare questo transfer | | |
+| `vehicle.transfer.pending_not_transferable` | 422 | info | Veicolo non certificato non trasferibile | F-OFF-110 | BR-046, BR-049 |
+| `vehicle.transfer.archived` | 422 | info | Veicolo archiviato non trasferibile | F-OFF-110 | BR-049 |
+| `vehicle.transfer.no_active_ownership` | 422 | info | Veicolo senza proprietario attivo | F-OFF-110 | BR-049 |
+| `vehicle.transfer.active_transfer_exists` | 409 | warning | Trasferimento già in corso per questo veicolo | F-OFF-110 | BR-047, BR-049 |
+| `vehicle.transfer.same_owner` | 409 | warning | Il cessionario coincide con il proprietario attuale | F-OFF-110 | BR-049 |
+| `vehicle.transfer.recipient_not_found` | 422 | info | Cessionario non trovato | F-OFF-110 `kind=existing` | BR-049 |
+| `vehicle.transfer.role_denied` | 403 | warning | Ruolo non autorizzato per il trasferimento | F-OFF-110 caller non super_admin/mechanic | BR-049 |
 
 ### 3.9 Scadenze
 
