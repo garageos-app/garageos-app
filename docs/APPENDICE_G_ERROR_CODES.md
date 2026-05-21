@@ -219,6 +219,9 @@ Per fornire dati utili al client per gestire l'errore:
 | `user.invitation.already_accepted` | 410 | info | Invito già accettato o revocato | DELETE /v1/users/invitations/:id su invito già tombstonato (acceptedAt != null) | F-OFF-004 |
 | `user.invitation.expired` | 410 | info | Invito scaduto | Token invitation > 7 giorni (v1.0 spec — anti-enum: collapsed to not_found in public endpoints) | |
 | `user.invitation.email_mismatch` | 403 | warning | Email non corrisponde all'invito | Sign-up con email diversa | |
+| `user.already_active` | 422 | info | Utente già attivo | POST /v1/users/:id/reactivate su utente non soft-deleted (race / replay) | F-OFF-004, BR-212 |
+| `user.invitation.email_in_other_tenant` | 409 | warning | Questa email risulta già registrata in un'altra officina. Contatta il supporto. | POST /v1/users/invitations — Cognito `AdminGetUser` hit + nessun User row nel tenant chiamante | F-OFF-004, BR-213 |
+| `user.invitation.email_soft_deleted_in_tenant` | 409 | info | Questa email appartiene a un utente disattivato. Riattivalo da Impostazioni → Utenti. | POST /v1/users/invitations — re-invite same email in same tenant dove l'utente è soft-deleted | F-OFF-004, BR-212 |
 | `users.me.avatar.invalid_mime` | 422 | info | Tipo file non valido — richiesto JPEG | POST /v1/users/me/avatar/confirm — HeadObject contentType ≠ image/jpeg | F-OFF-007 |
 | `users.me.avatar.s3_unavailable` | 502 | error | Servizio storage temporaneamente non disponibile | POST /v1/users/me/avatar/upload-url o /confirm — S3 error | F-OFF-007 |
 | `users.me.avatar.upload_not_found` | 422 | info | File non trovato su S3 — upload non atterrato o scaduto | POST /v1/users/me/avatar/confirm — HeadObject NoSuchKey | F-OFF-007 |
@@ -920,13 +923,16 @@ transfer.creation.not_current_owner
 transfer.creation.vehicle_not_certified
 transfer.not_found
 transfer.rejection.not_permitted
+user.already_active
 user.cannot_delete_self_via_admin
 user.invitation.accept_password_policy
 user.invitation.already_accepted
 user.invitation.cognito_unavailable
 user.invitation.duplicate_pending
 user.invitation.email_already_active
+user.invitation.email_in_other_tenant
 user.invitation.email_mismatch
+user.invitation.email_soft_deleted_in_tenant
 user.invitation.expired
 user.invitation.location_invalid
 user.invitation.not_found
@@ -963,7 +969,7 @@ vehicle.not_found
 vehicle.pending.duplicate_vin_certified
 ```
 
-**Totale: ~147 error code documentati in v1.0** (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`).
+**Totale: ~150 error code documentati in v1.0** (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004 + 3 codici F-OFF-004 reactivation slice 2026-05-21; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`).
 
 ---
 

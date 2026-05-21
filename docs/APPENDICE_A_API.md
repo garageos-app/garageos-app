@@ -1372,6 +1372,7 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | DELETE | `/users/invitations/:id` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Revoca invito |
 | PATCH | `/users/:id` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Modifica ruolo/location/stato |
 | DELETE | `/users/:id` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Rimuove utente (soft delete) |
+| POST | `/users/:id/reactivate` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Riattiva utente soft-deleted (BR-212) |
 
 #### PATCH /v1/users/me — Aggiorna profilo utente
 
@@ -1586,8 +1587,11 @@ Campi:
 - `403 auth.forbidden.super_admin_required` — JWT role != super_admin
 - `409 user.invitation.email_already_active` — un utente attivo con questa email esiste già nel tenant
 - `409 user.invitation.duplicate_pending` — esiste già un invito pendente per (tenant, email) — BR-206
+- `409 user.invitation.email_in_other_tenant` — email registrata in altro tenant (Cognito hit) — BR-213
+- `409 user.invitation.email_soft_deleted_in_tenant` — email appartiene a utente soft-deleted same-tenant. Operator deve usare /reactivate — BR-212
 - `422 user.location_required_for_mechanic` — role=mechanic ma locationId assente — BR-204
 - `422 user.invitation.location_invalid` — locationId non appartiene al tenant o non attiva
+- `502 auth.cognito_unavailable` — Cognito `AdminGetUser` lookup failed (early-check pre-invitation)
 
 ---
 
@@ -1783,6 +1787,43 @@ Imposta `status=inactive` e `deletedAt=now()`. Non cancella fisicamente. L'utent
 - `404 user.not_found` — utente non trovato o già soft-deleted o cross-tenant
 - `409 user.last_super_admin` — rimozione lascerebbe il tenant senza super_admin attivi — BR-203
 - `422 user.cannot_delete_self_via_admin` — l'actor non può rimuovere se stesso tramite questo endpoint
+
+---
+
+#### POST /v1/users/:id/reactivate — Riattivazione utente (F-OFF-004 slice 2026-05-21)
+
+**Auth:** Tenant User con `role=super_admin` nel pool `officine`.
+
+**Request body** (tutti optional):
+
+```json
+{
+  "role": "super_admin" | "mechanic",
+  "locationId": "uuid | null"
+}
+```
+
+Body vuoto `{}` valido: ripristina role/locationId originali (validati). `locationId: null` esplicito ammesso solo se nuovo `role === 'super_admin'` (BR-204).
+
+**Response 200:**
+
+```json
+{ "user": { /* USER_ADMIN serializer */ } }
+```
+
+**Response header opzionale:** `x-cognito-sync-failed: true` se Cognito `AdminEnableUser` o `AdminUpdateUserAttributes` post-tx ha fallito (DB già committed; operator deve eseguire enable manuale via console).
+
+**Error codes:**
+
+| HTTP | Code | Trigger |
+|---|---|---|
+| 403 | `auth.forbidden.super_admin_required` | Caller non super_admin |
+| 404 | `user.not_found` | Target non esiste, è in altro tenant, o non è soft-deleted |
+| 422 | `user.already_active` | Race/replay defensive (BR-212) |
+| 422 | `user.location_required_for_mechanic` | BR-204 |
+| 422 | `user.location_invalid` | Sede stale o cross-tenant |
+
+**Business rules**: BR-212 (Riattivazione).
 
 ---
 
