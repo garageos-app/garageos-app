@@ -190,6 +190,7 @@ Per fornire dati utili al client per gestire l'errore:
 | `auth.forbidden.wrong_pool` | 403 | warning | Pool autorizzazione errata | JWT da pool non autorizzato (es. clienti invece di officine) |
 | `auth.forbidden.super_admin_required` | 403 | warning | Super admin richiesto | JWT role non è super_admin per operazione riservata |
 | `auth.tenant.suspended` | 403 | warning | Tenant sospeso | Tenant `status=suspended` |
+| `auth.cognito_unavailable` | 502 | error | Servizio di autenticazione temporaneamente non disponibile | POST /v1/users/invitations — Cognito `AdminGetUser` early-check fallisce (cross-tenant detection BR-213) |
 
 ### 3.3 Tenant & organizzazione
 
@@ -823,6 +824,7 @@ attachment.upload.too_many
 attachment.upload.url_expired
 auth.2fa.invalid_code
 auth.2fa.required
+auth.cognito_unavailable
 auth.forbidden.super_admin_required
 auth.forbidden.wrong_pool
 auth.login.account_inactive
