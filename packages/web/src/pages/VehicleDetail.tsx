@@ -1,5 +1,5 @@
 // IT-strings — hardcoded
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TimelineRow } from '@/components/TimelineRow';
+import { OwnershipTransferDialog } from '@/components/OwnershipTransferDialog';
 
 const statusMeta: Record<string, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
   certified: {
@@ -36,6 +37,7 @@ export function VehicleDetail() {
   const navigate = useNavigate();
   const detail = useVehicleDetail(id);
   const timeline = useVehicleTimeline(id);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   useEffect(() => {
     if (detail.isError && detail.error instanceof ApiError && detail.error.status === 404) {
@@ -107,6 +109,11 @@ export function VehicleDetail() {
             >
               Registra intervento
             </Button>
+            {v.status === 'certified' && detail.data.currentOwnership && (
+              <Button variant="outline" onClick={() => setTransferOpen(true)}>
+                Trasferisci proprietà
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -186,6 +193,16 @@ export function VehicleDetail() {
           </>
         )}
       </section>
+
+      {detail.data.currentOwnership?.customer && (
+        <OwnershipTransferDialog
+          open={transferOpen}
+          onOpenChange={setTransferOpen}
+          vehicleId={v.id}
+          vehicleLabel={v.plate ?? v.garageCode ?? v.id}
+          currentOwnerCustomerId={detail.data.currentOwnership.customer.id}
+        />
+      )}
     </div>
   );
 }

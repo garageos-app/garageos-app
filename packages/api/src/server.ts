@@ -52,6 +52,7 @@ import customerRoutes from './routes/v1/customers.js';
 import tenantRoutes from './routes/v1/tenants.js';
 import tenantUpdateRoutes from './routes/v1/tenants-update.js';
 import { tenantsLocationsListRoutes } from './routes/v1/tenants-locations-list.js';
+import { vehiclesOwnershipTransferRoutes } from './routes/v1/vehicles-ownership-transfer.js';
 import vehicleTimelineRoutes from './routes/v1/vehicles-timeline.js';
 import vehicleUpdateRoutes from './routes/v1/vehicles-update.js';
 import vehicleRoutes from './routes/v1/vehicles.js';
@@ -158,6 +159,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(customerUpdateRoutes);
   await app.register(vehicleRoutes);
   await app.register(vehicleUpdateRoutes);
+  await app.register(vehiclesOwnershipTransferRoutes);
   await app.register(vehicleTimelineRoutes);
   await app.register(interventionRoutes);
   await app.register(interventionDetailRoutes);

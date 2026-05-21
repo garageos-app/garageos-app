@@ -267,6 +267,32 @@ Se il proprietario avvia un transfer e poi cambia idea, può annullarlo via `POS
 
 Se un customer prova a reclamare il veicolo tramite codice durante un transfer attivo → **errore 409** con riferimento al transfer in corso.
 
+### BR-049 — Passaggio di proprietà officina-mediated (single-step)
+
+Variante officina-mediated del passaggio di proprietà (F-OFF-110): il cedente è fisicamente presente in officina, l'officina verifica il libretto di circolazione e identità delle parti, ed esegue il transfer in **una singola operazione atomica** senza la doppia conferma di BR-043.
+
+**Razionale:** la presenza fisica + verifica documentale dell'officina sostituiscono il consenso remoto via app del flusso BR-043. Utile per clienti non-tech-savvy o per officine che gestiscono compravendite usato.
+
+**Precondizioni:**
+- Veicolo in stato `certified` (BR-046)
+- Veicolo con `vehicle_ownership` attiva (`ended_at IS NULL`)
+- Nessun `VehicleTransfer` attivo per il veicolo (BR-047)
+- Cessionario ≠ cedente attuale
+- Officina autorizzata = officina che ha creato O certificato il veicolo (allineato a RLS `vehicles_update`)
+- Caller con ruolo `super_admin` o `mechanic`
+
+**Effetti atomici** (singola transazione SQL con `withContext({ role: 'admin' })`):
+1. `vehicle_ownerships` corrente: `ended_at = NOW()`, popola `transfer_reason` + `transfer_notes`
+2. Nuova `vehicle_ownerships` row: `customer_id = cessionario.id`, `started_at = NOW()`, stessi `transfer_reason` + `transfer_notes`
+3. `vehicle_transfers` row: `method = 'officina_mediated'`, `status = 'completed'`, `completed_at = NOW()`, `from_customer_id` + `to_customer_id` popolati
+4. `customer_tenant_relations` per cessionario↔tenant garantita (UPSERT)
+5. Se cessionario nuovo: `customers` row creata (con email-as-global-identity riuso cross-tenant se esistente)
+6. `access_logs` row: `action = 'ownership_transfer'`
+
+**Cross-ref:** BR-043 (mobile remote-parties variant), BR-045 (cosa trasferisce / cosa no), BR-046 (no pending), BR-047 (no concurrent active transfers).
+
+> Per la variante officina-mediated single-step vedi BR-049 (F-OFF-110).
+
 ---
 
 ## 4. Regole sugli interventi

@@ -436,6 +436,86 @@ Authorization: Bearer <customer_jwt>
 
 ---
 
+### 2.3bis `POST /vehicles/:id/ownership-transfer` — Trasferimento proprietà officina-mediated
+
+**Feature:** F-OFF-110
+**BR:** BR-049
+**Auth:** Officine pool, ruolo `super_admin` o `mechanic`
+
+#### Descrizione
+
+L'officina trasferisce la proprietà di un veicolo certificato da un cliente esistente a un nuovo proprietario, in una singola operazione atomica. Variante single-step di BR-043: il cedente è fisicamente presente in officina, il libretto sostituisce la doppia conferma remota.
+
+#### Path
+
+```
+POST /v1/vehicles/:id/ownership-transfer
+```
+
+#### Body
+
+```json
+{
+  "recipient": {
+    "kind": "existing",
+    "customerId": "uuid"
+  },
+  "reason": "purchase",
+  "notes": "string opzionale (max 1000)"
+}
+```
+
+Oppure cessionario nuovo:
+
+```json
+{
+  "recipient": {
+    "kind": "new",
+    "firstName": "Anna",
+    "lastName": "Rossi",
+    "email": "anna@example.com",
+    "phone": "+39 333 1234567",
+    "codiceFiscale": "RSSANN80A41H501Z",
+    "isBusiness": false,
+    "businessName": null,
+    "vatNumber": null
+  },
+  "reason": "inheritance"
+}
+```
+
+`reason` ∈ `purchase | inheritance | company_assignment | other`. Per `recipient.kind='new'`, se `isBusiness=true` allora `businessName` + `vatNumber` sono obbligatori. Se l'email corrisponde a un customer esistente (anche cross-tenant), il customer viene riusato e `customer_tenant_relations` upsert per l'officina corrente.
+
+#### Response 200
+
+```json
+{
+  "vehicle": { /* vehicleDetailSelect shape */ },
+  "ownership": { "id": "uuid", "customerId": "uuid", "startedAt": "ISO" },
+  "transfer": {
+    "id": "uuid",
+    "status": "completed",
+    "completedAt": "ISO",
+    "reason": "purchase",
+    "notes": null
+  }
+}
+```
+
+#### Errori
+
+Famiglia `vehicle.transfer.*` — vedi APPENDICE_G:
+- `404 vehicle.not_found` — veicolo non visibile all'officina (RLS: deve aver creato O certificato)
+- `422 vehicle.transfer.pending_not_transferable` — BR-046
+- `422 vehicle.transfer.archived`
+- `422 vehicle.transfer.no_active_ownership`
+- `422 vehicle.transfer.recipient_not_found` — `kind=existing` customerId inesistente
+- `409 vehicle.transfer.active_transfer_exists` — BR-047
+- `409 vehicle.transfer.same_owner`
+- `403 vehicle.transfer.role_denied` — ruolo non super_admin/mechanic
+
+---
+
 ### 2.4 `POST /vehicles/claim` — Aggancio veicolo da codice (cliente)
 
 **Feature:** F-CLI-101, F-CLI-102, F-CLI-103

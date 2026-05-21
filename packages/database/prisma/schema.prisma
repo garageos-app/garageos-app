@@ -85,6 +85,7 @@ enum FuelType {
 enum TransferMethod {
   initiated_by_seller
   claim_without_seller
+  officina_mediated // BR-049
 }
 
 enum TransferStatus {
@@ -167,6 +168,7 @@ enum AccessLogAction {
   search_match
   cancel
   respond
+  ownership_transfer // BR-049
 }
 
 enum InvitationType {
