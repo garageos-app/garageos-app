@@ -232,6 +232,40 @@ export async function createVehicleOwnership(opts: {
 }
 
 /**
+ * Create a user row via pgAdmin (bypasses RLS). Used by tests that need
+ * a real non-null user_id for FK-constrained columns such as
+ * access_logs.user_id.
+ */
+export async function createUser(opts: {
+  tenantId: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  role?: 'super_admin' | 'mechanic';
+  locationId?: string | null;
+}): Promise<{ id: string; email: string; cognitoSub: string }> {
+  const {
+    tenantId,
+    firstName = 'Test',
+    lastName = 'User',
+    role = 'super_admin',
+    locationId = null,
+  } = opts;
+  const userEmail = opts.email ?? `user-${randomUUID()}@example.com`;
+  const cognitoSub = `cognito-${randomUUID()}`;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO users
+       (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+        role, status, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::"UserRole",
+             'active'::"UserStatus", NOW(), NOW())
+     RETURNING id`,
+    [tenantId, locationId, cognitoSub, userEmail, firstName, lastName, role],
+  );
+  return { id: rows[0]!.id, email: userEmail, cognitoSub };
+}
+
+/**
  * Create a tenant + a primary location in one transaction so both
  * commit (or roll back) together.
  */

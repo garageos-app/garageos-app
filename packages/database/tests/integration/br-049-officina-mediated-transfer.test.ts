@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createCustomer,
   createTenantWithLocation,
+  createUser,
   createVehicle,
   createVehicleOwnership,
   resetDb,
@@ -27,7 +28,7 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
     reason: 'purchase' | 'inheritance' | 'company_assignment' | 'other',
     notes: string | null,
     tenantId: string,
-    actorUserId: string | null,
+    actorUserId: string,
   ): Promise<void> {
     await pgAdmin.query('BEGIN');
     try {
@@ -55,11 +56,10 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
       );
       await pgAdmin.query(
         `INSERT INTO access_logs
-           (id, tenant_id, user_id, action, resource_type, resource_id, created_at)
-         VALUES (gen_random_uuid(), $1, $2,
-            'ownership_transfer'::"AccessLogAction",
-            'vehicle', $3, NOW())`,
-        [tenantId, actorUserId, vehicleId],
+           (id, vehicle_id, tenant_id, user_id, action, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3,
+            'ownership_transfer'::"AccessLogAction", NOW())`,
+        [vehicleId, tenantId, actorUserId],
       );
       await pgAdmin.query('COMMIT');
     } catch (err) {
@@ -69,7 +69,8 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   }
 
   it('performs atomic swap: closes old ownership and opens new', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const actor = await createUser({ tenantId, locationId });
     const cedente = await createCustomer({ tenantId });
     const cessionario = await createCustomer({ tenantId, email: `new-${Date.now()}@example.com` });
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
@@ -82,7 +83,7 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
       'purchase',
       'Vendita usato',
       tenantId,
-      null,
+      actor.id,
     );
 
     const { rows } = await pgAdmin.query(
@@ -101,13 +102,22 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   });
 
   it('BR-040: exactly one active ownership after transfer', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const actor = await createUser({ tenantId, locationId });
     const cedente = await createCustomer({ tenantId });
     const cessionario = await createCustomer({ tenantId, email: `new-${Date.now()}@example.com` });
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
     await createVehicleOwnership({ vehicleId, customerId: cedente.id });
 
-    await executeTransferSql(vehicleId, cedente.id, cessionario.id, 'other', null, tenantId, null);
+    await executeTransferSql(
+      vehicleId,
+      cedente.id,
+      cessionario.id,
+      'other',
+      null,
+      tenantId,
+      actor.id,
+    );
 
     const { rows } = await pgAdmin.query(
       `SELECT COUNT(*)::int AS n FROM vehicle_ownerships
@@ -118,7 +128,8 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   });
 
   it('writes VehicleTransfer audit row with method=officina_mediated, status=completed', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const actor = await createUser({ tenantId, locationId });
     const cedente = await createCustomer({ tenantId });
     const cessionario = await createCustomer({ tenantId, email: `new-${Date.now()}@example.com` });
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
@@ -131,7 +142,7 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
       'inheritance',
       null,
       tenantId,
-      null,
+      actor.id,
     );
 
     const { rows } = await pgAdmin.query(
@@ -148,7 +159,8 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   });
 
   it('writes AccessLog with action=ownership_transfer', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId, locationId } = await createTenantWithLocation();
+    const actor = await createUser({ tenantId, locationId });
     const cedente = await createCustomer({ tenantId });
     const cessionario = await createCustomer({ tenantId, email: `new-${Date.now()}@example.com` });
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
@@ -161,17 +173,17 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
       'company_assignment',
       null,
       tenantId,
-      null,
+      actor.id,
     );
 
     const { rows } = await pgAdmin.query(
-      `SELECT action, resource_type, resource_id FROM access_logs
-       WHERE resource_id = $1 AND action = 'ownership_transfer'`,
+      `SELECT action, vehicle_id FROM access_logs
+       WHERE vehicle_id = $1 AND action = 'ownership_transfer'`,
       [vehicleId],
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].action).toBe('ownership_transfer');
-    expect(rows[0].resource_type).toBe('vehicle');
+    expect(rows[0].vehicle_id).toBe(vehicleId);
   });
 
   it('BR-047: rejects insert of second active VehicleTransfer on same vehicle', async () => {
