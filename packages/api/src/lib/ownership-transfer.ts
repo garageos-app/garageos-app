@@ -71,8 +71,6 @@ export interface OwnershipTransferResult {
   previousOwner: CustomerForNotification | null;
   vehiclePlate: string;
   tenant: { id: string; businessName: string };
-  transferReason: TransferReason;
-  transferCompletedAt: Date;
 }
 
 type TxClient = Prisma.TransactionClient | PrismaClient;
@@ -295,7 +293,5 @@ export async function performOwnershipTransfer(
     previousOwner,
     vehiclePlate: vehicle.plate,
     tenant,
-    transferReason: input.reason,
-    transferCompletedAt: transferRow.completedAt!,
   };
 }

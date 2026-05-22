@@ -36,6 +36,7 @@ import { vehicleDetailSelect } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
+import type { UserRole } from '../../middleware/tenant-context.js';
 
 const ParamsSchema = z.object({ id: z.uuid() });
 
@@ -120,6 +121,18 @@ const BodySchema = z
     },
   );
 
+// Both transfer endpoints are restricted to super_admin / mechanic
+// (mechanic is the common in-store actor). Throws vehicle.transfer.role_denied.
+function assertTransferRole(role: UserRole | undefined): void {
+  if (role !== 'super_admin' && role !== 'mechanic') {
+    throw businessError(
+      'vehicle.transfer.role_denied',
+      403,
+      'Ruolo non autorizzato per il trasferimento.',
+    );
+  }
+}
+
 export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) => {
   app.post(
     '/v1/vehicles/:id/ownership-transfer',
@@ -132,14 +145,7 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
       const parsedBody = BodySchema.safeParse(request.body);
       if (!parsedBody.success) throw parsedBody.error;
 
-      const role = request.userRole;
-      if (role !== 'super_admin' && role !== 'mechanic') {
-        throw businessError(
-          'vehicle.transfer.role_denied',
-          403,
-          'Ruolo non autorizzato per il trasferimento.',
-        );
-      }
+      assertTransferRole(request.userRole);
 
       const tenantId = request.tenantId!;
       const cognitoSub = request.userId!;
@@ -224,8 +230,8 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
             type: 'ownership.transferred',
             vehicle: { id: vehicleId, plate: result.vehiclePlate },
             tenant: result.tenant,
-            transferReason: result.transferReason,
-            transferredAt: result.transferCompletedAt.toISOString(),
+            transferReason: result.transfer.reason,
+            transferredAt: result.transfer.completedAt.toISOString(),
           },
           recipient: result.previousOwner,
           logger: request.log,
@@ -261,14 +267,7 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
       const parsedBody = DocumentUrlBodySchema.safeParse(request.body);
       if (!parsedBody.success) throw parsedBody.error;
 
-      const role = request.userRole;
-      if (role !== 'super_admin' && role !== 'mechanic') {
-        throw businessError(
-          'vehicle.transfer.role_denied',
-          403,
-          'Ruolo non autorizzato per il trasferimento.',
-        );
-      }
+      assertTransferRole(request.userRole);
 
       const tenantId = request.tenantId!;
       const vehicleId = parsedParams.data.id;

@@ -190,17 +190,23 @@ describe('GET /v1/customers/search — data path', () => {
       where: {
         status: string;
         tenantRelations: { some: { tenantId: string; customerDeleted: boolean } };
-        OR: Array<Record<string, unknown>>;
+        AND: Array<Record<string, unknown>>;
       };
     };
     expect(call.where.status).toBe('active');
     expect(call.where.tenantRelations).toEqual({
       some: { tenantId: TENANT_ID, customerDeleted: false },
     });
-    expect(call.where.OR).toEqual([
-      { firstName: { contains: 'mar', mode: 'insensitive' } },
-      { lastName: { contains: 'mar', mode: 'insensitive' } },
-      { businessName: { contains: 'mar', mode: 'insensitive' } },
+    // q is split into whitespace tokens: the single token "mar" yields a
+    // one-element AND of an OR across the 3 searchable columns.
+    expect(call.where.AND).toEqual([
+      {
+        OR: [
+          { firstName: { contains: 'mar', mode: 'insensitive' } },
+          { lastName: { contains: 'mar', mode: 'insensitive' } },
+          { businessName: { contains: 'mar', mode: 'insensitive' } },
+        ],
+      },
     ]);
   });
 

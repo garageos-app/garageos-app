@@ -765,6 +765,7 @@ Lista delle BR per cui **è obbligatorio** avere un test in v1:
 | BR-043 | Transfer happy path | Integration + E2E | Obbligatorio |
 | BR-045 | Cosa si trasferisce/non | Integration | Obbligatorio |
 | BR-047 | Un solo transfer attivo | Integration | Obbligatorio |
+| BR-049 | Transfer officina-mediated single-step | Integration | Obbligatorio |
 | BR-061 | Campi intervento immutabili | Integration | Obbligatorio |
 | BR-062 | Finestra wiki | Unit | Obbligatorio |
 | BR-066 | Annullamento intervento | Integration | Obbligatorio |

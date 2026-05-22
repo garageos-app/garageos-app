@@ -437,8 +437,9 @@ describe('POST /v1/vehicles/:id/ownership-transfer/document-upload-url (integrat
   });
 
   // Helper: seed a tenant + actor JWT + a certified vehicle belonging to
-  // that tenant.  The presign endpoint only needs the actor to be
-  // super_admin/mechanic and the vehicle to be visible to the tenant.
+  // that tenant. No vehicle_ownership row is created — the presign
+  // endpoint only needs the actor to be super_admin/mechanic and the
+  // vehicle to be visible to the tenant; an active owner is not required.
   async function setupPresignScenario(): Promise<{
     tenantId: string;
     locationId: string;

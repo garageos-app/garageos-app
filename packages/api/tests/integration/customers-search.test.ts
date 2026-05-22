@@ -122,6 +122,50 @@ describe('GET /v1/customers/search (integration)', () => {
     expect(ids).not.toContain(c4);
   });
 
+  it('matches multi-word queries across first and last name, order-independent', async () => {
+    const { tenantId } = await createTenantWithLocation('cs-multitoken');
+    const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    await createUser({ tenantId, cognitoSub });
+
+    const { customerId: match } = await createCustomer({
+      firstName: 'Mario',
+      lastName: 'Rossi',
+    });
+    const { customerId: partial } = await createCustomer({
+      firstName: 'Mario',
+      lastName: 'Bianchi',
+    });
+    await createCustomerTenantRelation({ tenantId, customerId: match });
+    await createCustomerTenantRelation({ tenantId, customerId: partial });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/customers/search?q=${encodeURIComponent('Mario Rossi')}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: Array<{ id: string }> };
+    expect(body.data.map((c) => c.id)).toEqual([match]);
+    expect(body.data.map((c) => c.id)).not.toContain(partial);
+
+    // Token order must not matter (AND across tokens).
+    const reversed = await app.inject({
+      method: 'GET',
+      url: `/v1/customers/search?q=${encodeURIComponent('Rossi Mario')}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(reversed.statusCode).toBe(200);
+    const reversedBody = reversed.json() as { data: Array<{ id: string }> };
+    expect(reversedBody.data.map((c) => c.id)).toEqual([match]);
+  });
+
   it('returns full DTO shape including B2B fields', async () => {
     const { tenantId } = await createTenantWithLocation('cs-shape');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';

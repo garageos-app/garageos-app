@@ -12,7 +12,6 @@ export const LIBRETTO_ALLOWED_MIME_TYPES = [
   'application/pdf',
   'image/heic',
 ] as const;
-export type LibrettoMimeType = (typeof LIBRETTO_ALLOWED_MIME_TYPES)[number];
 export const LIBRETTO_MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
 export type LibrettoValidationError =
