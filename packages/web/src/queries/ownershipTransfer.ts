@@ -25,6 +25,7 @@ export interface OwnershipTransferPayload {
   recipient: OwnershipTransferRecipient;
   reason: TransferReason;
   notes?: string | null;
+  documentS3Key?: string | null;
 }
 
 export interface OwnershipTransferResponse {
