@@ -104,7 +104,7 @@ describe('POST /v1/vehicles/:id/ownership-transfer/document-upload-url', () => {
     expect(body.uploadMethod).toBe('PUT');
     expect(body.uploadHeaders).toEqual({ 'Content-Type': 'application/pdf' });
     expect(body.s3Key).toMatch(new RegExp(`^vehicle-transfers/${VEHICLE_ID}/[0-9a-f-]{36}\\.pdf$`));
-    expect(body.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(body.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 
   it('rejects a mime type outside the whitelist with 400', async () => {
@@ -128,6 +128,7 @@ describe('POST /v1/vehicles/:id/ownership-transfer/document-upload-url', () => {
   });
 
   it('returns 404 vehicle.not_found when the vehicle is not visible to the tenant', async () => {
+    await app.close();
     ({ app } = await buildApp({
       vehicle: { findFirst: vi.fn().mockResolvedValue(null), findUniqueOrThrow: vi.fn() },
     }));
