@@ -513,8 +513,8 @@ describe('performOwnershipTransfer', () => {
     expect(result.previousOwner!.id).toBe('c-cedente');
     expect(result.vehiclePlate).toBe('AB123CD');
     expect(result.tenant).toEqual({ id: 't1', businessName: 'Officina Test' });
-    expect(result.transferReason).toBe('purchase');
-    expect(result.transferCompletedAt).toBeInstanceOf(Date);
+    expect(result.transfer.reason).toBe('purchase');
+    expect(result.transfer.completedAt).toBeInstanceOf(Date);
   });
 
   it('previousOwner is null when the cedente is a deleted customer', async () => {
