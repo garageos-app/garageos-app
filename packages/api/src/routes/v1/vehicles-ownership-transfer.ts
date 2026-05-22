@@ -17,17 +17,53 @@
 //   vehicle.transfer.same_owner               — 409
 //   vehicle.transfer.recipient_not_found      — 422
 
+import { randomUUID } from 'node:crypto';
+
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
+import { env } from '../../config/env.js';
 import { businessError } from '../../lib/business-error.js';
 import { performOwnershipTransfer } from '../../lib/ownership-transfer.js';
+import { S3UnavailableError, presignPutObject } from '../../lib/s3.js';
 import { vehicleDetailSelect } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 
 const ParamsSchema = z.object({ id: z.uuid() });
+
+// F-OFF-110 PR-2 — libretto document upload. Single document, 10 MB cap,
+// 4 formats (no webp — a libretto scan does not need it). Stored under
+// the vehicle-transfers/ prefix on the shared attachments bucket.
+const LIBRETTO_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf', 'image/heic'] as const;
+const LIBRETTO_MAX_SIZE_BYTES = 10 * 1024 * 1024;
+const LIBRETTO_URL_EXPIRY_SECONDS = 900; // 15 min
+
+const DocumentUrlBodySchema = z.object({
+  fileName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    // eslint-disable-next-line no-control-regex
+    .refine((v) => !/[\x00-\x1F]/.test(v), 'control bytes not allowed'),
+  mimeType: z.enum(LIBRETTO_MIME_TYPES),
+  sizeBytes: z.number().int().positive().max(LIBRETTO_MAX_SIZE_BYTES),
+});
+
+function deriveLibrettoExtension(mimeType: (typeof LIBRETTO_MIME_TYPES)[number]): string {
+  switch (mimeType) {
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/png':
+      return 'png';
+    case 'application/pdf':
+      return 'pdf';
+    case 'image/heic':
+      return 'heic';
+  }
+}
 
 const RecipientExistingSchema = z.object({
   kind: z.literal('existing'),
@@ -129,6 +165,81 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
           reason: result.transfer.reason,
           notes: result.transfer.notes,
         },
+      });
+    },
+  );
+
+  app.post(
+    '/v1/vehicles/:id/ownership-transfer/document-upload-url',
+    {
+      preHandler: [requireAuth, requireOfficinaPool, tenantContext],
+    },
+    async (request, reply) => {
+      const parsedParams = ParamsSchema.safeParse(request.params);
+      if (!parsedParams.success) throw parsedParams.error;
+      const parsedBody = DocumentUrlBodySchema.safeParse(request.body);
+      if (!parsedBody.success) throw parsedBody.error;
+
+      const role = request.userRole;
+      if (role !== 'super_admin' && role !== 'mechanic') {
+        throw businessError(
+          'vehicle.transfer.role_denied',
+          403,
+          'Ruolo non autorizzato per il trasferimento.',
+        );
+      }
+
+      const tenantId = request.tenantId!;
+      const vehicleId = parsedParams.data.id;
+      const body = parsedBody.data;
+
+      // Tenant scoping: presign only for a vehicle the caller's tenant
+      // created or certified (same predicate as performOwnershipTransfer
+      // step 1). vehicles SELECT RLS is permissive, so this explicit
+      // filter is the application-layer enforcement.
+      const vehicle = await app.prisma.vehicle.findFirst({
+        where: {
+          id: vehicleId,
+          OR: [{ certifiedByTenantId: tenantId }, { createdByTenantId: tenantId }],
+        },
+        select: { id: true },
+      });
+      if (!vehicle) {
+        throw businessError('vehicle.not_found', 404, 'Veicolo non trovato.');
+      }
+
+      const documentId = randomUUID();
+      const ext = deriveLibrettoExtension(body.mimeType);
+      const s3Key = `vehicle-transfers/${vehicleId}/${documentId}.${ext}`;
+
+      let uploadUrl: string;
+      try {
+        uploadUrl = await presignPutObject({
+          bucket: env.S3_ATTACHMENTS_BUCKET,
+          key: s3Key,
+          contentType: body.mimeType,
+          contentLength: body.sizeBytes,
+          expiresInSeconds: LIBRETTO_URL_EXPIRY_SECONDS,
+        });
+      } catch (err) {
+        if (err instanceof S3UnavailableError) {
+          throw businessError(
+            'vehicle.transfer.document_s3_unavailable',
+            502,
+            'Servizio storage temporaneamente non disponibile.',
+          );
+        }
+        throw err;
+      }
+
+      const expiresAt = new Date(Date.now() + LIBRETTO_URL_EXPIRY_SECONDS * 1000).toISOString();
+
+      return reply.code(200).send({
+        uploadUrl,
+        uploadMethod: 'PUT' as const,
+        uploadHeaders: { 'Content-Type': body.mimeType },
+        s3Key,
+        expiresAt,
       });
     },
   );
