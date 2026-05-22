@@ -12,6 +12,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
     deadline_reminder: true,
     transfer_invitation: true,
     dispute_response: true,
+    ownership_transfer: true,
     marketing: false,
   },
   push: {
@@ -19,6 +20,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
     deadline_reminder: true,
     transfer_invitation: true,
     dispute_response: true,
+    ownership_transfer: true,
   },
 } as const;
 

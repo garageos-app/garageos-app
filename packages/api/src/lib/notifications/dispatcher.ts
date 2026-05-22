@@ -17,6 +17,11 @@ import {
   renderRevisionEmailHtml,
   renderRevisionEmailText,
 } from './templates/intervention-revised.js';
+import {
+  OWNERSHIP_TRANSFERRED_SUBJECT,
+  renderOwnershipTransferredHtml,
+  renderOwnershipTransferredText,
+} from './templates/ownership-transferred.js';
 import type {
   CustomerForNotification,
   DispatchResult,
@@ -41,6 +46,8 @@ function preferenceKeyForEvent(event: NotificationEvent): EmailEnabledKey {
       return 'intervention_updates';
     case 'deadline.reminder':
       return 'deadline_reminder';
+    case 'ownership.transferred':
+      return 'ownership_transfer';
   }
 }
 
@@ -104,6 +111,23 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
       subject = renderDeadlineReminderSubject(event);
       html = renderDeadlineReminderHtml({ recipient, event });
       text = renderDeadlineReminderText({ recipient, event });
+      break;
+    case 'ownership.transferred':
+      subject = OWNERSHIP_TRANSFERRED_SUBJECT;
+      html = renderOwnershipTransferredHtml({
+        recipient,
+        vehicle: event.vehicle,
+        tenant: event.tenant,
+        transferReason: event.transferReason,
+        transferredAt: event.transferredAt,
+      });
+      text = renderOwnershipTransferredText({
+        recipient,
+        vehicle: event.vehicle,
+        tenant: event.tenant,
+        transferReason: event.transferReason,
+        transferredAt: event.transferredAt,
+      });
       break;
   }
 

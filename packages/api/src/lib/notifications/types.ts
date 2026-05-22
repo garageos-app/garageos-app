@@ -26,6 +26,11 @@ export interface TenantForEmail {
   businessName: string;
 }
 
+export interface VehicleForEmail {
+  id: string;
+  plate: string;
+}
+
 // DeadlineReminderType mirrors the Prisma-generated enum values (enums.ts).
 // Redeclared locally (same pattern as scheduler-client.ts and compute-reminders.ts)
 // so this lib does not pull in a Prisma runtime dependency.
@@ -54,13 +59,21 @@ export type NotificationEvent =
       intervention: InterventionForEmail;
       tenant: TenantForEmail;
     }
-  | ({ type: 'deadline.reminder' } & DeadlineReminderForEmail);
+  | ({ type: 'deadline.reminder' } & DeadlineReminderForEmail)
+  | {
+      type: 'ownership.transferred';
+      vehicle: VehicleForEmail;
+      tenant: TenantForEmail;
+      transferReason: 'purchase' | 'inheritance' | 'company_assignment' | 'other';
+      transferredAt: string; // ISO 8601
+    };
 
 export type EmailEnabledKey =
   | 'intervention_updates'
   | 'deadline_reminder'
   | 'transfer_invitation'
-  | 'dispute_response';
+  | 'dispute_response'
+  | 'ownership_transfer';
 
 export interface CustomerForNotification {
   id: string;
