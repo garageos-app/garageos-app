@@ -262,8 +262,9 @@ describe('useTransferDocumentUpload', () => {
       wrapper: Wrapper,
     });
 
+    let uploadPromise!: ReturnType<typeof result.current.upload>;
     act(() => {
-      void result.current.upload(makeFile());
+      uploadPromise = result.current.upload(makeFile());
     });
 
     await waitFor(() => expect(MockXHR.instances).toHaveLength(1));
@@ -272,6 +273,12 @@ describe('useTransferDocumentUpload', () => {
       xhr.resolveSuccess(403);
     });
 
+    const uploadResult = await uploadPromise;
+    expect(uploadResult).toEqual({
+      ok: false,
+      code: 'xhr.http_error',
+      message: 'Upload fallito (HTTP 403).',
+    });
     expect(result.current.state).toMatchObject({
       phase: 'error',
       code: 'xhr.http_error',
@@ -286,18 +293,66 @@ describe('useTransferDocumentUpload', () => {
       wrapper: Wrapper,
     });
 
+    let uploadPromise!: ReturnType<typeof result.current.upload>;
     act(() => {
-      void result.current.upload(makeFile());
+      uploadPromise = result.current.upload(makeFile());
     });
 
     await waitFor(() => expect(MockXHR.instances).toHaveLength(1));
     const xhr = MockXHR.instances[0];
     await act(async () => xhr.fail());
 
+    const uploadResult = await uploadPromise;
+    expect(uploadResult).toEqual({
+      ok: false,
+      code: 'xhr.network_error',
+      message: "Errore di rete durante l'upload.",
+    });
     expect(result.current.state).toMatchObject({
       phase: 'error',
       code: 'xhr.network_error',
     });
+  });
+
+  it('concurrent call while upload in flight → second call resolves {ok:false, upload.already_in_progress}; first resolves {ok:true}', async () => {
+    apiFetchMock.mockResolvedValueOnce(PRESIGN_OK);
+
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTransferDocumentUpload(VEHICLE_ID), {
+      wrapper: Wrapper,
+    });
+
+    const file = makeFile();
+
+    // Start the first upload — leave XHR in-flight (do not resolve it yet).
+    let firstPromise!: ReturnType<typeof result.current.upload>;
+    act(() => {
+      firstPromise = result.current.upload(file);
+    });
+
+    // Wait until the XHR is open so inFlightRef is definitely set.
+    await waitFor(() => expect(MockXHR.instances).toHaveLength(1));
+
+    // Fire the second upload while the first is still in-flight.
+    let secondResult!: Awaited<ReturnType<typeof result.current.upload>>;
+    await act(async () => {
+      secondResult = await result.current.upload(file);
+    });
+
+    expect(secondResult).toEqual({
+      ok: false,
+      code: 'upload.already_in_progress',
+      message: 'Upload già in corso.',
+    });
+
+    // Now resolve the first XHR — the first upload should still succeed.
+    const xhr = MockXHR.instances[0];
+    await act(async () => {
+      xhr.resolveSuccess(200);
+    });
+
+    const firstResult = await firstPromise;
+    expect(firstResult).toEqual({ ok: true, s3Key: S3_KEY });
   });
 
   it('reset() clears error state back to idle', async () => {

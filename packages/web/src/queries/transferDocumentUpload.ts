@@ -58,6 +58,7 @@ export function useTransferDocumentUpload(vehicleId: string): UseTransferDocumen
   const apiFetch = useApiFetch();
   const [state, setState] = useState<TransferUploadState>({ phase: 'idle' });
   const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -70,47 +71,60 @@ export function useTransferDocumentUpload(vehicleId: string): UseTransferDocumen
 
   const upload = useCallback(
     async (file: File): Promise<TransferUploadResult> => {
-      // Step 1 — presign
-      setState({ phase: 'requesting' });
-      let presign: DocumentUploadUrlResponse;
-      try {
-        presign = await apiFetch<DocumentUploadUrlResponse>(
-          `/v1/vehicles/${vehicleId}/ownership-transfer/document-upload-url`,
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              fileName: file.name,
-              mimeType: file.type,
-              sizeBytes: file.size,
-            }),
-          },
-        );
-      } catch (e) {
-        const err = toErrorResult(e);
-        setState({ phase: 'error', code: err.code, message: err.message });
-        return err;
+      // Guard against concurrent calls. inFlightRef is a ref so it does not
+      // need to be in the dependency array and avoids the stale-closure hazard
+      // of reading state.phase inside useCallback.
+      if (inFlightRef.current) {
+        return { ok: false, code: 'upload.already_in_progress', message: 'Upload già in corso.' };
       }
+      inFlightRef.current = true;
 
-      // Step 2 — direct S3 PUT via XHR (fetch cannot surface upload progress).
-      // Unlike useAttachmentUpload there is no Step 3 confirm: the libretto is
-      // not an Attachment row; the s3Key is returned to the caller and embedded
-      // in the VehicleTransfer body.
-      setState({ phase: 'uploading', progress: 0 });
       try {
-        await putToS3(
-          presign,
-          file,
-          (progress) => setState({ phase: 'uploading', progress }),
-          xhrRef,
-        );
-      } catch (e) {
-        const err = toErrorResult(e);
-        setState({ phase: 'error', code: err.code, message: err.message });
-        return err;
-      }
+        // Step 1 — presign
+        setState({ phase: 'requesting' });
+        let presign: DocumentUploadUrlResponse;
+        try {
+          presign = await apiFetch<DocumentUploadUrlResponse>(
+            `/v1/vehicles/${vehicleId}/ownership-transfer/document-upload-url`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                fileName: file.name,
+                mimeType: file.type,
+                sizeBytes: file.size,
+              }),
+            },
+          );
+        } catch (e) {
+          const err = toErrorResult(e);
+          setState({ phase: 'error', code: err.code, message: err.message });
+          return err;
+        }
 
-      setState({ phase: 'success', s3Key: presign.s3Key, fileName: file.name });
-      return { ok: true, s3Key: presign.s3Key };
+        // Step 2 — direct S3 PUT via XHR (fetch cannot surface upload progress).
+        // Unlike useAttachmentUpload there is no Step 3 confirm: the libretto is
+        // not an Attachment row; the s3Key is returned to the caller and embedded
+        // in the VehicleTransfer body.
+        setState({ phase: 'uploading', progress: 0 });
+        try {
+          await putToS3(
+            presign,
+            file,
+            (progress) => setState({ phase: 'uploading', progress }),
+            xhrRef,
+          );
+        } catch (e) {
+          const err = toErrorResult(e);
+          setState({ phase: 'error', code: err.code, message: err.message });
+          return err;
+        }
+
+        setState({ phase: 'success', s3Key: presign.s3Key, fileName: file.name });
+        return { ok: true, s3Key: presign.s3Key };
+      } finally {
+        // Reset on every exit path: presign error, S3 error, success.
+        inFlightRef.current = false;
+      }
     },
     [apiFetch, vehicleId],
   );
