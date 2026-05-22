@@ -36,6 +36,7 @@ import { vehicleDetailSelect } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
+import type { UserRole } from '../../middleware/tenant-context.js';
 
 const ParamsSchema = z.object({ id: z.uuid() });
 
@@ -122,7 +123,7 @@ const BodySchema = z
 
 // Both transfer endpoints are restricted to super_admin / mechanic
 // (mechanic is the common in-store actor). Throws vehicle.transfer.role_denied.
-function assertTransferRole(role: string | undefined): void {
+function assertTransferRole(role: UserRole | undefined): void {
   if (role !== 'super_admin' && role !== 'mechanic') {
     throw businessError(
       'vehicle.transfer.role_denied',
