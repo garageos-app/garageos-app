@@ -187,6 +187,7 @@ describe('dispatchNotification — ownership.transferred', () => {
     lastName: 'Verdi',
     isBusiness: false,
     businessName: null,
+    // empty prefs → isEmailEnabled falls back to DEFAULT_NOTIFICATION_PREFERENCES.email.ownership_transfer (true)
     notificationPreferences: {},
     status: 'active',
   };
@@ -203,6 +204,7 @@ describe('dispatchNotification — ownership.transferred', () => {
     const result = await dispatchNotification({ event, recipient, logger: fakeLogger });
     expect(result.sent).toBe(true);
     const calls = sesMock.commandCalls(SendEmailCommand);
+    expect(calls).toHaveLength(1);
     const subject = (
       calls[0]!.args[0]!.input as { Content?: { Simple?: { Subject?: { Data?: string } } } }
     ).Content?.Simple?.Subject?.Data;

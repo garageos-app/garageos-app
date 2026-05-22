@@ -1,12 +1,15 @@
-import type { CustomerForNotification, TenantForEmail } from '../types.js';
+import type {
+  CustomerForNotification,
+  TenantForEmail,
+  TransferReason,
+  VehicleForEmail,
+} from '../types.js';
 
 export const OWNERSHIP_TRANSFERRED_SUBJECT = 'La proprietà del tuo veicolo è stata trasferita';
 
-type TransferReason = 'purchase' | 'inheritance' | 'company_assignment' | 'other';
-
 interface OwnershipTransferredTemplateInput {
   recipient: CustomerForNotification;
-  vehicle: { id: string; plate: string };
+  vehicle: VehicleForEmail;
   tenant: TenantForEmail;
   transferReason: TransferReason;
   transferredAt: string; // ISO 8601

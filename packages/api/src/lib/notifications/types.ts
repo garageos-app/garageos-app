@@ -31,6 +31,10 @@ export interface VehicleForEmail {
   plate: string;
 }
 
+// TransferReason is kept here (not imported from lib/ownership-transfer.ts) to keep
+// this module free of Prisma-coupled imports — same boundary pattern as DeadlineReminderType.
+export type TransferReason = 'purchase' | 'inheritance' | 'company_assignment' | 'other';
+
 // DeadlineReminderType mirrors the Prisma-generated enum values (enums.ts).
 // Redeclared locally (same pattern as scheduler-client.ts and compute-reminders.ts)
 // so this lib does not pull in a Prisma runtime dependency.
@@ -64,7 +68,7 @@ export type NotificationEvent =
       type: 'ownership.transferred';
       vehicle: VehicleForEmail;
       tenant: TenantForEmail;
-      transferReason: 'purchase' | 'inheritance' | 'company_assignment' | 'other';
+      transferReason: TransferReason;
       transferredAt: string; // ISO 8601
     };
 
