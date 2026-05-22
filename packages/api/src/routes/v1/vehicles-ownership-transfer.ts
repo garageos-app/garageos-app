@@ -25,7 +25,12 @@ import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { businessError } from '../../lib/business-error.js';
 import { performOwnershipTransfer } from '../../lib/ownership-transfer.js';
-import { S3UnavailableError, presignPutObject } from '../../lib/s3.js';
+import {
+  S3ObjectNotFoundError,
+  S3UnavailableError,
+  headObject,
+  presignPutObject,
+} from '../../lib/s3.js';
 import { vehicleDetailSelect } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -65,6 +70,18 @@ function deriveLibrettoExtension(mimeType: (typeof LIBRETTO_MIME_TYPES)[number])
   }
 }
 
+// Matches the suffix of a libretto key after the vehicle-transfers/<vehicleId>/
+// prefix: a UUID + one of the 4 allowed extensions. Keeps a malicious client
+// from passing an arbitrary or cross-vehicle S3 key into documentUrl.
+const LIBRETTO_KEY_SUFFIX_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|pdf|heic)$/;
+
+function isValidDocumentKey(key: string, vehicleId: string): boolean {
+  const prefix = `vehicle-transfers/${vehicleId}/`;
+  if (!key.startsWith(prefix)) return false;
+  return LIBRETTO_KEY_SUFFIX_RE.test(key.slice(prefix.length));
+}
+
 const RecipientExistingSchema = z.object({
   kind: z.literal('existing'),
   customerId: z.uuid(),
@@ -87,6 +104,7 @@ const BodySchema = z
     recipient: z.discriminatedUnion('kind', [RecipientExistingSchema, RecipientNewSchema]),
     reason: z.enum(['purchase', 'inheritance', 'company_assignment', 'other']),
     notes: z.string().trim().max(1000).nullable().optional(),
+    documentS3Key: z.string().trim().max(500).nullable().optional(),
   })
   .refine(
     (b) => {
@@ -127,6 +145,50 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
       const vehicleId = parsedParams.data.id;
       const body = parsedBody.data;
 
+      // Validate the optional libretto document BEFORE opening the
+      // transaction — headObject is an external S3 call.
+      let validatedDocumentKey: string | null = null;
+      if (body.documentS3Key) {
+        if (!isValidDocumentKey(body.documentS3Key, vehicleId)) {
+          throw businessError(
+            'vehicle.transfer.document_invalid',
+            422,
+            'Documento del libretto non valido.',
+          );
+        }
+        let head: { contentLength: number; contentType: string };
+        try {
+          head = await headObject(env.S3_ATTACHMENTS_BUCKET, body.documentS3Key);
+        } catch (err) {
+          if (err instanceof S3ObjectNotFoundError) {
+            throw businessError(
+              'vehicle.transfer.document_invalid',
+              422,
+              'Documento del libretto non trovato su S3.',
+            );
+          }
+          if (err instanceof S3UnavailableError) {
+            throw businessError(
+              'vehicle.transfer.document_s3_unavailable',
+              502,
+              'Servizio storage temporaneamente non disponibile.',
+            );
+          }
+          throw err;
+        }
+        if (
+          head.contentLength > LIBRETTO_MAX_SIZE_BYTES ||
+          !(LIBRETTO_MIME_TYPES as readonly string[]).includes(head.contentType)
+        ) {
+          throw businessError(
+            'vehicle.transfer.document_invalid',
+            422,
+            'Documento del libretto non conforme (dimensione o formato).',
+          );
+        }
+        validatedDocumentKey = body.documentS3Key;
+      }
+
       const result = await app.withContext({ role: 'admin' as const }, async (tx) => {
         // tenant-context middleware already validated the user exists+active+
         // same-tenant — refetch the DB id (required for AccessLog FK).
@@ -143,6 +205,7 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
           recipient: body.recipient,
           reason: body.reason,
           notes: body.notes ?? null,
+          documentS3Key: validatedDocumentKey,
         });
       });
 

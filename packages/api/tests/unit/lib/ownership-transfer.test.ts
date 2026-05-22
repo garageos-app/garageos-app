@@ -84,6 +84,7 @@ interface TransferCreateData {
   status: string;
   expiresAt: Date;
   completedAt: Date;
+  documentUrl?: string | null;
 }
 interface CustomerFindUniqueWhere {
   id: string;
@@ -420,5 +421,24 @@ describe('performOwnershipTransfer', () => {
       name: 'vehicle.transfer.recipient_not_found',
       statusCode: 422,
     });
+  });
+
+  it('persists documentUrl on the transfer row when documentS3Key is provided', async () => {
+    const key = 'vehicle-transfers/v1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.pdf';
+    await performOwnershipTransfer(env.tx as never, { ...baseInput, documentS3Key: key });
+    expect(env.tx.vehicleTransfer.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ documentUrl: key }),
+      }),
+    );
+  });
+
+  it('sets documentUrl null when documentS3Key is absent', async () => {
+    await performOwnershipTransfer(env.tx as never, baseInput);
+    expect(env.tx.vehicleTransfer.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ documentUrl: null }),
+      }),
+    );
   });
 });

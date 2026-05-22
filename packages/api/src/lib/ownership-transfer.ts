@@ -53,6 +53,7 @@ export interface OwnershipTransferInput {
   recipient: RecipientInput;
   reason: TransferReason;
   notes: string | null;
+  documentS3Key?: string | null;
 }
 
 export interface OwnershipTransferResult {
@@ -249,6 +250,7 @@ export async function performOwnershipTransfer(
       // set to now() so an `expiresAt > now()` filter never matches this row.
       expiresAt: now,
       completedAt: now,
+      documentUrl: input.documentS3Key ?? null,
     },
     select: { id: true, completedAt: true },
   });
