@@ -41,7 +41,7 @@ export function renderOwnershipTransferredHtml(input: OwnershipTransferredTempla
   return `<!DOCTYPE html>
 <html lang="it"><body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 16px;">
 <h1>Ciao ${escapeHtml(name)},</h1>
-<p>Ti informiamo che la proprietà del veicolo con targa <strong>${escapeHtml(input.vehicle.plate)}</strong> è stata trasferita in data <strong>${escapeHtml(date)}</strong> dall'officina <strong>${escapeHtml(input.tenant.businessName)}</strong>.</p>
+<p>Ti informiamo che la proprietà del veicolo con targa <strong>${escapeHtml(input.vehicle.plate)}</strong> è stata trasferita in data <strong>${date}</strong> dall'officina <strong>${escapeHtml(input.tenant.businessName)}</strong>.</p>
 <p><strong>Motivo del trasferimento:</strong> ${escapeHtml(reason)}</p>
 <p style="color: #666; font-size: 12px; margin-top: 32px;">Da questo momento non avrai più accesso allo storico interventi di questo veicolo (BR-045). Ricevi questa email perché risultavi proprietario di un veicolo registrato presso un'officina GarageOS.</p>
 </body></html>`;
