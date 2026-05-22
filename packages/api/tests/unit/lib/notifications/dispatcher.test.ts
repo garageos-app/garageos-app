@@ -164,3 +164,60 @@ describe('dispatchNotification', () => {
     );
   });
 });
+
+describe('dispatchNotification — ownership.transferred', () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  beforeEach(() => {
+    sesMock.reset();
+    _resetSesClientForTests();
+    vi.clearAllMocks();
+    process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
+    process.env.SES_CONFIGURATION_SET = 'test-config-set';
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  const recipient: CustomerForNotification = {
+    id: 'c-cedente',
+    email: 'cedente@test.it',
+    firstName: 'Luca',
+    lastName: 'Verdi',
+    isBusiness: false,
+    businessName: null,
+    // empty prefs → isEmailEnabled falls back to DEFAULT_NOTIFICATION_PREFERENCES.email.ownership_transfer (true)
+    notificationPreferences: {},
+    status: 'active',
+  };
+  const event: NotificationEvent = {
+    type: 'ownership.transferred',
+    vehicle: { id: 'veh-1', plate: 'AB123CD' },
+    tenant: { id: 't-1', businessName: 'Officina Bianchi' },
+    transferReason: 'purchase',
+    transferredAt: '2026-05-22T10:30:00.000Z',
+  };
+
+  it('sends the email when the ownership_transfer preference is on (default)', async () => {
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'm-transfer-1' });
+    const result = await dispatchNotification({ event, recipient, logger: fakeLogger });
+    expect(result.sent).toBe(true);
+    const calls = sesMock.commandCalls(SendEmailCommand);
+    expect(calls).toHaveLength(1);
+    const subject = (
+      calls[0]!.args[0]!.input as { Content?: { Simple?: { Subject?: { Data?: string } } } }
+    ).Content?.Simple?.Subject?.Data;
+    expect(subject).toBe('La proprietà del tuo veicolo è stata trasferita');
+  });
+
+  it('skips when the customer disabled ownership_transfer emails', async () => {
+    const optedOut: CustomerForNotification = {
+      ...recipient,
+      notificationPreferences: { email: { ownership_transfer: false } },
+    };
+    const result = await dispatchNotification({ event, recipient: optedOut, logger: fakeLogger });
+    expect(result).toEqual({ sent: false, skipped: 'pref-off' });
+    expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+  });
+});

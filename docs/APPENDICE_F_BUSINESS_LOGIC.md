@@ -289,6 +289,10 @@ Variante officina-mediated del passaggio di proprietà (F-OFF-110): il cedente �
 5. Se cessionario nuovo: `customers` row creata (con email-as-global-identity riuso cross-tenant se esistente)
 6. `access_logs` row: `action = 'ownership_transfer'`
 
+**Documento libretto (opzionale, F-OFF-110 PR-2):** il caller può fornire una chiave S3 (`documentS3Key`) ottenuta dall'endpoint di pre-firma. Il server verifica l'oggetto (`headObject`) e, se valido (formato `image/jpeg | image/png | application/pdf | image/heic`, size ≤ 10 MB, struttura chiave `vehicle-transfers/<vehicleId>/<uuid>.<ext>`), lo salva come `VehicleTransfer.documentUrl`. Un documento non valido blocca il trasferimento con `422 vehicle.transfer.document_invalid`. Il campo è opzionale: i trasferimenti senza documento restano pienamente validi.
+
+**Notifica cedente (opzionale, F-OFF-110 PR-2):** al completamento del trasferimento, il cedente (precedente proprietario) riceve una email best-effort tramite il canale `ownership_transfer` (BR-226). Il fallimento dell'invio non fa mai fallire la transazione già completata.
+
 **Cross-ref:** BR-043 (mobile remote-parties variant), BR-045 (cosa trasferisce / cosa no), BR-046 (no pending), BR-047 (no concurrent active transfers).
 
 > Per la variante officina-mediated single-step vedi BR-049 (F-OFF-110).
@@ -904,6 +908,7 @@ Alla creazione, un customer ha queste preferenze notifiche di default:
     "deadline_reminder": true,
     "transfer_invitation": true,
     "dispute_response": true,
+    "ownership_transfer": true,
     "marketing": false
   },
   "push": {
@@ -916,6 +921,8 @@ Alla creazione, un customer ha queste preferenze notifiche di default:
 ```
 
 > **v1.3 (2026-05-08):** chiave `email.new_intervention` rinominata a `email.intervention_updates` (idem per `push`). Il toggle ora governa l'intero lifecycle dell'intervention (BR-040 create + BR-064 revise + BR-066 cancel) anziché la sola creazione. Migration data-only `20260508120000_rename_new_intervention_to_intervention_updates`.
+
+> **v1.4 (2026-05-22):** aggiunta chiave `email.ownership_transfer` (default `true`). Governa la notifica al cedente al completamento di un trasferimento officina-mediated (F-OFF-110 PR-2).
 
 Il customer può modificare queste preferenze via F-CLI-005.
 

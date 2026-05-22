@@ -26,6 +26,8 @@ import { Prisma } from '@garageos/database';
 import type { PrismaClient } from '@garageos/database';
 
 import { businessError } from './business-error.js';
+import { resolveCustomerForNotification } from './notifications/recipient-resolver.js';
+import type { CustomerForNotification } from './notifications/types.js';
 
 export type TransferReason = 'purchase' | 'inheritance' | 'company_assignment' | 'other';
 
@@ -53,6 +55,7 @@ export interface OwnershipTransferInput {
   recipient: RecipientInput;
   reason: TransferReason;
   notes: string | null;
+  documentS3Key?: string | null;
 }
 
 export interface OwnershipTransferResult {
@@ -65,6 +68,11 @@ export interface OwnershipTransferResult {
     reason: TransferReason;
     notes: string | null;
   };
+  previousOwner: CustomerForNotification | null;
+  vehiclePlate: string;
+  tenant: { id: string; businessName: string };
+  transferReason: TransferReason;
+  transferCompletedAt: Date;
 }
 
 type TxClient = Prisma.TransactionClient | PrismaClient;
@@ -158,7 +166,7 @@ export async function performOwnershipTransfer(
       id: input.vehicleId,
       OR: [{ certifiedByTenantId: input.tenantId }, { createdByTenantId: input.tenantId }],
     },
-    select: { id: true, status: true },
+    select: { id: true, status: true, plate: true },
   });
   if (!vehicle) {
     throw businessError('vehicle.not_found', 404, 'Veicolo non trovato.');
@@ -186,6 +194,11 @@ export async function performOwnershipTransfer(
       'Veicolo senza proprietario attivo.',
     );
   }
+
+  // Resolve the cedente for the post-commit notification. Runs inside
+  // the transaction so it is part of the consistent snapshot; the
+  // dispatch itself happens after commit in the route handler.
+  const previousOwner = await resolveCustomerForNotification(tx, currentOwnership.customerId);
 
   // Step 3: no active transfer (BR-047 defensive check; DB unique enforces too)
   const activeTransfer = await tx.vehicleTransfer.findFirst({
@@ -249,6 +262,7 @@ export async function performOwnershipTransfer(
       // set to now() so an `expiresAt > now()` filter never matches this row.
       expiresAt: now,
       completedAt: now,
+      documentUrl: input.documentS3Key ?? null,
     },
     select: { id: true, completedAt: true },
   });
@@ -263,6 +277,11 @@ export async function performOwnershipTransfer(
     },
   });
 
+  const tenant = await tx.tenant.findUniqueOrThrow({
+    where: { id: input.tenantId },
+    select: { id: true, businessName: true },
+  });
+
   return {
     vehicleId: input.vehicleId,
     ownership: newOwnership,
@@ -273,5 +292,10 @@ export async function performOwnershipTransfer(
       reason: input.reason,
       notes: input.notes,
     },
+    previousOwner,
+    vehiclePlate: vehicle.plate,
+    tenant,
+    transferReason: input.reason,
+    transferCompletedAt: transferRow.completedAt!,
   };
 }

@@ -1,5 +1,9 @@
+import { randomUUID } from 'node:crypto';
+
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import * as s3Module from '../../src/lib/s3.js';
 
 import { buildTestServer } from './fixtures.js';
 import {
@@ -413,5 +417,284 @@ describe('POST /v1/vehicles/:id/ownership-transfer (integration)', () => {
     const text = JSON.stringify(body);
     expect(text).toContain(s.cessionario.customerId);
     expect(text).not.toContain(s.cedente.customerId);
+  });
+});
+
+// ─── F-OFF-110 PR-2 — libretto presign endpoint ──────────────────────────────
+// POST /v1/vehicles/:id/ownership-transfer/document-upload-url
+
+describe('POST /v1/vehicles/:id/ownership-transfer/document-upload-url (integration)', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  // Helper: seed a tenant + actor JWT + a certified vehicle belonging to
+  // that tenant.  The presign endpoint only needs the actor to be
+  // super_admin/mechanic and the vehicle to be visible to the tenant.
+  async function setupPresignScenario(): Promise<{
+    tenantId: string;
+    locationId: string;
+    actorJwt: string;
+    vehicleId: string;
+  }> {
+    const prefix = 'ps-' + Math.random().toString(36).slice(2, 6);
+    const { tenantId, locationId } = await createTenantWithLocation(prefix);
+
+    const actorSub = 'ps-actor-' + Math.random().toString(36).slice(2, 10);
+    await createUser({ tenantId, cognitoSub: actorSub, role: 'super_admin', locationId });
+
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      status: 'certified',
+    });
+
+    const actorJwt = await signTestToken({
+      pool: 'officine',
+      sub: actorSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    return { tenantId, locationId, actorJwt, vehicleId };
+  }
+
+  it('200: happy path — s3Key has vehicle-transfers/<vehicleId>/ prefix and uploadUrl contains X-Amz-Signature=', async () => {
+    // Test 1 — presign happy path.
+    // globalSetup seeds fake AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY so
+    // the SDK presigner can build a valid signature without real creds.
+    const { vehicleId, actorJwt } = await setupPresignScenario();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${vehicleId}/ownership-transfer/document-upload-url`,
+      headers: { authorization: `Bearer ${actorJwt}` },
+      payload: {
+        fileName: 'libretto.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1_048_576,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      s3Key: string;
+      uploadUrl: string;
+      uploadMethod: string;
+      expiresAt: string;
+    }>();
+    expect(body.s3Key).toMatch(new RegExp(`^vehicle-transfers/${vehicleId}/`));
+    expect(body.uploadUrl).toContain('X-Amz-Signature=');
+    expect(body.uploadMethod).toBe('PUT');
+  });
+
+  it('404: vehicle.not_found when vehicle belongs to a different tenant', async () => {
+    // Test 2 — presign 404: vehicle exists but belongs to another tenant.
+    const { actorJwt } = await setupPresignScenario();
+
+    // Create a vehicle owned by a completely different tenant.
+    const other = await createTenantWithLocation(
+      'ps-other-' + Math.random().toString(36).slice(2, 6),
+    );
+    const { vehicleId: otherVehicleId } = await createVehicle({
+      createdByTenantId: other.tenantId,
+      certifiedByTenantId: other.tenantId,
+      status: 'certified',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${otherVehicleId}/ownership-transfer/document-upload-url`,
+      headers: { authorization: `Bearer ${actorJwt}` },
+      payload: {
+        fileName: 'libretto.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 500_000,
+      },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json<{ code: string }>().code).toBe('vehicle.not_found');
+  });
+});
+
+// ─── F-OFF-110 PR-2 — documentS3Key on the transfer endpoint ─────────────────
+// POST /v1/vehicles/:id/ownership-transfer with optional documentS3Key
+
+describe('POST /v1/vehicles/:id/ownership-transfer — documentS3Key (integration)', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+  });
+  // Restore any per-test S3 spies after each test so they don't bleed
+  // across tests within this describe block.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Helper: full certified-vehicle scenario ready for a transfer request.
+  async function setupTransferScenario(): Promise<{
+    tenantId: string;
+    locationId: string;
+    actorJwt: string;
+    cedente: { customerId: string; email: string };
+    cessionario: { customerId: string; email: string };
+    vehicleId: string;
+  }> {
+    const prefix = 'ds-' + Math.random().toString(36).slice(2, 6);
+    const { tenantId, locationId } = await createTenantWithLocation(prefix);
+
+    const actorSub = 'ds-actor-' + Math.random().toString(36).slice(2, 10);
+    await createUser({ tenantId, cognitoSub: actorSub, role: 'super_admin', locationId });
+
+    const cedente = await createCustomer({
+      email: `cedente-ds-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.it`,
+    });
+    await createCustomerTenantRelation({ tenantId, customerId: cedente.customerId });
+
+    const cessionario = await createCustomer({
+      email: `cess-ds-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.it`,
+    });
+    await createCustomerTenantRelation({ tenantId, customerId: cessionario.customerId });
+
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      status: 'certified',
+    });
+    await createOwnership({ vehicleId, customerId: cedente.customerId });
+
+    const actorJwt = await signTestToken({
+      pool: 'officine',
+      sub: actorSub,
+      tenantId,
+      role: 'super_admin',
+      locationId,
+    });
+
+    return { tenantId, locationId, actorJwt, cedente, cessionario, vehicleId };
+  }
+
+  it('200: valid documentS3Key is persisted as documentUrl on the VehicleTransfer row', async () => {
+    // Test 3 — documentS3Key happy path. Spy headObject so the route
+    // believes the object exists without hitting real S3.
+    const s = await setupTransferScenario();
+    const docKey = `vehicle-transfers/${s.vehicleId}/${randomUUID()}.pdf`;
+
+    vi.spyOn(s3Module, 'headObject').mockResolvedValue({
+      contentLength: 1_048_576,
+      contentType: 'application/pdf',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${s.vehicleId}/ownership-transfer`,
+      headers: { authorization: `Bearer ${s.actorJwt}` },
+      payload: {
+        recipient: { kind: 'existing', customerId: s.cessionario.customerId },
+        reason: 'purchase',
+        documentS3Key: docKey,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    // Assert the persisted VehicleTransfer row carries the key.
+    const { rows } = await pgAdmin.query<{ document_url: string | null }>(
+      `SELECT document_url FROM vehicle_transfers WHERE vehicle_id = $1 LIMIT 1`,
+      [s.vehicleId],
+    );
+    expect(rows[0]).toBeDefined();
+    expect(rows[0]!.document_url).toBe(docKey);
+  });
+
+  it('422: vehicle.transfer.document_invalid when S3 object does not exist', async () => {
+    // Test 4 — headObject throws S3ObjectNotFoundError → 422.
+    const s = await setupTransferScenario();
+    const docKey = `vehicle-transfers/${s.vehicleId}/${randomUUID()}.pdf`;
+
+    vi.spyOn(s3Module, 'headObject').mockRejectedValue(
+      new s3Module.S3ObjectNotFoundError('missing'),
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${s.vehicleId}/ownership-transfer`,
+      headers: { authorization: `Bearer ${s.actorJwt}` },
+      payload: {
+        recipient: { kind: 'existing', customerId: s.cessionario.customerId },
+        reason: 'purchase',
+        documentS3Key: docKey,
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json<{ code: string }>().code).toBe('vehicle.transfer.document_invalid');
+  });
+
+  it('422: vehicle.transfer.document_invalid when documentS3Key prefix is for a different vehicle', async () => {
+    // Test 5 — cross-vehicle key. The route's isValidDocumentKey() rejects
+    // the key shape BEFORE calling headObject, so no S3 spy is needed.
+    const s = await setupTransferScenario();
+    const differentVehicleId = randomUUID();
+    const crossKey = `vehicle-transfers/${differentVehicleId}/${randomUUID()}.pdf`;
+
+    const headObjectSpy = vi.spyOn(s3Module, 'headObject');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${s.vehicleId}/ownership-transfer`,
+      headers: { authorization: `Bearer ${s.actorJwt}` },
+      payload: {
+        recipient: { kind: 'existing', customerId: s.cessionario.customerId },
+        reason: 'purchase',
+        documentS3Key: crossKey,
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json<{ code: string }>().code).toBe('vehicle.transfer.document_invalid');
+    // Regex guard fires before S3 is consulted.
+    expect(headObjectSpy).not.toHaveBeenCalled();
+  });
+
+  it('200: transfer without documentS3Key still completes and documentUrl is null (regression)', async () => {
+    // Test 6 — regression: PR-1 behaviour preserved when no document is
+    // attached. No S3 spy needed (headObject never called).
+    const s = await setupTransferScenario();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${s.vehicleId}/ownership-transfer`,
+      headers: { authorization: `Bearer ${s.actorJwt}` },
+      payload: {
+        recipient: { kind: 'existing', customerId: s.cessionario.customerId },
+        reason: 'purchase',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    // Assert the VehicleTransfer row has no documentUrl.
+    const { rows } = await pgAdmin.query<{ document_url: string | null }>(
+      `SELECT document_url FROM vehicle_transfers WHERE vehicle_id = $1 LIMIT 1`,
+      [s.vehicleId],
+    );
+    expect(rows[0]).toBeDefined();
+    expect(rows[0]!.document_url).toBeNull();
   });
 });

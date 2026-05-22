@@ -1,7 +1,7 @@
 // F-OFF-110 — Officina-mediated vehicle transfer dialog (BR-049).
-// IT-strings hardcoded. 3-step wizard: cessionario, motivo+note, conferma.
+// IT-strings hardcoded. 4-step wizard: cessionario, motivo+note, documento, conferma.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { ApiError } from '@/lib/api-client';
 import { useCustomerSearch } from '@/queries/customerSearch';
 import { useOwnershipTransfer, type OwnershipTransferRecipient } from '@/queries/ownershipTransfer';
+import { useTransferDocumentUpload, validateLibrettoFile } from '@/queries/transferDocumentUpload';
 import {
   Dialog,
   DialogContent,
@@ -75,15 +76,20 @@ interface Props {
 
 export function OwnershipTransferDialog(props: Props) {
   const { open, onOpenChange, vehicleId, vehicleLabel, currentOwnerCustomerId } = props;
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [search, setSearch] = useState('');
   const [showNewForm, setShowNewForm] = useState(false);
   const [recipient, setRecipient] = useState<SelectedRecipient | null>(null);
   const [reason, setReason] = useState<Reason | ''>('');
   const [notes, setNotes] = useState('');
+  const [documentS3Key, setDocumentS3Key] = useState<string | null>(null);
+  const [documentFileName, setDocumentFileName] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const searchQuery = useCustomerSearch(search);
   const mutation = useOwnershipTransfer(vehicleId);
+  const { upload, state: uploadState, reset: resetUpload } = useTransferDocumentUpload(vehicleId);
 
   const newForm = useForm<NewRecipientForm>({
     resolver: zodResolver(NewRecipientSchema),
@@ -98,6 +104,10 @@ export function OwnershipTransferDialog(props: Props) {
     setRecipient(null);
     setReason('');
     setNotes('');
+    setDocumentS3Key(null);
+    setDocumentFileName(null);
+    setUploadError(null);
+    resetUpload();
     newForm.reset();
   }
 
@@ -146,6 +156,36 @@ export function OwnershipTransferDialog(props: Props) {
     setStep(2);
   }
 
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file after Rimuovi
+    if (!file) return;
+    const validation = validateLibrettoFile(file);
+    if (validation) {
+      setUploadError(
+        validation.code === 'mime_not_supported'
+          ? 'Formato non supportato. Usa JPG, PNG, PDF o HEIC.'
+          : 'File troppo grande. Dimensione massima 10 MB.',
+      );
+      return;
+    }
+    setUploadError(null);
+    const result = await upload(file);
+    if (result.ok) {
+      setDocumentS3Key(result.s3Key);
+      setDocumentFileName(file.name);
+    } else {
+      setUploadError(result.message);
+    }
+  }
+
+  function handleRemoveDocument() {
+    setDocumentS3Key(null);
+    setDocumentFileName(null);
+    setUploadError(null);
+    resetUpload();
+  }
+
   async function handleConfirm() {
     if (!recipient || !reason) return;
     try {
@@ -153,6 +193,7 @@ export function OwnershipTransferDialog(props: Props) {
         recipient: recipient.data,
         reason,
         notes: notes.trim() || null,
+        documentS3Key,
       });
       toast.success('Trasferimento completato');
       onOpenChange(false);
@@ -169,7 +210,7 @@ export function OwnershipTransferDialog(props: Props) {
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(o) : handleClose())}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Trasferisci proprietà — Step {step}/3</DialogTitle>
+          <DialogTitle>Trasferisci proprietà — Step {step}/4</DialogTitle>
         </DialogHeader>
 
         {step === 1 && (
@@ -329,7 +370,71 @@ export function OwnershipTransferDialog(props: Props) {
           </div>
         )}
 
-        {step === 3 && recipient && reason && (
+        {step === 3 && recipient && (
+          <div className="space-y-4">
+            <div>
+              <Label>Libretto di circolazione (opzionale)</Label>
+              <p className="text-sm text-muted-foreground">
+                Carica una foto o scansione del libretto verificato. Puoi saltare questo passaggio.
+              </p>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,application/pdf,image/heic"
+              className="hidden"
+              data-testid="libretto-file-input"
+              onChange={handleFileSelected}
+            />
+
+            {!documentS3Key && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadState.phase === 'requesting' || uploadState.phase === 'uploading'}
+              >
+                Scegli file
+              </Button>
+            )}
+
+            {uploadState.phase === 'uploading' && (
+              <div className="text-sm text-muted-foreground" role="status">
+                Caricamento… {Math.round(uploadState.progress * 100)}%
+              </div>
+            )}
+
+            {documentS3Key && documentFileName && (
+              <div className="flex items-center justify-between rounded border p-2 text-sm">
+                <span>{documentFileName}</span>
+                <Button type="button" variant="ghost" size="sm" onClick={handleRemoveDocument}>
+                  Rimuovi
+                </Button>
+              </div>
+            )}
+
+            {uploadError && (
+              <p className="text-sm text-destructive" role="alert">
+                {uploadError}
+              </p>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setStep(2)}>
+                Indietro
+              </Button>
+              <Button
+                onClick={() => setStep(4)}
+                disabled={uploadState.phase === 'requesting' || uploadState.phase === 'uploading'}
+              >
+                Avanti
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {step === 4 && recipient && reason && (
           <div className="space-y-4">
             <Alert variant="destructive">
               <AlertDescription>
@@ -350,9 +455,12 @@ export function OwnershipTransferDialog(props: Props) {
                   <strong>Note:</strong> {notes}
                 </div>
               )}
+              <div>
+                <strong>Libretto:</strong> {documentFileName ?? 'Nessun documento allegato'}
+              </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setStep(2)} disabled={mutation.isPending}>
+              <Button variant="outline" onClick={() => setStep(3)} disabled={mutation.isPending}>
                 Indietro
               </Button>
               <Button variant="destructive" onClick={handleConfirm} disabled={mutation.isPending}>

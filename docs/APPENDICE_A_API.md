@@ -486,6 +486,8 @@ Oppure cessionario nuovo:
 
 `reason` ∈ `purchase | inheritance | company_assignment | other`. Per `recipient.kind='new'`, se `isBusiness=true` allora `businessName` + `vatNumber` sono obbligatori. Se l'email corrisponde a un customer esistente (anche cross-tenant), il customer viene riusato e `customer_tenant_relations` upsert per l'officina corrente.
 
+`documentS3Key` (opzionale, stringa, max 500, nullable) — chiave S3 restituita dall'endpoint `document-upload-url` (§2.3ter). Quando presente, il server verifica l'oggetto su S3 (`headObject`) e, se valido, lo salva come `VehicleTransfer.documentUrl`. In caso di chiave malformata, oggetto assente, dimensione o formato non conforme → `422 vehicle.transfer.document_invalid`. Se S3 è irraggiungibile durante la verifica → `502 vehicle.transfer.document_s3_unavailable`.
+
 #### Response 200
 
 ```json
@@ -513,6 +515,66 @@ Famiglia `vehicle.transfer.*` — vedi APPENDICE_G:
 - `409 vehicle.transfer.active_transfer_exists` — BR-047
 - `409 vehicle.transfer.same_owner`
 - `403 vehicle.transfer.role_denied` — ruolo non super_admin/mechanic
+- `422 vehicle.transfer.document_invalid` — `documentS3Key` presente ma non valido (chiave malformata, oggetto assente su S3, o size/formato non conforme)
+- `502 vehicle.transfer.document_s3_unavailable` — S3 irraggiungibile durante la verifica del documento
+
+---
+
+### 2.3ter `POST /vehicles/:id/ownership-transfer/document-upload-url` — Pre-firma upload libretto
+
+**Feature:** F-OFF-110
+**BR:** BR-049
+**Auth:** Officine pool, ruolo `super_admin` o `mechanic`
+
+#### Descrizione
+
+Genera una pre-signed PUT URL per caricare il libretto di circolazione del veicolo prima di eseguire il trasferimento officina-mediated. La chiave S3 restituita (`s3Key`) va passata come `documentS3Key` nell'endpoint §2.3bis. L'URL scade dopo 15 minuti.
+
+#### Path
+
+```
+POST /v1/vehicles/:id/ownership-transfer/document-upload-url
+```
+
+#### Body
+
+```json
+{
+  "fileName": "libretto-fiat-500.pdf",
+  "mimeType": "application/pdf",
+  "sizeBytes": 2097152
+}
+```
+
+| Campo | Tipo | Vincoli |
+| --- | --- | --- |
+| `fileName` | string | 1–255 caratteri, no control bytes |
+| `mimeType` | string | `image/jpeg` \| `image/png` \| `application/pdf` \| `image/heic` |
+| `sizeBytes` | integer | 1 – 10 485 760 (10 MB) |
+
+#### Response 200
+
+```json
+{
+  "uploadUrl": "https://s3.eu-west-1.amazonaws.com/...",
+  "uploadMethod": "PUT",
+  "uploadHeaders": {
+    "Content-Type": "application/pdf"
+  },
+  "s3Key": "vehicle-transfers/<vehicleId>/<uuid>.pdf",
+  "expiresAt": "2026-05-22T10:15:00.000Z"
+}
+```
+
+Il client deve eseguire `PUT <uploadUrl>` con header `Content-Type` ricevuto e il file come corpo (nessun multipart). Dopo l'upload, passare `s3Key` come `documentS3Key` nella chiamata §2.3bis.
+
+#### Errori
+
+- `400` — body non valido (campo mancante, mimeType non consentito, sizeBytes fuori range)
+- `401` — non autenticato
+- `403 vehicle.transfer.role_denied` — ruolo non super_admin/mechanic
+- `404 vehicle.not_found` — veicolo non visibile all'officina
+- `502 vehicle.transfer.document_s3_unavailable` — S3 irraggiungibile durante la firma della URL
 
 ---
 
