@@ -24,6 +24,7 @@ import { z } from 'zod';
 
 import { env } from '../../config/env.js';
 import { businessError } from '../../lib/business-error.js';
+import { dispatchNotification } from '../../lib/notifications/dispatcher.js';
 import { performOwnershipTransfer } from '../../lib/ownership-transfer.js';
 import {
   S3ObjectNotFoundError,
@@ -213,6 +214,23 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
         where: { id: vehicleId },
         select: vehicleDetailSelect,
       });
+
+      // Best-effort cedente notification. dispatchNotification never
+      // throws (documented contract) — a notification failure never
+      // affects the already-committed transfer.
+      if (result.previousOwner) {
+        await dispatchNotification({
+          event: {
+            type: 'ownership.transferred',
+            vehicle: { id: vehicleId, plate: result.vehiclePlate },
+            tenant: result.tenant,
+            transferReason: result.transferReason,
+            transferredAt: result.transferCompletedAt.toISOString(),
+          },
+          recipient: result.previousOwner,
+          logger: request.log,
+        });
+      }
 
       return reply.code(200).send({
         vehicle,

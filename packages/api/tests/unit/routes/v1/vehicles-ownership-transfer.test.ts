@@ -4,6 +4,8 @@ import { mockClient } from 'aws-sdk-client-mock';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as dispatcherModule from '../../../../src/lib/notifications/dispatcher.js';
+
 import * as s3Module from '../../../../src/lib/s3.js';
 import {
   S3ObjectNotFoundError,
@@ -181,7 +183,24 @@ describe('POST /v1/vehicles/:id/ownership-transfer/document-upload-url', () => {
 const CURRENT_OWNER_ID = '11111111-1111-4111-8111-aaaaaaaaaaaa';
 const RECIPIENT_ID = '22222222-2222-4222-8222-222222222222';
 
-function makeTransferStub() {
+interface TransferStubCustomer {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  isBusiness: boolean;
+  businessName: string | null;
+  notificationPreferences: unknown;
+  status: 'active' | 'pending_verification' | 'deleted';
+}
+
+interface MakeTransferStubOptions {
+  cedenteStatus?: 'active' | 'pending_verification' | 'deleted';
+}
+
+function makeTransferStub(options: MakeTransferStubOptions = {}) {
+  const { cedenteStatus = 'active' } = options;
+
   // in-memory state
   const vehicles = new Map<
     string,
@@ -190,6 +209,7 @@ function makeTransferStub() {
       certifiedByTenantId: string | null;
       createdByTenantId: string | null;
       status: string;
+      plate: string;
     }
   >();
   const ownerships = new Map<
@@ -197,12 +217,13 @@ function makeTransferStub() {
     { id: string; vehicleId: string; customerId: string; endedAt: Date | null }
   >();
   const transfers = new Map<string, { id: string; vehicleId: string; status: string }>();
-  const customers = new Map<string, { id: string; email: string }>();
+  const customers = new Map<string, TransferStubCustomer>();
   const relations = new Map<
     string,
     { tenantId: string; customerId: string; interventionCount: number }
   >();
   const accessLogs: { tenantId: string; vehicleId: string; userId: string; action: string }[] = [];
+  const tenants = new Map<string, { id: string; businessName: string }>();
 
   // Seed a certified vehicle belonging to TENANT_ID
   vehicles.set(VEHICLE_ID, {
@@ -210,6 +231,7 @@ function makeTransferStub() {
     certifiedByTenantId: TENANT_ID,
     createdByTenantId: TENANT_ID,
     status: 'certified',
+    plate: 'AB123CD',
   });
   // Seed current ownership (cedente ≠ recipient)
   ownerships.set('own-current', {
@@ -218,10 +240,30 @@ function makeTransferStub() {
     customerId: CURRENT_OWNER_ID,
     endedAt: null,
   });
-  // Seed cedente customer
-  customers.set(CURRENT_OWNER_ID, { id: CURRENT_OWNER_ID, email: 'cedente@example.com' });
+  // Seed cedente customer — status controlled by caller
+  customers.set(CURRENT_OWNER_ID, {
+    id: CURRENT_OWNER_ID,
+    email: 'cedente@example.com',
+    firstName: 'Cedente',
+    lastName: 'Test',
+    isBusiness: false,
+    businessName: null,
+    notificationPreferences: { ownership_transfer: true },
+    status: cedenteStatus,
+  });
   // Seed recipient customer
-  customers.set(RECIPIENT_ID, { id: RECIPIENT_ID, email: 'recipient@example.com' });
+  customers.set(RECIPIENT_ID, {
+    id: RECIPIENT_ID,
+    email: 'recipient@example.com',
+    firstName: 'Recipient',
+    lastName: 'Test',
+    isBusiness: false,
+    businessName: null,
+    notificationPreferences: {},
+    status: 'active',
+  });
+  // Seed tenant
+  tenants.set(TENANT_ID, { id: TENANT_ID, businessName: 'Officina Test' });
 
   const tx = {
     user: {
@@ -337,11 +379,34 @@ function makeTransferStub() {
         }
         return Promise.resolve(null);
       }),
-      create: vi.fn().mockImplementation(({ data }: { data: { email: string } }) => {
-        const id = `c-${customers.size + 1}`;
-        customers.set(id, { id, email: data.email });
-        return Promise.resolve({ id });
-      }),
+      create: vi
+        .fn()
+        .mockImplementation(
+          ({
+            data,
+          }: {
+            data: {
+              email: string;
+              firstName: string;
+              lastName: string;
+              isBusiness?: boolean;
+              businessName?: string | null;
+            };
+          }) => {
+            const id = `c-${customers.size + 1}`;
+            customers.set(id, {
+              id,
+              email: data.email,
+              firstName: data.firstName,
+              lastName: data.lastName,
+              isBusiness: data.isBusiness ?? false,
+              businessName: data.businessName ?? null,
+              notificationPreferences: {},
+              status: 'active',
+            });
+            return Promise.resolve({ id });
+          },
+        ),
     },
     customerTenantRelation: {
       upsert: vi
@@ -375,6 +440,13 @@ function makeTransferStub() {
           },
         ),
     },
+    tenant: {
+      findUniqueOrThrow: vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        const t = tenants.get(where.id);
+        if (!t) return Promise.reject(new Error('P2025'));
+        return Promise.resolve(t);
+      }),
+    },
   };
 
   // prisma mock for the outer app.prisma calls:
@@ -398,8 +470,8 @@ function makeTransferStub() {
   return { tx, prismaOuter };
 }
 
-async function buildTransferApp(): Promise<FastifyInstance> {
-  const { tx, prismaOuter } = makeTransferStub();
+async function buildTransferApp(options: MakeTransferStubOptions = {}): Promise<FastifyInstance> {
+  const { tx, prismaOuter } = makeTransferStub(options);
   const withContext = vi.fn(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
   const appInstance = Fastify({ logger: false });
   await appInstance.register(sensible);
@@ -504,5 +576,61 @@ describe('POST /v1/vehicles/:id/ownership-transfer — documentS3Key', () => {
       payload: { ...transferBody, documentS3Key: validKey },
     });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe('POST /v1/vehicles/:id/ownership-transfer — cedente notification', () => {
+  const TRANSFER_URL = `/v1/vehicles/${VEHICLE_ID}/ownership-transfer`;
+  const transferBody = {
+    recipient: { kind: 'existing', customerId: RECIPIENT_ID },
+    reason: 'purchase',
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('dispatches ownership.transferred event after successful transfer when cedente is active', async () => {
+    const app2 = await buildTransferApp({ cedenteStatus: 'active' });
+    const spy = vi
+      .spyOn(dispatcherModule, 'dispatchNotification')
+      .mockResolvedValue({ sent: true });
+
+    const res = await app2.inject({
+      method: 'POST',
+      url: TRANSFER_URL,
+      headers: { authorization: 'Bearer fake-token' },
+      payload: transferBody,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({ type: 'ownership.transferred' }),
+      }),
+    );
+
+    spy.mockRestore();
+    await app2.close();
+  });
+
+  it('skips dispatch when cedente is deleted (previousOwner is null)', async () => {
+    const app2 = await buildTransferApp({ cedenteStatus: 'deleted' });
+    const spy = vi
+      .spyOn(dispatcherModule, 'dispatchNotification')
+      .mockResolvedValue({ sent: false });
+
+    const res = await app2.inject({
+      method: 'POST',
+      url: TRANSFER_URL,
+      headers: { authorization: 'Bearer fake-token' },
+      payload: transferBody,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(spy).not.toHaveBeenCalled();
+
+    spy.mockRestore();
+    await app2.close();
   });
 });

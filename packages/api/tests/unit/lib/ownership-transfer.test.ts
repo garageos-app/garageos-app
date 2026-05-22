@@ -17,6 +17,7 @@ interface StubVehicle {
   certifiedByTenantId: string | null;
   createdByTenantId: string | null;
   status: string;
+  plate: string;
 }
 interface StubOwnership {
   id: string;
@@ -32,6 +33,12 @@ interface StubTransfer {
 interface StubCustomer {
   id: string;
   email: string;
+  firstName: string | null;
+  lastName: string | null;
+  isBusiness: boolean;
+  businessName: string | null;
+  notificationPreferences: unknown;
+  status: 'active' | 'pending_verification' | 'deleted';
 }
 interface StubRelation {
   tenantId: string;
@@ -52,6 +59,7 @@ interface StubState {
   customers: Map<string, StubCustomer>;
   relations: Map<string, StubRelation>;
   accessLogs: StubAccessLog[];
+  tenants: Map<string, { id: string; businessName: string }>;
 }
 
 interface VehicleFindFirstWhere {
@@ -125,6 +133,7 @@ function makeStub() {
     customers: new Map(),
     relations: new Map(),
     accessLogs: [],
+    tenants: new Map(),
   };
 
   const tx = {
@@ -204,7 +213,16 @@ function makeStub() {
       }),
       create: vi.fn().mockImplementation(({ data }: { data: CustomerCreateData }) => {
         const id = `c-${state.customers.size + 1}`;
-        const row: StubCustomer = { id, email: data.email };
+        const row: StubCustomer = {
+          id,
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          isBusiness: data.isBusiness ?? false,
+          businessName: data.businessName ?? null,
+          notificationPreferences: {},
+          status: 'active',
+        };
         state.customers.set(id, row);
         return Promise.resolve({ id });
       }),
@@ -233,6 +251,13 @@ function makeStub() {
         return Promise.resolve(data);
       }),
     },
+    tenant: {
+      findUniqueOrThrow: vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        const t = state.tenants.get(where.id);
+        if (!t) return Promise.reject(new Error('P2025'));
+        return Promise.resolve(t);
+      }),
+    },
   };
 
   return { tx, state };
@@ -257,6 +282,7 @@ describe('performOwnershipTransfer', () => {
       certifiedByTenantId: 't1',
       createdByTenantId: 't1',
       status: 'certified',
+      plate: 'AB123CD',
     });
     env.state.ownerships.set('own-current', {
       id: 'own-current',
@@ -264,8 +290,27 @@ describe('performOwnershipTransfer', () => {
       customerId: 'c-cedente',
       endedAt: null,
     });
-    env.state.customers.set('c-cedente', { id: 'c-cedente', email: 'cedente@example.com' });
-    env.state.customers.set('c-recipient', { id: 'c-recipient', email: 'recipient@example.com' });
+    env.state.customers.set('c-cedente', {
+      id: 'c-cedente',
+      email: 'cedente@example.com',
+      firstName: 'Cedente',
+      lastName: 'Test',
+      isBusiness: false,
+      businessName: null,
+      notificationPreferences: {},
+      status: 'active',
+    });
+    env.state.customers.set('c-recipient', {
+      id: 'c-recipient',
+      email: 'recipient@example.com',
+      firstName: 'Recipient',
+      lastName: 'Test',
+      isBusiness: false,
+      businessName: null,
+      notificationPreferences: {},
+      status: 'active',
+    });
+    env.state.tenants.set('t1', { id: 't1', businessName: 'Officina Test' });
   });
 
   it('happy path: existing recipient produces complete result', async () => {
@@ -297,7 +342,16 @@ describe('performOwnershipTransfer', () => {
   });
 
   it('new recipient with matching email reuses existing customer', async () => {
-    env.state.customers.set('c-existing', { id: 'c-existing', email: 'reuse@example.com' });
+    env.state.customers.set('c-existing', {
+      id: 'c-existing',
+      email: 'reuse@example.com',
+      firstName: 'Mario',
+      lastName: 'Bianchi',
+      isBusiness: false,
+      businessName: null,
+      notificationPreferences: {},
+      status: 'active',
+    });
     const input: OwnershipTransferInput = {
       ...baseInput,
       recipient: {
@@ -316,7 +370,16 @@ describe('performOwnershipTransfer', () => {
     // Pre-seed the customer that will be "found" by the refetch (simulating
     // a concurrent transaction that inserted this customer between our
     // findFirst and create calls).
-    env.state.customers.set('c-race', { id: 'c-race', email: 'race@example.com' });
+    env.state.customers.set('c-race', {
+      id: 'c-race',
+      email: 'race@example.com',
+      firstName: 'X',
+      lastName: 'Y',
+      isBusiness: false,
+      businessName: null,
+      notificationPreferences: {},
+      status: 'active',
+    });
 
     // Force the code path: customer.findFirst returns null on first call
     // (pre-create lookup misses), then finds c-race on the refetch after P2002.
@@ -361,6 +424,7 @@ describe('performOwnershipTransfer', () => {
       certifiedByTenantId: 't1',
       createdByTenantId: 't1',
       status: 'pending',
+      plate: 'AB123CD',
     });
     await expect(performOwnershipTransfer(env.tx as never, baseInput)).rejects.toMatchObject({
       name: 'vehicle.transfer.pending_not_transferable',
@@ -374,6 +438,7 @@ describe('performOwnershipTransfer', () => {
       certifiedByTenantId: 't1',
       createdByTenantId: 't1',
       status: 'archived',
+      plate: 'AB123CD',
     });
     await expect(performOwnershipTransfer(env.tx as never, baseInput)).rejects.toMatchObject({
       name: 'vehicle.transfer.archived',
@@ -440,5 +505,30 @@ describe('performOwnershipTransfer', () => {
         data: expect.objectContaining({ documentUrl: null }),
       }),
     );
+  });
+
+  it('result carries the cedente as previousOwner and the vehicle plate + tenant', async () => {
+    const result = await performOwnershipTransfer(env.tx as never, baseInput);
+    expect(result.previousOwner).not.toBeNull();
+    expect(result.previousOwner!.id).toBe('c-cedente');
+    expect(result.vehiclePlate).toBe('AB123CD');
+    expect(result.tenant).toEqual({ id: 't1', businessName: 'Officina Test' });
+    expect(result.transferReason).toBe('purchase');
+    expect(result.transferCompletedAt).toBeInstanceOf(Date);
+  });
+
+  it('previousOwner is null when the cedente is a deleted customer', async () => {
+    env.state.customers.set('c-cedente', {
+      id: 'c-cedente',
+      email: 'cedente@example.com',
+      firstName: 'Cedente',
+      lastName: 'Test',
+      isBusiness: false,
+      businessName: null,
+      notificationPreferences: {},
+      status: 'deleted',
+    });
+    const result = await performOwnershipTransfer(env.tx as never, baseInput);
+    expect(result.previousOwner).toBeNull();
   });
 });
