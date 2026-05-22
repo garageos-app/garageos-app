@@ -430,7 +430,7 @@ Ogni funzionalità è classificata secondo una delle seguenti priorità:
 | F-OFF-107 | Aggancio veicolo pendente | Quando un utente finale ha già pre-registrato un veicolo (modalità "utente-first"), l'officina trova il veicolo pendente per targa/VIN, verifica i dati dal libretto, promuove a certificato e genera il codice ufficiale | 🟡 SHOULD |
 | F-OFF-108 | Promemoria di scansione QR | Widget/shortcut per aprire la camera e scansionare un QR GarageOS sul veicolo del cliente (richiede webcam o smartphone) | 🔵 COULD |
 | F-OFF-109 | Ristampa tag | L'officina può ristampare il tag di un veicolo esistente (in caso di smarrimento da parte del cliente) previa verifica documentale | 🟢 MUST |
-| F-OFF-110 | Trasferimento proprietà in officina | L'officina trasferisce la proprietà di un veicolo certificato da un cliente esistente a un nuovo proprietario in single-step atomic swap. Richiede presenza fisica cedente + verifica libretto. Variante officina-mediated del passaggio proprietà (vedi BR-049). PR-1 senza upload documento/email notification (PR-2 follow-up) | 🟢 MUST |
+| F-OFF-110 | Trasferimento proprietà in officina | L'officina trasferisce la proprietà di un veicolo certificato da un cliente esistente a un nuovo proprietario in single-step atomic swap. Richiede presenza fisica cedente + verifica libretto. Variante officina-mediated del passaggio proprietà (vedi BR-049). | 🟢 MUST |
 
 #### 3.2.3 Area Anagrafica Clienti
 

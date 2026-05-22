@@ -334,6 +334,8 @@ Per fornire dati utili al client per gestire l'errore:
 | `vehicle.transfer.same_owner` | 409 | warning | Il cessionario coincide con il proprietario attuale | F-OFF-110 | BR-049 |
 | `vehicle.transfer.recipient_not_found` | 422 | info | Cessionario non trovato | F-OFF-110 `kind=existing` | BR-049 |
 | `vehicle.transfer.role_denied` | 403 | warning | Ruolo non autorizzato per il trasferimento | F-OFF-110 caller non super_admin/mechanic | BR-049 |
+| `vehicle.transfer.document_invalid` | 422 | info | Il documento del libretto fornito non è valido: chiave malformata, file inesistente su S3, o dimensione/formato non conforme. | F-OFF-110 PR-2 `documentS3Key` non valido | BR-049 |
+| `vehicle.transfer.document_s3_unavailable` | 502 | error | Servizio di storage non disponibile durante la firma o la verifica del caricamento del libretto. | F-OFF-110 PR-2 S3 irraggiungibile | BR-049 |
 
 ### 3.9 Scadenze
 
