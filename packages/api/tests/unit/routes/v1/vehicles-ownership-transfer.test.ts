@@ -379,34 +379,32 @@ function makeTransferStub(options: MakeTransferStubOptions = {}) {
         }
         return Promise.resolve(null);
       }),
-      create: vi
-        .fn()
-        .mockImplementation(
-          ({
-            data,
-          }: {
-            data: {
-              email: string;
-              firstName: string;
-              lastName: string;
-              isBusiness?: boolean;
-              businessName?: string | null;
-            };
-          }) => {
-            const id = `c-${customers.size + 1}`;
-            customers.set(id, {
-              id,
-              email: data.email,
-              firstName: data.firstName,
-              lastName: data.lastName,
-              isBusiness: data.isBusiness ?? false,
-              businessName: data.businessName ?? null,
-              notificationPreferences: {},
-              status: 'active',
-            });
-            return Promise.resolve({ id });
-          },
-        ),
+      create: vi.fn().mockImplementation(
+        ({
+          data,
+        }: {
+          data: {
+            email: string;
+            firstName: string;
+            lastName: string;
+            isBusiness?: boolean;
+            businessName?: string | null;
+          };
+        }) => {
+          const id = `c-${customers.size + 1}`;
+          customers.set(id, {
+            id,
+            email: data.email,
+            firstName: data.firstName,
+            lastName: data.lastName,
+            isBusiness: data.isBusiness ?? false,
+            businessName: data.businessName ?? null,
+            notificationPreferences: {},
+            status: 'active',
+          });
+          return Promise.resolve({ id });
+        },
+      ),
     },
     customerTenantRelation: {
       upsert: vi
