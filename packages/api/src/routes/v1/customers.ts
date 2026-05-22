@@ -18,7 +18,7 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 // the calling tenant is by construction related to every returned customer.
 
 const searchQuerySchema = z.object({
-  q: z.string().min(2).max(60),
+  q: z.string().trim().min(2).max(60),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   cursor: z.string().optional(),
 });
@@ -45,17 +45,26 @@ const customerRoutes: FastifyPluginAsync = async (app) => {
       const { q, limit, cursor } = searchQuerySchema.parse(request.query);
       const tenantId = request.tenantId!;
 
+      // Split q into whitespace-separated tokens so a multi-word query
+      // like "Mario Rossi" matches a customer whose first and last name
+      // are stored in separate columns. Each token must match at least
+      // one searchable column (AND across tokens, OR across columns).
+      // q is .trim()'d by the schema, so tokens is never empty.
+      const tokens = q.split(/\s+/).filter(Boolean);
+
       return app.withContext({ tenantId }, async (tx) => {
         const cursorId = decodeCursor(cursor);
         const rows = await tx.customer.findMany({
           where: {
             status: 'active',
             tenantRelations: { some: { tenantId, customerDeleted: false } },
-            OR: [
-              { firstName: { contains: q, mode: 'insensitive' } },
-              { lastName: { contains: q, mode: 'insensitive' } },
-              { businessName: { contains: q, mode: 'insensitive' } },
-            ],
+            AND: tokens.map((token) => ({
+              OR: [
+                { firstName: { contains: token, mode: 'insensitive' as const } },
+                { lastName: { contains: token, mode: 'insensitive' as const } },
+                { businessName: { contains: token, mode: 'insensitive' as const } },
+              ],
+            })),
           },
           select: customerSearchSelect,
           orderBy: { id: 'asc' },
