@@ -228,34 +228,32 @@ function makeTransferStub() {
       findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'actor-db-id' }),
     },
     vehicle: {
-      findFirst: vi
-        .fn()
-        .mockImplementation(
-          async ({
-            where,
-          }: {
-            where: {
-              id: string;
-              OR?: Array<{ certifiedByTenantId?: string; createdByTenantId?: string }>;
-            };
-          }) => {
-            for (const v of vehicles.values()) {
-              if (v.id !== where.id) continue;
-              if (where.OR) {
-                const match = where.OR.some(
-                  (o) =>
-                    (o.certifiedByTenantId !== undefined &&
-                      v.certifiedByTenantId === o.certifiedByTenantId) ||
-                    (o.createdByTenantId !== undefined &&
-                      v.createdByTenantId === o.createdByTenantId),
-                );
-                if (!match) continue;
-              }
-              return v;
+      findFirst: vi.fn().mockImplementation(
+        async ({
+          where,
+        }: {
+          where: {
+            id: string;
+            OR?: Array<{ certifiedByTenantId?: string; createdByTenantId?: string }>;
+          };
+        }) => {
+          for (const v of vehicles.values()) {
+            if (v.id !== where.id) continue;
+            if (where.OR) {
+              const match = where.OR.some(
+                (o) =>
+                  (o.certifiedByTenantId !== undefined &&
+                    v.certifiedByTenantId === o.certifiedByTenantId) ||
+                  (o.createdByTenantId !== undefined &&
+                    v.createdByTenantId === o.createdByTenantId),
+              );
+              if (!match) continue;
             }
-            return null;
-          },
-        ),
+            return v;
+          }
+          return null;
+        },
+      ),
     },
     vehicleOwnership: {
       findFirst: vi
@@ -281,30 +279,28 @@ function makeTransferStub() {
             return Promise.resolve(o);
           },
         ),
-      create: vi
-        .fn()
-        .mockImplementation(
-          ({
-            data,
-          }: {
-            data: {
-              vehicleId: string;
-              customerId: string;
-              startedAt: Date;
-              transferReason: string;
-              transferNotes: string | null;
-            };
-          }) => {
-            const id = `own-${ownerships.size + 1}`;
-            ownerships.set(id, {
-              id,
-              vehicleId: data.vehicleId,
-              customerId: data.customerId,
-              endedAt: null,
-            });
-            return Promise.resolve({ id, customerId: data.customerId, startedAt: data.startedAt });
-          },
-        ),
+      create: vi.fn().mockImplementation(
+        ({
+          data,
+        }: {
+          data: {
+            vehicleId: string;
+            customerId: string;
+            startedAt: Date;
+            transferReason: string;
+            transferNotes: string | null;
+          };
+        }) => {
+          const id = `own-${ownerships.size + 1}`;
+          ownerships.set(id, {
+            id,
+            vehicleId: data.vehicleId,
+            customerId: data.customerId,
+            endedAt: null,
+          });
+          return Promise.resolve({ id, customerId: data.customerId, startedAt: data.startedAt });
+        },
+      ),
     },
     vehicleTransfer: {
       findFirst: vi
@@ -465,6 +461,20 @@ describe('POST /v1/vehicles/:id/ownership-transfer — documentS3Key', () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('vehicle.transfer.document_invalid');
+  });
+
+  it('maps headObject S3UnavailableError to 502 vehicle.transfer.document_s3_unavailable', async () => {
+    vi.spyOn(s3Module, 'headObject').mockRejectedValueOnce(
+      new s3Module.S3UnavailableError('S3 down'),
+    );
+    const res = await transferApp.inject({
+      method: 'POST',
+      url: TRANSFER_URL,
+      headers: { authorization: 'Bearer fake-token' },
+      payload: { ...transferBody, documentS3Key: validKey },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().code).toBe('vehicle.transfer.document_s3_unavailable');
   });
 
   it('rejects a documentS3Key whose object exceeds 10 MB with 422', async () => {
