@@ -14,9 +14,12 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 // as interventions-disputes-list.ts. See
 // feedback_rls_split_changes_endpoint_semantics.md.
 //
-// operator.name composed server-side with BR-213 fallback "Operatore"
-// when user relation is null (deactivated/deleted user) or when both
-// firstName and lastName are null.
+// operator.name composed server-side with defensive fallback "Operatore"
+// when the user relation is null or when both firstName and lastName are
+// null. Both branches are currently dead code at runtime (users.first_name
+// + last_name are NOT NULL in the schema, and intervention.user_id FK is
+// onDelete: Restrict) — kept as scaffolding for future schema changes
+// (e.g. soft-anonymization). Pattern mirrors interventions-detail.ts:138.
 
 export const recentQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),

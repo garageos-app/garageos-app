@@ -231,7 +231,7 @@ describe('GET /v1/interventions/recent (unit)', () => {
     expect(body.items[0]!.operator.name).toBe('Giuseppe Rossi');
   });
 
-  it('BR-213: operator.name falls back to "Operatore" when user relation is null', async () => {
+  it('operator.name falls back to "Operatore" when user relation is null', async () => {
     const prisma = buildFakePrisma([makeRow({ id: 'i1', user: null, userId: 'deleted-user-id' })]);
     app = await buildApp(prisma);
     const res = await app.inject({
@@ -246,7 +246,7 @@ describe('GET /v1/interventions/recent (unit)', () => {
     expect(body.items[0]!.operator.id).toBe('deleted-user-id');
   });
 
-  it('BR-213: operator.name falls back to "Operatore" when both firstName and lastName are null', async () => {
+  it('operator.name falls back to "Operatore" when both firstName and lastName are null', async () => {
     const prisma = buildFakePrisma([
       makeRow({
         id: 'i1',

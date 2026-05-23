@@ -10,14 +10,12 @@ import {
   ensureSystemInterventionType,
   resetDb,
 } from './helpers.js';
-import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
 // Integration coverage for GET /v1/interventions/recent (F-OFF-501 PR2).
 // Validates: tenant isolation (RLS), status filter (active+disputed,
 // excludes cancelled), deterministic ordering (createdAt DESC, id DESC
-// tiebreaker), limit boundary (50 ok, 51 → 400), and BR-213 operator
-// fallback when the user row has null first/last names. Unique IP per
+// tiebreaker), and limit boundary (50 ok, 51 → 400). Unique IP per
 // describe block (memory feedback_integration_test_rate_limit_isolation,
 // range 10.20.50.x — free vs existing ranges).
 
@@ -259,45 +257,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
     });
     expect(res51.statusCode).toBe(400);
-  });
-
-  it('BR-213: operator.name falls back to "Operatore" when user has null first/last names', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rec-br213');
-    const cognitoSub = '66666666-6666-4666-8666-666666666666';
-    const { userId } = await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
-    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
-
-    await createIntervention({
-      tenantId,
-      locationId,
-      userId,
-      vehicleId,
-      interventionTypeId: typeId,
-      interventionDate: '2026-05-23',
-      odometerKm: 50000,
-      title: 'Some work',
-    });
-
-    // Null out both names on the user.
-    await pgAdmin.query('UPDATE users SET first_name = NULL, last_name = NULL WHERE id = $1', [
-      userId,
-    ]);
-
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: cognitoSub,
-      tenantId,
-      role: 'mechanic',
-    });
-    const res = await app.inject({
-      method: 'GET',
-      url: '/v1/interventions/recent',
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
-    });
-    const body = res.json() as { items: Array<{ operator: { id: string; name: string } }> };
-    expect(body.items[0]!.operator.name).toBe('Operatore');
-    expect(body.items[0]!.operator.id).toBe(userId);
   });
 
   it('401 without authorization header', async () => {

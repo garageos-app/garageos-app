@@ -129,7 +129,7 @@ describe('<InterventionsCard />', () => {
     expect(screen.getByTestId('intervention-page')).toBeInTheDocument();
   });
 
-  it('renders BR-213 fallback "Operatore" when server returned it', () => {
+  it('renders operator fallback "Operatore" when server returns it', () => {
     const items = [makeItem('i1', '2026-05-23T10:00:00.000Z', 'AB123CD', 'Lavoro X', 'Operatore')];
     (useInterventionsRecent as ReturnType<typeof vi.fn>).mockReturnValue({
       isLoading: false,
