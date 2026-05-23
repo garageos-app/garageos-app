@@ -20,7 +20,7 @@ export function useDeadlinesUpcoming(daysAhead: number) {
   const apiFetch = useApiFetch();
   return useQuery({
     queryKey: ['deadlines-upcoming', daysAhead] as const,
-    queryFn: async (): Promise<TenantDeadline[]> => {
+    queryFn: async (): Promise<Array<TenantDeadline & { dueDate: string }>> => {
       const params = new URLSearchParams();
       params.set('status', 'open');
       params.set('limit', '50');
@@ -32,13 +32,13 @@ export function useDeadlinesUpcoming(daysAhead: number) {
       horizon.setDate(today.getDate() + daysAhead);
 
       return res.deadlines
-        .filter((d) => {
+        .filter((d): d is TenantDeadline & { dueDate: string } => {
           if (!d.dueDate) return false;
           const [y, m, day] = d.dueDate.split('-').map(Number);
           const due = new Date(y, m - 1, day); // local midnight, matches today normalization
           return due >= today && due <= horizon;
         })
-        .sort((a, b) => (a.dueDate! < b.dueDate! ? -1 : a.dueDate! > b.dueDate! ? 1 : 0));
+        .sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0));
     },
     staleTime: 60_000,
   });
