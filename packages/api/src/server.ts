@@ -30,6 +30,7 @@ import { authVerifyEmailRoutes } from './routes/v1/auth-verify-email.js';
 import { authResendVerificationRoutes } from './routes/v1/auth-resend-verification.js';
 import interventionUpdateRoutes from './routes/v1/interventions-update.js';
 import interventionRoutes from './routes/v1/interventions.js';
+import interventionRecentRoutes from './routes/v1/interventions-recent.js';
 import interventionTypesRoutes from './routes/v1/intervention-types.js';
 import attachmentsRoutes from './routes/v1/attachments.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
@@ -163,6 +164,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(vehicleTimelineRoutes);
   await app.register(interventionRoutes);
   await app.register(interventionDetailRoutes);
+  await app.register(interventionRecentRoutes);
   await app.register(interventionTypesRoutes);
   await app.register(interventionUpdateRoutes);
   await app.register(interventionRevisionsListRoutes);
