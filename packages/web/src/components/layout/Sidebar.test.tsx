@@ -24,13 +24,29 @@ function renderAt(path: string, auth = mockAuth()) {
 }
 
 describe('Sidebar', () => {
-  it('"Cerca veicolo" attivo per pathname /, /search, /vehicles/:id', () => {
-    for (const path of ['/', '/search?q=x&t=plate', '/vehicles/uuid-1']) {
-      const { unmount } = renderAt(path);
-      const link = screen.getByRole('link', { name: /cerca veicolo/i });
-      expect(link).toHaveAttribute('aria-current', 'page');
-      unmount();
-    }
+  it('"Home" attivo solo per pathname / (non /search né /vehicles)', () => {
+    // Home is active on / only
+    const { unmount: u1 } = renderAt('/');
+    const homeLink = screen.getByRole('link', { name: /home/i });
+    expect(homeLink).toHaveAttribute('href', '/');
+    expect(homeLink).toHaveAttribute('aria-current', 'page');
+    u1();
+
+    // Home is NOT active on /search (search now lives in topbar; /search is its own page)
+    const { unmount: u2 } = renderAt('/search?q=foo');
+    const homeOnSearch = screen.getByRole('link', { name: /home/i });
+    expect(homeOnSearch).not.toHaveAttribute('aria-current', 'page');
+    u2();
+
+    // Home is NOT active on /vehicles/:id
+    renderAt('/vehicles/uuid-1');
+    const homeOnVehicle = screen.getByRole('link', { name: /home/i });
+    expect(homeOnVehicle).not.toHaveAttribute('aria-current', 'page');
+  });
+
+  it('"Cerca veicolo" non è più presente nel sidebar (search è ora in TopBar)', () => {
+    renderAt('/');
+    expect(screen.queryByText('Cerca veicolo')).not.toBeInTheDocument();
   });
 
   it('voci disabilitate non-clickable e mostrano tooltip "Disponibile in v1.1"', () => {
