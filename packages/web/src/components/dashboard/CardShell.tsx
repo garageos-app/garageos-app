@@ -11,7 +11,7 @@ interface Props {
   state: CardShellState;
   emptyText: string;
   errorText: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export function CardShell({
