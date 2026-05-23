@@ -12,6 +12,9 @@ import type { DeadlinesListResponse, TenantDeadline } from './types';
  *
  * Deadlines with `dueDate === null` are excluded (no due date = not in the
  * 7-day window by definition).
+ *
+ * Date parsing uses local-midnight semantics on both sides to avoid timezone
+ * drift on UTC-offset-negative locales.
  */
 export function useDeadlinesUpcoming(daysAhead: number) {
   const apiFetch = useApiFetch();
@@ -31,7 +34,8 @@ export function useDeadlinesUpcoming(daysAhead: number) {
       return res.deadlines
         .filter((d) => {
           if (!d.dueDate) return false;
-          const due = new Date(d.dueDate);
+          const [y, m, day] = d.dueDate.split('-').map(Number);
+          const due = new Date(y, m - 1, day); // local midnight, matches today normalization
           return due >= today && due <= horizon;
         })
         .sort((a, b) => (a.dueDate! < b.dueDate! ? -1 : a.dueDate! > b.dueDate! ? 1 : 0));

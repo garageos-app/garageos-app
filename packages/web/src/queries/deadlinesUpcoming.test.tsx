@@ -100,6 +100,33 @@ describe('useDeadlinesUpcoming', () => {
     expect(result.current.data?.map((d) => d.id)).toEqual(['d2', 'd5']);
   });
 
+  it('includes deadlines exactly at today (lower bound) and today+daysAhead (upper bound)', async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const horizon = new Date(today);
+    horizon.setDate(today.getDate() + 7);
+
+    const fmt = (d: Date) => {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    apiFetchMock.mockResolvedValueOnce({
+      deadlines: [
+        makeDeadline({ id: 'lower', dueDate: fmt(today) }),
+        makeDeadline({ id: 'upper', dueDate: fmt(horizon) }),
+      ],
+      nextCursor: null,
+    } satisfies DeadlinesListResponse);
+
+    const { result } = renderHook(() => useDeadlinesUpcoming(7), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data?.map((d) => d.id).sort()).toEqual(['lower', 'upper']);
+  });
+
   it('calls /v1/deadlines with status=open and limit=50', async () => {
     apiFetchMock.mockResolvedValueOnce({ deadlines: [], nextCursor: null });
     renderHook(() => useDeadlinesUpcoming(7), { wrapper });
