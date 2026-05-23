@@ -1,11 +1,11 @@
 // IT-strings — hardcoded, no i18n in demo-2
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Wrench, Users, Settings, LogOut, Calendar } from 'lucide-react';
+import { Home, Wrench, Users, Settings, LogOut, Calendar } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { Separator } from '@/components/ui/separator';
 
 const navItems = [
-  { id: 'search', label: 'Cerca veicolo', icon: Search, to: '/', enabled: true },
+  { id: 'home', label: 'Home', icon: Home, to: '/', enabled: true },
   { id: 'interventions', label: 'Interventi', icon: Wrench, enabled: false },
   { id: 'deadlines', label: 'Scadenze', icon: Calendar, to: '/deadlines', enabled: true },
   { id: 'customers', label: 'Clienti', icon: Users, enabled: false },
@@ -13,8 +13,8 @@ const navItems = [
 ] as const;
 
 function isActiveFor(itemId: string, pathname: string): boolean {
-  if (itemId === 'search') {
-    return pathname === '/' || pathname.startsWith('/search') || pathname.startsWith('/vehicles');
+  if (itemId === 'home') {
+    return pathname === '/';
   }
   if (itemId === 'deadlines') {
     return pathname.startsWith('/deadlines');

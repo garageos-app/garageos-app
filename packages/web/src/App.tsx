@@ -5,7 +5,7 @@ import { AuthProvider } from '@/auth/AuthContext';
 import { ProtectedRoute } from '@/auth/ProtectedRoute';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Login } from '@/pages/Login';
-import { Dashboard } from '@/pages/Dashboard';
+import { HomeDashboard } from '@/pages/HomeDashboard';
 import { SearchResults } from '@/pages/SearchResults';
 import { VehicleDetail } from '@/pages/VehicleDetail';
 import { CustomerDetail } from '@/pages/CustomerDetail';
@@ -38,7 +38,7 @@ export function App() {
               <Route path="/invitations/:token" element={<AcceptInvitation />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppLayout />}>
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/" element={<HomeDashboard />} />
                   <Route path="/search" element={<SearchResults />} />
                   <Route path="/vehicles/:id" element={<VehicleDetail />} />
                   <Route path="/vehicles/:id/interventions/new" element={<InterventionCreate />} />
