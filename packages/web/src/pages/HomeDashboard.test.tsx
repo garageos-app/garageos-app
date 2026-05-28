@@ -4,7 +4,6 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { HomeDashboard } from './HomeDashboard';
-import { AuthProvider } from '@/auth/AuthContext';
 import { useDisputesOpen } from '@/queries/disputesOpen';
 
 vi.mock('@/queries/deadlinesUpcoming', () => ({
@@ -23,11 +22,9 @@ function renderHome() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <AuthProvider>
-        <MemoryRouter>
-          <HomeDashboard />
-        </MemoryRouter>
-      </AuthProvider>
+      <MemoryRouter>
+        <HomeDashboard />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
