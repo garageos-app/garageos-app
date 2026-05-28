@@ -198,6 +198,7 @@ describe('GET /v1/disputes/open (integration)', () => {
       url: '/v1/disputes/open',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
     });
+    expect(res.statusCode).toBe(200);
     const body = res.json() as {
       pendingResponse: { items: Array<{ customerName: string }> };
     };
@@ -242,6 +243,7 @@ describe('GET /v1/disputes/open (integration)', () => {
       url: '/v1/disputes/open',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
     });
+    expect(res.statusCode).toBe(200);
     const body = res.json() as {
       pendingResponse: { items: Array<{ customerName: string }> };
     };
