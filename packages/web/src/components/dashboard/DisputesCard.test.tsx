@@ -159,7 +159,7 @@ describe('<DisputesCard />', () => {
       data: {
         pendingResponse: { count: 0, items: [] },
         inProgress: {
-          count: 2,
+          count: 1,
           items: [
             {
               id: 'd4',
