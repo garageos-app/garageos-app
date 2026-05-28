@@ -16,8 +16,8 @@ import type { Customer } from '@/queries/types';
 
 // E2 customer autocomplete officina. Consumes /v1/customers/search
 // (PR #77) and surfaces a tenant-scoped name search to the operator.
-// Selection navigates the consumer to the customer's vehicle list
-// (Dashboard wires onSelect → /search?customer=<id>&t=customer).
+// Selection invokes onSelect with the chosen customer; consumers
+// typically navigate to /search?customer=<id>&t=customer.
 
 interface Props {
   onSelect: (customer: Customer) => void;

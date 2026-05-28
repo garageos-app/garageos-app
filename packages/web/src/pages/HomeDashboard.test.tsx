@@ -4,7 +4,6 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { HomeDashboard } from './HomeDashboard';
-import { AuthProvider } from '@/auth/AuthContext';
 import { useDisputesOpen } from '@/queries/disputesOpen';
 
 vi.mock('@/queries/deadlinesUpcoming', () => ({
@@ -23,11 +22,9 @@ function renderHome() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <AuthProvider>
-        <MemoryRouter>
-          <HomeDashboard />
-        </MemoryRouter>
-      </AuthProvider>
+      <MemoryRouter>
+        <HomeDashboard />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -72,5 +69,20 @@ describe('<HomeDashboard />', () => {
     } as never);
     renderHome();
     expect(screen.queryByTestId('dispute-banner')).not.toBeInTheDocument();
+  });
+
+  it('renders a screen-reader-only h1 heading', () => {
+    mockedUseDisputesOpen.mockReturnValue({
+      data: {
+        pendingResponse: { count: 0, items: [] },
+        inProgress: { count: 0, items: [] },
+      },
+      isLoading: false,
+      isError: false,
+    } as never);
+    renderHome();
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1).toBeInTheDocument();
+    expect(h1).toHaveTextContent('Home');
   });
 });

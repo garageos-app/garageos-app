@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { CardShell } from './CardShell';
 import { useDeadlinesUpcoming } from '@/queries/deadlinesUpcoming';
 import { formatDate } from '@/lib/format';
+import { ERROR_LOAD_RETRY } from './strings';
 
 export function ScadenzeCard() {
   const query = useDeadlinesUpcoming(7);
@@ -25,7 +26,7 @@ export function ScadenzeCard() {
       count={all.length}
       state={state}
       emptyText="Nessuna scadenza nei prossimi 7 giorni"
-      errorText="Errore di caricamento — riprova"
+      errorText={ERROR_LOAD_RETRY}
     >
       <div className="flex flex-col gap-1 flex-1">
         {top.map((d) => (

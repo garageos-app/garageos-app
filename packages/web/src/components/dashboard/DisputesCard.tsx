@@ -9,6 +9,7 @@ import {
   type InProgressDispute,
 } from '@/queries/disputesOpen';
 import { formatDate } from '@/lib/format';
+import { ERROR_LOAD_RETRY } from './strings';
 
 const REASON_LABELS_IT: Record<DisputeReasonCategory, string> = {
   not_performed: 'Lavoro non eseguito',
@@ -66,7 +67,7 @@ export function DisputesCard() {
       countBadgeVariant={pendingCount > 0 ? 'destructive' : 'default'}
       state={state}
       emptyText="Nessuna contestazione aperta"
-      errorText="Errore di caricamento — riprova"
+      errorText={ERROR_LOAD_RETRY}
     >
       <Tabs
         defaultValue="pending"

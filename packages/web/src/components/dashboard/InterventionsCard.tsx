@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CardShell } from './CardShell';
 import { useInterventionsRecent } from '@/queries/interventionsRecent';
 import { formatDate } from '@/lib/format';
+import { ERROR_LOAD_RETRY } from './strings';
 
 export function InterventionsCard() {
   const query = useInterventionsRecent(10);
@@ -24,7 +25,7 @@ export function InterventionsCard() {
       count={items.length}
       state={state}
       emptyText="Nessun intervento ancora registrato"
-      errorText="Errore di caricamento — riprova"
+      errorText={ERROR_LOAD_RETRY}
     >
       <div className="flex flex-col gap-1 flex-1">
         {items.map((i) => (

@@ -20,14 +20,12 @@ import {
 // absent or loading, fallback to initials computed from the user's
 // firstName / lastName. Email always shown next to avatar/initials.
 // Search: form submit trims query, classifies the input via
-// parseSearchInput (mirroring the legacy Dashboard search at
-// pages/Dashboard.tsx:111), and navigates to `/search?q=<value>&t=<type>`.
+// parseSearchInput, and navigates to `/search?q=<value>&t=<type>`.
 // SearchResults requires both `q` and `t` (see SearchResults.tsx:97) —
 // passing only `q` triggers the "Parametri di ricerca mancanti o invalidi"
 // error page. When the input is not a valid VIN / plate / garage_code,
 // the form shows an inline hint and does NOT navigate (customer-name
-// free-text search is not supported via the global TopBar; the legacy
-// Dashboard.tsx provides a separate CustomerAutocomplete for that flow).
+// free-text search is not supported via the global TopBar).
 export function TopBar() {
   const { state, signOut } = useAuth();
   const profileQuery = useProfileMe();
