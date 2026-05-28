@@ -15,6 +15,11 @@ import type { DeadlinesListResponse, TenantDeadline } from './types';
  *
  * Date parsing uses local-midnight semantics on both sides to avoid timezone
  * drift on UTC-offset-negative locales.
+ *
+ * The API serializes Prisma `due_date` (Postgres DATE) as a full ISO
+ * timestamp (`"2026-06-02T00:00:00.000Z"`), not a date-only string.
+ * Slice the first 10 characters before splitting so the parse stays
+ * resilient to either format.
  */
 export function useDeadlinesUpcoming(daysAhead: number) {
   const apiFetch = useApiFetch();
@@ -34,7 +39,8 @@ export function useDeadlinesUpcoming(daysAhead: number) {
       return res.deadlines
         .filter((d): d is TenantDeadline & { dueDate: string } => {
           if (!d.dueDate) return false;
-          const [y, m, day] = d.dueDate.split('-').map(Number);
+          const [y, m, day] = d.dueDate.slice(0, 10).split('-').map(Number);
+          if (!y || !m || !day) return false;
           const due = new Date(y, m - 1, day); // local midnight, matches today normalization
           return due >= today && due <= horizon;
         })
