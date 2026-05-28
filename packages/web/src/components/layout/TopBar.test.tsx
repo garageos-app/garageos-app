@@ -102,17 +102,43 @@ describe('<TopBar /> global search', () => {
     expect(screen.getByPlaceholderText('Cerca veicolo o cliente…')).toBeInTheDocument();
   });
 
-  it('submits search by navigating to /search?q=<encoded>', async () => {
+  it('submits search by navigating to /search?q=<value>&t=plate for a valid plate', async () => {
     const user = userEvent.setup();
     const loc = { current: '/' };
     profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
     render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
-    await user.type(input, 'AB 123 CD');
+    await user.type(input, 'AB123CD');
     await user.keyboard('{Enter}');
 
-    expect(loc.current).toBe('/search?q=AB%20123%20CD');
+    expect(loc.current).toBe('/search?q=AB123CD&t=plate');
+  });
+
+  it('submits search with t=vin for a 17-char VIN', async () => {
+    const user = userEvent.setup();
+    const loc = { current: '/' };
+    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+
+    const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
+    await user.type(input, 'ZFA31200000123456');
+    await user.keyboard('{Enter}');
+
+    expect(loc.current).toBe('/search?q=ZFA31200000123456&t=vin');
+  });
+
+  it('submits search with t=garage_code for a GO-XXX-XXXX code', async () => {
+    const user = userEvent.setup();
+    const loc = { current: '/' };
+    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+
+    const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
+    await user.type(input, 'GO-482-KXRT');
+    await user.keyboard('{Enter}');
+
+    expect(loc.current).toBe('/search?q=GO-482-KXRT&t=garage_code');
   });
 
   it('does not navigate on empty submit', async () => {
@@ -138,6 +164,39 @@ describe('<TopBar /> global search', () => {
     await user.type(input, '   AB123CD   ');
     await user.keyboard('{Enter}');
 
-    expect(loc.current).toBe('/search?q=AB123CD');
+    expect(loc.current).toBe('/search?q=AB123CD&t=plate');
+  });
+
+  it('shows inline error and does not navigate when input is not a valid plate/VIN/garage_code', async () => {
+    const user = userEvent.setup();
+    const loc = { current: '/' };
+    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+
+    const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
+    await user.type(input, 'Mario Rossi');
+    await user.keyboard('{Enter}');
+
+    expect(loc.current).toBe('/');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Inserisci una targa, un VIN (17 caratteri) o un codice GO-XXX-XXXX.',
+    );
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('clears inline error as soon as user edits the input again', async () => {
+    const user = userEvent.setup();
+    const loc = { current: '/' };
+    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+
+    const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
+    await user.type(input, 'Mario Rossi');
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    await user.type(input, 'X');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'false');
   });
 });
