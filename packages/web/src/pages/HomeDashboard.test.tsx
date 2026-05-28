@@ -73,4 +73,19 @@ describe('<HomeDashboard />', () => {
     renderHome();
     expect(screen.queryByTestId('dispute-banner')).not.toBeInTheDocument();
   });
+
+  it('renders a screen-reader-only h1 heading', () => {
+    mockedUseDisputesOpen.mockReturnValue({
+      data: {
+        pendingResponse: { count: 0, items: [] },
+        inProgress: { count: 0, items: [] },
+      },
+      isLoading: false,
+      isError: false,
+    } as never);
+    renderHome();
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1).toBeInTheDocument();
+    expect(h1).toHaveTextContent('Home');
+  });
 });
