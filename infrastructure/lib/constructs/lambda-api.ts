@@ -115,6 +115,21 @@ export class LambdaApiConstruct extends Construct {
       }),
     );
 
+    // s3:ListBucket — required for HeadObject to correctly return 404
+    // (NoSuchKey) on missing keys instead of 403 AccessDenied. The lazy
+    // cache pattern in vehicle-tag-s3.ts (F-OFF-104, BR-026) depends on
+    // distinguishing 404 (cache miss → render + PutObject) from other
+    // errors. Without ListBucket S3 cannot reveal "does this key exist?"
+    // and returns 403 even on missing objects. Bucket-level scope (no /*).
+    // Previously avatars/attachments/libretti did not hit this gotcha
+    // because HeadObject was only called POST-PutObject (key always existed).
+    executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:ListBucket'],
+        resources: [props.attachmentsBucket.bucketArn],
+      }),
+    );
+
     // SES send (verify-email + future BR-064/066/129 notifications).
     // Scoped to identity + config set ARN (least privilege).
     executionRole.addToPolicy(
