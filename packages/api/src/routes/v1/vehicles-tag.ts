@@ -11,14 +11,15 @@ import { env } from '../../config/env.js';
 // GET /v1/vehicles/:id/tag — F-OFF-104
 // Returns a 1-hour presigned S3 URL for the vehicle's PDF tag.
 //
-// BR-026: Tag PDF is immutable, lazy-generated and cached at
-//   S3 key `tags/<garage_code>.pdf`. The helper getOrCreateTagPresignedUrl
-//   performs a HeadObject check before generating/uploading.
+// BR-026 (to be added in this PR's Task 12): Tag PDF is immutable,
+//   lazy-generated and cached at S3 key `tags/<garage_code>.pdf`.
+//   The helper getOrCreateTagPresignedUrl performs a HeadObject check
+//   before generating/uploading.
 //
 // Status guard:
 //   - 'archived'  → 409 vehicle.archived   (tag unavailable for archived vehicles)
 //   - 'pending'   → 409 vehicle.not_certified (tag only available once certified)
-//   - 'active'    → 200 (proceed to presign + audit)
+//   - 'certified'  → 200 (proceed to presign + audit)
 //
 // Every successful call inserts a VehicleTagPrint audit row with kind='first'.
 
@@ -52,7 +53,7 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
           throw businessError('vehicle.not_found', 404, 'Veicolo non trovato');
         }
 
-        // See BR-026: tag only available for certified (active) vehicles.
+        // See BR-026 (to be added in this PR's Task 12): tag only available for certified vehicles.
         if (vehicle.status === 'archived') {
           throw businessError(
             'vehicle.archived',
@@ -71,7 +72,7 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        // At this point garageCode is guaranteed non-null (active vehicle
+        // At this point garageCode is guaranteed non-null (certified vehicle
         // must have a garage code assigned at certification — BR-020/BR-022).
         const garageCode = vehicle.garageCode;
 
@@ -84,7 +85,7 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
           select: { id: true },
         });
 
-        // 3. Generate / retrieve presigned URL (lazy S3 cache — BR-026).
+        // 3. Generate / retrieve presigned URL (lazy S3 cache — BR-026, to be added in Task 12).
         const { url, expiresAt, cacheHit } = await getOrCreateTagPresignedUrl({
           bucket: env.S3_ATTACHMENTS_BUCKET,
           garageCode,
