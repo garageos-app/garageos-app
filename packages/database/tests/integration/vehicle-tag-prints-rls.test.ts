@@ -203,6 +203,6 @@ describe('RLS — vehicle_tag_prints (post-migration 20260529120000)', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/foreign key|23503|P2003/i);
   });
 });
