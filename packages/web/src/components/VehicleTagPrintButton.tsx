@@ -39,8 +39,11 @@ export function VehicleTagPrintButton({ vehicleId }: Props) {
         ? 'Impossibile generare il tag. Riprova.'
         : null;
 
+  // Absolute-position the error message so it does not contribute to layout
+  // height. Without this, the parent action row (items-center) shifts the
+  // button up when the alert appears.
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className="relative flex flex-col items-start">
       <Button
         type="button"
         variant="outline"
@@ -51,7 +54,7 @@ export function VehicleTagPrintButton({ vehicleId }: Props) {
         {mutation.isPending ? 'Generazione PDF...' : 'Stampa tag'}
       </Button>
       {errorMessage && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="absolute left-0 top-full mt-1 max-w-xs text-sm text-destructive">
           {errorMessage}
         </p>
       )}
