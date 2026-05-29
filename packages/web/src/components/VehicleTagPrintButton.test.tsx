@@ -95,10 +95,6 @@ describe('VehicleTagPrintButton', () => {
     render(<VehicleTagPrintButton vehicleId={VEHICLE_ID} />, { wrapper: wrap });
     await user.click(screen.getByRole('button', { name: /Stampa tag/i }));
 
-    await waitFor(() =>
-      expect(
-        screen.getByText('Il tag non è disponibile per veicoli archiviati'),
-      ).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/archiviati/i));
   });
 });
