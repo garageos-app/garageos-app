@@ -443,11 +443,11 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 
 ### 3.17 Tag PDF veicolo (F-OFF-104)
 
-### `vehicle.archived`
+#### `vehicle.archived`
 
 **HTTP 409.** Operazione non disponibile perché il veicolo è in stato `archived`. Tag PDF, transfer, e altri flussi business-logic non accettano veicoli archiviati.
 
-### `vehicle.not_certified`
+#### `vehicle.not_certified`
 
 **HTTP 409.** Operazione richiede veicolo `certified`, ma è in stato `pending`. Il tag PDF (BR-026) è disponibile solo post-certificazione.
 
@@ -1007,8 +1007,8 @@ vehicle.garage_code.not_found
 vehicle.modification.archived
 vehicle.modification.certified_required
 vehicle.modification.vin_immutable
-vehicle.not_found
 vehicle.not_certified
+vehicle.not_found
 vehicle.pending.duplicate_vin_certified
 vehicle_tag.audit_insert_failed
 vehicle_tag.render_failed
