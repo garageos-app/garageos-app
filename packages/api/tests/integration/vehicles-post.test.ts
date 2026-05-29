@@ -85,14 +85,13 @@ describe('POST /v1/vehicles (integration)', () => {
       customer: { id: string; email: string };
       ownership: { vehicleId: string; customerId: string };
       invitation: { id: string } | null;
-      tag_download_url: string;
     };
     expect(json.vehicle.status).toBe('certified');
     expect(json.vehicle.garageCode).toMatch(/^GO-[2-9]{3}-[A-HJ-NPRTV-Z]{4}$/);
     expect(json.customer.email).toBe(body.customer.email);
     expect(json.ownership.customerId).toBe(json.customer.id);
     expect(json.invitation).not.toBeNull();
-    expect(json.tag_download_url).toBe(`/v1/vehicles/${json.vehicle.id}/tag.pdf`);
+    expect(json).not.toHaveProperty('tag_download_url');
 
     const { rows: relationRows } = await pgAdmin.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM customer_tenant_relations

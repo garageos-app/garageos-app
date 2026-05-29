@@ -555,10 +555,6 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
           },
           ownership,
           invitation: invitationResponse,
-          // TODO PR S3-presign: replace with a signed URL per APPENDICE_A §2.1
-          // "URL firmato valido 1 ora". Keeping a relative path for now means
-          // downstream clients can still navigate while the signer is built.
-          tag_download_url: `/v1/vehicles/${vehicle.id}/tag.pdf`,
         };
       });
     },

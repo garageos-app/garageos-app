@@ -195,8 +195,7 @@ Altri campi nel root:
     "target_email": "mario.rossi@example.com",
     "expires_at": "2026-05-21T14:32:05Z",
     "sent": true
-  },
-  "tag_download_url": "https://api.garageos.it/v1/vehicles/01HKXN5.../tag.pdf"
+  }
 }
 ```
 
@@ -216,7 +215,7 @@ Altri campi nel root:
 - L'invio dell'email di invito avviene in background (job asincrono) se `send_invitation_email: true`
 - La relazione `customer_tenant_relation` è creata automaticamente
 - L'endpoint registra una riga in `access_log` con action `create`
-- Il `tag_download_url` è un URL firmato valido 1 ora per scaricare il PDF del tag
+- Per scaricare il PDF del tag, chiamare `GET /v1/vehicles/:id/tag` (vedi §2.X, aggiunto in Task 12)
 
 ---
 
