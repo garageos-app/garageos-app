@@ -37,7 +37,7 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
       }
       const { id: vehicleId } = parsed.data;
       const tenantId = request.tenantId!;
-      const userId = request.userId!;
+      const cognitoSub = request.userId!;
 
       return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
         // 1. Fetch vehicle — scope to tenant for deterministic isolation
@@ -75,23 +75,35 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
         // must have a garage code assigned at certification — BR-020/BR-022).
         const garageCode = vehicle.garageCode;
 
-        // 2. Generate / retrieve presigned URL (lazy S3 cache — BR-026).
+        // 2. Resolve the DB user.id from the Cognito sub.
+        //    request.userId carries the Cognito sub (opaque string), NOT the DB
+        //    users.id UUID. The FK printed_by_user_id references users.id, so we
+        //    must look up the row first — same pattern as users-update.ts / users-avatar.ts.
+        const userRow = await tx.user.findFirstOrThrow({
+          where: { cognitoSub, tenantId },
+          select: { id: true },
+        });
+
+        // 3. Generate / retrieve presigned URL (lazy S3 cache — BR-026).
         const { url, expiresAt, cacheHit } = await getOrCreateTagPresignedUrl({
           bucket: env.S3_ATTACHMENTS_BUCKET,
           garageCode,
         });
 
-        // 3. Audit row — every print event is recorded.
+        // 4. Audit row — every print event is recorded.
         await tx.vehicleTagPrint.create({
           data: {
             vehicleId,
             tenantId,
-            printedByUserId: userId,
+            printedByUserId: userRow.id,
             kind: 'first',
           },
         });
 
-        request.log.info({ vehicleId, garageCode, userId, kind: 'first', cacheHit }, 'tag.printed');
+        request.log.info(
+          { vehicleId, garageCode, userId: userRow.id, kind: 'first', cacheHit },
+          'tag.printed',
+        );
 
         return {
           tag_download_url: url,

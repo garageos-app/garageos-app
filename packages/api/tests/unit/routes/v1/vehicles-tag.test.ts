@@ -142,7 +142,7 @@ describe('GET /v1/vehicles/:id/tag (unit)', () => {
     };
     expect(createCall.data.vehicleId).toBe(VEHICLE_ID);
     expect(createCall.data.tenantId).toBe(TENANT_ID);
-    expect(createCall.data.printedByUserId).toBe(COGNITO_SUB);
+    expect(createCall.data.printedByUserId).toBe(USER_ID);
     expect(createCall.data.kind).toBe('first');
   });
 
@@ -193,6 +193,8 @@ describe('GET /v1/vehicles/:id/tag (unit)', () => {
     expect(res.statusCode).toBe(409);
     const body = res.json<{ code: string }>();
     expect(body.code).toBe('vehicle.not_certified');
+    expect(getOrCreateTagPresignedUrl).not.toHaveBeenCalled();
+    expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
   it('400 — VALIDATION_ERROR when :id is not a valid UUID v4', async () => {
