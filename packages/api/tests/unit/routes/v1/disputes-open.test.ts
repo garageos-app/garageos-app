@@ -62,6 +62,7 @@ async function buildApp(prisma: FakePrisma): Promise<FastifyInstance> {
   });
   app.decorate('jwtVerifier', verifier);
   await app.register(disputesOpenRoutes);
+  await app.ready();
   return app;
 }
 
@@ -69,6 +70,7 @@ describe('GET /v1/disputes/open (unit)', () => {
   let app: FastifyInstance;
   afterEach(async () => {
     if (app) await app.close();
+    vi.clearAllMocks();
   });
 
   it('returns empty groups with count=0 when no disputes exist', async () => {
