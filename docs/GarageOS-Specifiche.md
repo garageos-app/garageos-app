@@ -813,7 +813,7 @@ flowchart TD
 ```
 
 **Note e dettagli:**
-- Il **QR code del tag** contiene un URL del tipo `https://app.garageos.it/c/GO-482-KXRT` che:
+- Il **QR code del tag** contiene un URL del tipo `https://app.garageos.it/v/GO-482-KXRT` che:
   - Se l'app è installata: apre direttamente l'app sulla schermata di claim
   - Se non è installata: mostra una landing con invito al download preservando il codice (deep link con differito)
 - Il flusso deve funzionare anche per chi **non ha mai sentito parlare di GarageOS**: il cliente trova un QR sul suo veicolo, scansiona per curiosità, scopre il servizio

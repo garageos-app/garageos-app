@@ -2,7 +2,10 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { businessError } from '../../lib/business-error.js';
-import { getOrCreateTagPresignedUrl } from '../../lib/vehicle-tag-s3.js';
+import {
+  getOrCreateTagPresignedUrl,
+  VehicleTagAuditInsertFailedError,
+} from '../../lib/vehicle-tag-s3.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -53,7 +56,9 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
           throw businessError('vehicle.not_found', 404, 'Veicolo non trovato');
         }
 
-        // See BR-026 (to be added in this PR's Task 12): tag only available for certified vehicles.
+        // See BR-026: tag only available for certified vehicles.
+        // Archived check is explicit (specific code); positive certified guard
+        // catches any future non-certified status (e.g. pending, suspended).
         if (vehicle.status === 'archived') {
           throw businessError(
             'vehicle.archived',
@@ -61,10 +66,8 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
             'Il tag non è disponibile per veicoli archiviati',
           );
         }
-        // garageCode is null when the vehicle has not yet been certified
-        // (status='pending' or newly created). Both conditions map to the
-        // same user-facing error: the tag is not available yet.
-        if (vehicle.status === 'pending' || vehicle.garageCode === null) {
+        if (vehicle.status !== 'certified') {
+          // pending and any future non-certified status → not_certified
           throw businessError(
             'vehicle.not_certified',
             409,
@@ -74,6 +77,15 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
 
         // At this point garageCode is guaranteed non-null (certified vehicle
         // must have a garage code assigned at certification — BR-020/BR-022).
+        // The null guard below is a defensive assertion only; it should never
+        // be reached in practice.
+        if (!vehicle.garageCode) {
+          throw businessError(
+            'vehicle.not_certified',
+            409,
+            'Il tag è disponibile solo per veicoli certificati',
+          );
+        }
         const garageCode = vehicle.garageCode;
 
         // 2. Resolve the DB user.id from the Cognito sub.
@@ -92,14 +104,18 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
         });
 
         // 4. Audit row — every print event is recorded.
-        await tx.vehicleTagPrint.create({
-          data: {
-            vehicleId,
-            tenantId,
-            printedByUserId: userRow.id,
-            kind: 'first',
-          },
-        });
+        try {
+          await tx.vehicleTagPrint.create({
+            data: {
+              vehicleId,
+              tenantId,
+              printedByUserId: userRow.id,
+              kind: 'first',
+            },
+          });
+        } catch (err) {
+          throw new VehicleTagAuditInsertFailedError('audit insert failed', err);
+        }
 
         request.log.info(
           { vehicleId, garageCode, userId: userRow.id, kind: 'first', cacheHit },

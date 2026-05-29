@@ -145,7 +145,7 @@ La ricerca per `garage_code` è **case-insensitive** (GO-482-KXRT == go-482-kxrt
 **Implementazione:** ogni input viene `.toUpperCase()` prima della query.
 
 ### BR-025 — Display del codice
-Il codice è sempre visualizzato con i trattini nel formato `GO-NNN-AAAA`. Nei QR code è memorizzato come URL `https://app.garageos.it/c/GO-NNN-AAAA` (non solo il codice raw).
+Il codice è sempre visualizzato con i trattini nel formato `GO-NNN-AAAA`. Nei QR code è memorizzato come URL `https://app.garageos.it/v/GO-NNN-AAAA` (non solo il codice raw). Path scelta `/v/` (vehicle) — vedi BR-026 e spec 2026-05-29-F-OFF-104-109-tag-pdf-design.md §2 Q3.
 
 ### BR-026 — Tag PDF generation lazy + immutable
 

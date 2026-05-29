@@ -89,7 +89,7 @@ describe('VehicleTagPrintButton', () => {
   it('shows "archiviati" error message when mutation fails with vehicle.archived', async () => {
     const user = userEvent.setup();
     mockApiFetch.mockRejectedValueOnce(
-      new ApiError('vehicle.archived', 422, 'Vehicle is archived'),
+      new ApiError('vehicle.archived', 409, 'Vehicle is archived'),
     );
 
     render(<VehicleTagPrintButton vehicleId={VEHICLE_ID} />, { wrapper: wrap });

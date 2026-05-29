@@ -9,9 +9,17 @@ import vehicleTagRoutes from '../../../../src/routes/v1/vehicles-tag.js';
 
 // Mock getOrCreateTagPresignedUrl at module level so no real S3 calls
 // are made — see feedback_aws_sdk_presigner_credentials_chain.
-vi.mock('../../../../src/lib/vehicle-tag-s3.js', () => ({
-  getOrCreateTagPresignedUrl: vi.fn(),
-}));
+// Error classes are passed through from the real module so that the route
+// handler can import + use them normally even under the mock.
+vi.mock('../../../../src/lib/vehicle-tag-s3.js', async () => {
+  const real = await vi.importActual<typeof import('../../../../src/lib/vehicle-tag-s3.js')>(
+    '../../../../src/lib/vehicle-tag-s3.js',
+  );
+  return {
+    ...real,
+    getOrCreateTagPresignedUrl: vi.fn(),
+  };
+});
 
 // Import after vi.mock so the mocked version is used.
 import { getOrCreateTagPresignedUrl } from '../../../../src/lib/vehicle-tag-s3.js';
@@ -51,7 +59,7 @@ function buildFakePrisma(
     id: string;
     garageCode: string | null;
     status: string;
-  } | null = { id: VEHICLE_ID, garageCode: GARAGE_CODE, status: 'active' },
+  } | null = { id: VEHICLE_ID, garageCode: GARAGE_CODE, status: 'certified' },
 ): FakePrisma {
   return {
     user: {

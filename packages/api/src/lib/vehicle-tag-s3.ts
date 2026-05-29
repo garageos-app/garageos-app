@@ -40,6 +40,26 @@ export class VehicleTagS3HeadFailedError extends Error {
   }
 }
 
+export class VehicleTagRenderFailedError extends Error {
+  override name = 'vehicle_tag.render_failed';
+  constructor(
+    message: string,
+    public override readonly cause?: unknown,
+  ) {
+    super(message);
+  }
+}
+
+export class VehicleTagAuditInsertFailedError extends Error {
+  override name = 'vehicle_tag.audit_insert_failed';
+  constructor(
+    message: string,
+    public override readonly cause?: unknown,
+  ) {
+    super(message);
+  }
+}
+
 export class VehicleTagS3UploadFailedError extends Error {
   override name = 'vehicle_tag.s3_upload_failed';
   constructor(
@@ -71,7 +91,12 @@ export async function getOrCreateTagPresignedUrl(
 
   // 2. Cache miss: render + PutObject
   if (!cacheHit) {
-    const pdfBuffer = await renderTagPdf(input.garageCode);
+    let pdfBuffer: Buffer;
+    try {
+      pdfBuffer = await renderTagPdf(input.garageCode);
+    } catch (err) {
+      throw new VehicleTagRenderFailedError('renderTagPdf failed', err);
+    }
     try {
       await client.send(
         new PutObjectCommand({
