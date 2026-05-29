@@ -23,6 +23,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// Note: renderTagPdf runs for real (not mocked) in cache-miss tests.
+// Acceptable: keeps tests fast (<200ms per renderer). If this changes,
+// mock vehicle-tag-renderer.js and assert renderTagPdf was called.
 describe('getOrCreateTagPresignedUrl', () => {
   it('cache miss: HeadObject NoSuchKey → renders + PutObject + returns presigned URL', async () => {
     s3Mock.on(HeadObjectCommand).rejects(new NoSuchKey({ message: 'not found', $metadata: {} }));
@@ -35,9 +38,16 @@ describe('getOrCreateTagPresignedUrl', () => {
 
     expect(result.url).toContain('garageos-test-attachments');
     expect(result.url).toContain('tags/GO-288-QPWZ.pdf');
+    // Untested: getSignedUrl IAM error bubbles unwrapped to caller (route handler
+    // Task 6 must handle in 500 path).
     expect(result.expiresAt).toBeInstanceOf(Date);
     expect(result.cacheHit).toBe(false);
-    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(1);
+    const putCalls = s3Mock.commandCalls(PutObjectCommand);
+    expect(putCalls).toHaveLength(1);
+    expect(putCalls[0]!.args[0].input).toMatchObject({
+      ContentType: 'application/pdf',
+      CacheControl: 'public, max-age=31536000, immutable',
+    });
   });
 
   it('cache hit: HeadObject 200 → no PutObject, returns presigned URL', async () => {

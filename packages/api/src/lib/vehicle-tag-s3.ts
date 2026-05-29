@@ -3,11 +3,10 @@ import {
   HeadObjectCommand,
   NoSuchKey,
   PutObjectCommand,
-  S3ServiceException,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-import { getS3Client } from './s3.js';
+import { getS3Client, isHttpStatus } from './s3.js';
 import { renderTagPdf } from './vehicle-tag-renderer.js';
 
 // BR-026 — Tag PDF S3 cache: lazy generation + immutable.
@@ -31,7 +30,7 @@ function tagKey(garageCode: string): string {
   return `tags/${garageCode}.pdf`;
 }
 
-class VehicleTagS3HeadFailedError extends Error {
+export class VehicleTagS3HeadFailedError extends Error {
   override name = 'vehicle_tag.s3_head_failed';
   constructor(
     message: string,
@@ -41,7 +40,7 @@ class VehicleTagS3HeadFailedError extends Error {
   }
 }
 
-class VehicleTagS3UploadFailedError extends Error {
+export class VehicleTagS3UploadFailedError extends Error {
   override name = 'vehicle_tag.s3_upload_failed';
   constructor(
     message: string,
@@ -95,8 +94,4 @@ export async function getOrCreateTagPresignedUrl(
   const expiresAt = new Date(Date.now() + PRESIGN_TTL_SECONDS * 1000);
 
   return { url, expiresAt, cacheHit };
-}
-
-function isHttpStatus(err: unknown, status: number): boolean {
-  return err instanceof S3ServiceException && err.$metadata.httpStatusCode === status;
 }
