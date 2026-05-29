@@ -779,8 +779,8 @@ model VehicleTagPrint {
   createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz()
 
   vehicle            Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  tenant             Tenant       @relation(fields: [tenantId], references: [id])
-  printedByUser      User         @relation("VehicleTagPrintPrintedBy", fields: [printedByUserId], references: [id])
+  tenant             Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  printedByUser      User         @relation("VehicleTagPrintPrintedBy", fields: [printedByUserId], references: [id], onDelete: Restrict)
 
   @@index([vehicleId, createdAt(sort: Desc)], map: "idx_vehicle_tag_prints_vehicle")
   @@index([tenantId, createdAt(sort: Desc)], map: "idx_vehicle_tag_prints_tenant")
