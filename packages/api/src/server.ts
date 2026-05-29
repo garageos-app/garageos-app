@@ -59,6 +59,7 @@ import vehicleTimelineRoutes from './routes/v1/vehicles-timeline.js';
 import vehicleUpdateRoutes from './routes/v1/vehicles-update.js';
 import vehicleRoutes from './routes/v1/vehicles.js';
 import vehicleTagRoutes from './routes/v1/vehicles-tag.js';
+import vehicleTagReprintRoutes from './routes/v1/vehicles-tag-reprint.js';
 
 export interface BuildServerOptions {
   // Database plugin overrides. Integration tests pass nothing and get
@@ -164,6 +165,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(vehicleUpdateRoutes);
   await app.register(vehiclesOwnershipTransferRoutes);
   await app.register(vehicleTagRoutes);
+  await app.register(vehicleTagReprintRoutes);
   await app.register(vehicleTimelineRoutes);
   await app.register(interventionRoutes);
   await app.register(interventionDetailRoutes);
