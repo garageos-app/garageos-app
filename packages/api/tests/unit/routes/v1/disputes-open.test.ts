@@ -12,6 +12,16 @@ const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const LOCATION_ID = '44444444-4444-4444-8444-444444444444';
 
+type StatusFilter = string | { in: string[] };
+
+function whereStatus(args: unknown): StatusFilter {
+  return (args as { where: { status: StatusFilter } }).where.status;
+}
+
+function isInProgressFilter(status: StatusFilter): boolean {
+  return typeof status === 'object' && Array.isArray(status.in);
+}
+
 interface FakePrisma {
   user: { findFirstOrThrow: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   interventionDispute: {
@@ -156,8 +166,7 @@ describe('GET /v1/disputes/open (unit)', () => {
     const prisma = buildFakePrisma();
     const customerId = '55555555-5555-4555-8555-555555555555';
     prisma.interventionDispute.findMany.mockImplementation(async (args: unknown) => {
-      const status = (args as { where: { status: unknown } }).where.status;
-      if (status === 'open') {
+      if (whereStatus(args) === 'open') {
         return [
           {
             id: '66666666-6666-4666-8666-666666666666',
@@ -178,10 +187,9 @@ describe('GET /v1/disputes/open (unit)', () => {
       }
       return [];
     });
-    prisma.interventionDispute.count.mockImplementation(async (args: unknown) => {
-      const status = (args as { where: { status: unknown } }).where.status;
-      return status === 'open' ? 1 : 0;
-    });
+    prisma.interventionDispute.count.mockImplementation(async (args: unknown) =>
+      whereStatus(args) === 'open' ? 1 : 0,
+    );
     prisma.customerTenantRelation.findMany.mockResolvedValue([{ customerId }]);
 
     app = await buildApp(prisma);
@@ -203,8 +211,7 @@ describe('GET /v1/disputes/open (unit)', () => {
     const prisma = buildFakePrisma();
     const customerId = '88888888-8888-4888-8888-888888888888';
     prisma.interventionDispute.findMany.mockImplementation(async (args: unknown) => {
-      const status = (args as { where: { status: unknown } }).where.status;
-      if (status === 'open') {
+      if (whereStatus(args) === 'open') {
         return [
           {
             id: '99999999-9999-4999-8999-999999999999',
@@ -244,8 +251,7 @@ describe('GET /v1/disputes/open (unit)', () => {
     const prisma = buildFakePrisma();
     const customerId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     prisma.interventionDispute.findMany.mockImplementation(async (args: unknown) => {
-      const status = (args as { where: { status: unknown } }).where.status;
-      if (status === 'open') {
+      if (whereStatus(args) === 'open') {
         return [
           {
             id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
@@ -284,10 +290,7 @@ describe('GET /v1/disputes/open (unit)', () => {
   it('exposes status in inProgress items (responded vs escalated)', async () => {
     const prisma = buildFakePrisma();
     prisma.interventionDispute.findMany.mockImplementation(async (args: unknown) => {
-      const status = (args as { where: { status: unknown } }).where.status;
-      const isInProgress =
-        typeof status === 'object' && Array.isArray((status as { in: string[] }).in);
-      if (isInProgress) {
+      if (isInProgressFilter(whereStatus(args))) {
         return [
           {
             id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
