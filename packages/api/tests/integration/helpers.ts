@@ -17,6 +17,7 @@ const TABLES_TO_WIPE = [
   'interventions',
   'private_interventions',
   'attachments',
+  'vehicle_tag_prints',
   'vehicle_transfers',
   'vehicle_ownerships',
   'vehicles',
