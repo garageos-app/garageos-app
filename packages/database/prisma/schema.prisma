@@ -63,6 +63,11 @@ enum VehicleStatus {
   archived
 }
 
+enum TagPrintKind {
+  first
+  reprint
+}
+
 enum VehicleType {
   car
   motorcycle
@@ -222,6 +227,7 @@ model Tenant {
   interventionTypes InterventionType[]
   certifiedVehicles Vehicle[] @relation("CertifiedBy")
   createdVehicles Vehicle[] @relation("CreatedByTenant")
+  tagPrints       VehicleTagPrint[]
 
   @@index([vatNumber], map: "idx_tenants_vat_number")
   @@index([status], map: "idx_tenants_status")
@@ -281,6 +287,7 @@ model User {
   revisions           InterventionRevision[]
   disputeResponses    InterventionDispute[]
   accessLogs          AccessLog[]
+  tagPrintsPrinted    VehicleTagPrint[] @relation("VehicleTagPrintPrintedBy")
 
   @@index([tenantId], map: "idx_users_tenant_id")
   @@index([email], map: "idx_users_email")
@@ -404,6 +411,7 @@ model Vehicle {
   deadlines           Deadline[]
   accessLogs          AccessLog[]
   invitations         Invitation[]
+  tagPrints           VehicleTagPrint[]
 
   @@index([plate], map: "idx_vehicles_plate")
   @@index([status], map: "idx_vehicles_status")
@@ -754,4 +762,27 @@ model PushToken {
 
   @@index([customerId], map: "idx_push_customer_active")
   @@map("push_tokens")
+}
+
+// ---------------------------------------------------
+// VEHICLE TAG PRINTS (F-OFF-104)
+// ---------------------------------------------------
+
+model VehicleTagPrint {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicleId          String       @map("vehicle_id") @db.Uuid
+  tenantId           String       @map("tenant_id") @db.Uuid
+  printedByUserId    String       @map("printed_by_user_id") @db.Uuid
+  kind               TagPrintKind
+  reason             String?
+  documentVerified   Boolean      @default(false) @map("document_verified")
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+
+  vehicle            Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  tenant             Tenant       @relation(fields: [tenantId], references: [id])
+  printedByUser      User         @relation("VehicleTagPrintPrintedBy", fields: [printedByUserId], references: [id])
+
+  @@index([vehicleId, createdAt(sort: Desc)], map: "idx_vehicle_tag_prints_vehicle")
+  @@index([tenantId, createdAt(sort: Desc)], map: "idx_vehicle_tag_prints_tenant")
+  @@map("vehicle_tag_prints")
 }
