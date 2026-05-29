@@ -215,7 +215,7 @@ Altri campi nel root:
 - L'invio dell'email di invito avviene in background (job asincrono) se `send_invitation_email: true`
 - La relazione `customer_tenant_relation` è creata automaticamente
 - L'endpoint registra una riga in `access_log` con action `create`
-- Per scaricare il PDF del tag, chiamare `GET /v1/vehicles/:id/tag` (vedi §2.X, aggiunto in Task 12)
+- Per scaricare il PDF del tag, chiamare `GET /v1/vehicles/:id/tag` (vedi §2.13).
 
 ---
 
@@ -1422,6 +1422,51 @@ Per ottenere l'URL di accesso a un allegato, chiamare `GET /v1/attachments/:id/v
 
 ---
 
+### 2.13 `GET /v1/vehicles/:id/tag` — Genera o recupera tag PDF veicolo
+
+**Auth:** bearer JWT (qualunque utente attivo del tenant).
+**Feature:** F-OFF-104 (stampa tag). BR-026 (lazy generation), BR-027 (audit log).
+
+#### Request
+
+- Path param `id`: UUID veicolo.
+
+```http
+GET /v1/vehicles/:id/tag
+Authorization: Bearer <officine_user_jwt>
+```
+
+Nessun body, nessun query param.
+
+#### Response 200
+
+```json
+{
+  "tag_download_url": "https://garageos-prod-attachments.s3.eu-south-1.amazonaws.com/tags/GO-288-QPWZ.pdf?X-Amz-...",
+  "expires_at": "2026-05-29T13:00:00.000Z"
+}
+```
+
+Il `tag_download_url` è un presigned URL S3 valido 1h. Il PDF è A4 14-up con 14 etichette identiche (codice + QR code → `https://app.garageos.it/v/<code>`), formato Avery L7163.
+
+#### Error matrix
+
+| Status | Code | Trigger |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Path id non UUID v4. |
+| 401 | `auth.unauthorized` | JWT missing/invalid. |
+| 404 | `vehicle.not_found` | Veicolo non esistente o cross-tenant. |
+| 409 | `vehicle.archived` | `vehicle.status='archived'`. |
+| 409 | `vehicle.not_certified` | `vehicle.status='pending'`. |
+| 500 | `internal_error` | S3 head/upload/render/audit failure (vedi APPENDICE_G §3.17). |
+
+#### Note
+
+- Audit: ogni richiesta inserisce row in `vehicle_tag_prints` con `kind='first'`.
+- Caching: PDF cached su S3 con key `tags/<garage_code>.pdf` (immutabile per BR-022). Second+ accessi → cache-hit (no re-render).
+
+---
+
 ## 3. Riferimento completo endpoint
 
 Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si indica: metodo, path, feature, auth richiesta e breve descrizione.
@@ -2020,7 +2065,7 @@ Ordine: sede primaria prima (`isPrimary DESC`), poi alfabetico per nome.
 | POST | `/vehicles` | F-OFF-102, F-OFF-103 | Tenant User | **[DETTAGLIATO §2.1]** Censisce nuovo veicolo |
 | PATCH | `/vehicles/:id` | F-OFF-106 | Tenant User | Modifica dati veicolo (alcuni campi immutabili) |
 | POST | `/vehicles/:id/certify` | F-OFF-107 | Tenant User | Promuove veicolo da pending a certified |
-| GET | `/vehicles/:id/tag.pdf` | F-OFF-104, F-OFF-109 | Tenant User | Scarica PDF del tag (codice + QR) |
+| GET | `/vehicles/:id/tag` | F-OFF-104, F-OFF-109 | Tenant User | **[DETTAGLIATO §2.13]** Presigned URL per scaricare PDF del tag (codice + QR) |
 | GET | `/vehicles/:id/access-log` | F-OFF-601, F-CLI-304 | Any User | Log accessi al veicolo |
 | GET | `/vehicles/:id/timeline` | F-OFF-105, F-CLI-201 | Any User | **[DETTAGLIATO §2.5]** Timeline interventi |
 | POST | `/vehicles/claim` | F-CLI-101, F-CLI-102 | Customer | **[DETTAGLIATO §2.4]** Aggancia veicolo tramite codice |
