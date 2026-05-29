@@ -29,6 +29,7 @@ const TABLES_TO_WIPE = [
   'locations',
   'tenants',
   'intervention_types',
+  'vehicle_tag_prints',
 ];
 
 async function reseedInterventionTypes(): Promise<void> {

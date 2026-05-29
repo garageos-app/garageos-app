@@ -99,7 +99,7 @@ export async function headObject(bucket: string, key: string): Promise<HeadObjec
   }
 }
 
-function isHttpStatus(err: unknown, status: number): boolean {
+export function isHttpStatus(err: unknown, status: number): boolean {
   return err instanceof S3ServiceException && err.$metadata.httpStatusCode === status;
 }
 

@@ -898,6 +898,34 @@ model PushToken {
 - **Trigger per `updated_at`** → via SQL raw (alternativa: Prisma `@updatedAt` che gestisce lato applicativo)
 - **Funzioni PostgreSQL custom** → via SQL raw
 
+### 2.3 `vehicle_tag_prints` — Audit log stampe tag PDF (F-OFF-104, BR-027)
+
+**Append-only** audit log delle stampe/ristampe del tag PDF per veicolo.
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `id` | UUID | PK |
+| `vehicle_id` | UUID | FK → `vehicles.id` ON DELETE CASCADE |
+| `tenant_id` | UUID | FK → `tenants.id` ON DELETE CASCADE |
+| `printed_by_user_id` | UUID | FK → `users.id` ON DELETE RESTRICT |
+| `kind` | enum `TagPrintKind` | `first` o `reprint` (PR2). PR1 logga sempre `first`. |
+| `reason` | TEXT NULL | Solo per `kind='reprint'` (PR2). |
+| `document_verified` | BOOLEAN DEFAULT FALSE | Dichiarazione meccanico verifica documentale (PR2). |
+| `created_at` | TIMESTAMPTZ DEFAULT NOW() | |
+
+**Indexes:**
+
+- `idx_vehicle_tag_prints_vehicle (vehicle_id, created_at DESC)`
+- `idx_vehicle_tag_prints_tenant (tenant_id, created_at DESC)`
+
+**RLS:**
+
+- SELECT: `is_admin_role() OR tenant_id = current_tenant_id()` (pattern split, admin bypass per support tooling).
+- INSERT: `tenant_id = current_tenant_id()` (no admin bypass write — pattern split).
+- UPDATE/DELETE: default-deny (append-only). Pattern stesso di `intervention_revisions`.
+
+**Grants:** `garageos_app` role ottiene SELECT + INSERT; UPDATE + DELETE esplicitamente revocate.
+
 ---
 
 ## 3. Migration SQL aggiuntive (RLS, trigger)

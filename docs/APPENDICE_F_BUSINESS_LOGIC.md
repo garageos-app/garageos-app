@@ -145,7 +145,32 @@ La ricerca per `garage_code` è **case-insensitive** (GO-482-KXRT == go-482-kxrt
 **Implementazione:** ogni input viene `.toUpperCase()` prima della query.
 
 ### BR-025 — Display del codice
-Il codice è sempre visualizzato con i trattini nel formato `GO-NNN-AAAA`. Nei QR code è memorizzato come URL `https://app.garageos.it/c/GO-NNN-AAAA` (non solo il codice raw).
+Il codice è sempre visualizzato con i trattini nel formato `GO-NNN-AAAA`. Nei QR code è memorizzato come URL `https://app.garageos.it/v/GO-NNN-AAAA` (non solo il codice raw). Path scelta `/v/` (vehicle) — vedi BR-026 e spec 2026-05-29-F-OFF-104-109-tag-pdf-design.md §2 Q3.
+
+### BR-026 — Tag PDF generation lazy + immutable
+
+Il PDF del tag veicolo è generato on-demand al primo download e cached su S3 con key `tags/<garage_code>.pdf`. Il PDF è immutabile per BR-022 (codice GarageOS immutabile): successive richieste ritornano lo stesso PDF cached. Nessun meccanismo di invalidation.
+
+**Layout:** A4 14-up Avery L7163 (99.1×38.1mm, 2 col × 7 rows).
+**QR contents:** `https://app.garageos.it/v/<garage_code>` (universal link, landing page deferred a PR mobile B2C).
+**Presigned URL validity:** 1h.
+**Gating:** veicolo deve essere `certified` (no `pending`, no `archived`).
+
+**Lambda IAM:** policy esistente in `infrastructure/lib/constructs/lambda-api.ts` (`s3:GetObject + s3:PutObject` su `${bucketArn}/*`) già copre il prefix `tags/*`.
+
+### BR-027 — Tag print audit log
+
+Ogni richiesta di stampa/ristampa del tag inserisce una row in `vehicle_tag_prints`.
+
+**Campi:** `vehicle_id`, `tenant_id`, `printed_by_user_id`, `kind ('first' | 'reprint')`, `reason`, `document_verified`, `created_at`.
+
+**Vincoli:**
+
+- Append-only (UPDATE/DELETE denied via RLS).
+- Tenant-scoped SELECT (admin bypass per support tooling).
+- Tenant-scoped INSERT (no admin bypass per write).
+
+**PR1 (F-OFF-104):** ogni richiesta loggata come `kind='first'`. **PR2 (F-OFF-109):** distinzione first ↔ reprint enforced lato backend + UI gating sul count audit precedente.
 
 ---
 

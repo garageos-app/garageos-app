@@ -1245,7 +1245,7 @@ describe('POST /v1/vehicles — data path', () => {
     );
   });
 
-  it('returns 201 with vehicle + customer + ownership + invitation + tag_download_url', async () => {
+  it('returns 201 with vehicle + customer + ownership + invitation', async () => {
     const bodyNew = {
       vehicle: validBody.vehicle,
       customer: {
@@ -1290,7 +1290,6 @@ describe('POST /v1/vehicles — data path', () => {
       customer: { id: string; email: string; phone: string | null; status: string };
       ownership: { id: string; vehicleId: string; customerId: string };
       invitation: { id: string; targetEmail: string } | null;
-      tag_download_url: string;
     };
     expect(body.vehicle.id).toBe(VEHICLE_ID);
     expect(body.vehicle.garageCode).toBe('GO-234-ABCD');
@@ -1299,7 +1298,7 @@ describe('POST /v1/vehicles — data path', () => {
     expect(body.customer.phone).toBeNull(); // Fix #2: phone is part of the response
     expect(body.customer.status).toBe('active'); // Fix #1: status from DB, not hardcoded
     expect(body.ownership.vehicleId).toBe(VEHICLE_ID);
-    expect(body.tag_download_url).toBe(`/v1/vehicles/${VEHICLE_ID}/tag.pdf`);
+    expect(body).not.toHaveProperty('tag_download_url');
   });
 });
 

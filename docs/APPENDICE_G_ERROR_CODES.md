@@ -268,6 +268,8 @@ Per fornire dati utili al client per gestire l'errore:
 | `vehicle.claim.pending_not_claimable` | 422 | info | Veicolo non certificato | Claim di pending | BR-042 |
 | `vehicle.claim.archived` | 422 | info | Veicolo archiviato | | BR-042 |
 | `vehicle.access.forbidden` | 403 | warning | Accesso al veicolo non consentito | Customer non proprietario | |
+| `vehicle.archived` | 409 | info | Veicolo archiviato, operazione non disponibile | Tag PDF, transfer e altri flussi su veicoli archiviati | BR-026 |
+| `vehicle.not_certified` | 409 | info | Veicolo non certificato, operazione non disponibile | Tag PDF su veicolo `pending` | BR-026 |
 
 ### 3.6 Interventi
 
@@ -436,6 +438,34 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 | `attachment.confirm.s3_unavailable` | 502 | AWS SDK HeadObject error generico | Retry con backoff. |
 
 **Nota validation Zod**: gli errori di validation (mime fuori whitelist, size > 25MB, file_name invalido) attualmente ritornano `400 VALIDATION_ERROR` (RFC 7807 standard via `@fastify/sensible`) — il code dot-separated specifico (`attachment.upload.mime_type_not_allowed`) è documentato qui per riferimento ma il client riceve `code: VALIDATION_ERROR` con `details` array. In una future iteration, il dot-separated code può essere mappato esplicitamente per granularità.
+
+---
+
+### 3.17 Tag PDF veicolo (F-OFF-104)
+
+#### `vehicle.archived`
+
+**HTTP 409.** Operazione non disponibile perché il veicolo è in stato `archived`. Tag PDF, transfer, e altri flussi business-logic non accettano veicoli archiviati.
+
+#### `vehicle.not_certified`
+
+**HTTP 409.** Operazione richiede veicolo `certified`, ma è in stato `pending`. Il tag PDF (BR-026) è disponibile solo post-certificazione.
+
+#### `vehicle_tag.s3_head_failed`
+
+**HTTP 500.** S3 HeadObject ha fallito per ragioni diverse da NoSuchKey (IAM denial, network, throttle). Server log contiene dettaglio. Cliente riceve `internal_error` generico.
+
+#### `vehicle_tag.s3_upload_failed`
+
+**HTTP 500.** S3 PutObject ha fallito dopo render PDF success. PDF buffer perso; next retry rifa render + upload (idempotente).
+
+#### `vehicle_tag.render_failed`
+
+**HTTP 500.** `pdf-lib` o `qrcode` ha lanciato durante render. Verificare deps e input.
+
+#### `vehicle_tag.audit_insert_failed`
+
+**HTTP 500.** INSERT su `vehicle_tag_prints` ha fallito (DB down, FK violation, RLS deny). Fail-closed: response non inviata. S3 PUT è già successo idempotentemente, next retry trova cache-hit + INSERT retry.
 
 ---
 
@@ -959,6 +989,7 @@ users.me.update.unknown_field
 validation.failed
 validation.schema_mismatch
 vehicle.access.forbidden
+vehicle.archived
 vehicle.certification.libretto_required
 vehicle.certification.not_pending
 vehicle.claim.already_owned_by_other
@@ -976,11 +1007,16 @@ vehicle.garage_code.not_found
 vehicle.modification.archived
 vehicle.modification.certified_required
 vehicle.modification.vin_immutable
+vehicle.not_certified
 vehicle.not_found
 vehicle.pending.duplicate_vin_certified
+vehicle_tag.audit_insert_failed
+vehicle_tag.render_failed
+vehicle_tag.s3_head_failed
+vehicle_tag.s3_upload_failed
 ```
 
-**Totale: ~150 error code documentati in v1.0** (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004 + 3 codici F-OFF-004 reactivation slice 2026-05-21; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`).
+**Totale: ~156 error code documentati in v1.0** (aggiornato post F-OFF-104 tag PDF, +6 codici: `vehicle.archived`, `vehicle.not_certified`, `vehicle_tag.s3_head_failed`, `vehicle_tag.s3_upload_failed`, `vehicle_tag.render_failed`, `vehicle_tag.audit_insert_failed`). (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004 + 3 codici F-OFF-004 reactivation slice 2026-05-21; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`).
 
 ---
 

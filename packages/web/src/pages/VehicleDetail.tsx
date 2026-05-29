@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TimelineRow } from '@/components/TimelineRow';
 import { OwnershipTransferDialog } from '@/components/OwnershipTransferDialog';
+import { VehicleTagPrintButton } from '@/components/VehicleTagPrintButton';
 
 const statusMeta: Record<string, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
   certified: {
@@ -103,6 +104,7 @@ export function VehicleDetail() {
             <Badge variant="outline" className={sb.cls}>
               <sb.Icon size={14} className="mr-1" /> {sb.label}
             </Badge>
+            <VehicleTagPrintButton vehicleId={v.id} />
             <Button
               onClick={() => navigate(`/vehicles/${id}/interventions/new`)}
               disabled={v.status === 'archived'}
