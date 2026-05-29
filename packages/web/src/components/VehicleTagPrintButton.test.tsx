@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
 
 import { VehicleTagPrintButton } from './VehicleTagPrintButton';
+import type { Props as VehicleTagPrintButtonProps } from './VehicleTagPrintButton';
 import { ApiError } from '@/lib/api-client';
 
 // ---------------------------------------------------------------------------
@@ -23,16 +23,15 @@ vi.mock('@/lib/api-client', async () => {
   };
 });
 
-// ---------------------------------------------------------------------------
-// Provider wrapper
-// ---------------------------------------------------------------------------
+vi.mock('./VehicleTagReprintDialog', () => ({
+  VehicleTagReprintDialog: vi.fn(({ open }: { open: boolean }) =>
+    open ? <div role="dialog">mock-reprint-dialog</div> : null,
+  ),
+}));
 
-function wrap({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-}
+// ---------------------------------------------------------------------------
+// Render helper
+// ---------------------------------------------------------------------------
 
 const VEHICLE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -41,6 +40,17 @@ const TAG_RESPONSE = {
   expires_at: '2026-05-30T12:00:00Z',
 };
 
+function renderButton(props: Partial<VehicleTagPrintButtonProps> = {}) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={qc}>
+      <VehicleTagPrintButton vehicleId={VEHICLE_ID} tagFirstPrintedAt={null} {...props} />
+    </QueryClientProvider>,
+  );
+}
+
 beforeEach(() => {
   mockApiFetch.mockReset();
 });
@@ -48,7 +58,7 @@ beforeEach(() => {
 describe('VehicleTagPrintButton', () => {
   // 1. Renders idle button "Stampa tag"
   it('renders idle button with "Stampa tag" label', () => {
-    render(<VehicleTagPrintButton vehicleId={VEHICLE_ID} />, { wrapper: wrap });
+    renderButton();
     const button = screen.getByRole('button', { name: /Stampa tag/i });
     expect(button).toBeInTheDocument();
     expect(button).not.toBeDisabled();
@@ -60,7 +70,7 @@ describe('VehicleTagPrintButton', () => {
     mockApiFetch.mockResolvedValueOnce(TAG_RESPONSE);
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
 
-    render(<VehicleTagPrintButton vehicleId={VEHICLE_ID} />, { wrapper: wrap });
+    renderButton();
     await user.click(screen.getByRole('button', { name: /Stampa tag/i }));
 
     await waitFor(() =>
@@ -76,7 +86,7 @@ describe('VehicleTagPrintButton', () => {
     // Never resolves, keeping the mutation in isPending state
     mockApiFetch.mockImplementationOnce(() => new Promise(() => {}));
 
-    render(<VehicleTagPrintButton vehicleId={VEHICLE_ID} />, { wrapper: wrap });
+    renderButton();
     await user.click(screen.getByRole('button', { name: /Stampa tag/i }));
 
     await waitFor(() => {
@@ -92,9 +102,28 @@ describe('VehicleTagPrintButton', () => {
       new ApiError('vehicle.archived', 409, 'Vehicle is archived'),
     );
 
-    render(<VehicleTagPrintButton vehicleId={VEHICLE_ID} />, { wrapper: wrap });
+    renderButton();
     await user.click(screen.getByRole('button', { name: /Stampa tag/i }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/archiviati/i));
+  });
+});
+
+describe('gating via tagFirstPrintedAt prop', () => {
+  it('renders "Stampa tag" label when tagFirstPrintedAt is null', () => {
+    renderButton({ vehicleId: VEHICLE_ID, tagFirstPrintedAt: null });
+    expect(screen.getByRole('button', { name: /stampa tag/i })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /ristampa tag/i })).not.toBeInTheDocument();
+  });
+
+  it('renders "Ristampa tag" label when tagFirstPrintedAt is set', () => {
+    renderButton({ vehicleId: VEHICLE_ID, tagFirstPrintedAt: '2026-04-10T12:34:56.789Z' });
+    expect(screen.getByRole('button', { name: /ristampa tag/i })).toBeVisible();
+  });
+
+  it('clicking "Ristampa tag" opens the dialog', async () => {
+    renderButton({ vehicleId: VEHICLE_ID, tagFirstPrintedAt: '2026-04-10T12:34:56.789Z' });
+    await userEvent.click(screen.getByRole('button', { name: /ristampa tag/i }));
+    expect(await screen.findByRole('dialog')).toBeVisible();
   });
 });
