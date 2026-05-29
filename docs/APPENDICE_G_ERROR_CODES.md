@@ -467,6 +467,10 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 
 **HTTP 500.** INSERT su `vehicle_tag_prints` ha fallito (DB down, FK violation, RLS deny). Fail-closed: response non inviata. S3 PUT è già successo idempotentemente, next retry trova cache-hit + INSERT retry.
 
+#### `vehicle_tag.never_printed`
+
+**HTTP 409.** Tentativo di ristampa tag (`POST /v1/vehicles/:id/tag-reprint`) su veicolo senza audit precedenti. Il primo download deve passare per il flow PR1 (`GET /v1/vehicles/:id/tag`). Stato non raggiungibile via UI normale (gating frontend via `tag_first_printed_at`); difensivo per chiamate API dirette.
+
 ---
 
 ## 4. Mapping a classi eccezione backend
@@ -1011,6 +1015,7 @@ vehicle.not_certified
 vehicle.not_found
 vehicle.pending.duplicate_vin_certified
 vehicle_tag.audit_insert_failed
+vehicle_tag.never_printed
 vehicle_tag.render_failed
 vehicle_tag.s3_head_failed
 vehicle_tag.s3_upload_failed
