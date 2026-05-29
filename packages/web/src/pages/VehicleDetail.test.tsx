@@ -54,6 +54,7 @@ const VEHICLE_DETAIL_FIXTURE: VehicleDetailResponse = {
     certifiedAt: '2024-06-01T00:00:00Z',
     certifiedByTenantId: null,
     createdAt: '2024-06-01T00:00:00Z',
+    tag_first_printed_at: null,
   },
   currentOwnership: null,
 };
@@ -199,5 +200,20 @@ describe('VehicleDetail', () => {
     setupApiFetch({ detail: VEHICLE_DETAIL_FIXTURE, timeline: TIMELINE_FIXTURE });
     render(wrap({ children: <VehicleDetail /> }));
     expect(await screen.findByRole('button', { name: /stampa tag/i })).toBeVisible();
+  });
+
+  it('passes tag_first_printed_at to VehicleTagPrintButton', async () => {
+    setupApiFetch({
+      detail: {
+        ...VEHICLE_DETAIL_FIXTURE,
+        vehicle: {
+          ...VEHICLE_DETAIL_FIXTURE.vehicle,
+          tag_first_printed_at: '2026-04-10T12:34:56.789Z',
+        },
+      },
+      timeline: TIMELINE_FIXTURE,
+    });
+    render(wrap({ children: <VehicleDetail /> }));
+    expect(await screen.findByRole('button', { name: /ristampa tag/i })).toBeVisible();
   });
 });
