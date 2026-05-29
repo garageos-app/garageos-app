@@ -251,6 +251,9 @@ describe('GET /v1/disputes/open (integration)', () => {
   });
 
   it('exposes count for full group even when items truncated at 20', async () => {
+    // LIMIT_PER_GROUP=20 in src/routes/v1/disputes-open.ts; +2 to assert
+    // truncation: count reflects full group while items[] caps at the limit.
+    const TOTAL_DISPUTES = 22;
     const { tenantId, locationId } = await createTenantWithLocation('do-limit');
     const cognitoSub = '66666666-6666-4666-8666-666666666666';
     const { userId } = await createUser({ tenantId, cognitoSub });
@@ -259,7 +262,7 @@ describe('GET /v1/disputes/open (integration)', () => {
     const { customerId } = await createCustomer({ email: 'limit@test.it' });
     await createCustomerTenantRelation({ tenantId, customerId });
 
-    for (let i = 0; i < 22; i++) {
+    for (let i = 0; i < TOTAL_DISPUTES; i++) {
       const { interventionId } = await createIntervention({
         tenantId,
         locationId,
@@ -287,7 +290,7 @@ describe('GET /v1/disputes/open (integration)', () => {
     const body = res.json() as {
       pendingResponse: { count: number; items: unknown[] };
     };
-    expect(body.pendingResponse.count).toBe(22);
+    expect(body.pendingResponse.count).toBe(TOTAL_DISPUTES);
     expect(body.pendingResponse.items).toHaveLength(20);
   });
 

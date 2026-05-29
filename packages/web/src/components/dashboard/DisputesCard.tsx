@@ -64,7 +64,7 @@ export function DisputesCard() {
     <CardShell
       title="Contestazioni"
       count={pendingCount}
-      countBadgeVariant={pendingCount > 0 ? 'destructive' : 'default'}
+      countBadgeVariant="destructive"
       state={state}
       emptyText="Nessuna contestazione aperta"
       errorText={ERROR_LOAD_RETRY}
