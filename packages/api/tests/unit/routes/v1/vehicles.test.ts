@@ -500,6 +500,7 @@ describe('GET /v1/vehicles/:id — data path', () => {
     status: 'certified' as const,
     certifiedAt: new Date('2026-01-01T00:00:00Z'),
     createdAt: new Date('2026-01-01T00:00:00Z'),
+    tagPrints: [] as { createdAt: Date }[],
     ownerships: [
       {
         id: 'o1',
@@ -602,6 +603,43 @@ describe('GET /v1/vehicles/:id — data path', () => {
     expect(body.vehicle).not.toHaveProperty('pendingMetadata');
     expect(body.vehicle).not.toHaveProperty('updatedAt');
     expect(body.vehicle).not.toHaveProperty('archivedAt');
+  });
+
+  describe('tag_first_printed_at field (F-OFF-109)', () => {
+    it('returns null when vehicle has no tag prints', async () => {
+      prisma.vehicle.findUniqueOrThrow.mockResolvedValue({
+        ...vehicleRow(),
+        tagPrints: [],
+      });
+      app = await buildApp({ prisma });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/vehicles/${VEHICLE_ID}`,
+        headers: { authorization: 'Bearer x' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(
+        (res.json() as { vehicle: Record<string, unknown> }).vehicle.tag_first_printed_at,
+      ).toBeNull();
+    });
+
+    it('returns ISO timestamp when vehicle has tag prints', async () => {
+      const firstPrintedAt = new Date('2026-04-10T12:34:56.789Z');
+      prisma.vehicle.findUniqueOrThrow.mockResolvedValue({
+        ...vehicleRow(),
+        tagPrints: [{ createdAt: firstPrintedAt }],
+      });
+      app = await buildApp({ prisma });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/vehicles/${VEHICLE_ID}`,
+        headers: { authorization: 'Bearer x' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(
+        (res.json() as { vehicle: Record<string, unknown> }).vehicle.tag_first_printed_at,
+      ).toBe('2026-04-10T12:34:56.789Z');
+    });
   });
 });
 
