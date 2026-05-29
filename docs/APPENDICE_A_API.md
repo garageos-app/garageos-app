@@ -1467,6 +1467,66 @@ Il `tag_download_url` è un presigned URL S3 valido 1h. Il PDF è A4 14-up con 1
 
 ---
 
+### 2.14 `POST /v1/vehicles/:id/tag-reprint` — Ristampa tag PDF veicolo
+
+**Auth:** bearer JWT (mechanic | super_admin attivo del tenant).
+**Feature:** F-OFF-109 (ristampa tag). BR-028.
+
+#### Request
+
+- Path param `id`: UUID veicolo.
+- Body (Zod validato):
+
+```json
+{
+  "reason": "lost | damaged | other",
+  "reasonNote": "string (optional; required+min(3)+max(500) se reason='other')",
+  "documentVerified": true
+}
+```
+
+#### Response 200
+
+```json
+{
+  "tag_download_url": "https://garageos-prod-attachments.s3.eu-south-1.amazonaws.com/tags/GO-288-QPWZ.pdf?X-Amz-...",
+  "expires_at": "2026-05-29T13:00:00.000Z"
+}
+```
+
+`tag_download_url` presigned valido 1h. PDF identico al primo (BR-022 immutable).
+
+#### Error matrix
+
+| Status | Code | Trigger |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | `documentVerified !== true`, `reason` non in enum, `reasonNote` mancante/len<3 quando `reason='other'`. |
+| 401 | `auth.unauthorized` | JWT missing/invalid. |
+| 404 | `vehicle.not_found` | Vehicle non esistente o cross-tenant. |
+| 409 | `vehicle.archived` | `vehicle.status='archived'`. |
+| 409 | `vehicle.not_certified` | `vehicle.status='pending'` o altro stato non-`certified`. |
+| 409 | `vehicle_tag.never_printed` | Audit count = 0 (mai stampato). |
+| 500 | `internal_error` | S3 / audit failure (vedi APPENDICE_G). |
+
+#### Note
+
+- Audit: inserisce row `vehicle_tag_prints` con `kind='reprint'`, `reason`, `reason_note`, `document_verified=true`, `printed_by_user_id`.
+- Cache S3: riusa `tags/<garage_code>.pdf` da PR1 (cache-hit garantito post check audit-count).
+
+#### Campo `tag_first_printed_at` in `GET /v1/vehicles/:id`
+
+Il DTO di dettaglio veicolo include:
+
+```json
+{
+  "tag_first_printed_at": "2026-04-10T12:34:56.789Z"
+}
+```
+
+`tag_first_printed_at` — ISO timestamp del primo `vehicle_tag_prints` per il veicolo, OR null se mai stampato. Drives UI gating tra primo download (`GET /tag`) e ristampa (`POST /tag-reprint`).
+
+---
+
 ## 3. Riferimento completo endpoint
 
 Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si indica: metodo, path, feature, auth richiesta e breve descrizione.
@@ -2061,11 +2121,12 @@ Ordine: sede primaria prima (`isPrimary DESC`), poi alfabetico per nome.
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | GET | `/vehicles/search` | F-OFF-101, F-OFF-502 | Tenant User | Ricerca unificata per codice/targa/VIN/cliente |
-| GET | `/vehicles/:id` | F-OFF-105 | Tenant User | Dettaglio veicolo (regole visibilità applicate) |
+| GET | `/vehicles/:id` | F-OFF-105 | Tenant User | Dettaglio veicolo (regole visibilità applicate). Response include `tag_first_printed_at: ISO\|null` (vedi §2.14). |
 | POST | `/vehicles` | F-OFF-102, F-OFF-103 | Tenant User | **[DETTAGLIATO §2.1]** Censisce nuovo veicolo |
 | PATCH | `/vehicles/:id` | F-OFF-106 | Tenant User | Modifica dati veicolo (alcuni campi immutabili) |
 | POST | `/vehicles/:id/certify` | F-OFF-107 | Tenant User | Promuove veicolo da pending a certified |
 | GET | `/vehicles/:id/tag` | F-OFF-104, F-OFF-109 | Tenant User | **[DETTAGLIATO §2.13]** Presigned URL per scaricare PDF del tag (codice + QR) |
+| POST | `/vehicles/:id/tag-reprint` | F-OFF-109 | Tenant User | **[DETTAGLIATO §2.14]** Ristampa tag PDF veicolo (richiede audit precedente + reason) |
 | GET | `/vehicles/:id/access-log` | F-OFF-601, F-CLI-304 | Any User | Log accessi al veicolo |
 | GET | `/vehicles/:id/timeline` | F-OFF-105, F-CLI-201 | Any User | **[DETTAGLIATO §2.5]** Timeline interventi |
 | POST | `/vehicles/claim` | F-CLI-101, F-CLI-102 | Customer | **[DETTAGLIATO §2.4]** Aggancia veicolo tramite codice |

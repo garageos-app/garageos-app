@@ -60,6 +60,7 @@ export interface VehicleDetail {
   certifiedAt: string | null;
   certifiedByTenantId: string | null;
   createdAt: string;
+  tag_first_printed_at: string | null;
 }
 
 export interface VehicleDetailResponse {

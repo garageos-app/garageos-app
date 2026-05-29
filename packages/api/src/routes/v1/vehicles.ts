@@ -322,7 +322,14 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
 
         const vehicle = await tx.vehicle.findUniqueOrThrow({
           where: { id },
-          select: vehicleDetailSelect,
+          select: {
+            ...vehicleDetailSelect,
+            tagPrints: {
+              take: 1,
+              orderBy: { createdAt: 'asc' as const },
+              select: { createdAt: true },
+            },
+          },
         });
 
         const active = vehicle.ownerships[0] ?? null;
@@ -340,10 +347,14 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
           log: request.log,
         });
 
-        const { ownerships: _drop, ...vehicleFields } = vehicle;
+        const { ownerships: _drop, tagPrints: _tagPrints, ...vehicleFields } = vehicle;
         void _drop;
         return {
-          vehicle: vehicleFields,
+          vehicle: {
+            ...vehicleFields,
+            // See F-OFF-109: first tag print timestamp for display in the UI.
+            tag_first_printed_at: _tagPrints[0]?.createdAt.toISOString() ?? null,
+          },
           currentOwnership: active
             ? {
                 id: active.id,

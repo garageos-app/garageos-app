@@ -910,6 +910,7 @@ model PushToken {
 | `printed_by_user_id` | UUID | FK → `users.id` ON DELETE RESTRICT |
 | `kind` | enum `TagPrintKind` | `first` o `reprint` (PR2). PR1 logga sempre `first`. |
 | `reason` | TEXT NULL | Solo per `kind='reprint'` (PR2). |
+| `reason_note` | TEXT NULL | Solo per `kind='reprint'` con `reason='other'`. Free-text max 500 chars (validazione applicativa Zod). |
 | `document_verified` | BOOLEAN DEFAULT FALSE | Dichiarazione meccanico verifica documentale (PR2). |
 | `created_at` | TIMESTAMPTZ DEFAULT NOW() | |
 
@@ -925,6 +926,8 @@ model PushToken {
 - UPDATE/DELETE: default-deny (append-only). Pattern stesso di `intervention_revisions`.
 
 **Grants:** `garageos_app` role ottiene SELECT + INSERT; UPDATE + DELETE esplicitamente revocate.
+
+**Migration PR2 (F-OFF-109):** `20260530100000_vehicle_tag_prints_reason_note` — additive, aggiunge colonna `reason_note TEXT NULL`.
 
 ---
 

@@ -775,6 +775,7 @@ model VehicleTagPrint {
   printedByUserId    String       @map("printed_by_user_id") @db.Uuid
   kind               TagPrintKind
   reason             String?
+  reasonNote         String?      @map("reason_note")
   documentVerified   Boolean      @default(false) @map("document_verified")
   createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz()
 

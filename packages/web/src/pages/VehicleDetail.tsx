@@ -104,7 +104,7 @@ export function VehicleDetail() {
             <Badge variant="outline" className={sb.cls}>
               <sb.Icon size={14} className="mr-1" /> {sb.label}
             </Badge>
-            <VehicleTagPrintButton vehicleId={v.id} />
+            <VehicleTagPrintButton vehicleId={v.id} tagFirstPrintedAt={v.tag_first_printed_at} />
             <Button
               onClick={() => navigate(`/vehicles/${id}/interventions/new`)}
               disabled={v.status === 'archived'}

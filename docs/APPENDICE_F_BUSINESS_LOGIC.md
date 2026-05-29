@@ -172,6 +172,36 @@ Ogni richiesta di stampa/ristampa del tag inserisce una row in `vehicle_tag_prin
 
 **PR1 (F-OFF-104):** ogni richiesta loggata come `kind='first'`. **PR2 (F-OFF-109):** distinzione first ↔ reprint enforced lato backend + UI gating sul count audit precedente.
 
+### BR-028 — Tag reprint workflow + gating
+
+L'officina può ristampare il tag PDF di un veicolo per cui è stata fatta almeno una stampa precedente.
+
+**Endpoint:** `POST /v1/vehicles/:id/tag-reprint`.
+
+**Permission:** qualsiasi `mechanic` o `super_admin` attivo del tenant proprietario.
+
+**Body required:**
+
+- `reason` enum (`lost` | `damaged` | `other`).
+- `reasonNote` (required+min(3)+max(500) se `reason='other'`).
+- `documentVerified=true` (dichiarazione verifica documentale meccanico).
+
+**Gating:**
+
+- Audit count precedente per vehicle `> 0` (`vehicle_tag_prints.count(vehicleId)`), altrimenti 409 `vehicle_tag.never_printed`.
+- Status `certified` (no `pending`/`archived`).
+
+**PDF:** invariato (BR-022 immutable). Cache-hit garantito post check audit.
+
+**Audit:** row `kind='reprint'`, `reason`, `reason_note`, `document_verified=true`, `printed_by_user_id`.
+
+**Frontend gating:** `GET /v1/vehicles/:id` DTO include `tag_first_printed_at: ISO|null`. UI mostra "Stampa tag" se null (PR1 flow), "Ristampa tag" + modal form altrimenti.
+
+**Vincoli:**
+
+- No cap quantitativo (audit log + rate-limit globale).
+- Audit append-only (UPDATE/DELETE denied via RLS PR1).
+
 ---
 
 ## 3. Regole sulla proprietà e passaggi

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -27,7 +27,7 @@ beforeEach(() => {
 // Subject under test
 // ---------------------------------------------------------------------------
 
-import { useVehicleTagDownload, type VehicleTagResponse } from './vehicleTag';
+import { useVehicleTagDownload, useVehicleTagReprint, type VehicleTagResponse } from './vehicleTag';
 
 function wrap({ children }: { children: ReactNode }) {
   const qc = new QueryClient({
@@ -74,6 +74,44 @@ describe('useVehicleTagDownload', () => {
       expect(openSpy).toHaveBeenCalledWith(TAG_RESPONSE.tag_download_url, '_blank'),
     );
 
+    openSpy.mockRestore();
+  });
+});
+
+describe('useVehicleTagReprint', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls POST /v1/vehicles/:id/tag-reprint with body', async () => {
+    mockApiFetch.mockResolvedValue({
+      tag_download_url: 'https://s3.../tags/GO-1.pdf',
+      expires_at: '2026-05-29T13:00:00.000Z',
+    });
+    const { result } = renderHook(() => useVehicleTagReprint('vehicle-uuid'), { wrapper: wrap });
+    await act(async () => {
+      await result.current.mutateAsync({
+        reason: 'lost',
+        documentVerified: true,
+      });
+    });
+    expect(mockApiFetch).toHaveBeenCalledWith('/v1/vehicles/vehicle-uuid/tag-reprint', {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'lost', documentVerified: true }),
+    });
+  });
+
+  it('opens window with returned URL on success', async () => {
+    mockApiFetch.mockResolvedValue({
+      tag_download_url: 'https://s3.../tags/GO-2.pdf',
+      expires_at: '2026-05-29T13:00:00.000Z',
+    });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const { result } = renderHook(() => useVehicleTagReprint('vehicle-uuid'), { wrapper: wrap });
+    await act(async () => {
+      await result.current.mutateAsync({ reason: 'lost', documentVerified: true });
+    });
+    expect(openSpy).toHaveBeenCalledWith('https://s3.../tags/GO-2.pdf', '_blank');
     openSpy.mockRestore();
   });
 });
