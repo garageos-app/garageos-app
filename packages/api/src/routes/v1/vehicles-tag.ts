@@ -44,11 +44,16 @@ const vehicleTagRoutes: FastifyPluginAsync = async (app) => {
       const cognitoSub = request.userId!;
 
       return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
-        // 1. Fetch vehicle — scope to tenant for deterministic isolation
-        //    (defensive pattern consistent with BR-151 RLS split
-        //    feedback_rls_split_changes_endpoint_semantics).
+        // 1. Fetch vehicle — scope to tenant for deterministic isolation.
+        //    Vehicle has no direct tenantId field; ownership is expressed
+        //    via createdByTenantId (pending/certified) or certifiedByTenantId
+        //    (certified post-transfer). Mirror vehicles-ownership-transfer.ts
+        //    pattern exactly (feedback_prisma_loose_where_silently_drops_unknown_keys).
         const vehicle = await tx.vehicle.findFirst({
-          where: { id: vehicleId, tenantId },
+          where: {
+            id: vehicleId,
+            OR: [{ certifiedByTenantId: tenantId }, { createdByTenantId: tenantId }],
+          },
           select: { id: true, garageCode: true, status: true },
         });
 
