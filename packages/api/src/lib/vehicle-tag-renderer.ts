@@ -13,9 +13,14 @@ const A4_HEIGHT_PT = 841.89;
 const MM_PT = 2.83465; // 1mm in pt
 
 // Avery L7163 layout
+// Left margin (7.21mm) and right margin (4.59mm) are asymmetric per the official
+// European datasheet. The right margin is NOT used directly — it is implicit from
+// left + 2×(label width + gap). Using the correct left value avoids 2.56mm
+// leftward shift vs. the die-cut that would clip content in the printer's
+// non-printable zone (~5mm).
 const LABEL_W_MM = 99.1;
 const LABEL_H_MM = 38.1;
-const PAGE_MARGIN_LEFT_MM = 4.65;
+const PAGE_MARGIN_LEFT_MM = 7.21;
 const PAGE_MARGIN_TOP_MM = 15.1;
 const COL_GAP_MM = 0.0;
 const ROW_GAP_MM = 0.0;
@@ -44,6 +49,12 @@ export async function renderTagPdf(garageCode: string): Promise<Buffer> {
   const colGapPt = COL_GAP_MM * MM_PT;
   const rowGapPt = ROW_GAP_MM * MM_PT;
 
+  // Constants that don't vary per cell — hoisted out of the loop for clarity.
+  const codeFontSize = 18;
+  const footerSize = 6;
+  const qrSizePt = 26 * MM_PT;
+  const BASELINE_OFFSET_PT = 4; // empirical descender compensation for 18pt Helvetica Bold
+
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
       const x = marginLeftPt + col * (labelWPt + colGapPt);
@@ -51,17 +62,15 @@ export async function renderTagPdf(garageCode: string): Promise<Buffer> {
       const yBottom = yTop - labelHPt;
 
       // Codice large centrato sx
-      const codeFontSize = 18;
       page.drawText(garageCode, {
         x: x + 8 * MM_PT,
-        y: yBottom + labelHPt / 2 + 4,
+        y: yBottom + labelHPt / 2 + BASELINE_OFFSET_PT,
         size: codeFontSize,
         font,
         color: rgb(0, 0, 0),
       });
 
       // Footer "GarageOS"
-      const footerSize = 6;
       page.drawText('GarageOS', {
         x: x + 8 * MM_PT,
         y: yBottom + 4 * MM_PT,
@@ -71,7 +80,6 @@ export async function renderTagPdf(garageCode: string): Promise<Buffer> {
       });
 
       // QR a destra
-      const qrSizePt = 26 * MM_PT;
       page.drawImage(qrImage, {
         x: x + labelWPt - qrSizePt - 4 * MM_PT,
         y: yBottom + (labelHPt - qrSizePt) / 2,

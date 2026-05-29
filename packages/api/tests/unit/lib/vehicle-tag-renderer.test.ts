@@ -33,11 +33,16 @@ describe('renderTagPdf', () => {
   it('serialized PDF references embedded images (XObjects)', async () => {
     const buf = await renderTagPdf(SAMPLE);
     // pdf-lib doesn't expose direct image count; verify indirect via raw serialization
+    // TODO: strengthen to assert count=1 to verify pdf-lib dedup
+    // (single embedded image referenced by 14 drawImage calls per BR-026).
     const raw = buf.toString('binary');
     expect(raw).toMatch(/\/XObject/);
   });
 
   it('QR code payload decodes back to https://app.garageos.it/v/<garageCode>', async () => {
+    // Note: decodes a standalone QR buffer, not the one embedded in the PDF.
+    // pdf-lib's embedPng + drawImage is lossless, but a physical print test
+    // is needed to confirm end-to-end scannability.
     // Generate QR directly to verify our payload contract
     const QRCode = (await import('qrcode')).default;
     const qrPng = await QRCode.toBuffer(`${TAG_LAYOUT.QR_BASE_URL}/${SAMPLE}`, {
