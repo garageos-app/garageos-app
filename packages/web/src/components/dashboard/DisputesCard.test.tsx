@@ -206,6 +206,10 @@ describe('<DisputesCard />', () => {
     // Pending tab is the default selected one and must show the inner
     // empty-text. The CardShell empty STATE branch is NOT triggered here
     // because total count > 0; the placeholder comes from TabsContent.
+    // Asserting the tab is visible proves CardShell state === 'data'
+    // (Tabs render only inside CardShell's children slot), distinguishing
+    // this branch from CardShell's own emptyText path.
+    expect(screen.getByRole('tab', { name: /Da rispondere \(0\)/i })).toBeInTheDocument();
     expect(screen.getByText('Nessuna contestazione aperta')).toBeInTheDocument();
     // Sanity: inProgress data is not visible until the user switches tab.
     expect(screen.queryByText('PP444QQ')).not.toBeInTheDocument();
