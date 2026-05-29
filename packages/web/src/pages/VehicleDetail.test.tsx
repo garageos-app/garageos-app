@@ -194,4 +194,10 @@ describe('VehicleDetail', () => {
       ).toBeInTheDocument(),
     );
   });
+
+  it('renders VehicleTagPrintButton "Stampa tag" in the header', async () => {
+    setupApiFetch({ detail: VEHICLE_DETAIL_FIXTURE, timeline: TIMELINE_FIXTURE });
+    render(wrap({ children: <VehicleDetail /> }));
+    expect(await screen.findByRole('button', { name: /stampa tag/i })).toBeVisible();
+  });
 });
