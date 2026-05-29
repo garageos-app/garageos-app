@@ -179,4 +179,35 @@ describe('<DisputesCard />', () => {
     renderCard();
     expect(screen.queryByTestId('cardshell-count-badge')).not.toBeInTheDocument();
   });
+
+  it('renders pending tab empty placeholder when pendingItems is empty but inProgress has data', () => {
+    mockedUseDisputesOpen.mockReturnValue({
+      data: {
+        pendingResponse: { count: 0, items: [] },
+        inProgress: {
+          count: 1,
+          items: [
+            {
+              id: 'd5',
+              interventionId: 'i5',
+              vehicleTarga: 'PP444QQ',
+              customerName: 'Anna Neri',
+              createdAt: '2026-05-18T12:00:00Z',
+              status: 'escalated',
+              reasonCategory: 'other',
+            },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+    } as never);
+    renderCard();
+    // Pending tab is the default selected one and must show the inner
+    // empty-text. The CardShell empty STATE branch is NOT triggered here
+    // because total count > 0; the placeholder comes from TabsContent.
+    expect(screen.getByText('Nessuna contestazione aperta')).toBeInTheDocument();
+    // Sanity: inProgress data is not visible until the user switches tab.
+    expect(screen.queryByText('PP444QQ')).not.toBeInTheDocument();
+  });
 });
