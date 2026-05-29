@@ -25,8 +25,6 @@ const TEST_IP = '10.20.31.60';
 
 // Shared mock return value for presigned URL scenarios.
 const MOCK_EXPIRES_AT = new Date(Date.now() + 3600 * 1000);
-const MOCK_TAG_URL =
-  'https://garageos-test-attachments.s3.eu-west-1.amazonaws.com/tags/GO-234-ABCD.pdf?X-Amz-Signature=test';
 
 describe('GET /v1/vehicles/:id/tag (integration)', () => {
   let app: FastifyInstance;
@@ -50,11 +48,11 @@ describe('GET /v1/vehicles/:id/tag (integration)', () => {
     vi.clearAllMocks();
     // Default mock: cache miss path (HeadObject → NoSuchKey → PutObject → presign).
     // Tests that need cache-hit override this per-test.
-    vi.mocked(getOrCreateTagPresignedUrl).mockResolvedValue({
-      url: MOCK_TAG_URL,
+    vi.mocked(getOrCreateTagPresignedUrl).mockImplementation(async ({ garageCode }) => ({
+      url: `https://garageos-test-attachments.s3.eu-west-1.amazonaws.com/tags/${garageCode}.pdf?X-Amz-Signature=test`,
       expiresAt: MOCK_EXPIRES_AT,
       cacheHit: false,
-    });
+    }));
   });
 
   // -----------------------------------------------------------------------
@@ -188,11 +186,11 @@ describe('GET /v1/vehicles/:id/tag (integration)', () => {
     });
 
     // First request: cache miss.
-    vi.mocked(getOrCreateTagPresignedUrl).mockResolvedValueOnce({
-      url: MOCK_TAG_URL,
+    vi.mocked(getOrCreateTagPresignedUrl).mockImplementationOnce(async ({ garageCode: gc }) => ({
+      url: `https://garageos-test-attachments.s3.eu-west-1.amazonaws.com/tags/${gc}.pdf?X-Amz-Signature=test`,
       expiresAt: MOCK_EXPIRES_AT,
       cacheHit: false,
-    });
+    }));
     const res1 = await app.inject({
       method: 'GET',
       url: `/v1/vehicles/${vehicleId}/tag`,
@@ -201,11 +199,11 @@ describe('GET /v1/vehicles/:id/tag (integration)', () => {
     expect(res1.statusCode).toBe(200);
 
     // Second request: cache hit — S3 key already exists.
-    vi.mocked(getOrCreateTagPresignedUrl).mockResolvedValueOnce({
-      url: MOCK_TAG_URL,
+    vi.mocked(getOrCreateTagPresignedUrl).mockImplementationOnce(async ({ garageCode: gc }) => ({
+      url: `https://garageos-test-attachments.s3.eu-west-1.amazonaws.com/tags/${gc}.pdf?X-Amz-Signature=test`,
       expiresAt: MOCK_EXPIRES_AT,
       cacheHit: true,
-    });
+    }));
     const res2 = await app.inject({
       method: 'GET',
       url: `/v1/vehicles/${vehicleId}/tag`,
