@@ -12,7 +12,7 @@ const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const LOCATION_ID = '44444444-4444-4444-8444-444444444444';
 
-type StatusFilter = string | { in: string[] };
+type StatusFilter = 'open' | { in: Array<'responded' | 'escalated'> };
 
 function whereStatus(args: unknown): StatusFilter {
   return (args as { where: { status: StatusFilter } }).where.status;
@@ -151,15 +151,13 @@ describe('GET /v1/disputes/open (unit)', () => {
     });
 
     const calls = prisma.interventionDispute.findMany.mock.calls;
-    const inProgressCall = calls.find((c) => {
-      const w = (c[0] as { where: { status?: { in?: string[] } } }).where.status;
-      return typeof w === 'object' && Array.isArray((w as { in: string[] }).in);
-    });
+    const inProgressCall = calls.find((c) => isInProgressFilter(whereStatus(c[0])));
     expect(inProgressCall).toBeDefined();
-    const arg = inProgressCall![0] as {
-      where: { status: { in: string[] } };
-    };
-    expect(arg.where.status.in.sort()).toEqual(['escalated', 'responded']);
+    const status = whereStatus(inProgressCall![0]);
+    expect(typeof status === 'object' ? status.in.slice().sort() : null).toEqual([
+      'escalated',
+      'responded',
+    ]);
   });
 
   it('composes customerName from firstName+lastName for persona-fisica when visible', async () => {
@@ -232,7 +230,9 @@ describe('GET /v1/disputes/open (unit)', () => {
       }
       return [];
     });
-    prisma.interventionDispute.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    prisma.interventionDispute.count.mockImplementation(async (args: unknown) =>
+      whereStatus(args) === 'open' ? 1 : 0,
+    );
     prisma.customerTenantRelation.findMany.mockResolvedValue([{ customerId }]);
 
     app = await buildApp(prisma);
@@ -272,7 +272,9 @@ describe('GET /v1/disputes/open (unit)', () => {
       }
       return [];
     });
-    prisma.interventionDispute.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    prisma.interventionDispute.count.mockImplementation(async (args: unknown) =>
+      whereStatus(args) === 'open' ? 1 : 0,
+    );
     prisma.customerTenantRelation.findMany.mockResolvedValue([]);
 
     app = await buildApp(prisma);
