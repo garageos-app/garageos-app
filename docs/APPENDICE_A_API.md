@@ -1470,7 +1470,7 @@ Authorization: Bearer <officine_user_jwt>
 | 401 | (auth middleware) | Authorization header mancante o JWT non valido |
 | 404 | `intervention.not_found` | Intervento non trovato o non accessibile da questa officina (RLS-as-404) |
 | 429 | (rate limit) | Troppe richieste |
-| 500 | `internal_error` | Render PDF o upload S3 falliti |
+| 500 | `intervention_pdf.render_failed` / `intervention_pdf.s3_upload_failed` | Render PDF o upload S3 falliti |
 
 #### Note
 
@@ -1478,7 +1478,7 @@ Authorization: Bearer <officine_user_jwt>
 - **Operator fallback (BR-213)**: se il record utente dell'operatore è stato rimosso (`created_by` null), il PDF mostra "Operatore".
 - **Active owner (BR-040)**: il proprietario è il `VehicleOwnership` con `endedAt=null`.
 - **Nessuna cache**: il PDF è rigenerato a ogni chiamata perché i dati dell'intervento sono mutabili (wiki window aperta). La chiave S3 viene sovrascritta ad ogni generazione.
-- **Logo officina**: se presente (`tenants.logo_s3_key`), il logo viene scaricato da S3 e incluso nell'intestazione. In caso di errore S3 il PDF è generato senza logo (fallback graceful).
+- **Logo officina**: se presente (`tenants.logo_url`), il logo viene scaricato da S3 e incluso nell'intestazione. In caso di errore S3 il PDF è generato senza logo (fallback graceful).
 
 ---
 
