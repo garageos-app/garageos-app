@@ -81,9 +81,7 @@ export function InterventionForm({
   // the type always re-applies the new type's defaults (overwriting any prior
   // manual edits — intentional, no dirty-tracking).
   useEffect(() => {
-    const suggestion = deriveDeadlineSuggestion(
-      interventionTypes.find((t) => t.id === interventionTypeId) ?? null,
-    );
+    const suggestion = deriveDeadlineSuggestion(selectedType);
     if (suggestion) {
       setShowDeadline(true);
       methods.setValue('createDeadline.enabled', true, { shouldValidate: false });
@@ -96,7 +94,7 @@ export function InterventionForm({
     } else {
       methods.setValue('createDeadline.enabled', false, { shouldValidate: false });
     }
-  }, [interventionTypeId, interventionTypes, methods]);
+  }, [selectedType, methods]);
 
   // Surface every Zod validation error in a top-level Alert. Without this, an
   // invalid field nested inside a collapsed optional section (e.g. an empty
