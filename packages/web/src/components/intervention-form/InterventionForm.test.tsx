@@ -95,11 +95,20 @@ describe('InterventionForm', () => {
   });
 
   it('shows zod validation messages on empty submit', async () => {
-    renderForm();
+    const onSubmit = vi.fn();
+    render(
+      <InterventionForm
+        interventionTypes={types}
+        registrationDate={null}
+        onSubmit={onSubmit}
+        submitting={false}
+      />,
+    );
     await userEvent.click(screen.getByRole('button', { name: /salva intervento/i }));
     const matches = await screen.findAllByText(/data richiesta/i);
     expect(matches.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole('alert')).toHaveTextContent(/correggi i campi/i);
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('auto-opens and pre-fills the deadline section for a suggesting type', async () => {
@@ -118,6 +127,7 @@ describe('InterventionForm', () => {
     await selectType(/^Diagnosi$/);
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     expect(screen.queryByText(/suggerito per/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/programma scadenza/i)).toBeInTheDocument();
   });
 
   it('re-applies the new type defaults when the type changes', async () => {
