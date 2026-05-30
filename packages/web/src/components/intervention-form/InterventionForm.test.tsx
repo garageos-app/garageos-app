@@ -130,7 +130,8 @@ describe('InterventionForm', () => {
     expect(screen.getByRole('switch')).toBeChecked();
     expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(12);
     expect(screen.getByLabelText(/incremento km/i)).toHaveValue(15000);
-    const expected = formatDeadlineSuggestion(deriveDeadlineSuggestion(types[0]!)!);
+    const tagliando = types.find((t) => t.code === 'TAGLIANDO')!;
+    const expected = formatDeadlineSuggestion(deriveDeadlineSuggestion(tagliando)!);
     expect(screen.getByText(expected)).toBeInTheDocument();
   });
 
