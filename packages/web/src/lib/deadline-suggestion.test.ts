@@ -86,4 +86,10 @@ describe('formatDeadlineSuggestion', () => {
   it('returns null when neither km nor months is present', () => {
     expect(formatDeadlineSuggestion({ typeName: 'X', months: null, km: null })).toBeNull();
   });
+
+  it('includes 0 km as a valid km value', () => {
+    expect(formatDeadlineSuggestion({ typeName: 'X', months: null, km: 0 })).toBe(
+      'Suggerito per «X»: prossima scadenza tra 0 km.',
+    );
+  });
 });
