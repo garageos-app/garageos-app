@@ -1422,7 +1422,67 @@ Per ottenere l'URL di accesso a un allegato, chiamare `GET /v1/attachments/:id/v
 
 ---
 
-### 2.13 `GET /v1/vehicles/:id/tag` — Genera o recupera tag PDF veicolo
+### 2.13 `GET /v1/interventions/:id/pdf` — Export PDF intervento (F-OFF-309)
+
+**Feature:** F-OFF-309
+**Auth:** Tenant User (pool officine — tutti i ruoli).
+**Rate limit:** standard utente.
+**Business rules:** BR-040, BR-151, BR-213
+
+#### Descrizione
+
+Genera (o rigenera) il PDF dell'intervento e ritorna un URL S3 presigned con validità 1h.
+Auth operatore (pool officine). RLS tenant-scoped (404 cross-tenant).
+
+Il PDF contiene: intestazione officina (logo se disponibile), intestatario
+(BR-151 PII-gated, fallback "Proprietario non in anagrafica"), veicolo,
+data/km/tipo, titolo/descrizione, ricambi (senza costi), operatore (BR-213
+fallback "Operatore"). Banner "INTERVENTO ANNULLATO" se `status=cancelled`.
+`internal_notes` mai incluse. Il PDF è rigenerato a ogni chiamata (documento
+mutabile, nessuna cache).
+
+#### Request
+
+```http
+GET /v1/interventions/{id}/pdf
+Authorization: Bearer <officine_user_jwt>
+```
+
+**Path parameters:**
+
+| Nome | Tipo | Note |
+| --- | --- | --- |
+| `id` | uuid v4 | UUID dell'intervento. UUID malformato → `400 VALIDATION_ERROR`. |
+
+#### Response `200 OK`
+
+```json
+{
+  "pdf_download_url": "https://…s3…presigned…",
+  "expires_at": "2026-05-30T19:00:00Z"
+}
+```
+
+#### Errori
+
+| Status | Codice | Scenario |
+| --- | --- | --- |
+| 401 | (auth middleware) | Authorization header mancante o JWT non valido |
+| 404 | `intervention.not_found` | Intervento non trovato o non accessibile da questa officina (RLS-as-404) |
+| 429 | (rate limit) | Troppe richieste |
+| 500 | `intervention_pdf.render_failed` / `intervention_pdf.s3_upload_failed` | Render PDF o upload S3 falliti |
+
+#### Note
+
+- **PII gating (BR-151)**: il nome del proprietario è visibile solo se il tenant ha una relazione attiva con il customer (`customer_tenant_relations`). Altrimenti il PDF mostra "Proprietario non in anagrafica".
+- **Operator fallback (BR-213)**: se il record utente dell'operatore è stato rimosso (`created_by` null), il PDF mostra "Operatore".
+- **Active owner (BR-040)**: il proprietario è il `VehicleOwnership` con `endedAt=null`.
+- **Nessuna cache**: il PDF è rigenerato a ogni chiamata perché i dati dell'intervento sono mutabili (wiki window aperta). La chiave S3 viene sovrascritta ad ogni generazione.
+- **Logo officina**: se presente (`tenants.logo_url`), il logo viene scaricato da S3 e incluso nell'intestazione. In caso di errore S3 il PDF è generato senza logo (fallback graceful).
+
+---
+
+### 2.14 `GET /v1/vehicles/:id/tag` — Genera o recupera tag PDF veicolo
 
 **Auth:** bearer JWT (qualunque utente attivo del tenant).
 **Feature:** F-OFF-104 (stampa tag). BR-026 (lazy generation), BR-027 (audit log).
@@ -1467,7 +1527,7 @@ Il `tag_download_url` è un presigned URL S3 valido 1h. Il PDF è A4 14-up con 1
 
 ---
 
-### 2.14 `POST /v1/vehicles/:id/tag-reprint` — Ristampa tag PDF veicolo
+### 2.15 `POST /v1/vehicles/:id/tag-reprint` — Ristampa tag PDF veicolo
 
 **Auth:** bearer JWT (mechanic | super_admin attivo del tenant).
 **Feature:** F-OFF-109 (ristampa tag). BR-028.
