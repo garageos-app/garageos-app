@@ -1482,7 +1482,7 @@ Authorization: Bearer <officine_user_jwt>
 
 ---
 
-### 2.15 `GET /v1/vehicles/:id/tag` — Genera o recupera tag PDF veicolo
+### 2.14 `GET /v1/vehicles/:id/tag` — Genera o recupera tag PDF veicolo
 
 **Auth:** bearer JWT (qualunque utente attivo del tenant).
 **Feature:** F-OFF-104 (stampa tag). BR-026 (lazy generation), BR-027 (audit log).
@@ -1527,7 +1527,7 @@ Il `tag_download_url` è un presigned URL S3 valido 1h. Il PDF è A4 14-up con 1
 
 ---
 
-### 2.16 `POST /v1/vehicles/:id/tag-reprint` — Ristampa tag PDF veicolo
+### 2.15 `POST /v1/vehicles/:id/tag-reprint` — Ristampa tag PDF veicolo
 
 **Auth:** bearer JWT (mechanic | super_admin attivo del tenant).
 **Feature:** F-OFF-109 (ristampa tag). BR-028.
