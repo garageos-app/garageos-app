@@ -126,9 +126,7 @@ describe('GET /v1/disputes/open (unit)', () => {
     });
 
     const calls = prisma.interventionDispute.findMany.mock.calls;
-    const pendingCall = calls.find(
-      (c) => (c[0] as { where: { status?: unknown } }).where.status === 'open',
-    );
+    const pendingCall = calls.find((c) => whereStatus(c[0]) === 'open');
     expect(pendingCall).toBeDefined();
     const arg = pendingCall![0] as {
       where: { intervention: { tenantId: string }; status: string };
@@ -313,7 +311,9 @@ describe('GET /v1/disputes/open (unit)', () => {
       }
       return [];
     });
-    prisma.interventionDispute.count.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    prisma.interventionDispute.count.mockImplementation(async (args: unknown) =>
+      isInProgressFilter(whereStatus(args)) ? 1 : 0,
+    );
 
     app = await buildApp(prisma);
     const res = await app.inject({
