@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useHasRole } from '@/auth/useHasRole';
 import { formatDate, formatKm } from '@/lib/format';
 import type { InterventionDetail } from '@/queries/types';
+import { InterventionExportPdfButton } from './InterventionExportPdfButton';
 
 interface Props {
   intervention: InterventionDetail;
@@ -68,6 +69,7 @@ export function InterventionHeader({ intervention: i, onEditClick, onCancelClick
               )}
             </>
           )}
+          <InterventionExportPdfButton interventionId={i.id} />
         </div>
       </div>
     </div>

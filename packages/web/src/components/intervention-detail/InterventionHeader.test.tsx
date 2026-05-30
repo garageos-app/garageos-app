@@ -11,6 +11,14 @@ vi.mock('@/auth/useHasRole', () => ({
   useHasRole: vi.fn(),
 }));
 
+vi.mock('./InterventionExportPdfButton', () => ({
+  InterventionExportPdfButton: ({ interventionId }: { interventionId: string }) => (
+    <button data-testid="export-pdf-stub" data-intervention-id={interventionId}>
+      mock-export-pdf
+    </button>
+  ),
+}));
+
 const mockedUseHasRole = vi.mocked(useHasRole);
 
 beforeEach(() => {
@@ -101,6 +109,10 @@ describe('InterventionHeader', () => {
     // Action buttons visible for active
     expect(screen.getByRole('button', { name: 'Modifica' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Annulla' })).toBeInTheDocument();
+    // Export PDF button always visible, receives the intervention id
+    const stub = screen.getByTestId('export-pdf-stub');
+    expect(stub).toBeInTheDocument();
+    expect(stub).toHaveAttribute('data-intervention-id', '11111111-1111-1111-1111-111111111111');
   });
 
   it('cancelled state hides action buttons and shows "Cancellato" badge', () => {
@@ -163,5 +175,17 @@ describe('InterventionHeader', () => {
 
     expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
+  });
+
+  it('shows the export PDF button even when the intervention is cancelled', () => {
+    const cancelled = makeIntervention({
+      status: 'cancelled',
+      cancelled_at: '2025-06-02T10:00:00Z',
+      cancelled_reason: 'Errore inserimento',
+    });
+    renderHeader(cancelled);
+
+    expect(screen.getByTestId('export-pdf-stub')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
   });
 });
