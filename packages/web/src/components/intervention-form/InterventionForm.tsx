@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FormProvider, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -20,6 +20,7 @@ import {
 import type { InterventionType } from '@/queries/types';
 import { PartsRepeater } from './PartsRepeater';
 import { DeadlineSection } from './DeadlineSection';
+import { deriveDeadlineSuggestion } from '@/lib/deadline-suggestion';
 
 interface Props {
   interventionTypes: InterventionType[];
@@ -69,6 +70,35 @@ export function InterventionForm({
   const [showParts, setShowParts] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showDeadline, setShowDeadline] = useState(false);
+
+  const selectedType = interventionTypes.find((t) => t.id === interventionTypeId) ?? null;
+  const deadlineSuggestion = deriveDeadlineSuggestion(selectedType);
+
+  // F-OFF-308: when the selected type suggests a follow-up deadline, open the
+  // section and pre-fill it from the type's defaults with the switch ON
+  // (opt-out — the operator confirms or disables). When the type does not
+  // suggest one, force the switch OFF. Keyed on the selected type, so changing
+  // the type always re-applies the new type's defaults (overwriting any prior
+  // manual edits — intentional, no dirty-tracking).
+  useEffect(() => {
+    const suggestion = deriveDeadlineSuggestion(
+      interventionTypes.find((t) => t.id === interventionTypeId) ?? null,
+    );
+    if (suggestion) {
+      setShowDeadline(true);
+      methods.setValue(
+        'createDeadline',
+        {
+          enabled: true,
+          ...(suggestion.months != null ? { monthsFromNow: suggestion.months } : {}),
+          ...(suggestion.km != null ? { kmIncrement: suggestion.km } : {}),
+        },
+        { shouldValidate: false },
+      );
+    } else {
+      methods.setValue('createDeadline.enabled', false, { shouldValidate: false });
+    }
+  }, [interventionTypeId, interventionTypes, methods]);
 
   // Surface every Zod validation error in a top-level Alert. Without this, an
   // invalid field nested inside a collapsed optional section (e.g. an empty
@@ -223,7 +253,7 @@ export function InterventionForm({
               ▸ Programma scadenza
             </button>
           ) : (
-            <DeadlineSection />
+            <DeadlineSection suggestion={deadlineSuggestion} />
           )}
         </div>
 
