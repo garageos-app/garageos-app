@@ -73,4 +73,17 @@ describe('resolveTenantLogo', () => {
     const call = s3Mock.commandCalls(GetObjectCommand)[0]!;
     expect(call.args[0].input.Key).toBe('logos/t1.png');
   });
+
+  it('strips a leading slash from a bare key form', async () => {
+    s3Mock.on(GetObjectCommand).resolves({ Body: bodyOf(PNG_MAGIC) as never });
+    const logo = await resolveTenantLogo('bucket', '/logos/t1.png');
+    expect(logo?.format).toBe('png');
+    const call = s3Mock.commandCalls(GetObjectCommand)[0]!;
+    expect(call.args[0].input.Key).toBe('logos/t1.png');
+  });
+
+  it('returns null for a truncated/corrupt buffer (< 3 bytes) without throwing', async () => {
+    s3Mock.on(GetObjectCommand).resolves({ Body: bodyOf(Buffer.from([0xff])) as never });
+    expect(await resolveTenantLogo('bucket', 'logos/corrupt.png')).toBeNull();
+  });
 });
