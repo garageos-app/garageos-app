@@ -133,6 +133,7 @@ describe('InterventionHeader', () => {
     renderHeader(disputed);
 
     expect(screen.getByText('Disputa')).toBeInTheDocument();
+    expect(screen.getByTestId('export-pdf-stub')).toBeInTheDocument();
   });
 
   it('click handlers fire when Modifica and Annulla are clicked', async () => {
@@ -186,6 +187,10 @@ describe('InterventionHeader', () => {
     renderHeader(cancelled);
 
     expect(screen.getByTestId('export-pdf-stub')).toBeInTheDocument();
+    expect(screen.getByTestId('export-pdf-stub')).toHaveAttribute(
+      'data-intervention-id',
+      '11111111-1111-1111-1111-111111111111',
+    );
     expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
   });
 });
