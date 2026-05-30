@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { DeadlineSection } from './DeadlineSection';
 import type { CreateInterventionFormValues } from '@/lib/validators/intervention';
-import type { DeadlineSuggestion } from '@/lib/deadline-suggestion';
+import { formatDeadlineSuggestion, type DeadlineSuggestion } from '@/lib/deadline-suggestion';
 
 function Wrap({
   enabled,
@@ -45,10 +45,9 @@ describe('DeadlineSection', () => {
   });
 
   it('renders the suggestion line when a suggestion is provided', () => {
-    render(<Wrap enabled={true} suggestion={{ typeName: 'Tagliando', months: 12, km: 15000 }} />);
-    expect(
-      screen.getByText('Suggerito per «Tagliando»: prossima scadenza tra 15.000 km o 12 mesi.'),
-    ).toBeInTheDocument();
+    const suggestion = { typeName: 'Tagliando', months: 12, km: 15000 };
+    render(<Wrap enabled={true} suggestion={suggestion} />);
+    expect(screen.getByText(formatDeadlineSuggestion(suggestion))).toBeInTheDocument();
   });
 
   it('renders no suggestion line when no suggestion is provided', () => {

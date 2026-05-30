@@ -29,13 +29,12 @@ export function deriveDeadlineSuggestion(
 /**
  * Human-readable Italian suggestion line, e.g.
  * "Suggerito per «Tagliando»: prossima scadenza tra 15.000 km o 12 mesi."
- * Returns null when neither km nor months is present (defensive; callers
- * already gate on deriveDeadlineSuggestion).
+ * Callers gate on deriveDeadlineSuggestion, which guarantees at least one of
+ * km/months is present, so at least one part is always produced.
  */
-export function formatDeadlineSuggestion(s: DeadlineSuggestion): string | null {
+export function formatDeadlineSuggestion(s: DeadlineSuggestion): string {
   const parts: string[] = [];
   if (s.km != null) parts.push(formatKm(s.km));
   if (s.months != null) parts.push(`${s.months} ${s.months === 1 ? 'mese' : 'mesi'}`);
-  if (parts.length === 0) return null;
   return `Suggerito per «${s.typeName}»: prossima scadenza tra ${parts.join(' o ')}.`;
 }

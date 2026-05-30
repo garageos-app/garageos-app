@@ -80,10 +80,12 @@ export function InterventionForm({
   // suggest one, force the switch OFF. Keyed on the selected type, so changing
   // the type always re-applies the new type's defaults (overwriting any prior
   // manual edits — intentional, no dirty-tracking).
+  // Deps are [selectedType, methods]: selectedType is a stable find() reference
+  // (interventionTypes is query-memoized), so the effect fires only on type
+  // change — do not switch to deadlineSuggestion (new object each render) or
+  // it would re-run every render.
   useEffect(() => {
-    const suggestion = deriveDeadlineSuggestion(
-      interventionTypes.find((t) => t.id === interventionTypeId) ?? null,
-    );
+    const suggestion = deriveDeadlineSuggestion(selectedType);
     if (suggestion) {
       setShowDeadline(true);
       methods.setValue('createDeadline.enabled', true, { shouldValidate: false });
@@ -96,7 +98,7 @@ export function InterventionForm({
     } else {
       methods.setValue('createDeadline.enabled', false, { shouldValidate: false });
     }
-  }, [interventionTypeId, interventionTypes, methods]);
+  }, [selectedType, methods]);
 
   // Surface every Zod validation error in a top-level Alert. Without this, an
   // invalid field nested inside a collapsed optional section (e.g. an empty
