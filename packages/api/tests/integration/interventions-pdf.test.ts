@@ -23,6 +23,7 @@ vi.mock('../../src/lib/tenant-logo.js', () => ({
 import { generateInterventionPdfPresignedUrl } from '../../src/lib/intervention-pdf-s3.js';
 import { resolveTenantLogo } from '../../src/lib/tenant-logo.js';
 import { buildTestServer } from './fixtures.js';
+import { pgAdmin } from './setup.js';
 import {
   createCustomer,
   createCustomerTenantRelation,
@@ -173,6 +174,10 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
       tenantId,
       interventionId,
     });
+    // BR-151: customer has a CTR → PII visible → full name forwarded to PDF renderer.
+    expect(vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0].data.customerName).toBe(
+      'Mario Rossi',
+    );
   });
 
   // -----------------------------------------------------------------------
@@ -201,6 +206,8 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     expect(res.json<{ code: string }>().code).toBe('intervention.not_found');
     // S3 must not be touched on 404.
     expect(generateInterventionPdfPresignedUrl).not.toHaveBeenCalled();
+    // Logo resolver must not be reached either — 404 exits before any enrichment.
+    expect(resolveTenantLogo).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
@@ -241,6 +248,10 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
 
     expect(res.statusCode).toBe(200);
     expect(generateInterventionPdfPresignedUrl).toHaveBeenCalledOnce();
+    // BR-151: no CTR → PII not visible → placeholder text forwarded to PDF renderer.
+    expect(vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0].data.customerName).toBe(
+      'Proprietario non in anagrafica',
+    );
   });
 
   // -----------------------------------------------------------------------
@@ -307,6 +318,10 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
 
     expect(res.statusCode).toBe(200);
     expect(generateInterventionPdfPresignedUrl).toHaveBeenCalledOnce();
+    // BR-040: no active ownership → no customer → customerName null in PDF data.
+    expect(
+      vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0].data.customerName,
+    ).toBeNull();
   });
 
   // -----------------------------------------------------------------------
@@ -322,7 +337,6 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     // mock logo resolver returns null for (simulating NoSuchKey / IAM gap).
     // We use pgAdmin directly because createTenantWithLocation doesn't expose
     // a logoUrl param.
-    const { pgAdmin } = await import('./setup.js');
     await pgAdmin.query(`UPDATE tenants SET logo_url = 'logos/missing.png' WHERE id = $1`, [
       baseTenantId,
     ]);
