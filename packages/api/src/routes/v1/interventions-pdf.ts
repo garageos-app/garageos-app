@@ -108,10 +108,10 @@ const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
 
         const logo = await resolveTenantLogo(env.S3_ATTACHMENTS_BUCKET, row.tenant.logoUrl);
 
-        // row.status is Prisma's InterventionStatus enum which has exactly the
-        // three string members that InterventionPdfData.status expects. The cast
-        // is needed because the Prisma-generated enum brand is opaque to the
-        // renderer's plain-string union across package boundaries.
+        // Prisma's InterventionStatus enum is an opaque cross-package brand; the
+        // renderer intentionally stays DB-decoupled with a plain string union, so
+        // we narrow here at the boundary. KEEP IN SYNC: if InterventionStatus gains
+        // a member, update the renderer's InterventionPdfData.status union too.
         const { url, expiresAt } = await generateInterventionPdfPresignedUrl({
           bucket: env.S3_ATTACHMENTS_BUCKET,
           tenantId,

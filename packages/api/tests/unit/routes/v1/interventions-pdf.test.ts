@@ -93,7 +93,8 @@ function buildFakePrisma(opts: {
   const owner = opts.owner === undefined ? { customer: customerRow } : opts.owner;
   const relationVisible = opts.relationVisible ?? true;
   return {
-    // tenantContext: user must be active to pass the middleware guard.
+    // tenantContext middleware calls prisma.user.findFirst (select id) to
+    // confirm the user is active; any truthy row satisfies its null-check.
     user: { findFirst: vi.fn().mockResolvedValue({ id: COGNITO_SUB }) },
     intervention: { findFirst: vi.fn().mockResolvedValue(intervention) },
     vehicleOwnership: { findFirst: vi.fn().mockResolvedValue(owner) },
@@ -255,6 +256,26 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     });
     const callArg = vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0];
     expect(callArg.data.customerName).toBe('Trasporti SRL');
+  });
+
+  it('isBusiness true but businessName null — falls back to first+last name', async () => {
+    const bizNoName = {
+      customer: { ...customerRow, isBusiness: true, businessName: null },
+    };
+    const prisma = buildFakePrisma({ owner: bizNoName });
+    vi.mocked(resolveTenantLogo).mockResolvedValue(null);
+    vi.mocked(generateInterventionPdfPresignedUrl).mockResolvedValue({
+      url: MOCK_URL,
+      expiresAt: MOCK_EXPIRES_AT,
+    });
+    app = await buildApp(prisma);
+    await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
+      headers: { authorization: 'Bearer test' },
+    });
+    const callArg = vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0];
+    expect(callArg.data.customerName).toBe('Mario Rossi');
   });
 
   it('400 — invalid UUID', async () => {
