@@ -1,11 +1,51 @@
 // packages/api/tests/unit/lib/intervention-pdf-renderer.test.ts
 import { describe, expect, it } from 'vitest';
+import { inflateSync } from 'zlib';
 import { PDFDocument } from 'pdf-lib';
 import {
   renderInterventionPdf,
   INTERVENTION_PDF_LAYOUT,
   type InterventionPdfData,
 } from '../../../src/lib/intervention-pdf-renderer.js';
+
+/**
+ * Extract all text drawn in a pdf-lib PDF buffer.
+ *
+ * pdf-lib compresses content streams with FlateDecode and encodes each glyph
+ * run as a hex string (<hex...> Tj). This helper:
+ *  1. Finds every "stream\n ... endstream" block.
+ *  2. Inflates it (skipping non-deflate streams like XRef).
+ *  3. Decodes every <hex> sequence back to Latin-1 text.
+ *
+ * The returned string is the concatenation of all decoded text fragments,
+ * suitable for regex assertions on drawn content.
+ */
+function extractPdfText(buf: Buffer): string {
+  const hexPattern = /<([0-9A-Fa-f]+)>/g;
+  let text = '';
+  let pos = 0;
+  const startMarker = Buffer.from('stream\n');
+  const endMarker = Buffer.from('endstream');
+  while (pos < buf.length) {
+    const start = buf.indexOf(startMarker, pos);
+    if (start === -1) break;
+    const dataStart = start + startMarker.length;
+    const dataEnd = buf.indexOf(endMarker, dataStart);
+    if (dataEnd === -1) break;
+    const chunk = buf.slice(dataStart, dataEnd);
+    try {
+      const inflated = inflateSync(chunk).toString('latin1');
+      // Decode hex-encoded glyph runs (pdf-lib uses <hex> Tj for WinAnsi fonts).
+      for (const m of inflated.matchAll(hexPattern)) {
+        if (m[1]) text += Buffer.from(m[1], 'hex').toString('latin1');
+      }
+    } catch {
+      // Non-deflate stream (e.g. XRef) — skip.
+    }
+    pos = dataEnd + endMarker.length;
+  }
+  return text;
+}
 
 const BASE: InterventionPdfData = {
   tenant: {
@@ -60,6 +100,11 @@ describe('renderInterventionPdf', () => {
       cancelledReason: 'Richiesta cliente',
     });
     expect(buf.subarray(0, 5).toString('utf-8')).toBe('%PDF-');
+    // pdf-lib compresses content streams and hex-encodes each glyph run;
+    // extractPdfText inflates + decodes <hex> sequences back to readable text.
+    const text = extractPdfText(buf);
+    expect(text).toMatch(/ANNULLATO/);
+    expect(text).toMatch(/Richiesta cliente/);
   });
 
   it('renders without throwing with no title, no parts, no customer, no logo', async () => {
@@ -70,6 +115,9 @@ describe('renderInterventionPdf', () => {
       customerName: null,
     });
     expect(buf.subarray(0, 5).toString('utf-8')).toBe('%PDF-');
+    const text = extractPdfText(buf);
+    expect(text).not.toMatch(/Mario Rossi/);
+    expect(text).not.toMatch(/Intestatario/);
   });
 
   it('embeds a PNG logo when provided', async () => {

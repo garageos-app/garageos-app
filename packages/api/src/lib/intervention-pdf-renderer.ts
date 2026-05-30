@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
 
 // F-OFF-309 — single intervention PDF, A4 portrait, 1 page.
 // Customer-facing document handed to the client. internal_notes are NEVER
@@ -9,6 +9,12 @@ const A4_WIDTH_PT = 595.28;
 const A4_HEIGHT_PT = 841.89;
 const MARGIN = 50;
 const LINE = 16;
+
+// U+00B7 MIDDLE DOT — valid WinAnsi (0xB7). Used as field separator in header
+// and vehicle line. \uXXXX escape avoids any editor encoding ambiguity.
+const DOT = '\u00b7'; // U+00B7 MIDDLE DOT
+// U+00D7 MULTIPLICATION SIGN — valid WinAnsi (0xD7). Used as quantity marker.
+const TIMES = '\u00d7'; // U+00D7 MULTIPLICATION SIGN
 
 export interface InterventionPdfData {
   tenant: {
@@ -50,11 +56,20 @@ function formatKm(n: number): string {
 }
 
 // Greedy word-wrap to a max width in points.
+// Split on '\n' first, then filter empty tokens per line to avoid a spurious
+// trailing '' entry from trailing whitespace (e.g. 'text '.split(/\s+/)).
+// Intentional blank lines (empty rawLine after trimming) are preserved as-is.
 function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const out: string[] = [];
   for (const rawLine of text.split('\n')) {
+    const words = rawLine.split(/\s+/).filter((w) => w !== '');
+    if (words.length === 0) {
+      // Preserve intentional blank line.
+      out.push('');
+      continue;
+    }
     let current = '';
-    for (const word of rawLine.split(/\s+/)) {
+    for (const word of words) {
       const candidate = current ? `${current} ${word}` : word;
       if (font.widthOfTextAtSize(candidate, size) > maxWidth && current) {
         out.push(current);
@@ -73,7 +88,7 @@ export async function renderInterventionPdf(
   logo?: LogoImage | null,
 ): Promise<Buffer> {
   const pdf = await PDFDocument.create();
-  const page: PDFPage = pdf.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
+  const page = pdf.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const contentWidth = A4_WIDTH_PT - 2 * MARGIN;
@@ -86,6 +101,14 @@ export async function renderInterventionPdf(
   };
 
   // --- Header: optional logo + workshop block ---
+  // Hoist address computation once so both logo and no-logo branches share it.
+  // When BOTH addressLine and city are null, omit the DOT separator entirely
+  // and render just "P.IVA <vat>" (Fix M1+M2).
+  const addrParts = [data.tenant.addressLine, data.tenant.city].filter(Boolean).join(', ');
+  const addrLine = addrParts
+    ? `${addrParts} ${DOT} P.IVA ${data.tenant.vatNumber}`
+    : `P.IVA ${data.tenant.vatNumber}`;
+
   let logoToUse: LogoImage | null = logo ?? null;
   if (logoToUse) {
     try {
@@ -103,8 +126,7 @@ export async function renderInterventionPdf(
       // Shift the text header to the right of the logo.
       const headerX = MARGIN + dims.width + 16;
       page.drawText(data.tenant.businessName, { x: headerX, y, size: 16, font: bold });
-      const addr = [data.tenant.addressLine, data.tenant.city].filter(Boolean).join(', ');
-      page.drawText(`${addr} - P.IVA ${data.tenant.vatNumber}`, {
+      page.drawText(addrLine, {
         x: headerX,
         y: y - LINE,
         size: 9,
@@ -128,8 +150,7 @@ export async function renderInterventionPdf(
   }
   if (!logoToUse) {
     draw(data.tenant.businessName, 16, bold);
-    const addr = [data.tenant.addressLine, data.tenant.city].filter(Boolean).join(', ');
-    draw(`${addr} - P.IVA ${data.tenant.vatNumber}`, 9, font, rgb(0.3, 0.3, 0.3));
+    draw(addrLine, 9, font, rgb(0.3, 0.3, 0.3));
     if (data.tenant.phone) draw(`Tel ${data.tenant.phone}`, 9, font, rgb(0.3, 0.3, 0.3));
   }
 
@@ -147,8 +168,8 @@ export async function renderInterventionPdf(
   draw('SCHEDA INTERVENTO', 13, bold);
   if (data.customerName) draw(`Intestatario: ${data.customerName}`, 11, font);
   draw(
-    `Veicolo: ${data.vehicle.plate} - ${data.vehicle.make} ${data.vehicle.model}` +
-      (data.vehicle.garageCode ? ` - cod. ${data.vehicle.garageCode}` : ''),
+    `Veicolo: ${data.vehicle.plate} ${DOT} ${data.vehicle.make} ${data.vehicle.model}` +
+      (data.vehicle.garageCode ? ` ${DOT} cod. ${data.vehicle.garageCode}` : ''),
     11,
     font,
   );
@@ -171,6 +192,8 @@ export async function renderInterventionPdf(
   }
 
   // --- Title / description ---
+  // TODO(F-OFF-309): v1 single-page only — no overflow guard; long descriptions/parts can exceed
+  // page bottom. Multi-page deferred.
   y -= 4;
   if (data.title) draw(`Titolo: ${data.title}`, 11, bold);
   draw('Descrizione:', 11, bold);
@@ -186,7 +209,8 @@ export async function renderInterventionPdf(
     for (const p of data.partsReplaced) {
       const code = p.code ? ` (cod. ${p.code})` : '';
       const notes = p.notes ? ` - ${p.notes}` : '';
-      page.drawText(`* ${p.name}${code} x${p.quantity}${notes}`, {
+      // Format: "· <name> (cod. <code>) ×<qty>" — DOT bullet, TIMES for qty.
+      page.drawText(`${DOT} ${p.name}${code} ${TIMES}${p.quantity}${notes}`, {
         x: MARGIN + 12,
         y,
         size: 10,
