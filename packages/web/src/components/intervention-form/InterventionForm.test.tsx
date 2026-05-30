@@ -55,6 +55,18 @@ const types: InterventionType[] = [
     defaultDeadlineKm: null,
     custom: false,
   },
+  {
+    id: 'uuid-gomme',
+    code: 'GOMME',
+    nameIt: 'Cambio gomme',
+    description: 'x',
+    icon: 'tire',
+    category: 'tires',
+    suggestsDeadline: true,
+    defaultDeadlineMonths: null,
+    defaultDeadlineKm: 40000,
+    custom: false,
+  },
 ];
 
 function renderForm() {
@@ -138,5 +150,14 @@ describe('InterventionForm', () => {
     expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(60);
     expect(screen.getByLabelText(/incremento km/i)).toHaveValue(120000);
     expect(screen.getByText(/«Cinghia distribuzione»/)).toBeInTheDocument();
+  });
+
+  it('clears the months input when switching to a km-only type', async () => {
+    renderForm();
+    await selectType(/^Tagliando$/);
+    expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(12);
+    await selectType(/^Cambio gomme$/);
+    expect(screen.getByLabelText(/incremento km/i)).toHaveValue(40000);
+    expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(null);
   });
 });

@@ -86,15 +86,13 @@ export function InterventionForm({
     );
     if (suggestion) {
       setShowDeadline(true);
-      methods.setValue(
-        'createDeadline',
-        {
-          enabled: true,
-          ...(suggestion.months != null ? { monthsFromNow: suggestion.months } : {}),
-          ...(suggestion.km != null ? { kmIncrement: suggestion.km } : {}),
-        },
-        { shouldValidate: false },
-      );
+      methods.setValue('createDeadline.enabled', true, { shouldValidate: false });
+      methods.setValue('createDeadline.monthsFromNow', suggestion.months ?? undefined, {
+        shouldValidate: false,
+      });
+      methods.setValue('createDeadline.kmIncrement', suggestion.km ?? undefined, {
+        shouldValidate: false,
+      });
     } else {
       methods.setValue('createDeadline.enabled', false, { shouldValidate: false });
     }
