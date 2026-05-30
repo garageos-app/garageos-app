@@ -1,12 +1,26 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InterventionForm } from './InterventionForm';
 import type { InterventionType } from '@/queries/types';
 
+// Radix Select uses pointer-capture + scrollIntoView, which jsdom does not
+// implement. Stub them so userEvent can open the listbox and click options.
+beforeAll(() => {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {};
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+});
+
 const types: InterventionType[] = [
   {
-    id: 'uuid-1',
+    id: 'uuid-tagliando',
     code: 'TAGLIANDO',
     nameIt: 'Tagliando',
     description: 'x',
@@ -17,18 +31,63 @@ const types: InterventionType[] = [
     defaultDeadlineKm: 15000,
     custom: false,
   },
+  {
+    id: 'uuid-cinghia',
+    code: 'CINGHIA',
+    nameIt: 'Cinghia distribuzione',
+    description: 'x',
+    icon: 'belt',
+    category: 'maintenance',
+    suggestsDeadline: true,
+    defaultDeadlineMonths: 60,
+    defaultDeadlineKm: 120000,
+    custom: false,
+  },
+  {
+    id: 'uuid-diagnosi',
+    code: 'DIAGNOSI',
+    nameIt: 'Diagnosi',
+    description: 'x',
+    icon: 'scan',
+    category: 'repair',
+    suggestsDeadline: false,
+    defaultDeadlineMonths: null,
+    defaultDeadlineKm: null,
+    custom: false,
+  },
+  {
+    id: 'uuid-gomme',
+    code: 'GOMME',
+    nameIt: 'Cambio gomme',
+    description: 'x',
+    icon: 'tire',
+    category: 'tires',
+    suggestsDeadline: true,
+    defaultDeadlineMonths: null,
+    defaultDeadlineKm: 40000,
+    custom: false,
+  },
 ];
+
+function renderForm() {
+  return render(
+    <InterventionForm
+      interventionTypes={types}
+      registrationDate={null}
+      onSubmit={vi.fn()}
+      submitting={false}
+    />,
+  );
+}
+
+async function selectType(name: RegExp) {
+  await userEvent.click(screen.getByLabelText(/tipo intervento/i));
+  await userEvent.click(await screen.findByRole('option', { name }));
+}
 
 describe('InterventionForm', () => {
   it('renders 4 required fields visible by default', () => {
-    render(
-      <InterventionForm
-        interventionTypes={types}
-        registrationDate={null}
-        onSubmit={vi.fn()}
-        submitting={false}
-      />,
-    );
+    renderForm();
     expect(screen.getByLabelText(/data intervento/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/tipo intervento/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/km al momento/i)).toBeInTheDocument();
@@ -36,27 +95,13 @@ describe('InterventionForm', () => {
   });
 
   it('keeps optional sections collapsed by default', () => {
-    render(
-      <InterventionForm
-        interventionTypes={types}
-        registrationDate={null}
-        onSubmit={vi.fn()}
-        submitting={false}
-      />,
-    );
+    renderForm();
     expect(screen.queryByLabelText(/^titolo/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/aggiungi pezzo/i)).not.toBeInTheDocument();
   });
 
   it('expands optional title when clicked', async () => {
-    render(
-      <InterventionForm
-        interventionTypes={types}
-        registrationDate={null}
-        onSubmit={vi.fn()}
-        submitting={false}
-      />,
-    );
+    renderForm();
     await userEvent.click(screen.getByText(/aggiungi titolo/i));
     expect(screen.getByLabelText(/titolo \(opz/i)).toBeInTheDocument();
   });
@@ -72,11 +117,47 @@ describe('InterventionForm', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /salva intervento/i }));
-    // The message now appears in the per-field <p> and in the top-level Alert
-    // that surfaces every validation error.
     const matches = await screen.findAllByText(/data richiesta/i);
     expect(matches.length).toBeGreaterThanOrEqual(1);
-    expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent(/correggi i campi/i);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('auto-opens and pre-fills the deadline section for a suggesting type', async () => {
+    renderForm();
+    await selectType(/^Tagliando$/);
+    expect(screen.getByRole('switch')).toBeChecked();
+    expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(12);
+    expect(screen.getByLabelText(/incremento km/i)).toHaveValue(15000);
+    expect(
+      screen.getByText('Suggerito per «Tagliando»: prossima scadenza tra 15.000 km o 12 mesi.'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not enable the deadline section for a non-suggesting type', async () => {
+    renderForm();
+    await selectType(/^Diagnosi$/);
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(screen.queryByText(/suggerito per/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/programma scadenza/i)).toBeInTheDocument();
+  });
+
+  it('re-applies the new type defaults when the type changes', async () => {
+    renderForm();
+    await selectType(/^Tagliando$/);
+    expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(12);
+    await selectType(/^Cinghia distribuzione$/);
+    expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(60);
+    expect(screen.getByLabelText(/incremento km/i)).toHaveValue(120000);
+    expect(screen.getByText(/«Cinghia distribuzione»/)).toBeInTheDocument();
+  });
+
+  it('clears the months input when switching to a km-only type', async () => {
+    renderForm();
+    await selectType(/^Tagliando$/);
+    expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(12);
+    await selectType(/^Cambio gomme$/);
+    expect(screen.getByLabelText(/incremento km/i)).toHaveValue(40000);
+    expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(null);
   });
 });

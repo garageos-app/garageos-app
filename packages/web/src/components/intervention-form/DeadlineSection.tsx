@@ -2,14 +2,22 @@ import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { formatDeadlineSuggestion, type DeadlineSuggestion } from '@/lib/deadline-suggestion';
 import type { CreateInterventionFormValues } from '@/lib/validators/intervention';
 
-export function DeadlineSection() {
+interface DeadlineSectionProps {
+  /** F-OFF-308 suggestion for the currently selected intervention type. */
+  suggestion?: DeadlineSuggestion | null;
+}
+
+export function DeadlineSection({ suggestion = null }: DeadlineSectionProps) {
   const { control, register } = useFormContext<CreateInterventionFormValues>();
   const enabled = useWatch({ control, name: 'createDeadline.enabled' }) ?? false;
+  const suggestionText = suggestion ? formatDeadlineSuggestion(suggestion) : null;
 
   return (
     <div className="space-y-3">
+      {suggestionText && <p className="text-sm text-muted-foreground">{suggestionText}</p>}
       <Controller
         control={control}
         name="createDeadline.enabled"
