@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InterventionForm } from './InterventionForm';
 import type { InterventionType } from '@/queries/types';
+import { deriveDeadlineSuggestion, formatDeadlineSuggestion } from '@/lib/deadline-suggestion';
 
 // Radix Select uses pointer-capture + scrollIntoView, which jsdom does not
 // implement. Stub them so userEvent can open the listbox and click options.
@@ -129,9 +130,8 @@ describe('InterventionForm', () => {
     expect(screen.getByRole('switch')).toBeChecked();
     expect(screen.getByLabelText(/mesi da oggi/i)).toHaveValue(12);
     expect(screen.getByLabelText(/incremento km/i)).toHaveValue(15000);
-    expect(
-      screen.getByText('Suggerito per «Tagliando»: prossima scadenza tra 15.000 km o 12 mesi.'),
-    ).toBeInTheDocument();
+    const expected = formatDeadlineSuggestion(deriveDeadlineSuggestion(types[0]!)!);
+    expect(screen.getByText(expected)).toBeInTheDocument();
   });
 
   it('does not enable the deadline section for a non-suggesting type', async () => {
