@@ -38,6 +38,16 @@ describe('recentQuerySchema', () => {
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 
+interface FindManySelect {
+  vehicle: { select: Record<string, true> };
+  user: { select: Record<string, true> };
+}
+
+/** Typed accessor for the `select` clause of the findMany call argument. */
+function findManySelect(args: unknown): FindManySelect {
+  return (args as { select: FindManySelect }).select;
+}
+
 interface FakePrisma {
   user: { findFirstOrThrow: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   intervention: { findMany: ReturnType<typeof vi.fn> };
@@ -271,16 +281,14 @@ describe('GET /v1/interventions/recent (unit)', () => {
       url: '/v1/interventions/recent',
       headers: { authorization: 'Bearer test' },
     });
-    const call = prisma.intervention.findMany.mock.calls[0]![0] as {
-      select: { vehicle: { select: Record<string, true> }; user: { select: Record<string, true> } };
-    };
-    expect(call.select.vehicle.select).toEqual({
+    const select = findManySelect(prisma.intervention.findMany.mock.calls[0]![0]);
+    expect(select.vehicle.select).toEqual({
       id: true,
       plate: true,
       make: true,
       model: true,
     });
-    expect(call.select.user.select).toEqual({
+    expect(select.user.select).toEqual({
       id: true,
       firstName: true,
       lastName: true,
