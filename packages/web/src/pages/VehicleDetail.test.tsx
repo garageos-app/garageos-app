@@ -183,6 +183,18 @@ describe('VehicleDetail', () => {
     );
   });
 
+  it('disables the tag button when vehicle is archived', async () => {
+    setupApiFetch({
+      detail: {
+        ...VEHICLE_DETAIL_FIXTURE,
+        vehicle: { ...VEHICLE_DETAIL_FIXTURE.vehicle, status: 'archived' },
+      },
+      timeline: { data: [], meta: { has_more: false } },
+    });
+    render(wrap({ children: <VehicleDetail /> }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /stampa tag/i })).toBeDisabled());
+  });
+
   it('shows the empty timeline message when no interventions', async () => {
     setupApiFetch({
       detail: VEHICLE_DETAIL_FIXTURE,
@@ -199,7 +211,12 @@ describe('VehicleDetail', () => {
   it('renders VehicleTagPrintButton "Stampa tag" in the header', async () => {
     setupApiFetch({ detail: VEHICLE_DETAIL_FIXTURE, timeline: TIMELINE_FIXTURE });
     render(wrap({ children: <VehicleDetail /> }));
-    expect(await screen.findByRole('button', { name: /stampa tag/i })).toBeVisible();
+    const button = await screen.findByRole('button', { name: /stampa tag/i });
+    expect(button).toBeVisible();
+    // The fixture vehicle is certified → the status gate must leave it enabled.
+    // This pins that VehicleDetail actually wires status through (an unwired
+    // undefined status would disable the button).
+    expect(button).not.toBeDisabled();
   });
 
   it('passes tag_first_printed_at to VehicleTagPrintButton', async () => {
