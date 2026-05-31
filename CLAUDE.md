@@ -273,6 +273,33 @@ Never run `pnpm test:integration` (root) locally unless explicitly instructed �
 
 See `docs/APPENDICE_E_TESTING.md` for the full testing strategy, including which `BR-XXX` rules require explicit tests.
 
+## Right-sizing the workflow to the task
+
+The slow part of a change is rarely the tests — those already run on CI in parallel (see above). The cost driver is applying the **full heavyweight review pipeline** (plan doc → one subagent per task → 3-4 review stages → smoke runbook → final Opus review) to a small change. That pipeline is calibrated for **large vertical slices (≥6 tasks, cross-layer)**, not for a single additive endpoint or component.
+
+**Match the process to the task size:**
+
+- **Small / additive change** (one endpoint, one component, an isolated fix): lightweight plan, implement directly, **a single final Opus review**. No subagent-per-task, no 3-4 review stages.
+- **Large slice** (≥6 tasks, multiple layers): full subagent-driven review pipeline.
+
+**Local feedback loop (fastest first):**
+
+1. `pnpm -r typecheck` — automatic on push, catches the most common break (~30s).
+2. **Only if you changed a route handler**, add a targeted `pnpm --filter @garageos/api test:unit` (~30-45s) — typecheck does not catch broken `FakePrisma` mocks.
+3. Push and let CI run the full matrix in parallel: `gh pr checks --watch`.
+
+Do not propose "move tests to CI" as an optimization — that is already the design.
+
 ## Questions?
 
 If you need clarification on any rule here or in the documentation, ask the user before proceeding. Reading the relevant `docs/APPENDICE_*.md` file usually answers the question.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
