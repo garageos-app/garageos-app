@@ -3,12 +3,14 @@ import { Printer } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api-client';
+import type { VehicleStatus } from '@/queries/types';
 import { useVehicleTagDownload } from '@/queries/vehicleTag';
 import { VehicleTagReprintDialog } from './VehicleTagReprintDialog';
 
 export interface Props {
   vehicleId: string;
   tagFirstPrintedAt: string | null;
+  status: VehicleStatus;
 }
 
 // Map known GET /v1/vehicles/:id/tag error codes to Italian copy.
@@ -33,13 +35,25 @@ function mapTagError(err: ApiError): string {
  *
  * F-OFF-104 / F-OFF-109
  */
-export function VehicleTagPrintButton({ vehicleId, tagFirstPrintedAt }: Props) {
+export function VehicleTagPrintButton({ vehicleId, tagFirstPrintedAt, status }: Props) {
   const mutation = useVehicleTagDownload();
   const [reprintOpen, setReprintOpen] = useState(false);
 
   // See F-OFF-109: gate label and action on whether the tag has been printed before.
   const isReprint = tagFirstPrintedAt !== null;
   const label = isReprint ? 'Ristampa tag' : 'Stampa tag';
+
+  // #6 tag-button status gate: the tag is only available for certified
+  // vehicles (mirrors the backend BR-026 guard in vehicles-tag.ts). Disable
+  // the button pre-emptively so the request never fires for non-certified
+  // vehicles. Positive guard catches any future non-certified status.
+  const disabledByStatus = status !== 'certified';
+  const statusReason = !disabledByStatus
+    ? null
+    : status === 'archived'
+      ? 'Non disponibile per veicoli archiviati'
+      : 'Disponibile dopo la certificazione';
+  const statusReasonId = 'tag-status-reason';
 
   const errorMessage =
     mutation.isError && mutation.error instanceof ApiError
@@ -61,10 +75,24 @@ export function VehicleTagPrintButton({ vehicleId, tagFirstPrintedAt }: Props) {
   // button up when the alert appears.
   return (
     <div className="relative flex flex-col items-start">
-      <Button type="button" variant="outline" disabled={mutation.isPending} onClick={handleClick}>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={disabledByStatus || mutation.isPending}
+        aria-describedby={statusReason ? statusReasonId : undefined}
+        onClick={handleClick}
+      >
         <Printer className="mr-2 h-4 w-4" />
         {mutation.isPending ? 'Generazione PDF...' : label}
       </Button>
+      {statusReason && (
+        <p
+          id={statusReasonId}
+          className="absolute left-0 top-full mt-1 max-w-xs text-sm text-muted-foreground"
+        >
+          {statusReason}
+        </p>
+      )}
       {errorMessage && (
         <p role="alert" className="absolute left-0 top-full mt-1 max-w-xs text-sm text-destructive">
           {errorMessage}

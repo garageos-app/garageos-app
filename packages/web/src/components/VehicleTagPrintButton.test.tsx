@@ -46,7 +46,12 @@ function renderButton(props: Partial<VehicleTagPrintButtonProps> = {}) {
   });
   return render(
     <QueryClientProvider client={qc}>
-      <VehicleTagPrintButton vehicleId={VEHICLE_ID} tagFirstPrintedAt={null} {...props} />
+      <VehicleTagPrintButton
+        vehicleId={VEHICLE_ID}
+        tagFirstPrintedAt={null}
+        status="certified"
+        {...props}
+      />
     </QueryClientProvider>,
   );
 }
@@ -125,5 +130,35 @@ describe('gating via tagFirstPrintedAt prop', () => {
     renderButton({ vehicleId: VEHICLE_ID, tagFirstPrintedAt: '2026-04-10T12:34:56.789Z' });
     await userEvent.click(screen.getByRole('button', { name: /ristampa tag/i }));
     expect(await screen.findByRole('dialog')).toBeVisible();
+  });
+});
+
+describe('status gate (#6)', () => {
+  it('disables the button and shows reason for pending vehicles', () => {
+    renderButton({ status: 'pending' });
+    expect(screen.getByRole('button', { name: /stampa tag/i })).toBeDisabled();
+    expect(screen.getByText('Disponibile dopo la certificazione')).toBeVisible();
+  });
+
+  it('disables the button and shows reason for archived vehicles', () => {
+    renderButton({ status: 'archived' });
+    expect(screen.getByRole('button', { name: /stampa tag/i })).toBeDisabled();
+    expect(screen.getByText('Non disponibile per veicoli archiviati')).toBeVisible();
+  });
+
+  it('enables the button for certified vehicles', () => {
+    renderButton({ status: 'certified' });
+    expect(screen.getByRole('button', { name: /stampa tag/i })).not.toBeDisabled();
+  });
+
+  it('does not fire the mutation or open the dialog when clicked while disabled', async () => {
+    const user = userEvent.setup();
+    // Prior print would normally make this a reprint; archived keeps it disabled.
+    renderButton({ status: 'archived', tagFirstPrintedAt: '2026-04-10T12:34:56.789Z' });
+    const button = screen.getByRole('button', { name: /ristampa tag/i });
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(mockApiFetch).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
