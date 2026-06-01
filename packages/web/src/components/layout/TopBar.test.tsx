@@ -20,6 +20,12 @@ vi.mock('@/theme/ThemeToggle', () => ({
   ThemeToggle: () => <button type="button">theme</button>,
 }));
 
+// LocationSelector pulls from LocationFilterProvider (not mounted in these
+// unit tests); stub it — its own behavior is covered in LocationSelector.test.tsx.
+vi.mock('@/location-filter/LocationSelector', () => ({
+  LocationSelector: () => null,
+}));
+
 // Per-test override of useProfileMe
 const profileQueryRef = { current: { data: undefined as unknown } };
 vi.mock('@/queries/profileMe', () => ({

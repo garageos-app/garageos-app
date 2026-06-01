@@ -11,6 +11,23 @@ class MockResizeObserver {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).ResizeObserver = MockResizeObserver;
 
+// Polyfill pointer-capture + scrollIntoView for radix-ui Select in jsdom.
+// jsdom does not implement these DOM APIs, but Radix calls them on pointer
+// interaction, so without them the Select dropdown never opens under test.
+// Existing Select tests assert indirectly and are unaffected.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+}
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = () => {};
+}
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => {};
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 // Stub Cognito env vars so packages/web/src/lib/cognito.ts module-init
 // does not throw when test files import code that depends on it. These
 // values are intentionally fake — Cognito SDK calls are mocked in each

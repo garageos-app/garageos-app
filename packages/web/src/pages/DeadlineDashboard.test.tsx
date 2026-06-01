@@ -22,6 +22,12 @@ vi.mock('@/lib/api-client', async () => {
   };
 });
 
+// useDeadlinesList now reads the location filter; this page is rendered
+// without a LocationFilterProvider here, so stub the hook (no sede selected).
+vi.mock('@/location-filter/useLocationFilter', () => ({
+  useLocationFilter: () => ({ selectedLocationId: null }),
+}));
+
 // Radix Select uses pointer-capture APIs not available in JSDOM; replace with
 // a plain <select> so the dropdown test can interact without polyfilling.
 // The stub renders a single native <select role="combobox"> that contains all
