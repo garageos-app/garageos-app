@@ -28,7 +28,18 @@ export const tenantsLocationsListRoutes: FastifyPluginAsync = async (app) => {
       const rows = await app.withContext({ tenantId }, (tx) =>
         tx.location.findMany({
           where: { tenantId, status: 'active', deletedAt: null },
-          select: { id: true, name: true, city: true, isPrimary: true },
+          select: {
+            id: true,
+            name: true,
+            addressLine: true,
+            city: true,
+            province: true,
+            postalCode: true,
+            country: true,
+            phone: true,
+            email: true,
+            isPrimary: true,
+          },
           orderBy: [{ isPrimary: 'desc' }, { name: 'asc' }],
         }),
       );

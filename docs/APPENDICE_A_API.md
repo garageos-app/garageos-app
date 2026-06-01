@@ -2146,12 +2146,20 @@ Restituisce le location `status=active` non soft-deleted del tenant corrente. Us
     {
       "id": "b2c3d4e5-...",
       "name": "Sede Milano",
+      "addressLine": "Via Milano 1",
       "city": "Milano",
+      "province": "MI",
+      "postalCode": "20100",
+      "country": "IT",
+      "phone": "+39 02 1234567",
+      "email": "milano@officina.it",
       "isPrimary": true
     }
   ]
 }
 ```
+
+> Nota (F-OFF-003 PR2, 2026-06-01): i campi indirizzo completi (`addressLine`, `province`, `postalCode`, `country`, `phone`, `email`) sono stati aggiunti alla response per popolare il form di modifica nella UI gestione sedi. Il consumer F-OFF-004 (`InviteUserDialog`) ne legge solo un sottoinsieme.
 
 Ordine: sede primaria prima (`isPrimary DESC`), poi alfabetico per nome.
 
