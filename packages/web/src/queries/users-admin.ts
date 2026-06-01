@@ -43,7 +43,13 @@ export interface InvitationPublicView {
 export interface TenantLocation {
   id: string;
   name: string;
+  addressLine: string;
   city: string;
+  province: string;
+  postalCode: string;
+  country: string;
+  phone: string | null;
+  email: string | null;
   isPrimary: boolean;
 }
 

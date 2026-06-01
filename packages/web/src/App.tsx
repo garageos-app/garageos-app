@@ -51,6 +51,7 @@ export function App() {
                   <Route path="/deadlines" element={<DeadlineDashboard />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/settings/users" element={<Settings />} />
+                  <Route path="/settings/locations" element={<Settings />} />
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

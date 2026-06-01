@@ -190,6 +190,7 @@ describe('Settings page', () => {
     render(wrap(<Settings />));
     expect(screen.getByRole('tab', { name: 'Profilo' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Officina' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Sedi' })).toBeInTheDocument();
   });
 
   it('renders only Profilo tab for mechanic', () => {
@@ -197,6 +198,7 @@ describe('Settings page', () => {
     render(wrap(<Settings />));
     expect(screen.getByRole('tab', { name: 'Profilo' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Officina' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Sedi' })).not.toBeInTheDocument();
   });
 
   it('switching tab without dirty form is immediate (no AlertDialog)', async () => {

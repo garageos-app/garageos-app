@@ -57,7 +57,7 @@ describe('GET /v1/tenants/me/locations', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
-      locations: { id: string; name: string; city: string; isPrimary: boolean }[];
+      locations: Record<string, unknown>[];
     };
     expect(body.locations).toHaveLength(2);
     // Primary location comes first (isPrimary desc)
@@ -70,6 +70,13 @@ describe('GET /v1/tenants/me/locations', () => {
     expect(body.locations[0]).toHaveProperty('name');
     expect(body.locations[0]).toHaveProperty('city');
     expect(body.locations[0]).toHaveProperty('isPrimary');
+    // F-OFF-003 PR2: GET now returns full address fields for the management UI.
+    expect(body.locations[0]).toHaveProperty('addressLine');
+    expect(body.locations[0]).toHaveProperty('province');
+    expect(body.locations[0]).toHaveProperty('postalCode');
+    expect(body.locations[0]).toHaveProperty('country');
+    expect(body.locations[0]).toHaveProperty('phone');
+    expect(body.locations[0]).toHaveProperty('email');
   });
 
   it('returns 403 for mechanic', async () => {
