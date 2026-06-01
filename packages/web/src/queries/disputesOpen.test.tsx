@@ -3,8 +3,8 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { useDeadlinesList } from './deadlinesList';
-import type { DeadlinesListResponse } from './types';
+import { useDisputesOpen } from './disputesOpen';
+import type { DisputesOpenResponse } from './disputesOpen';
 
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
@@ -21,39 +21,28 @@ function wrap({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-const EMPTY: DeadlinesListResponse = { deadlines: [], nextCursor: null };
+const EMPTY: DisputesOpenResponse = {
+  pendingResponse: { count: 0, items: [] },
+  inProgress: { count: 0, items: [] },
+};
 
-describe('useDeadlinesList', () => {
-  it('fires the query and includes status=open by default', async () => {
+describe('useDisputesOpen', () => {
+  it('fetches without location_id when no sede is selected', async () => {
+    filterRef.current = { selectedLocationId: null };
     apiFetchMock.mockClear();
     apiFetchMock.mockResolvedValueOnce(EMPTY);
-    const { result } = renderHook(() => useDeadlinesList({}), { wrapper: wrap });
+    const { result } = renderHook(() => useDisputesOpen(), { wrapper: wrap });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(apiFetchMock).toHaveBeenCalledWith('/v1/deadlines?status=open&limit=50');
-  });
-
-  it('passes intervention_type_id when provided', async () => {
-    apiFetchMock.mockClear();
-    apiFetchMock.mockResolvedValueOnce(EMPTY);
-    const typeId = '11111111-1111-4111-8111-111111111111';
-    const { result } = renderHook(() => useDeadlinesList({ interventionTypeId: typeId }), {
-      wrapper: wrap,
-    });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      `/v1/deadlines?status=open&intervention_type_id=${typeId}&limit=50`,
-    );
+    expect(apiFetchMock).toHaveBeenCalledWith('/v1/disputes/open');
   });
 
   it('appends location_id and keys the query by the selected sede', async () => {
     filterRef.current = { selectedLocationId: 'loc-b' };
     apiFetchMock.mockClear();
     apiFetchMock.mockResolvedValueOnce(EMPTY);
-    const { result } = renderHook(() => useDeadlinesList({}), { wrapper: wrap });
+    const { result } = renderHook(() => useDisputesOpen(), { wrapper: wrap });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      '/v1/deadlines?status=open&limit=50&location_id=loc-b',
-    );
+    expect(apiFetchMock).toHaveBeenCalledWith('/v1/disputes/open?location_id=loc-b');
     filterRef.current = { selectedLocationId: null };
   });
 });

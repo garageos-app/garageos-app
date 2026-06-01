@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useApiFetch } from '@/lib/api-client';
+import { useLocationFilter } from '@/location-filter/useLocationFilter';
 
 export type DisputeReasonCategory = 'not_performed' | 'wrong_data' | 'not_authorized' | 'other';
 
@@ -30,10 +31,14 @@ export interface DisputesOpenResponse {
 
 export function useDisputesOpen() {
   const apiFetch = useApiFetch();
+  const { selectedLocationId } = useLocationFilter();
   return useQuery({
-    queryKey: ['disputes-open'] as const,
+    queryKey: ['disputes-open', selectedLocationId] as const,
     queryFn: async (): Promise<DisputesOpenResponse> => {
-      return apiFetch<DisputesOpenResponse>('/v1/disputes/open');
+      const url = selectedLocationId
+        ? `/v1/disputes/open?location_id=${selectedLocationId}`
+        : '/v1/disputes/open';
+      return apiFetch<DisputesOpenResponse>(url);
     },
     staleTime: 60_000,
   });
