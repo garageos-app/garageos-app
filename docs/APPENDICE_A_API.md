@@ -2161,6 +2161,81 @@ Ordine: sede primaria prima (`isPrimary DESC`), poi alfabetico per nome.
 
 ---
 
+#### POST /v1/tenants/me/locations — Crea sede (F-OFF-003)
+
+Crea una sede **secondaria** per il tenant corrente. La sede nasce sempre `isPrimary=false` e `status=active`; per designare la primaria si usa il PATCH (`isPrimary:true`). Vedi BR-200/BR-201.
+
+**Auth:** Super Admin (`requireAuth → requireOfficinaPool → tenantContext → requireSuperAdmin`).
+
+**Request body:**
+```json
+{
+  "name": "Sede Roma",
+  "addressLine": "Via Roma 1",
+  "city": "Roma",
+  "province": "RM",
+  "postalCode": "00100",
+  "country": "IT",
+  "phone": "+39 06 1234567",
+  "email": "roma@officina.it"
+}
+```
+
+Validazione: `name` (1–200, obbligatorio), `addressLine` (1–255, obbligatorio), `city` (1–100, obbligatorio), `province` (2 lettere, uppercased, obbligatorio), `postalCode` (5 cifre, obbligatorio), `country` (2 lettere, default `IT`), `phone` (opzionale/null), `email` (opzionale/null). `isPrimary` **non accettato** → `422 tenants.me.locations.update.unknown_field`.
+
+**Response 201:**
+```json
+{
+  "location": {
+    "id": "b2c3d4e5-...",
+    "name": "Sede Roma",
+    "addressLine": "Via Roma 1",
+    "city": "Roma",
+    "province": "RM",
+    "postalCode": "00100",
+    "country": "IT",
+    "phone": "+39 06 1234567",
+    "email": "roma@officina.it",
+    "isPrimary": false,
+    "status": "active",
+    "createdAt": "2026-06-01T10:00:00.000Z",
+    "updatedAt": "2026-06-01T10:00:00.000Z"
+  }
+}
+```
+
+#### PATCH /v1/tenants/me/locations/:id — Modifica sede / designa primaria (F-OFF-003)
+
+Modifica i campi indirizzo e/o promuove la sede a primaria. Almeno un campo richiesto. Body `.partial()`, stessi campi del POST **+ `isPrimary`**.
+
+- `isPrimary:true` → **swap atomico**: la primaria corrente viene demota (`isPrimary=false`) e questa sede promossa, in un'unica transazione (rispetta il partial-unique-index BR-201).
+- `isPrimary:false` esplicito → `422 tenants.me.locations.cannot_unset_primary` (non si lascia il tenant senza primaria; per cambiarla, promuovi un'altra sede).
+
+**Auth:** Super Admin.
+
+**Response 200:** stesso shape `{ "location": { … } }` del POST.
+
+**Errori:**
+- `404 tenants.me.locations.not_found` — `:id` non appartiene al tenant o è soft-deleted
+- `422 tenants.me.locations.update.empty_body` — body `{}`
+- `422 tenants.me.locations.update.unknown_field` — chiave non in schema
+- `422 tenants.me.locations.cannot_unset_primary` — `isPrimary:false`
+
+#### DELETE /v1/tenants/me/locations/:id — Disattiva sede (F-OFF-003)
+
+Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conservano il loro `location_id` (nessuna cancellazione dati).
+
+**Auth:** Super Admin.
+
+**Response 200:** `{ "location": { … } }` con `status: "inactive"`.
+
+**Errori:**
+- `404 tenants.me.locations.not_found` — `:id` non del tenant o già disattivata
+- `422 tenants.me.locations.cannot_delete_primary` — la sede è la primaria (designa prima un'altra primaria) — BR-201
+- `422 tenants.me.locations.has_active_users` — esistono meccanici attivi assegnati a questa sede (riassegnali prima) — BR-204
+
+---
+
 ### 3.4 Customers (lato officina)
 
 | Metodo | Path | Feature | Auth | Descrizione |
