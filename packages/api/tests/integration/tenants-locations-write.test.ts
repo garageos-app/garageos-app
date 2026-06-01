@@ -346,7 +346,7 @@ describe('DELETE /v1/tenants/me/locations/:id', () => {
     expect(res.json().code).toBe('tenants.me.locations.has_active_users');
   });
 
-  it('returns 404 for an already-deactivated or cross-tenant location', async () => {
+  it('returns 404 for a non-existent / cross-tenant location id', async () => {
     const { tenantId, locationId } = await createTenantWithLocation('locw-del-404');
     const token = await superAdminToken(tenantId, locationId);
 
@@ -359,5 +359,28 @@ describe('DELETE /v1/tenants/me/locations/:id', () => {
 
     expect(res.statusCode).toBe(404);
     expect(res.json().code).toBe('tenants.me.locations.not_found');
+  });
+
+  it('returns 404 when re-deleting an already-deactivated location', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('locw-del-twice');
+    const token = await superAdminToken(tenantId, locationId);
+    const secId = await insertSecondaryLocation(tenantId);
+
+    const first = await app.inject({
+      method: 'DELETE',
+      url: `/v1/tenants/me/locations/${secId}`,
+      remoteAddress: IP_DELETE,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'DELETE',
+      url: `/v1/tenants/me/locations/${secId}`,
+      remoteAddress: IP_DELETE,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(second.statusCode).toBe(404);
+    expect(second.json().code).toBe('tenants.me.locations.not_found');
   });
 });
