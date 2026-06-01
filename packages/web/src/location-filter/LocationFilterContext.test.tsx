@@ -11,7 +11,10 @@ vi.mock('@/queries/profileMe', () => ({
 }));
 
 const locationsRef = { current: { data: undefined as unknown } };
-const useLocationsMock = vi.fn(() => locationsRef.current);
+const useLocationsMock = vi.fn((opts?: { enabled?: boolean }) => {
+  void opts;
+  return locationsRef.current;
+});
 vi.mock('@/queries/users-admin', () => ({
   useLocations: (opts?: { enabled?: boolean }) => useLocationsMock(opts),
 }));

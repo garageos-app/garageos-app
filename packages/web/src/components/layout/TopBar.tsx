@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronDown, LogOut, Search } from 'lucide-react';
 
 import { useAuth } from '@/auth/useAuth';
+import { LocationSelector } from '@/location-filter/LocationSelector';
 import { getInitials } from '@/lib/initials';
 import { useProfileMe } from '@/queries/profileMe';
 import { parseSearchInput } from '@/lib/search-input';
@@ -85,6 +86,7 @@ export function TopBar() {
         </div>
       </form>
       <div className="flex items-center gap-2">
+        <LocationSelector />
         <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 text-sm text-foreground hover:opacity-80 transition">
