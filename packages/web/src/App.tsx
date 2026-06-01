@@ -15,6 +15,8 @@ import { InterventionDetail } from '@/pages/InterventionDetail';
 import { Settings } from '@/pages/Settings';
 import { AcceptInvitation } from '@/pages/AcceptInvitation';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
+import { ForgotPassword } from '@/pages/ForgotPassword';
+import { ResetPassword } from '@/pages/ResetPassword';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +37,8 @@ export function App() {
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/invitations/:token" element={<AcceptInvitation />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppLayout />}>
