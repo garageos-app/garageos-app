@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildTestServer } from './fixtures.js';
 import {
   createIntervention,
+  createLocation,
   createTenantWithLocation,
   createUser,
   createVehicle,
@@ -266,5 +267,127 @@ describe('GET /v1/interventions/recent (integration)', () => {
       headers: { 'x-forwarded-for': TEST_IP },
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('GET /v1/interventions/recent — location filter (F-OFF-503)', () => {
+  const LOC_IP = '10.20.41.2';
+  let app: FastifyInstance;
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  async function seed() {
+    const { tenantId, locationId: locPrimary } = await createTenantWithLocation('rec-loc');
+    const { locationId: locSecondary } = await createLocation({ tenantId });
+    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const mkInt = async (locationId: string, userId: string, title: string) =>
+      createIntervention({
+        tenantId,
+        locationId,
+        userId,
+        vehicleId,
+        interventionTypeId: typeId,
+        interventionDate: '2026-05-20',
+        odometerKm: 50000,
+        title,
+      });
+    return { tenantId, locPrimary, locSecondary, mkInt };
+  }
+
+  it('mechanic sees only own-location interventions (BR-205)', async () => {
+    const { tenantId, locPrimary, locSecondary, mkInt } = await seed();
+    const cognitoSub = '10000000-0000-4000-8000-000000000001';
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId: locPrimary });
+    await mkInt(locPrimary, userId, 'In primary');
+    await mkInt(locSecondary, userId, 'In secondary');
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId: locPrimary,
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/interventions/recent',
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { items: Array<{ summary: string }> };
+    expect(body.items.map((i) => i.summary)).toEqual(['In primary']);
+  });
+
+  it('mechanic location_id param is ignored (forced to own location)', async () => {
+    const { tenantId, locPrimary, locSecondary, mkInt } = await seed();
+    const cognitoSub = '10000000-0000-4000-8000-000000000002';
+    const { userId } = await createUser({ tenantId, cognitoSub, locationId: locPrimary });
+    await mkInt(locPrimary, userId, 'In primary');
+    await mkInt(locSecondary, userId, 'In secondary');
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+      locationId: locPrimary,
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/recent?location_id=${locSecondary}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { items: Array<{ summary: string }> };
+    expect(body.items.map((i) => i.summary)).toEqual(['In primary']);
+  });
+
+  it('super_admin without param sees all locations; with param narrows', async () => {
+    const { tenantId, locPrimary, locSecondary, mkInt } = await seed();
+    const cognitoSub = '10000000-0000-4000-8000-000000000003';
+    // super_admin user row has no location (BR-204); mechanic user owns the interventions.
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
+    const { userId: mech } = await createUser({
+      tenantId,
+      cognitoSub: '10000000-0000-4000-8000-00000000000a',
+      locationId: locPrimary,
+    });
+    await mkInt(locPrimary, mech, 'In primary');
+    await mkInt(locSecondary, mech, 'In secondary');
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'super_admin',
+    });
+
+    const resAll = await app.inject({
+      method: 'GET',
+      url: '/v1/interventions/recent',
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
+    });
+    const all = (resAll.json() as { items: Array<{ summary: string }> }).items
+      .map((i) => i.summary)
+      .sort();
+    expect(all).toEqual(['In primary', 'In secondary']);
+
+    const resNarrow = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/recent?location_id=${locSecondary}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
+    });
+    const narrow = (resNarrow.json() as { items: Array<{ summary: string }> }).items.map(
+      (i) => i.summary,
+    );
+    expect(narrow).toEqual(['In secondary']);
   });
 });
