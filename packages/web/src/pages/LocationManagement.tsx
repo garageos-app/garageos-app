@@ -91,6 +91,7 @@ export function LocationManagement() {
                   <Button
                     variant="destructive"
                     size="sm"
+                    disabled={deleteMut.isPending}
                     onClick={() => setToDeactivate(loc)}
                     data-testid={`deactivate-${loc.id}`}
                   >
@@ -128,6 +129,7 @@ export function LocationManagement() {
           <AlertDialogFooter>
             <AlertDialogCancel>Annulla</AlertDialogCancel>
             <AlertDialogAction
+              disabled={deleteMut.isPending}
               onClick={() => {
                 if (toDeactivate) deleteMut.mutate(toDeactivate.id);
                 setToDeactivate(null);
