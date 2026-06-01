@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useApiFetch } from '@/lib/api-client';
+import { useLocationFilter } from '@/location-filter/useLocationFilter';
 import type { DeadlinesListResponse, TenantDeadline } from './types';
 
 /**
@@ -23,12 +24,14 @@ import type { DeadlinesListResponse, TenantDeadline } from './types';
  */
 export function useDeadlinesUpcoming(daysAhead: number) {
   const apiFetch = useApiFetch();
+  const { selectedLocationId } = useLocationFilter();
   return useQuery({
-    queryKey: ['deadlines-upcoming', daysAhead] as const,
+    queryKey: ['deadlines-upcoming', daysAhead, selectedLocationId] as const,
     queryFn: async (): Promise<Array<TenantDeadline & { dueDate: string }>> => {
       const params = new URLSearchParams();
       params.set('status', 'open');
       params.set('limit', '50');
+      if (selectedLocationId) params.set('location_id', selectedLocationId);
       const res = await apiFetch<DeadlinesListResponse>(`/v1/deadlines?${params.toString()}`);
 
       const today = new Date();
