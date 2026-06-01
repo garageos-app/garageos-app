@@ -204,6 +204,12 @@ Per fornire dati utili al client per gestire l'errore:
 | `tenant.billing.past_due` | 402 | warning | Pagamento in sospeso | Solo v1.1+ | |
 | `location.not_found` | 404 | info | Location non trovata | | |
 | `location.not_in_tenant` | 422 | warning | Location non appartiene al tenant | Tentativo cross-tenant | |
+| `tenants.me.locations.not_found` | 404 | info | Sede non trovata | PATCH/DELETE /v1/tenants/me/locations/:id con id non del tenant o gia disattivato | F-OFF-003 |
+| `tenants.me.locations.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH location con body vuoto | F-OFF-003 |
+| `tenants.me.locations.update.unknown_field` | 422 | info | Campo non riconosciuto | POST/PATCH location con chiave non in schema | F-OFF-003 |
+| `tenants.me.locations.cannot_unset_primary` | 422 | info | Non si puo togliere la sede primaria | PATCH location con isPrimary:false | F-OFF-003 (BR-201) |
+| `tenants.me.locations.cannot_delete_primary` | 422 | warning | Non si puo disattivare la sede primaria | DELETE sulla sede primaria | F-OFF-003 (BR-201) |
+| `tenants.me.locations.has_active_users` | 422 | warning | Sede con meccanici attivi | DELETE sede con utenti attivi assegnati | F-OFF-003 (BR-204) |
 | `location.cannot_remove_primary` | 422 | warning | Non puoi rimuovere la sede principale | Senza designarne un'altra | BR-201 |
 | `location.cannot_disable_last` | 422 | warning | Impossibile disattivare l'ultima sede attiva | | |
 | `user.not_found` | 404 | info | Utente non trovato | GET, PATCH, DELETE /v1/users/:id — target mancante o cross-tenant | F-OFF-004 |
