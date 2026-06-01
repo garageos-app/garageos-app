@@ -41,12 +41,14 @@ const province = z
   .transform((s) => s.toUpperCase())
   .pipe(z.string().regex(/^[A-Z]{2}$/, 'Provincia: 2 lettere'));
 const postalCode = z.string().regex(/^[0-9]{5}$/, 'CAP: 5 cifre');
+// Base (no default) so PATCH `.partial()` does NOT auto-populate country
+// on an empty body — that would defeat the empty_body guard and silently
+// reset country to IT. The IT default is applied only in createSchema.
 const country = z
   .string()
   .trim()
   .transform((s) => s.toUpperCase())
-  .pipe(z.string().regex(/^[A-Z]{2}$/, 'Country: 2 lettere'))
-  .default('IT');
+  .pipe(z.string().regex(/^[A-Z]{2}$/, 'Country: 2 lettere'));
 const phone = z.string().regex(/^[+]?[0-9 ()-]{6,30}$/, 'Telefono non valido');
 const email = z.email('Email non valida');
 
@@ -59,7 +61,7 @@ const createSchema = z
     city,
     province,
     postalCode,
-    country,
+    country: country.default('IT'),
     phone: phone.nullish(),
     email: email.nullish(),
   })
