@@ -63,14 +63,26 @@ function wrapWithQC(ui: ReactNode) {
 const LOC_ACTIVE: TenantLocation = {
   id: 'loc-1',
   name: 'Sede Roma Centro',
+  addressLine: 'Via Roma 1',
   city: 'Roma',
+  province: 'RM',
+  postalCode: '00100',
+  country: 'IT',
+  phone: null,
+  email: null,
   isPrimary: true,
 };
 
 const LOC_2: TenantLocation = {
   id: 'loc-2',
   name: 'Sede Roma Nord',
+  addressLine: 'Via Roma 2',
   city: 'Roma',
+  province: 'RM',
+  postalCode: '00100',
+  country: 'IT',
+  phone: null,
+  email: null,
   isPrimary: false,
 };
 
