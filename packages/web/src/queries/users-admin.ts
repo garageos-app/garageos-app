@@ -79,11 +79,12 @@ export interface AcceptInvitationBody {
 // ─── Query hooks ──────────────────────────────────────────────────────────────
 
 /** GET /v1/tenants/me/locations — list active locations for the tenant (super_admin only). */
-export function useLocations() {
+export function useLocations(options?: { enabled?: boolean }) {
   const apiFetch = useApiFetch();
   return useQuery({
     queryKey: ['tenant-locations'],
     queryFn: () => apiFetch<{ locations: TenantLocation[] }>('/v1/tenants/me/locations'),
+    enabled: options?.enabled ?? true,
   });
 }
 
