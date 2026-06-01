@@ -62,6 +62,29 @@ export async function createTenantWithLocation(
   });
 }
 
+// Insert an additional (secondary) location into an existing tenant.
+// Superuser insert (bypasses RLS) — mirrors createTenantWithLocation.
+// Defaults to a non-primary active location so BR-201's partial unique
+// index (one primary per tenant) is never violated.
+export async function createLocation(params: {
+  tenantId: string;
+  name?: string;
+  isPrimary?: boolean;
+}): Promise<{ locationId: string }> {
+  const { tenantId, name = 'Sede Secondaria', isPrimary = false } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO locations
+       (id, tenant_id, name, address_line, city, province, postal_code,
+        country, is_primary, status, created_at, updated_at)
+     VALUES
+       (gen_random_uuid(), $1, $2, 'Via Test 2', 'Roma', 'RM',
+        '00100', 'IT', $3, 'active'::"LocationStatus", NOW(), NOW())
+     RETURNING id`,
+    [tenantId, name, isPrimary],
+  );
+  return { locationId: rows[0]!.id };
+}
+
 // Insert a users row via pgAdmin (superuser — bypasses RLS) for
 // integration-test fixtures. The HTTP call under test goes through
 // app_test (non-superuser) so RLS still runs at query time.
