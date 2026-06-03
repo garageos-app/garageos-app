@@ -22,13 +22,21 @@ interface FakePrisma {
 }
 
 function buildFakePrisma(
-  over: Partial<{ findManyRows: Array<{ id: string; tenantId: string }> }> = {},
+  over: Partial<{
+    findManyRows: Array<{ id: string; tenantId: string }>;
+    actorLookupResult: { id: string } | null;
+  }> = {},
 ): FakePrisma {
+  const actorLookupResult =
+    over.actorLookupResult === undefined ? { id: ACTOR_DB_ID } : over.actorLookupResult;
   return {
     user: {
-      // tenantContext live-lookup (status active + deletedAt null) AND the
-      // handler actor lookup (cognitoSub + tenantId) both return {id}.
-      findFirst: vi.fn(async () => ({ id: ACTOR_DB_ID })),
+      findFirst: vi.fn(async (args: { where: Record<string, unknown> }) => {
+        // tenantContext live-lookup uses status:'active'; always succeeds.
+        if (args.where['status'] === 'active') return { id: ACTOR_DB_ID };
+        // route actor lookup (cognitoSub + tenantId, no status).
+        return actorLookupResult;
+      }),
       findMany: vi.fn(async () => over.findManyRows ?? []),
     },
     auditLog: { create: vi.fn(async () => undefined) },
@@ -96,6 +104,81 @@ describe('POST /v1/auth/password-changed', () => {
     app = await buildApp(prisma);
     const res = await app.inject({ method: 'POST', url: '/v1/auth/password-changed' });
     expect(res.statusCode).toBe(401);
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('204 + skips audit row when actor DB row not found', async () => {
+    const prisma = buildFakePrisma({ actorLookupResult: null });
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/password-changed',
+      headers: { authorization: 'Bearer x' },
+      remoteAddress: '10.20.46.5',
+    });
+    expect(res.statusCode).toBe(204);
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /v1/auth/password-reset-completed', () => {
+  let app: FastifyInstance | undefined;
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+  });
+
+  it('204 + writes one user_password_reset row per matching active user', async () => {
+    const prisma = buildFakePrisma({
+      findManyRows: [
+        { id: 'aaaaaaaa-0000-4000-8000-000000000001', tenantId: TENANT_ID },
+        {
+          id: 'aaaaaaaa-0000-4000-8000-000000000002',
+          tenantId: '99999999-9999-4999-8999-999999999999',
+        },
+      ],
+    });
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/password-reset-completed',
+      headers: { 'content-type': 'application/json' },
+      remoteAddress: '10.20.46.2',
+      payload: { email: 'Mario@Officina.IT' },
+    });
+    expect(res.statusCode).toBe(204);
+    // email normalized to lowercase in the findMany where
+    expect(prisma.user.findMany.mock.calls[0]![0].where.email).toBe('mario@officina.it');
+    expect(prisma.auditLog.create).toHaveBeenCalledTimes(2);
+    const first = prisma.auditLog.create.mock.calls[0]![0].data as Record<string, unknown>;
+    expect(first).toMatchObject({ action: 'user_password_reset', actorType: 'user' });
+  });
+
+  it('204 + writes NO rows when no active user matches (anti-enumeration constant response)', async () => {
+    const prisma = buildFakePrisma({ findManyRows: [] });
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/password-reset-completed',
+      headers: { 'content-type': 'application/json' },
+      remoteAddress: '10.20.46.3',
+      payload: { email: 'ghost@nowhere.it' },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('422/400 on malformed email body', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/password-reset-completed',
+      headers: { 'content-type': 'application/json' },
+      remoteAddress: '10.20.46.4',
+      payload: { email: 'not-an-email' },
+    });
+    expect(res.statusCode).toBe(400);
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 });
