@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 
-const confirmMutate = vi.fn();
-const resendMutate = vi.fn();
+const { confirmMutate, resendMutate, notifyMock } = vi.hoisted(() => ({
+  confirmMutate: vi.fn(),
+  resendMutate: vi.fn(),
+  notifyMock: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('@/queries/passwordReset', () => ({
   useConfirmPasswordReset: () => ({ mutate: confirmMutate, isPending: false }),
   useRequestPasswordReset: () => ({ mutate: resendMutate, isPending: false }),
+  notifyPasswordResetCompleted: notifyMock,
 }));
 
 import { ResetPassword } from './ResetPassword';
@@ -34,6 +38,8 @@ function renderAt(url: string) {
 beforeEach(() => {
   confirmMutate.mockReset();
   resendMutate.mockReset();
+  notifyMock.mockReset();
+  notifyMock.mockResolvedValue(undefined);
 });
 
 describe('ResetPassword', () => {
@@ -81,5 +87,30 @@ describe('ResetPassword', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Invia di nuovo il codice' }));
     expect(resendMutate).toHaveBeenCalledWith('mario@officina.it');
     expect(await screen.findByText(/nuovo codice/i)).toBeInTheDocument();
+  });
+
+  it('success: fires notifyPasswordResetCompleted with the email', async () => {
+    confirmMutate.mockResolvedValue({ ok: true });
+    renderAt('/reset-password?email=mario%40officina.it');
+    await userEvent.type(screen.getByLabelText('Codice'), '123456');
+    await userEvent.type(screen.getByLabelText('Nuova password'), 'Str0ngPw!');
+    await userEvent.type(screen.getByLabelText('Conferma password'), 'Str0ngPw!');
+    await userEvent.click(screen.getByRole('button', { name: 'Reimposta password' }));
+    await waitFor(() => {
+      expect(notifyMock).toHaveBeenCalledWith('mario@officina.it');
+    });
+  });
+
+  it('success: still navigates to /login even if the notify rejects', async () => {
+    confirmMutate.mockResolvedValue({ ok: true });
+    notifyMock.mockRejectedValueOnce(new Error('boom'));
+    renderAt('/reset-password?email=mario%40officina.it');
+    await userEvent.type(screen.getByLabelText('Codice'), '123456');
+    await userEvent.type(screen.getByLabelText('Nuova password'), 'Str0ngPw!');
+    await userEvent.type(screen.getByLabelText('Conferma password'), 'Str0ngPw!');
+    await userEvent.click(screen.getByRole('button', { name: 'Reimposta password' }));
+    expect(
+      await screen.findByText('LOGIN flash=Password aggiornata. Accedi con la nuova password.'),
+    ).toBeInTheDocument();
   });
 });

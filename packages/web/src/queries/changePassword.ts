@@ -82,3 +82,24 @@ export function useChangePassword(): UseChangePasswordResult {
 
   return { mutate, isPending };
 }
+
+// Best-effort backend audit notify after a successful password change
+// (BR-280). Uses a raw fetch (NOT apiFetch) so a transient 401 cannot trigger
+// the global onAuthExpired → signOut side effect. Failures are swallowed —
+// auditing must never break the change-password UX.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+
+export async function notifyPasswordChanged(idToken: string | null): Promise<void> {
+  if (!idToken) return;
+  try {
+    await fetch(`${API_BASE_URL}/v1/auth/password-changed`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+    });
+  } catch {
+    // best-effort
+  }
+}

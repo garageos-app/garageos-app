@@ -95,3 +95,21 @@ export function useConfirmPasswordReset() {
   );
   return { mutate, isPending };
 }
+
+// Best-effort backend audit notify after a successful reset (BR-280). The
+// user is NOT authenticated here, so this uses a raw fetch (apiFetch always
+// requires a token). Failures are swallowed — auditing must never break the
+// reset UX.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+
+export async function notifyPasswordResetCompleted(email: string): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL}/v1/auth/password-reset-completed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+  } catch {
+    // best-effort
+  }
+}

@@ -182,6 +182,8 @@ Per fornire dati utili al client per gestire l'errore:
 | `auth.token.revoked` | 401 | warning | Token revocato | Token in denylist (logout, security) |
 | `auth.password_reset.invalid_token` | 400 | warning | Link non valido | Token reset scaduto o già usato |
 | `auth.password.too_weak` | 400 | info | Password troppo debole | Policy password fallita |
+| `auth.password_change.rate_limited` | 429 | warning | Troppi tentativi di cambio password | Troppi tentativi di cambio password da questo IP (5/15min) |
+| `auth.password_reset.rate_limited` | 429 | warning | Troppi tentativi di reset password | Troppi tentativi di reset password da questo IP (5/15min) |
 | `auth.signup.email_already_registered` | 409 | info | Email già registrata | Email duplicata in signup |
 | `auth.signup.email_domain_blocked` | 403 | warning | Dominio email non consentito | Email blacklist |
 | `auth.2fa.required` | 401 | info | 2FA richiesta | Account con 2FA attiva |

@@ -7,6 +7,7 @@ import { AuthLayout } from '@/components/layout/AuthLayout';
 import {
   useConfirmPasswordReset,
   useRequestPasswordReset,
+  notifyPasswordResetCompleted,
   type ConfirmResetCode,
 } from '@/queries/passwordReset';
 import { Button } from '@/components/ui/button';
@@ -61,6 +62,7 @@ export function ResetPassword() {
     setNotice(null);
     const result = await confirm.mutate(email, data.code, data.newPassword);
     if (result.ok) {
+      void notifyPasswordResetCompleted(email);
       navigate('/login', {
         replace: true,
         state: { flash: 'Password aggiornata. Accedi con la nuova password.' },
