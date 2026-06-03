@@ -55,6 +55,32 @@ describe('POST /v1/auth/password-changed', () => {
       remoteAddress: '10.20.46.11',
     });
     expect(res.statusCode).toBe(401);
+    const { rows } = await pgAdmin.query(
+      `SELECT 1 FROM audit_logs WHERE action = 'user_password_changed'`,
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('429 once the per-IP rate-limit (5/15min) is exceeded', async () => {
+    const { tenantId } = await createTenantWithLocation('pwa-changed-rl');
+    const sub = `sa-pwa-rl-${crypto.randomUUID()}`;
+    await createUser({ tenantId, cognitoSub: sub, role: 'super_admin' });
+    const token = await signTestToken({ pool: 'officine', sub, tenantId, role: 'super_admin' });
+    const ip = '10.20.46.15';
+    const fire = () =>
+      app.inject({
+        method: 'POST',
+        url: '/v1/auth/password-changed',
+        headers: { authorization: `Bearer ${token}` },
+        remoteAddress: ip,
+      });
+    for (let i = 0; i < 5; i++) {
+      const ok = await fire();
+      expect(ok.statusCode).toBe(204);
+    }
+    const limited = await fire();
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json().code).toBe('auth.password_change.rate_limited');
   });
 });
 
