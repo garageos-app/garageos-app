@@ -16,6 +16,11 @@ vi.mock('sonner', () => ({
   },
 }));
 
+const apiFetchMock = vi.fn();
+vi.mock('@/lib/api-client', () => ({
+  useApiFetch: () => apiFetchMock,
+}));
+
 describe('PasswordForm', () => {
   let mutate: ReturnType<typeof vi.fn>;
 
@@ -23,6 +28,8 @@ describe('PasswordForm', () => {
     mutate = vi.fn();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue(undefined);
     vi.spyOn(changePasswordModule, 'useChangePassword').mockReturnValue({
       mutate,
       isPending: false,
@@ -162,5 +169,32 @@ describe('PasswordForm', () => {
     render(<PasswordForm />);
     const btn = screen.getByRole('button', { name: 'Aggiornamento...' });
     expect(btn).toBeDisabled();
+  });
+
+  it('success: fires POST /v1/auth/password-changed notify', async () => {
+    mutate.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    render(<PasswordForm />);
+    await user.type(screen.getByLabelText('Password attuale'), 'OldPass123');
+    await user.type(screen.getByLabelText('Nuova password'), 'NewPass456');
+    await user.type(screen.getByLabelText('Conferma nuova password'), 'NewPass456');
+    await user.click(screen.getByRole('button', { name: 'Cambia password' }));
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith('/v1/auth/password-changed', { method: 'POST' });
+    });
+  });
+
+  it('success: still shows toast even if the notify call rejects (best-effort)', async () => {
+    mutate.mockResolvedValue({ ok: true });
+    apiFetchMock.mockRejectedValue(new Error('boom'));
+    const user = userEvent.setup();
+    render(<PasswordForm />);
+    await user.type(screen.getByLabelText('Password attuale'), 'OldPass123');
+    await user.type(screen.getByLabelText('Nuova password'), 'NewPass456');
+    await user.type(screen.getByLabelText('Conferma nuova password'), 'NewPass456');
+    await user.click(screen.getByRole('button', { name: 'Cambia password' }));
+    await waitFor(() => {
+      expect(toastSuccessMock).toHaveBeenCalledWith('Password aggiornata.');
+    });
   });
 });

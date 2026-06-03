@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { changePasswordFormSchema, type ChangePasswordFormValues } from '@/lib/validators/password';
 import { useChangePassword, type ChangePasswordCode } from '@/queries/changePassword';
+import { useApiFetch } from '@/lib/api-client';
 
 interface Props {
   // Lift the form API to the parent (Settings page) so it can read
@@ -32,10 +33,13 @@ export function PasswordForm({ formRef }: Props) {
   }, [form, formRef]);
 
   const { mutate, isPending } = useChangePassword();
+  const apiFetch = useApiFetch();
 
   async function onSubmit(values: ChangePasswordFormValues) {
     const result = await mutate(values.oldPassword, values.newPassword);
     if (result.ok) {
+      // Best-effort backend audit (BR-280). Never blocks the success UX.
+      void apiFetch('/v1/auth/password-changed', { method: 'POST' }).catch(() => {});
       toast.success('Password aggiornata.');
       form.reset();
       return;
