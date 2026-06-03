@@ -16,9 +16,9 @@ vi.mock('sonner', () => ({
   },
 }));
 
-const apiFetchMock = vi.fn();
-vi.mock('@/lib/api-client', () => ({
-  useApiFetch: () => apiFetchMock,
+const getIdTokenMock = vi.fn();
+vi.mock('@/auth/useAuth', () => ({
+  useAuth: () => ({ getIdToken: getIdTokenMock }),
 }));
 
 describe('PasswordForm', () => {
@@ -28,8 +28,9 @@ describe('PasswordForm', () => {
     mutate = vi.fn();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
-    apiFetchMock.mockReset();
-    apiFetchMock.mockResolvedValue(undefined);
+    getIdTokenMock.mockReset();
+    getIdTokenMock.mockResolvedValue('id-token-xyz');
+    vi.spyOn(changePasswordModule, 'notifyPasswordChanged').mockResolvedValue(undefined);
     vi.spyOn(changePasswordModule, 'useChangePassword').mockReturnValue({
       mutate,
       isPending: false,
@@ -171,8 +172,11 @@ describe('PasswordForm', () => {
     expect(btn).toBeDisabled();
   });
 
-  it('success: fires POST /v1/auth/password-changed notify', async () => {
+  it('success: fires notifyPasswordChanged with the id token', async () => {
     mutate.mockResolvedValue({ ok: true });
+    const notifySpy = vi
+      .spyOn(changePasswordModule, 'notifyPasswordChanged')
+      .mockResolvedValue(undefined);
     const user = userEvent.setup();
     render(<PasswordForm />);
     await user.type(screen.getByLabelText('Password attuale'), 'OldPass123');
@@ -180,13 +184,13 @@ describe('PasswordForm', () => {
     await user.type(screen.getByLabelText('Conferma nuova password'), 'NewPass456');
     await user.click(screen.getByRole('button', { name: 'Cambia password' }));
     await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith('/v1/auth/password-changed', { method: 'POST' });
+      expect(notifySpy).toHaveBeenCalledWith('id-token-xyz');
     });
   });
 
-  it('success: still shows toast even if the notify call rejects (best-effort)', async () => {
+  it('success: still shows toast even if the notify rejects (best-effort)', async () => {
     mutate.mockResolvedValue({ ok: true });
-    apiFetchMock.mockRejectedValue(new Error('boom'));
+    vi.spyOn(changePasswordModule, 'notifyPasswordChanged').mockRejectedValue(new Error('boom'));
     const user = userEvent.setup();
     render(<PasswordForm />);
     await user.type(screen.getByLabelText('Password attuale'), 'OldPass123');
