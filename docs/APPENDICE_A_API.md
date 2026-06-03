@@ -1604,6 +1604,8 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 | POST | `/auth/verify-email` | F-OFF-001, F-CLI-001 | None | Verifica email con token |
 | POST | `/auth/2fa/enable` | F-OFF-006 | Tenant User | Setup TOTP, ritorna QR code |
 | POST | `/auth/2fa/verify` | F-OFF-006 | Tenant User | Verifica codice TOTP |
+| POST | `/auth/password-changed` | F-OFF-005 | Tenant User (officine) | Notifica audit cambio password — il cambio avviene lato client via Cognito; questo endpoint registra solo la riga `audit_logs` (`user_password_changed`). 204. Rate-limit 5/15min per IP. |
+| POST | `/auth/password-reset-completed` | F-OFF-005 | None | Notifica audit completamento reset password (pubblico — utente non autenticato). Registra riga `audit_logs` (`user_password_reset`) per l'utente officine attivo corrispondente all'email. Sempre 204 (anti-enumerazione). Rate-limit 5/15min per IP. |
 
 > **Nota v1 (2026-05-04):** L'endpoint accetta `type=customer` solo. `type=tenant_admin` ritorna `422 auth.signup.tenant_signup_not_supported` finché il flusso server-side di creazione tenant + location primaria + super_admin user non viene shipato in una PR dedicata (vedi roadmap). Vedi anche `docs/superpowers/specs/2026-05-04-api-customer-signup-design.md` §3.4 per la motivazione.
 

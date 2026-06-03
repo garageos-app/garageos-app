@@ -1039,6 +1039,7 @@ Eventi sempre loggati in `audit_logs`:
 - Passaggio di proprietà (avvio, accettazione, conferma, rifiuto, scadenza)
 - Claim veicolo (successo/fallimento)
 - Login/logout utente
+- Cambio password / completamento reset password
 - Modifica preferenze notifiche
 - Generazione link condivisione pubblica
 - Ristampa tag codice GarageOS
