@@ -106,7 +106,9 @@ export const authPasswordAuditRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request, reply) => {
       const parsed = ResetBodySchema.safeParse(request.body);
-      if (!parsed.success) throw parsed.error;
+      if (!parsed.success) {
+        throw parsed.error;
+      }
       const email = parsed.data.email;
 
       // role:'admin' bypasses the users RLS for this cross-tenant write with

@@ -96,6 +96,7 @@ describe('POST /v1/auth/password-changed', () => {
       action: 'user_password_changed',
       entityType: 'user',
       entityId: ACTOR_DB_ID,
+      ipAddress: '10.20.46.1',
     });
   });
 
@@ -151,7 +152,15 @@ describe('POST /v1/auth/password-reset-completed', () => {
     expect(prisma.user.findMany.mock.calls[0]![0].where.email).toBe('mario@officina.it');
     expect(prisma.auditLog.create).toHaveBeenCalledTimes(2);
     const first = prisma.auditLog.create.mock.calls[0]![0].data as Record<string, unknown>;
-    expect(first).toMatchObject({ action: 'user_password_reset', actorType: 'user' });
+    expect(first).toMatchObject({
+      tenantId: TENANT_ID,
+      actorType: 'user',
+      actorId: 'aaaaaaaa-0000-4000-8000-000000000001',
+      action: 'user_password_reset',
+      entityType: 'user',
+      entityId: 'aaaaaaaa-0000-4000-8000-000000000001',
+      ipAddress: '10.20.46.2',
+    });
   });
 
   it('204 + writes NO rows when no active user matches (anti-enumeration constant response)', async () => {
@@ -168,7 +177,7 @@ describe('POST /v1/auth/password-reset-completed', () => {
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it('422/400 on malformed email body', async () => {
+  it('400 on malformed email body', async () => {
     const prisma = buildFakePrisma();
     app = await buildApp(prisma);
     const res = await app.inject({
