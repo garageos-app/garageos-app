@@ -268,6 +268,34 @@ describe('LambdaApiConstruct', () => {
     }
   });
 
+  it('SES policy grants SendEmail on the identity wildcard (sandbox recipient auth) + config set, not Resource: *', () => {
+    // In SES sandbox, SendEmail is authorized against the *recipient* verified
+    // identity ARN too, not only the sending domain. The role must allow
+    // SendEmail on identity/* (covers domain + every verified recipient),
+    // otherwise sends 403 in sandbox (recurring Lambda IAM gap). identity/*
+    // is scoped to this account's SES identities — NOT Resource: '*'.
+    const policies = template.findResources('AWS::IAM::Policy');
+    const sesStatements = Object.values(policies).flatMap((res) =>
+      (
+        res.Properties.PolicyDocument.Statement as Array<{
+          Action: string | string[];
+          Resource: unknown;
+        }>
+      ).filter((s) => {
+        const actions = Array.isArray(s.Action) ? s.Action : [s.Action];
+        return actions.includes('ses:SendEmail');
+      }),
+    );
+    expect(sesStatements.length).toBeGreaterThanOrEqual(1);
+    for (const stmt of sesStatements) {
+      const resources = (
+        Array.isArray(stmt.Resource) ? stmt.Resource : [stmt.Resource]
+      ) as unknown[];
+      for (const r of resources) expect(r).not.toBe('*');
+      expect(resources).toContain('arn:aws:ses:eu-central-1:123456789012:identity/*');
+    }
+  });
+
   it('log group retention is 7 days', () => {
     template.hasResourceProperties('AWS::Logs::LogGroup', {
       LogGroupName: '/aws/lambda/garageos-api',
