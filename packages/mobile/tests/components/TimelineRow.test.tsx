@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { TimelineRow } from '@/components/TimelineRow';
 import type { TimelineItem } from '@/lib/types/vehicle';
 
@@ -59,5 +59,16 @@ describe('TimelineRow', () => {
 
   it('does not crash with null description', () => {
     expect(() => render(<TimelineRow item={privateItem} />)).not.toThrow();
+  });
+
+  it('fires onPress when provided and tapped', () => {
+    const onPress = jest.fn();
+    render(<TimelineRow item={privateItem} onPress={onPress} />);
+    fireEvent.press(screen.getByText('Pulizia interna'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders without onPress (non-interactive)', () => {
+    expect(() => render(<TimelineRow item={shopItem} />)).not.toThrow();
   });
 });

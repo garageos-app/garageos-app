@@ -22,16 +22,34 @@ const SERVER_MESSAGES: Record<string, string> = {
   'private_intervention.rate_limit': 'Hai raggiunto il limite giornaliero (50 interventi).',
 };
 
+type PrivateInterventionFormInitial = {
+  customType: string;
+  interventionDate: string;
+  odometerKm: string;
+  description: string;
+};
+
 type Props = {
   onSubmit: (body: CreatePrivateInterventionBody) => Promise<PrivateInterventionFormResult>;
   onCancel: () => void;
+  initial?: PrivateInterventionFormInitial;
+  submitLabel?: string;
+  onDelete?: () => void;
 };
 
-export function PrivateInterventionForm({ onSubmit, onCancel }: Props) {
-  const [customType, setCustomType] = useState('');
-  const [interventionDate, setInterventionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [odometerKm, setOdometerKm] = useState('');
-  const [description, setDescription] = useState('');
+export function PrivateInterventionForm({
+  onSubmit,
+  onCancel,
+  initial,
+  submitLabel = 'Salva',
+  onDelete,
+}: Props) {
+  const [customType, setCustomType] = useState(initial?.customType ?? '');
+  const [interventionDate, setInterventionDate] = useState(
+    initial?.interventionDate ?? format(new Date(), 'yyyy-MM-dd'),
+  );
+  const [odometerKm, setOdometerKm] = useState(initial?.odometerKm ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<PrivateInterventionFormErrors>({});
   const [banner, setBanner] = useState<string | null>(null);
@@ -148,7 +166,7 @@ export function PrivateInterventionForm({ onSubmit, onCancel }: Props) {
         {submitting ? (
           <ActivityIndicator color={colors.primaryFg} />
         ) : (
-          <Text style={styles.submitText}>Salva</Text>
+          <Text style={styles.submitText}>{submitLabel}</Text>
         )}
       </Pressable>
 
@@ -160,6 +178,17 @@ export function PrivateInterventionForm({ onSubmit, onCancel }: Props) {
       >
         <Text style={styles.cancelText}>Annulla</Text>
       </Pressable>
+
+      {onDelete ? (
+        <Pressable
+          onPress={onDelete}
+          accessibilityRole="button"
+          disabled={submitting}
+          style={styles.delete}
+        >
+          <Text style={styles.deleteText}>Elimina</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -200,4 +229,6 @@ const styles = StyleSheet.create({
   submitText: { color: colors.primaryFg, fontSize: 16, fontWeight: '600' },
   cancel: { alignItems: 'center', padding: spacing.sm },
   cancelText: { color: colors.primary, fontSize: 14 },
+  delete: { alignItems: 'center', padding: spacing.sm },
+  deleteText: { color: colors.danger, fontSize: 14, fontWeight: '600' },
 });
