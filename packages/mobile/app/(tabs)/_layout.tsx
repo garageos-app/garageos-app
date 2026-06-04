@@ -24,6 +24,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="deadlines"
+        options={{
+          title: 'Scadenze',
+          tabBarLabel: 'Scadenze',
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profilo',

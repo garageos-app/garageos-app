@@ -1,4 +1,4 @@
-import { formatDate, formatKm, formatTimeAgo } from '@/lib/format';
+import { formatDate, formatDueUrgency, formatKm, formatTimeAgo } from '@/lib/format';
 
 describe('format', () => {
   describe('formatDate', () => {
@@ -31,5 +31,72 @@ describe('format', () => {
       const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
       expect(formatTimeAgo(yesterday)).toBe('ieri');
     });
+  });
+});
+
+describe('formatDueUrgency', () => {
+  // Derive inputs relative to "now" — same approach as the formatTimeAgo tests
+  // above — so assertions never depend on a hardcoded run date. (The helper
+  // computes "today" from new Date(); mocking Date.now would not affect it.)
+  const dateInDays = (n: number): string =>
+    new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+
+  it('returns Scaduta for status overdue regardless of date', () => {
+    expect(formatDueUrgency('2099-01-01', 'overdue')).toEqual({
+      label: 'Scaduta',
+      severity: 'overdue',
+    });
+  });
+
+  it('returns Scaduta for a past dueDate with open status', () => {
+    expect(formatDueUrgency(dateInDays(-3), 'open')).toEqual({
+      label: 'Scaduta',
+      severity: 'overdue',
+    });
+  });
+
+  it('returns Oggi for today', () => {
+    expect(formatDueUrgency(dateInDays(0), 'open')).toEqual({ label: 'Oggi', severity: 'soon' });
+  });
+
+  it('returns Domani for tomorrow', () => {
+    expect(formatDueUrgency(dateInDays(1), 'open')).toEqual({ label: 'Domani', severity: 'soon' });
+  });
+
+  it('returns days for within a week', () => {
+    expect(formatDueUrgency(dateInDays(5), 'open')).toEqual({
+      label: 'Tra 5 giorni',
+      severity: 'soon',
+    });
+  });
+
+  it('returns singular week at 10 days', () => {
+    expect(formatDueUrgency(dateInDays(10), 'open')).toEqual({
+      label: 'Tra 1 settimana',
+      severity: 'normal',
+    });
+  });
+
+  it('returns plural weeks at 21 days', () => {
+    expect(formatDueUrgency(dateInDays(21), 'open')).toEqual({
+      label: 'Tra 3 settimane',
+      severity: 'normal',
+    });
+  });
+
+  it('returns an absolute date beyond 30 days', () => {
+    const future = dateInDays(60);
+    expect(formatDueUrgency(future, 'open')).toEqual({
+      label: formatDate(future),
+      severity: 'normal',
+    });
+  });
+
+  it('returns none for a km-only deadline (null date)', () => {
+    expect(formatDueUrgency(null, 'open')).toEqual({ label: '—', severity: 'none' });
+  });
+
+  it('returns none for an invalid date', () => {
+    expect(formatDueUrgency('not-a-date', 'open')).toEqual({ label: '—', severity: 'none' });
   });
 });
