@@ -201,6 +201,8 @@ Per fornire dati utili al client per gestire l'errore:
 | `tenant.not_found` | 404 | info | Tenant non trovato | ID inesistente | |
 | `tenants.me.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/tenants/me con body vuoto o senza campi edibili | F-OFF-007 |
 | `tenants.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/tenants/me con chiave non in schema (es. vatNumber, status, plan) | F-OFF-007 |
+| `me.profile.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/me/profile con body vuoto o senza campi edibili | F-CLI-004 |
+| `me.profile.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/me/profile con chiave non in schema (es. email, status) | F-CLI-004 |
 | `tenant.vat_number_duplicate` | 409 | info | P.IVA già registrata | VAT duplicata in creazione | |
 | `tenant.vat_number_invalid` | 400 | info | P.IVA non valida | Checksum P.IVA IT fallito | |
 | `tenant.billing.past_due` | 402 | warning | Pagamento in sospeso | Solo v1.1+ | |

@@ -2275,6 +2275,8 @@ Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conse
 | GET | `/vehicles/:id/access-log` | F-OFF-601, F-CLI-304 | Any User | Log accessi al veicolo |
 | GET | `/vehicles/:id/timeline` | F-OFF-105, F-CLI-201 | Any User | **[DETTAGLIATO §2.5]** Timeline interventi |
 | POST | `/vehicles/claim` | F-CLI-101, F-CLI-102 | Customer | **[DETTAGLIATO §2.4]** Aggancia veicolo tramite codice |
+| GET | `/me` | F-CLI-004 | Customer | Profilo del cliente autenticato |
+| PATCH | `/me/profile` | F-CLI-004 | Customer | Modifica nome/cognome/telefono (email immutabile) |
 | GET | `/me/vehicles` | F-CLI-105 | Customer | Lista veicoli del customer |
 | GET | `/me/vehicles/:id` | F-CLI-106 | Customer | Dettaglio veicolo per customer |
 | PATCH | `/me/vehicles/:id` | F-CLI-107 | Customer | Modifica dati non tecnici (nickname, foto) |
