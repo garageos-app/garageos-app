@@ -150,7 +150,14 @@ function HistoryTab({
         <FlatList
           data={items}
           keyExtractor={(it) => `${it.kind}-${it.id}`}
-          renderItem={({ item }) => <TimelineRow item={item} />}
+          renderItem={({ item }) => (
+            <TimelineRow
+              item={item}
+              {...(item.kind === 'private_intervention'
+                ? { onPress: () => router.push(`/private-interventions/${item.id}`) }
+                : {})}
+            />
+          )}
           scrollEnabled={false}
         />
       )}
