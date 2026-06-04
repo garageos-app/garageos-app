@@ -1,17 +1,17 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '@/theme/colors';
 import { BadgeCertificato } from './BadgeCertificato';
 import { formatDate, formatKm } from '@/lib/format';
 import type { TimelineItem } from '@/lib/types/vehicle';
 
-type Props = { item: TimelineItem };
+type Props = { item: TimelineItem; onPress?: () => void };
 
-export function TimelineRow({ item }: Props) {
+export function TimelineRow({ item, onPress }: Props) {
   const isShop = item.kind === 'shop_intervention';
   // Narrow via discriminant: shop has `title`, private has `custom_type` (nullable).
   const title = isShop ? item.title : (item.custom_type ?? '—');
   const description = item.description;
-  return (
+  const content = (
     <View style={styles.row}>
       <View style={styles.dateCol}>
         <Text style={styles.dateText}>{formatDate(item.intervention_date)}</Text>
@@ -41,6 +41,14 @@ export function TimelineRow({ item }: Props) {
         </View>
       </View>
     </View>
+  );
+
+  return onPress ? (
+    <Pressable onPress={onPress} accessibilityRole="button">
+      {content}
+    </Pressable>
+  ) : (
+    content
   );
 }
 
