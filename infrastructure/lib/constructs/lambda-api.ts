@@ -135,7 +135,20 @@ export class LambdaApiConstruct extends Construct {
     executionRole.addToPolicy(
       new iam.PolicyStatement({
         actions: ['ses:SendEmail', 'ses:SendRawEmail'],
-        resources: [props.sesIdentityArn, props.sesConfigurationSetArn],
+        resources: [
+          props.sesIdentityArn,
+          // SES sandbox authorizes SendEmail against the RECIPIENT's verified
+          // identity ARN too (every sandbox recipient must be a verified
+          // identity), not just the sending domain. Without this the role gets
+          // 403 AccessDenied on sends to verified aliases (invite-user,
+          // verify-email) while in sandbox. identity/* covers the domain plus
+          // all recipient identities, still scoped to this account's SES
+          // identities (no Resource: '*'). Harmless once production access is
+          // granted (recipients no longer need to be identities). Recurring
+          // Lambda IAM gap — see feedback_lambda_iam_* memories.
+          `arn:aws:ses:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:identity/*`,
+          props.sesConfigurationSetArn,
+        ],
       }),
     );
 
