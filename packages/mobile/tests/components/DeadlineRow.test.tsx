@@ -58,4 +58,14 @@ describe('DeadlineRow', () => {
       render(<DeadlineRow deadline={{ ...base, description: null }} onPress={() => {}} />),
     ).not.toThrow();
   });
+
+  it('hides the vehicle line when hideVehicle is set', () => {
+    render(<DeadlineRow deadline={base} hideVehicle onPress={() => {}} />);
+    expect(screen.getByText('Revisione')).toBeOnTheScreen();
+    expect(screen.queryByText(/AB123CD/)).toBeNull();
+  });
+
+  it('renders without an onPress handler', () => {
+    expect(() => render(<DeadlineRow deadline={base} hideVehicle />)).not.toThrow();
+  });
 });

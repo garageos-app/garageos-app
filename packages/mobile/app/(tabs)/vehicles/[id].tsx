@@ -4,6 +4,8 @@ import { Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { useMeVehicleDetail } from '@/queries/meVehicles';
 import { useMeVehicleTimeline } from '@/queries/meVehicleTimeline';
+import { useMeDeadlines, deadlinesForVehicle } from '@/queries/meDeadlines';
+import { DeadlineRow } from '@/components/DeadlineRow';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
@@ -19,20 +21,21 @@ export default function VehicleDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === 'string' ? params.id : '';
   const validId = UUID_RE.test(id) ? id : '';
-  const [tab, setTab] = useState<'history' | 'tech'>('history');
+  const [tab, setTab] = useState<'history' | 'deadlines' | 'tech'>('history');
   const [refreshing, setRefreshing] = useState(false);
 
   const detail = useMeVehicleDetail(validId);
   const timeline = useMeVehicleTimeline(validId);
+  const deadlines = useMeDeadlines();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([detail.refetch(), timeline.refetch()]);
+      await Promise.all([detail.refetch(), timeline.refetch(), deadlines.refetch()]);
     } finally {
       setRefreshing(false);
     }
-  }, [detail, timeline]);
+  }, [detail, timeline, deadlines]);
 
   if (!validId) {
     return <ErrorState message="Veicolo non trovato o non più di tua proprietà." />;
@@ -82,6 +85,15 @@ export default function VehicleDetailScreen() {
             <Text style={[styles.tabText, tab === 'history' && styles.tabTextActive]}>Storico</Text>
           </Pressable>
           <Pressable
+            onPress={() => setTab('deadlines')}
+            style={[styles.tabButton, tab === 'deadlines' && styles.tabButtonActive]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.tabText, tab === 'deadlines' && styles.tabTextActive]}>
+              Scadenze
+            </Text>
+          </Pressable>
+          <Pressable
             onPress={() => setTab('tech')}
             style={[styles.tabButton, tab === 'tech' && styles.tabButtonActive]}
             accessibilityRole="button"
@@ -94,6 +106,8 @@ export default function VehicleDetailScreen() {
 
         {tab === 'history' ? (
           <HistoryTab vehicleId={validId} timeline={timeline} />
+        ) : tab === 'deadlines' ? (
+          <DeadlinesTab vehicleId={validId} deadlines={deadlines} />
         ) : (
           <TechTab vehicle={v} />
         )}
@@ -127,6 +141,34 @@ function HistoryTab({
       data={items}
       keyExtractor={(it) => `${it.kind}-${it.id}`}
       renderItem={({ item }) => <TimelineRow item={item} />}
+      scrollEnabled={false}
+    />
+  );
+}
+
+function DeadlinesTab({
+  vehicleId,
+  deadlines,
+}: {
+  vehicleId: string;
+  deadlines: ReturnType<typeof useMeDeadlines>;
+}) {
+  if (deadlines.isLoading) return <LoadingState variant="list" />;
+  if (deadlines.isError) {
+    const code = deadlines.error instanceof ApiError ? deadlines.error.code : undefined;
+    return <ErrorState message={mapErrorToUserMessage(code)} onRetry={deadlines.refetch} />;
+  }
+  const items = deadlinesForVehicle(deadlines.data, vehicleId);
+  if (items.length === 0) {
+    return (
+      <EmptyState title="Nessuna scadenza" body="Non hai scadenze aperte per questo veicolo." />
+    );
+  }
+  return (
+    <FlatList
+      data={items}
+      keyExtractor={(d) => d.id}
+      renderItem={({ item }) => <DeadlineRow deadline={item} hideVehicle />}
       scrollEnabled={false}
     />
   );

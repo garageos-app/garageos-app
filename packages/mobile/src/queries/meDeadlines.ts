@@ -15,3 +15,13 @@ export function useMeDeadlines() {
     select: (r) => r.deadlines,
   });
 }
+
+// Client-side per-vehicle filter. /v1/me/deadlines has no vehicleId query
+// param; at B2C scale fetching the full open+overdue set and filtering here
+// reuses the shared ['me','deadlines'] cache (F-CLI-106 vehicle-detail tab).
+export function deadlinesForVehicle(
+  deadlines: MeDeadline[] | undefined,
+  vehicleId: string,
+): MeDeadline[] {
+  return deadlines?.filter((d) => d.vehicleId === vehicleId) ?? [];
+}
