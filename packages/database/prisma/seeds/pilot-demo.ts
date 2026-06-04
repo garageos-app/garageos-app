@@ -6,7 +6,14 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { SYSTEM_INTERVENTION_TYPES } from '../../src/seed-data.js';
 import { PrismaClient } from '../generated/prisma/client/client.js';
 
-import { CUSTOMERS, INTERVENTIONS, LOCATION, TENANT, VEHICLES } from './pilot-demo-data.js';
+import {
+  CUSTOMERS,
+  INTERVENTIONS,
+  LOCATION,
+  TENANT,
+  VEHICLES,
+  personaEmail,
+} from './pilot-demo-data.js';
 
 interface RunOptions {
   pilotDemoSub: string;
@@ -103,12 +110,15 @@ export async function runPilotDemoSeed(opts: RunOptions): Promise<void> {
     // 3. Super-admin user bound to provided cognito sub.
     await prisma.user.upsert({
       where: { cognitoSub: opts.pilotDemoSub },
-      update: { tenantId: tenant.id, locationId: location.id },
+      // email in update too so re-seeding with PILOT_DEMO_EMAIL_BASE set
+      // applies the new alias (this row is keyed by the stable cognitoSub,
+      // so update — not create — is the re-seed path).
+      update: { tenantId: tenant.id, locationId: location.id, email: personaEmail('giuseppe') },
       create: {
         tenantId: tenant.id,
         locationId: location.id,
         cognitoSub: opts.pilotDemoSub,
-        email: 'giuseppe@demo-giuseppe.test',
+        email: personaEmail('giuseppe'),
         firstName: 'Giuseppe',
         lastName: 'Bianchi',
         role: 'super_admin',
