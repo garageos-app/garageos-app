@@ -11,9 +11,9 @@ const SEVERITY_COLORS: Record<DueSeverity, { bg: string; fg: string }> = {
   none: { bg: colors.mutedBg, fg: colors.muted },
 };
 
-type Props = { deadline: MeDeadline; onPress: () => void };
+type Props = { deadline: MeDeadline; onPress?: () => void; hideVehicle?: boolean };
 
-export function DeadlineRow({ deadline, onPress }: Props) {
+export function DeadlineRow({ deadline, onPress, hideVehicle = false }: Props) {
   const urgency = formatDueUrgency(deadline.dueDate, deadline.status);
   const sev = SEVERITY_COLORS[urgency.severity];
   return (
@@ -24,9 +24,11 @@ export function DeadlineRow({ deadline, onPress }: Props) {
     >
       <View style={styles.body}>
         <Text style={styles.title}>{deadline.interventionType.nameIt}</Text>
-        <Text style={styles.vehicle}>
-          {deadline.vehicle.plate} · {deadline.vehicle.make} {deadline.vehicle.model}
-        </Text>
+        {hideVehicle ? null : (
+          <Text style={styles.vehicle}>
+            {deadline.vehicle.plate} · {deadline.vehicle.make} {deadline.vehicle.model}
+          </Text>
+        )}
         {deadline.description ? (
           <Text style={styles.description} numberOfLines={2}>
             {deadline.description}
