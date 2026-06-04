@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Pressable } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useMeVehicleDetail } from '@/queries/meVehicles';
 import { useMeVehicleTimeline } from '@/queries/meVehicleTimeline';
 import { useMeDeadlines, deadlinesForVehicle } from '@/queries/meDeadlines';
@@ -117,32 +117,44 @@ export default function VehicleDetailScreen() {
 }
 
 function HistoryTab({
+  vehicleId,
   timeline,
 }: {
   vehicleId: string;
   timeline: ReturnType<typeof useMeVehicleTimeline>;
 }) {
+  const router = useRouter();
   if (timeline.isLoading) return <LoadingState variant="list" />;
   if (timeline.isError) {
     const code = timeline.error instanceof ApiError ? timeline.error.code : undefined;
     return <ErrorState message={mapErrorToUserMessage(code)} onRetry={timeline.refetch} />;
   }
   const items = timeline.data?.data ?? [];
-  if (items.length === 0) {
-    return (
-      <EmptyState
-        title="Nessun intervento"
-        body="Non ci sono ancora interventi registrati per questo veicolo."
-      />
-    );
-  }
   return (
-    <FlatList
-      data={items}
-      keyExtractor={(it) => `${it.kind}-${it.id}`}
-      renderItem={({ item }) => <TimelineRow item={item} />}
-      scrollEnabled={false}
-    />
+    <View>
+      <Pressable
+        style={styles.addBtn}
+        accessibilityRole="button"
+        onPress={() =>
+          router.push({ pathname: '/private-interventions/new', params: { vehicleId } })
+        }
+      >
+        <Text style={styles.addBtnText}>+ Aggiungi intervento privato</Text>
+      </Pressable>
+      {items.length === 0 ? (
+        <EmptyState
+          title="Nessun intervento"
+          body="Non ci sono ancora interventi registrati per questo veicolo."
+        />
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={(it) => `${it.kind}-${it.id}`}
+          renderItem={({ item }) => <TimelineRow item={item} />}
+          scrollEnabled={false}
+        />
+      )}
+    </View>
   );
 }
 
@@ -209,6 +221,15 @@ function TechTab({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  addBtn: {
+    margin: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+  },
+  addBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   header: {
     flexDirection: 'row',
     padding: spacing.lg,
