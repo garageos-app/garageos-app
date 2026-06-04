@@ -71,4 +71,48 @@ describe('PrivateInterventionForm', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Annulla' }));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+
+  it('prefills fields from initial values', () => {
+    render(
+      <PrivateInterventionForm
+        onSubmit={jest.fn()}
+        onCancel={jest.fn()}
+        initial={{
+          customType: 'Gomme',
+          interventionDate: '2021-03-03',
+          odometerKm: '90000',
+          description: 'Cambio gomme invernali',
+        }}
+      />,
+    );
+    expect(screen.getByDisplayValue('Gomme')).toBeOnTheScreen();
+    expect(screen.getByDisplayValue('2021-03-03')).toBeOnTheScreen();
+    expect(screen.getByDisplayValue('90000')).toBeOnTheScreen();
+    expect(screen.getByDisplayValue('Cambio gomme invernali')).toBeOnTheScreen();
+  });
+
+  it('renders a custom submit label', () => {
+    render(
+      <PrivateInterventionForm
+        onSubmit={jest.fn()}
+        onCancel={jest.fn()}
+        submitLabel="Salva modifiche"
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Salva modifiche' })).toBeOnTheScreen();
+  });
+
+  it('renders Elimina and calls onDelete when onDelete provided', () => {
+    const onDelete = jest.fn();
+    render(
+      <PrivateInterventionForm onSubmit={jest.fn()} onCancel={jest.fn()} onDelete={onDelete} />,
+    );
+    fireEvent.press(screen.getByRole('button', { name: 'Elimina' }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render Elimina without onDelete', () => {
+    render(<PrivateInterventionForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Elimina' })).toBeNull();
+  });
 });
