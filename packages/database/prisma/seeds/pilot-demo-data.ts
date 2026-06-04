@@ -3,6 +3,26 @@ import type { FuelType, VehicleType } from '../../src/index.js';
 // Static dataset for pilot demo. Deterministic keys (vatNumber, email, vin) so
 // the seed is idempotent across re-runs.
 
+// Persona email derivation. The committed default uses the non-deliverable
+// `demo-giuseppe.test` domain so this PUBLIC repo never carries real PII and
+// CI/integration tests stay hermetic. An operator running the real demo sets
+// PILOT_DEMO_EMAIL_BASE to a deliverable inbox (e.g. `someone@gmail.com`); each
+// persona then becomes a Gmail plus-alias (`someone+giuseppe@gmail.com`, …) so
+// every notification lands in that single inbox while remaining a distinct,
+// individually SES-verifiable recipient. See docs runbook for the verify step.
+//
+// PILOT_DEMO_EMAIL_BASE is read per call (not cached at module load) so the
+// helper is directly unit-testable and reacts to the env the seed process is
+// launched with.
+export function personaEmail(tag: string): string {
+  const base = process.env.PILOT_DEMO_EMAIL_BASE;
+  if (base?.includes('@')) {
+    const [local, domain] = base.split('@');
+    return `${local}+${tag}@${domain}`;
+  }
+  return `${tag}@demo-giuseppe.test`;
+}
+
 export interface DemoCustomer {
   email: string;
   firstName: string;
@@ -36,7 +56,7 @@ export interface DemoIntervention {
 export const TENANT = {
   vatNumber: 'IT00000000000',
   businessName: 'Officina Giuseppe Bianchi',
-  email: 'info@demo-giuseppe.test',
+  email: personaEmail('officina'),
 };
 
 export const LOCATION = {
@@ -50,18 +70,18 @@ export const LOCATION = {
 
 export const CUSTOMERS: DemoCustomer[] = [
   {
-    email: 'mario.rossi@demo-giuseppe.test',
+    email: personaEmail('mario'),
     firstName: 'Mario',
     lastName: 'Rossi',
     phone: '+393331112233',
   },
   {
-    email: 'luigi.verdi@demo-giuseppe.test',
+    email: personaEmail('luigi'),
     firstName: 'Luigi',
     lastName: 'Verdi',
     phone: '+393334445566',
   },
-  { email: 'anna.bianchi@demo-giuseppe.test', firstName: 'Anna', lastName: 'Bianchi', phone: null },
+  { email: personaEmail('anna'), firstName: 'Anna', lastName: 'Bianchi', phone: null },
 ];
 
 export const VEHICLES: DemoVehicle[] = [
@@ -75,7 +95,7 @@ export const VEHICLES: DemoVehicle[] = [
     fuelType: 'petrol',
     vehicleType: 'car',
     registrationDate: new Date('2018-03-15'),
-    ownerEmail: 'mario.rossi@demo-giuseppe.test',
+    ownerEmail: personaEmail('mario'),
   },
   {
     vin: 'VINDEMO0000000002',
@@ -87,7 +107,7 @@ export const VEHICLES: DemoVehicle[] = [
     fuelType: 'diesel',
     vehicleType: 'car',
     registrationDate: new Date('2020-06-10'),
-    ownerEmail: 'luigi.verdi@demo-giuseppe.test',
+    ownerEmail: personaEmail('luigi'),
   },
   {
     vin: 'VINDEMO0000000003',
@@ -99,7 +119,7 @@ export const VEHICLES: DemoVehicle[] = [
     fuelType: 'petrol',
     vehicleType: 'motorcycle',
     registrationDate: new Date('2019-04-22'),
-    ownerEmail: 'luigi.verdi@demo-giuseppe.test',
+    ownerEmail: personaEmail('luigi'),
   },
   {
     vin: 'VINDEMO0000000004',
@@ -111,7 +131,7 @@ export const VEHICLES: DemoVehicle[] = [
     fuelType: 'petrol',
     vehicleType: 'car',
     registrationDate: new Date('2022-09-05'),
-    ownerEmail: 'anna.bianchi@demo-giuseppe.test',
+    ownerEmail: personaEmail('anna'),
   },
   {
     vin: 'VINDEMO0000000005',
@@ -123,7 +143,7 @@ export const VEHICLES: DemoVehicle[] = [
     fuelType: 'diesel',
     vehicleType: 'van',
     registrationDate: new Date('2017-11-30'),
-    ownerEmail: 'anna.bianchi@demo-giuseppe.test',
+    ownerEmail: personaEmail('anna'),
   },
 ];
 

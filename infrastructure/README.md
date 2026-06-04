@@ -898,6 +898,7 @@ Popola il DB di produzione con dati realistici per la demo Persona A "Giuseppe":
 - F-7.5 completato per l'officina pilota (Cognito user `super_admin` Giuseppe creato + riga `users` seedata via il flusso bootstrap manuale).
 - Variabile `PILOT_DEMO_SUB` = `sub` Cognito di Giuseppe (visibile in Cognito console o via `aws cognito-idp admin-get-user`).
 - `DATABASE_URL` = Supabase pooler URL produzione (lo stesso usato dall'API). Il caller può estrarlo da Secrets Manager (`garageos-app/api/database`) e tenerlo solo nello shell, mai committato.
+- **(opzionale)** `PILOT_DEMO_EMAIL_BASE` = casella reale recapitabile (es. `tuonome@gmail.com`). Se impostata, ogni persona diventa un **plus-alias Gmail** (`tuonome+giuseppe@gmail.com`, `tuonome+mario@gmail.com`, …) così tutte le notifiche arrivano in quell'unica inbox. Se non impostata, le email restano sul dominio non-recapitabile `demo-giuseppe.test` (default committato, nessuna PII nel repo pubblico). Tag personas: `officina`, `giuseppe`, `mario`, `luigi`, `anna`.
 
 ### Run
 
@@ -906,6 +907,8 @@ Popola il DB di produzione con dati realistici per la demo Persona A "Giuseppe":
 # Mantieni il valore solo nello shell session — non committarlo né stamparlo in scrollback.
 export DATABASE_URL="<supabase_pooler_uri>"
 export PILOT_DEMO_SUB="<sub_giuseppe>"
+# Opzionale: instrada le email demo verso una inbox reale via plus-alias.
+export PILOT_DEMO_EMAIL_BASE="tuonome@gmail.com"
 
 pnpm --filter @garageos/database seed:pilot-demo
 ```
@@ -919,7 +922,8 @@ Output atteso:
 ### Note
 
 - Il seed esegue write su `tenants`/`users`/`interventions` che hanno RLS attiva. Le policy RLS richiedono `set_app_context()` (chiamata dall'API server) per autorizzare le write tenant-scoped — il seed gira fuori dal server applicativo e quindi quel context è assente, perciò il role applicativo `garageos_app` (NOBYPASSRLS) non riesce a scrivere. **Per il primo run, usare il `DIRECT_URL` superuser** estratto dallo stesso secret `garageos/production/app` (key `DIRECT_URL`): `postgres` ha BYPASSRLS automatico e il seed completa senza configurazione di context.
-- Re-run su DB già popolato è no-op per le righe esistenti (tenant by `vat_number`, customer by `email`, vehicle by `vin`, intervention triple) e non cancella dati live creati durante la demo.
+- Re-run su DB già popolato è no-op per le righe esistenti (tenant by `vat_number`, customer by `email`, vehicle by `vin`, intervention triple) e non cancella dati live creati durante la demo. **Eccezione:** i customer sono keyed by `email` — cambiare `PILOT_DEMO_EMAIL_BASE` tra due run crea nuove righe customer (le vecchie restano). Per un demo pulito, semina con la base email definitiva fin dal primo run o ripulisci i customer demo prima del re-run.
+- **Email in sandbox SES**: finché l'account SES è in sandbox (`ProductionAccessEnabled: false`), ogni indirizzo `PILOT_DEMO_EMAIL_BASE` + alias va **verificato singolarmente** prima che le mail vengano recapitate: `aws sesv2 create-email-identity --email-identity "tuonome+giuseppe@gmail.com" --region eu-central-1` (poi clicca il link nella inbox). Verifica lo stato con `aws sesv2 list-email-identities --region eu-central-1` (`VerificationStatus: SUCCESS`).
 
 ## F-WEB-DEMO3 — Smoke checklist post-deploy demo-3 (form crea intervento)
 
