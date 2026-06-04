@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useMeDeadlines } from '@/queries/meDeadlines';
+import { useMeDeadlines, deadlinesForVehicle } from '@/queries/meDeadlines';
+import type { MeDeadline } from '@/lib/types/deadline';
 import * as apiClientHook from '@/lib/use-api-client';
 import { ApiError } from '@/lib/api-error';
 
@@ -54,5 +55,44 @@ describe('useMeDeadlines', () => {
     const { result } = renderHook(() => useMeDeadlines(), { wrapper: makeWrapper() });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect((result.current.error as ApiError).code).toBe('me.error');
+  });
+});
+
+function makeDeadline(id: string, vehicleId: string): MeDeadline {
+  return {
+    id,
+    vehicleId,
+    interventionTypeId: 't1',
+    sourceInterventionId: null,
+    dueDate: '2026-07-01',
+    dueOdometerKm: null,
+    description: null,
+    isRecurring: false,
+    recurringMonths: null,
+    recurringKm: null,
+    status: 'open',
+    completedByInterventionId: null,
+    completedAt: null,
+    createdAt: '2026-06-01T00:00:00Z',
+    updatedAt: '2026-06-01T00:00:00Z',
+    vehicle: { id: vehicleId, plate: 'AB123CD', make: 'Fiat', model: 'Panda' },
+    interventionType: { id: 't1', code: 'REVISIONE', nameIt: 'Revisione' },
+  };
+}
+
+describe('deadlinesForVehicle', () => {
+  const list = [makeDeadline('d1', 'v1'), makeDeadline('d2', 'v2'), makeDeadline('d3', 'v1')];
+
+  it('returns only deadlines for the given vehicle', () => {
+    const result = deadlinesForVehicle(list, 'v1');
+    expect(result.map((d) => d.id)).toEqual(['d1', 'd3']);
+  });
+
+  it('returns an empty array when no deadline matches', () => {
+    expect(deadlinesForVehicle(list, 'v999')).toEqual([]);
+  });
+
+  it('returns an empty array for undefined input', () => {
+    expect(deadlinesForVehicle(undefined, 'v1')).toEqual([]);
   });
 });
