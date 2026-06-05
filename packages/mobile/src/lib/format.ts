@@ -8,6 +8,28 @@ export function formatDate(input: string | null | undefined): string {
   return `${d}/${m}/${y}`;
 }
 
+// Absolute date+time for an audit log entry: occurredAt is a full ISO
+// timestamp (with time-of-day), unlike the date-only @db.Date fields above.
+// We render it in Europe/Rome regardless of the device timezone so the value
+// is deterministic in tests and correct for the Italian audience. hourCycle
+// 'h23' avoids the it-IT "24:00" rendering for midnight.
+export function formatDateTime(input: string | null | undefined): string {
+  if (!input) return '—';
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) return '—';
+  const parts = new Intl.DateTimeFormat('it-IT', {
+    timeZone: 'Europe/Rome',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}`;
+}
+
 export function formatKm(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return '—';
   const formatted = value.toLocaleString('it-IT');
