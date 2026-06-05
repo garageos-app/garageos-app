@@ -5,7 +5,9 @@ import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useMeVehicleDetail } from '@/queries/meVehicles';
 import { useMeVehicleTimeline } from '@/queries/meVehicleTimeline';
 import { useMeDeadlines, deadlinesForVehicle } from '@/queries/meDeadlines';
+import { useMeVehicleAccessLog } from '@/queries/meVehicleAccessLog';
 import { DeadlineRow } from '@/components/DeadlineRow';
+import { AccessLogTab } from '@/components/AccessLogTab';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
@@ -21,21 +23,24 @@ export default function VehicleDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === 'string' ? params.id : '';
   const validId = UUID_RE.test(id) ? id : '';
-  const [tab, setTab] = useState<'history' | 'deadlines' | 'tech'>('history');
+  const [tab, setTab] = useState<'history' | 'deadlines' | 'tech' | 'access'>('history');
   const [refreshing, setRefreshing] = useState(false);
 
   const detail = useMeVehicleDetail(validId);
   const timeline = useMeVehicleTimeline(validId);
   const deadlines = useMeDeadlines();
+  const accessLog = useMeVehicleAccessLog(validId, { enabled: tab === 'access' });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([detail.refetch(), timeline.refetch(), deadlines.refetch()]);
+      const tasks: Promise<unknown>[] = [detail.refetch(), timeline.refetch(), deadlines.refetch()];
+      if (tab === 'access') tasks.push(accessLog.refetch());
+      await Promise.all(tasks);
     } finally {
       setRefreshing(false);
     }
-  }, [detail, timeline, deadlines]);
+  }, [detail, timeline, deadlines, accessLog, tab]);
 
   if (!validId) {
     return <ErrorState message="Veicolo non trovato o non più di tua proprietà." />;
@@ -102,14 +107,34 @@ export default function VehicleDetailScreen() {
               Dati tecnici
             </Text>
           </Pressable>
+          <Pressable
+            onPress={() => setTab('access')}
+            style={[styles.tabButton, tab === 'access' && styles.tabButtonActive]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.tabText, tab === 'access' && styles.tabTextActive]}>Accessi</Text>
+          </Pressable>
         </View>
 
         {tab === 'history' ? (
           <HistoryTab vehicleId={validId} timeline={timeline} />
         ) : tab === 'deadlines' ? (
           <DeadlinesTab vehicleId={validId} deadlines={deadlines} />
-        ) : (
+        ) : tab === 'tech' ? (
           <TechTab vehicle={v} />
+        ) : (
+          <AccessLogTab
+            entries={accessLog.data ?? []}
+            isLoading={accessLog.isLoading}
+            isError={accessLog.isError}
+            errorCode={accessLog.error instanceof ApiError ? accessLog.error.code : undefined}
+            onRetry={accessLog.refetch}
+            hasNextPage={accessLog.hasNextPage}
+            isFetchingNextPage={accessLog.isFetchingNextPage}
+            onLoadMore={() => {
+              void accessLog.fetchNextPage();
+            }}
+          />
         )}
       </ScrollView>
     </>
