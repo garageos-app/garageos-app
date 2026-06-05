@@ -174,6 +174,7 @@ enum AccessLogAction {
   cancel
   respond
   ownership_transfer // BR-049
+  vehicle_registered // F-CLI-304: distinguishes vehicle registration from intervention create
 }
 
 enum InvitationType {

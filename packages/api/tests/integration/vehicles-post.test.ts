@@ -21,7 +21,7 @@ import { signTestToken } from '../helpers/jwt.js';
 //   - BR-040 (at most one active ownership)
 //   - BR-041 (atomic vehicle+customer+ownership+relation transaction)
 //   - BR-152 (customer_tenant_relation auto-creation)
-//   - BR-154 (access_log action='create')
+//   - BR-154 (access_log action='vehicle_registered')
 
 const VALID_VIN = '1M8GDM9AXKP042788'; // ISO 3779-valid
 const INVALID_CHECKSUM_VIN = '1M8GDM9A1KP042788';
@@ -102,7 +102,7 @@ describe('POST /v1/vehicles (integration)', () => {
 
     const { rows: accessRows } = await pgAdmin.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM access_logs
-       WHERE vehicle_id = $1 AND action = 'create'`,
+       WHERE vehicle_id = $1 AND action = 'vehicle_registered'`,
       [json.vehicle.id],
     );
     expect(Number(accessRows[0]!.count)).toBe(1);

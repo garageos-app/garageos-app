@@ -7,7 +7,14 @@ import type { PrismaClient } from '@garageos/database';
 // (tech-debt ledger: "subpath exports @garageos/database"); inlining
 // the literal union keeps this PR scoped to the api package. Keep in
 // sync with packages/database/prisma/schema.prisma enum AccessLogAction.
-export type AccessLogAction = 'view' | 'create' | 'update' | 'search_match' | 'cancel' | 'respond';
+export type AccessLogAction =
+  | 'view'
+  | 'create'
+  | 'update'
+  | 'search_match'
+  | 'cancel'
+  | 'respond'
+  | 'vehicle_registered';
 
 // BR-154: 30-minute dedup window. Implementation strategy: SELECT the
 // most recent log for (vehicle_id, user_id) since now - 30min; insert

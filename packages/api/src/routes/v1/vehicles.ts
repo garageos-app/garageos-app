@@ -537,17 +537,19 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
           };
         }
 
-        // BR-154: access_log action='create'. Reuses recordVehicleAccess so
-        // the 30-min dedup rules stay centralized (creates are unique by
-        // definition, but going through the same helper keeps auditing
-        // uniform).
+        // BR-154 / F-CLI-304: a vehicle registration is logged as a
+        // distinct 'vehicle_registered' action (not the overloaded
+        // 'create'), so the customer audit (BR-155) can surface
+        // intervention creates as "new intervention" without conflating
+        // them with the one-time registration row. Reuses
+        // recordVehicleAccess so the 30-min dedup stays centralized.
         await recordVehicleAccess({
           tx,
           vehicleId: vehicle.id,
           tenantId,
           userId: user.id,
           ...(user.locationId ? { locationId: user.locationId } : {}),
-          action: 'create',
+          action: 'vehicle_registered',
           ipAddress: request.ip,
           log: request.log,
         });
