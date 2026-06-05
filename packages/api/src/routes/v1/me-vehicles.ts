@@ -341,11 +341,35 @@ const meVehicleRoutes: FastifyPluginAsync = async (app) => {
 
         const active = ownerships[0] ?? null;
         if (!active) {
-          const ownership = await tx.vehicleOwnership.create({
-            data: { vehicleId: vehicle.id, customerId, startedAt: new Date() },
-            select: { id: true, startedAt: true },
-          });
-          return { vehicle: vehiclePublic, ownership, status: 'claimed' as const };
+          try {
+            const ownership = await tx.vehicleOwnership.create({
+              data: { vehicleId: vehicle.id, customerId, startedAt: new Date() },
+              select: { id: true, startedAt: true },
+            });
+            return { vehicle: vehiclePublic, ownership, status: 'claimed' as const };
+          } catch (err) {
+            // Concurrent claim won the active-ownership unique index
+            // (uq_ownership_vehicle_active). Refetch and resolve.
+            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+              const raced = await tx.vehicleOwnership.findFirst({
+                where: { vehicleId: vehicle.id, endedAt: null },
+                select: { id: true, customerId: true, startedAt: true },
+              });
+              if (raced && raced.customerId === customerId) {
+                return {
+                  vehicle: vehiclePublic,
+                  ownership: { id: raced.id, startedAt: raced.startedAt },
+                  status: 'already_owned' as const,
+                };
+              }
+              throw businessError(
+                'me.vehicle.claim.owned_by_other',
+                409,
+                'Veicolo già associato a un altro account.',
+              );
+            }
+            throw err;
+          }
         }
 
         if (active.customerId === customerId) {
@@ -359,7 +383,6 @@ const meVehicleRoutes: FastifyPluginAsync = async (app) => {
 
         // Owned by a different customer -> the caller must use the
         // ownership-transfer flow, not claim.
-        void Prisma; // race handling added in Task 5
         throw businessError(
           'me.vehicle.claim.owned_by_other',
           409,

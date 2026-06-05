@@ -1,4 +1,5 @@
 import sensible from '@fastify/sensible';
+import { Prisma } from '@garageos/database';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -155,7 +156,7 @@ describe('GET /v1/me/vehicles', () => {
   it('queries vehicle_ownerships filtered by customerId and active ownership', async () => {
     const findMany = vi.fn().mockResolvedValue([OWNERSHIP_ROW]);
     const prisma = buildFakePrisma({
-      vehicleOwnership: { findMany, findFirst: vi.fn() },
+      vehicleOwnership: { findMany, findFirst: vi.fn(), create: vi.fn() },
     });
     app = await buildApp({ prisma });
 
@@ -184,7 +185,7 @@ describe('GET /v1/me/vehicles', () => {
     ];
     const findMany = vi.fn().mockResolvedValue(rows);
     const prisma = buildFakePrisma({
-      vehicleOwnership: { findMany, findFirst: vi.fn() },
+      vehicleOwnership: { findMany, findFirst: vi.fn(), create: vi.fn() },
     });
     app = await buildApp({ prisma });
 
@@ -219,7 +220,7 @@ describe('GET /v1/me/vehicles', () => {
   it('returns an empty list when the customer has no active ownerships', async () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const prisma = buildFakePrisma({
-      vehicleOwnership: { findMany, findFirst: vi.fn() },
+      vehicleOwnership: { findMany, findFirst: vi.fn(), create: vi.fn() },
     });
     app = await buildApp({ prisma });
 
@@ -305,7 +306,7 @@ describe('GET /v1/me/vehicles/:id', () => {
       vehicle: detailedVehicle,
     });
     const prisma = buildFakePrisma({
-      vehicleOwnership: { findMany: vi.fn(), findFirst },
+      vehicleOwnership: { findMany: vi.fn(), findFirst, create: vi.fn() },
     });
     app = await buildApp({ prisma });
 
@@ -333,7 +334,7 @@ describe('GET /v1/me/vehicles/:id', () => {
   it('returns 404 me.vehicle.not_found when the customer does not own the vehicle', async () => {
     const findFirst = vi.fn().mockResolvedValue(null);
     const prisma = buildFakePrisma({
-      vehicleOwnership: { findMany: vi.fn(), findFirst },
+      vehicleOwnership: { findMany: vi.fn(), findFirst, create: vi.fn() },
     });
     app = await buildApp({ prisma });
 
@@ -413,7 +414,11 @@ describe('GET /v1/me/vehicles/:id/access-log', () => {
 
   function accessPrisma(rows: unknown[], relations: Array<{ tenantId: string }> = []) {
     return buildFakePrisma({
-      vehicleOwnership: { findMany: vi.fn(), findFirst: vi.fn().mockResolvedValue(OWNERSHIP_ROW) },
+      vehicleOwnership: {
+        findMany: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue(OWNERSHIP_ROW),
+        create: vi.fn(),
+      },
       accessLog: { findMany: vi.fn().mockResolvedValue(rows) },
       customerTenantRelation: { findMany: vi.fn().mockResolvedValue(relations) },
     });
@@ -428,7 +433,11 @@ describe('GET /v1/me/vehicles/:id/access-log', () => {
 
   it('returns 404 me.vehicle.not_found when the customer does not own the vehicle', async () => {
     const prisma = buildFakePrisma({
-      vehicleOwnership: { findMany: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
+      vehicleOwnership: {
+        findMany: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn(),
+      },
     });
     app = await buildApp({ prisma });
     const res = await app.inject({
@@ -782,5 +791,65 @@ describe('POST /v1/me/vehicles/claim', () => {
       status: 409,
     });
     expect(prisma.vehicleOwnership.create).not.toHaveBeenCalled();
+  });
+
+  function p2002(): Prisma.PrismaClientKnownRequestError {
+    return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
+  }
+
+  it('on a concurrent-claim P2002, refetches and returns already_owned if the caller won', async () => {
+    const prisma = claimPrisma(CLAIM_VEHICLE_FREE); // ownerships: [] at read time
+    prisma.vehicleOwnership.create = vi.fn().mockRejectedValue(p2002());
+    // Refetch sees the now-active ownership belonging to the caller.
+    prisma.vehicleOwnership.findFirst = vi.fn().mockResolvedValue({
+      id: OWNERSHIP_ID,
+      customerId: CUSTOMER_ID,
+      startedAt: new Date('2026-06-05T12:00:00.000Z'),
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { status: string; ownership: { id: string } };
+    expect(body.status).toBe('already_owned');
+    expect(body.ownership.id).toBe(OWNERSHIP_ID);
+    expect(prisma.vehicleOwnership.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { vehicleId: VEHICLE_ID, endedAt: null },
+      }),
+    );
+  });
+
+  it('on a concurrent-claim P2002, returns 409 owned_by_other if another customer won', async () => {
+    const prisma = claimPrisma(CLAIM_VEHICLE_FREE);
+    prisma.vehicleOwnership.create = vi.fn().mockRejectedValue(p2002());
+    prisma.vehicleOwnership.findFirst = vi.fn().mockResolvedValue({
+      id: OWNERSHIP_ID,
+      customerId: '99999999-9999-4999-8999-999999999999',
+      startedAt: new Date('2026-06-05T12:00:00.000Z'),
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/me.vehicle.claim.owned_by_other',
+      status: 409,
+    });
   });
 });
