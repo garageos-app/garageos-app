@@ -203,6 +203,10 @@ Per fornire dati utili al client per gestire l'errore:
 | `tenants.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/tenants/me con chiave non in schema (es. vatNumber, status, plan) | F-OFF-007 |
 | `me.profile.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/me/profile con body vuoto o senza campi edibili | F-CLI-004 |
 | `me.profile.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/me/profile con chiave non in schema (es. email, status) | F-CLI-004 |
+| `me.vehicle.claim.code_not_found` | 404 | info | Codice non trovato | POST /v1/me/vehicles/claim con garageCode inesistente | F-CLI-101 (BR-042) |
+| `me.vehicle.claim.owned_by_other` | 409 | info | Veicolo di un altro cliente | POST /v1/me/vehicles/claim su veicolo con ownership attiva di altro cliente (usare passaggio di proprietà) | F-CLI-101 (BR-042) |
+| `me.vehicle.claim.pending` | 422 | info | Veicolo non certificato | POST /v1/me/vehicles/claim su veicolo pending | F-CLI-101 (BR-042) |
+| `me.vehicle.claim.archived` | 422 | info | Veicolo archiviato | POST /v1/me/vehicles/claim su veicolo archived | F-CLI-101 (BR-042) |
 | `tenant.vat_number_duplicate` | 409 | info | P.IVA già registrata | VAT duplicata in creazione | |
 | `tenant.vat_number_invalid` | 400 | info | P.IVA non valida | Checksum P.IVA IT fallito | |
 | `tenant.billing.past_due` | 402 | warning | Pagamento in sospeso | Solo v1.1+ | |
