@@ -322,7 +322,23 @@ const meVehicleRoutes: FastifyPluginAsync = async (app) => {
         }
 
         const { status, ownerships, ...vehiclePublic } = vehicle;
-        void status; // guards added in Task 2
+
+        if (status === 'pending') {
+          throw businessError(
+            'me.vehicle.claim.pending',
+            422,
+            'Veicolo non ancora certificato: non può essere agganciato.',
+          );
+        }
+        if (status === 'archived') {
+          throw businessError(
+            'me.vehicle.claim.archived',
+            422,
+            'Veicolo archiviato: non può essere agganciato.',
+          );
+        }
+        // status === 'certified' falls through.
+
         void ownerships; // ownership decision added in Tasks 3-4
         void customerId;
         void Prisma; // race handling added in Task 5

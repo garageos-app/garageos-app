@@ -33,6 +33,19 @@ const OWNERSHIP_ROW = {
   vehicle: VEHICLE_ROW,
 };
 
+// A certified, currently-free vehicle as returned by the claim lookup
+// (findFirst selects status + active ownerships for the decision).
+const CLAIM_VEHICLE_FREE = {
+  id: VEHICLE_ID,
+  garageCode: 'GO-234-ABCD',
+  make: 'Fiat',
+  model: 'Panda',
+  year: 2021,
+  plate: 'AB123CD',
+  status: 'certified' as const,
+  ownerships: [] as Array<{ id: string; customerId: string; startedAt: Date }>,
+};
+
 interface FakePrisma {
   vehicle: {
     findFirst: ReturnType<typeof vi.fn>;
@@ -630,5 +643,38 @@ describe('POST /v1/me/vehicles/claim', () => {
     expect(prisma.vehicle.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { garageCode: 'GO-234-ABCD' } }),
     );
+  });
+
+  it('returns 422 me.vehicle.claim.pending for a pending vehicle', async () => {
+    const prisma = claimPrisma({ ...CLAIM_VEHICLE_FREE, status: 'pending' });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/me.vehicle.claim.pending',
+      status: 422,
+    });
+    expect(prisma.vehicleOwnership.create).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 me.vehicle.claim.archived for an archived vehicle', async () => {
+    const prisma = claimPrisma({ ...CLAIM_VEHICLE_FREE, status: 'archived' });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/me.vehicle.claim.archived',
+      status: 422,
+    });
   });
 });
