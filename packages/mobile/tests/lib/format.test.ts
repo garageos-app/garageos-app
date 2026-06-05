@@ -9,6 +9,10 @@ describe('format', () => {
     it('returns fallback for invalid input', () => {
       expect(formatDate('not-a-date')).toBe('—');
     });
+
+    it('accepts an ISO datetime (API @db.Date wire shape) and formats the date part', () => {
+      expect(formatDate('2026-06-10T00:00:00.000Z')).toBe('10/06/2026');
+    });
   });
 
   describe('formatKm', () => {
@@ -98,5 +102,15 @@ describe('formatDueUrgency', () => {
 
   it('returns none for an invalid date', () => {
     expect(formatDueUrgency('not-a-date', 'open')).toEqual({ label: '—', severity: 'none' });
+  });
+
+  // The API serializes dueDate (@db.Date) as a full ISO datetime, not YYYY-MM-DD.
+  const isoInDays = (n: number): string => new Date(Date.now() + n * 86400000).toISOString();
+
+  it('accepts an ISO datetime wire shape and computes urgency from the date part', () => {
+    expect(formatDueUrgency(isoInDays(5), 'open')).toEqual({
+      label: 'Tra 5 giorni',
+      severity: 'soon',
+    });
   });
 });

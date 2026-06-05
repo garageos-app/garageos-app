@@ -1,6 +1,8 @@
 export function formatDate(input: string | null | undefined): string {
   if (!input) return '—';
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input);
+  // Accept both 'YYYY-MM-DD' and a full ISO datetime: the API serializes
+  // dueDate (@db.Date) as 'YYYY-MM-DDT00:00:00.000Z', so match the date prefix.
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(input);
   if (!match) return '—';
   const [, y, m, d] = match;
   return `${d}/${m}/${y}`;
@@ -14,7 +16,7 @@ export function formatKm(value: number | null | undefined): string {
 
 export function formatTimeAgo(input: string | null | undefined): string {
   if (!input) return '—';
-  const date = new Date(`${input}T00:00:00.000Z`);
+  const date = new Date(`${input.slice(0, 10)}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) return '—';
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
@@ -40,7 +42,9 @@ export function formatDueUrgency(
 ): { label: string; severity: DueSeverity } {
   if (status === 'overdue') return { label: 'Scaduta', severity: 'overdue' };
   if (!dueDate) return { label: '—', severity: 'none' };
-  const date = new Date(`${dueDate}T00:00:00.000Z`);
+  // Accept a full ISO datetime too (API @db.Date wire shape) by taking the
+  // date prefix before re-anchoring at UTC midnight.
+  const date = new Date(`${dueDate.slice(0, 10)}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) return { label: '—', severity: 'none' };
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
