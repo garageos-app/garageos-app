@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '@/theme/colors';
-import { formatDueUrgency, formatKm, type DueSeverity } from '@/lib/format';
+import { formatDueUrgency, formatKm, formatDate, type DueSeverity } from '@/lib/format';
 import type { MeDeadline } from '@/lib/types/deadline';
 
 // Severity → badge colors, reusing existing theme tokens (no new colors).
@@ -38,8 +38,13 @@ export function DeadlineRow({ deadline, onPress, hideVehicle = false }: Props) {
           <Text style={styles.meta}>Alla soglia di {formatKm(deadline.dueOdometerKm)}</Text>
         ) : null}
       </View>
-      <View style={[styles.badge, { backgroundColor: sev.bg }]}>
-        <Text style={[styles.badgeText, { color: sev.fg }]}>{urgency.label}</Text>
+      <View style={styles.right}>
+        <View style={[styles.badge, { backgroundColor: sev.bg }]}>
+          <Text style={[styles.badgeText, { color: sev.fg }]}>{urgency.label}</Text>
+        </View>
+        {deadline.dueDate ? (
+          <Text style={styles.dueDate}>{formatDate(deadline.dueDate)}</Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -61,6 +66,8 @@ const styles = StyleSheet.create({
   vehicle: { fontSize: 13, color: colors.muted },
   description: { fontSize: 13, color: colors.fg },
   meta: { fontSize: 12, color: colors.muted },
+  right: { alignItems: 'flex-end', gap: spacing.xs },
   badge: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: 8 },
   badgeText: { fontSize: 12, fontWeight: '600' },
+  dueDate: { fontSize: 12, color: colors.muted },
 });
