@@ -1,4 +1,10 @@
-import { formatDate, formatDueUrgency, formatKm, formatTimeAgo } from '@/lib/format';
+import {
+  formatDate,
+  formatDateTime,
+  formatDueUrgency,
+  formatKm,
+  formatTimeAgo,
+} from '@/lib/format';
 
 describe('format', () => {
   describe('formatDate', () => {
@@ -22,6 +28,24 @@ describe('format', () => {
 
     it('handles zero', () => {
       expect(formatKm(0)).toBe('0 km');
+    });
+  });
+
+  describe('formatDateTime', () => {
+    it('formats a summer (DST +02:00) UTC instant in Europe/Rome', () => {
+      expect(formatDateTime('2026-06-05T12:32:00.000Z')).toBe('05/06/2026 14:32');
+    });
+
+    it('formats a winter (no DST +01:00) instant and rolls the date over', () => {
+      expect(formatDateTime('2026-01-15T23:30:00.000Z')).toBe('16/01/2026 00:30');
+    });
+
+    it('returns the fallback for invalid input', () => {
+      expect(formatDateTime('not-a-date')).toBe('—');
+    });
+
+    it('returns the fallback for null', () => {
+      expect(formatDateTime(null)).toBe('—');
     });
   });
 
