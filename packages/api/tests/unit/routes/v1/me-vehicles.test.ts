@@ -677,4 +677,51 @@ describe('POST /v1/me/vehicles/claim', () => {
       status: 422,
     });
   });
+
+  it('claims a free certified vehicle: creates ownership, returns status claimed', async () => {
+    const prisma = claimPrisma(CLAIM_VEHICLE_FREE); // ownerships: []
+    prisma.vehicleOwnership.create = vi.fn().mockResolvedValue({
+      id: OWNERSHIP_ID,
+      startedAt: new Date('2026-06-05T12:00:00.000Z'),
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      vehicle: { id: string; garageCode: string; make: string; status?: string };
+      ownership: { id: string; startedAt: string };
+      status: string;
+    };
+    expect(body.status).toBe('claimed');
+    expect(body.vehicle).toEqual({
+      id: VEHICLE_ID,
+      garageCode: 'GO-234-ABCD',
+      make: 'Fiat',
+      model: 'Panda',
+      year: 2021,
+      plate: 'AB123CD',
+    });
+    // status + ownerships are decision-only, never serialized.
+    expect(body.vehicle).not.toHaveProperty('status');
+    expect(body.vehicle).not.toHaveProperty('ownerships');
+    expect(body.ownership.id).toBe(OWNERSHIP_ID);
+    expect(body.ownership.startedAt).toBe('2026-06-05T12:00:00.000Z');
+
+    expect(prisma.vehicleOwnership.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          vehicleId: VEHICLE_ID,
+          customerId: CUSTOMER_ID,
+        }),
+        select: { id: true, startedAt: true },
+      }),
+    );
+  });
 });

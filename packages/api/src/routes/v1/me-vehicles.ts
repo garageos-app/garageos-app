@@ -339,8 +339,16 @@ const meVehicleRoutes: FastifyPluginAsync = async (app) => {
         }
         // status === 'certified' falls through.
 
-        void ownerships; // ownership decision added in Tasks 3-4
-        void customerId;
+        const active = ownerships[0] ?? null;
+        if (!active) {
+          const ownership = await tx.vehicleOwnership.create({
+            data: { vehicleId: vehicle.id, customerId, startedAt: new Date() },
+            select: { id: true, startedAt: true },
+          });
+          return { vehicle: vehiclePublic, ownership, status: 'claimed' as const };
+        }
+
+        void active; // self/other branches added in Task 4
         void Prisma; // race handling added in Task 5
         return { vehicle: vehiclePublic };
       });
