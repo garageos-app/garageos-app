@@ -34,9 +34,13 @@ const OWNERSHIP_ROW = {
 };
 
 interface FakePrisma {
+  vehicle: {
+    findFirst: ReturnType<typeof vi.fn>;
+  };
   vehicleOwnership: {
     findMany: ReturnType<typeof vi.fn>;
     findFirst: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
   };
   accessLog: {
     findMany: ReturnType<typeof vi.fn>;
@@ -48,9 +52,16 @@ interface FakePrisma {
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
   return {
+    vehicle: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     vehicleOwnership: {
       findMany: vi.fn().mockResolvedValue([OWNERSHIP_ROW]),
       findFirst: vi.fn().mockResolvedValue(OWNERSHIP_ROW),
+      create: vi.fn().mockResolvedValue({
+        id: OWNERSHIP_ID,
+        startedAt: new Date('2026-06-05T00:00:00Z'),
+      }),
     },
     accessLog: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -529,5 +540,95 @@ describe('GET /v1/me/vehicles/:id/access-log', () => {
       prisma.accessLog.findMany.mock.calls.at(-1)?.[0] as { where: { OR?: unknown[] } }
     ).where;
     expect(lastWhere.OR).toBeDefined();
+  });
+});
+
+describe('POST /v1/me/vehicles/claim', () => {
+  let app: FastifyInstance | undefined;
+
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  function claimPrisma(vehicleRow: unknown) {
+    return buildFakePrisma({
+      vehicle: { findFirst: vi.fn().mockResolvedValue(vehicleRow) },
+    });
+  }
+
+  it('returns 400 when the garage code is malformed', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-012-KXRI' }, // 0/1 digits + I letter: invalid per BR-020
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 401 when the Authorization header is missing', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects officine pool tokens with 403', async () => {
+    const officineVerifier: JwtVerifier = {
+      verify: async (): Promise<VerifyResult> => ({
+        pool: 'officine',
+        payload: {
+          sub: COGNITO_SUB,
+          token_use: 'id',
+          'custom:tenant_id': TENANT_ID,
+          'custom:role': 'mechanic',
+        },
+      }),
+    };
+    app = await buildApp({ verifier: officineVerifier });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('returns 404 me.vehicle.claim.code_not_found for an unknown code', async () => {
+    const prisma = claimPrisma(null);
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/me.vehicle.claim.code_not_found',
+      status: 404,
+    });
+  });
+
+  it('normalizes the code (trim + uppercase) before the lookup', async () => {
+    const prisma = claimPrisma(null);
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: '  go-234-abcd  ' },
+    });
+    expect(prisma.vehicle.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { garageCode: 'GO-234-ABCD' } }),
+    );
   });
 });
