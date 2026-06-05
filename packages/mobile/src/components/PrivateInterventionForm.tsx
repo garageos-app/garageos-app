@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { format } from 'date-fns';
+import { format, parse, isValid } from 'date-fns';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import {
   validatePrivateInterventionForm,
   type PrivateInterventionFormErrors,
 } from '@/lib/validators/privateIntervention';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import type { CreatePrivateInterventionBody } from '@/lib/types/private-intervention';
+import { formatDate } from '@/lib/format';
 import { colors, spacing } from '@/theme/colors';
 
 export type PrivateInterventionFormResult =
@@ -53,6 +55,19 @@ export function PrivateInterventionForm({
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<PrivateInterventionFormErrors>({});
   const [banner, setBanner] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+
+  function parseDateOrToday(value: string): Date {
+    const d = parse(value, 'yyyy-MM-dd', new Date());
+    return isValid(d) ? d : new Date();
+  }
+
+  function handleDateChange(event: DateTimePickerEvent, date?: Date) {
+    setShowPicker(false);
+    if (event.type !== 'dismissed' && date) {
+      setInterventionDate(format(date, 'yyyy-MM-dd'));
+    }
+  }
 
   async function handleSubmit() {
     if (submitting) return;
@@ -113,14 +128,25 @@ export function PrivateInterventionForm({
 
       <View style={styles.field}>
         <Text style={styles.label}>Data</Text>
-        <TextInput
+        <Pressable
+          testID="intervention-date-field"
+          accessibilityRole="button"
+          onPress={() => {
+            if (!submitting) setShowPicker(true);
+          }}
           style={styles.input}
-          value={interventionDate}
-          onChangeText={setInterventionDate}
-          placeholder="AAAA-MM-GG"
-          autoCapitalize="none"
-          editable={!submitting}
-        />
+        >
+          <Text style={styles.dateText}>{formatDate(interventionDate)}</Text>
+        </Pressable>
+        {showPicker ? (
+          <DateTimePicker
+            testID="intervention-date-picker"
+            value={parseDateOrToday(interventionDate)}
+            mode="date"
+            maximumDate={new Date()}
+            onChange={handleDateChange}
+          />
+        ) : null}
         {errors.interventionDate ? (
           <Text style={styles.fieldError}>{errors.interventionDate}</Text>
         ) : null}
@@ -207,6 +233,7 @@ const styles = StyleSheet.create({
     color: colors.fg,
     backgroundColor: colors.bg,
   },
+  dateText: { fontSize: 16, color: colors.fg },
   multiline: { minHeight: 96, textAlignVertical: 'top' },
   fieldError: { fontSize: 12, color: colors.danger },
   errorBanner: {

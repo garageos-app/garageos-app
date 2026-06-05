@@ -1,11 +1,38 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { PrivateInterventionForm } from '@/components/PrivateInterventionForm';
 
+// The native date picker has no JS implementation under jest. Mock it as a
+// Pressable that, when pressed, emits onChange with a fixed past date so tests
+// can drive a selection deterministically.
+jest.mock('@react-native-community/datetimepicker', () => {
+  // jest.mock factories are hoisted above imports, so deps must be require()'d
+  // inline — the ESLint require-import rule does not apply here.
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const React = require('react');
+  const { Pressable, Text } = require('react-native');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  return {
+    __esModule: true,
+    default: ({
+      testID,
+      onChange,
+    }: {
+      testID?: string;
+      onChange?: (e: unknown, d?: Date) => void;
+    }) =>
+      React.createElement(
+        Pressable,
+        { testID, onPress: () => onChange?.({ type: 'set' }, new Date('2020-05-10T00:00:00')) },
+        React.createElement(Text, null, 'picker'),
+      ),
+  };
+});
+
 describe('PrivateInterventionForm', () => {
   it('renders the fields and submit button', () => {
     render(<PrivateInterventionForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
     expect(screen.getByPlaceholderText('Es. Lavaggio, Cambio gomme')).toBeOnTheScreen();
-    expect(screen.getByPlaceholderText('AAAA-MM-GG')).toBeOnTheScreen();
+    expect(screen.getByTestId('intervention-date-field')).toBeOnTheScreen();
     expect(screen.getByPlaceholderText('Chilometri (opzionale)')).toBeOnTheScreen();
     expect(screen.getByPlaceholderText('Descrizione')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Salva' })).toBeOnTheScreen();
@@ -26,7 +53,8 @@ describe('PrivateInterventionForm', () => {
     const onSubmit = jest.fn().mockResolvedValue({ ok: true });
     render(<PrivateInterventionForm onSubmit={onSubmit} onCancel={jest.fn()} />);
     fireEvent.changeText(screen.getByPlaceholderText('Es. Lavaggio, Cambio gomme'), '  Lavaggio ');
-    fireEvent.changeText(screen.getByPlaceholderText('AAAA-MM-GG'), '2020-05-10');
+    fireEvent.press(screen.getByTestId('intervention-date-field'));
+    fireEvent.press(screen.getByTestId('intervention-date-picker'));
     fireEvent.changeText(screen.getByPlaceholderText('Chilometri (opzionale)'), '120000');
     fireEvent.changeText(screen.getByPlaceholderText('Descrizione'), '  Lavaggio completo ');
     fireEvent.press(screen.getByRole('button', { name: 'Salva' }));
@@ -44,7 +72,8 @@ describe('PrivateInterventionForm', () => {
     const onSubmit = jest.fn().mockResolvedValue({ ok: true });
     render(<PrivateInterventionForm onSubmit={onSubmit} onCancel={jest.fn()} />);
     fireEvent.changeText(screen.getByPlaceholderText('Es. Lavaggio, Cambio gomme'), 'Lavaggio');
-    fireEvent.changeText(screen.getByPlaceholderText('AAAA-MM-GG'), '2020-05-10');
+    fireEvent.press(screen.getByTestId('intervention-date-field'));
+    fireEvent.press(screen.getByTestId('intervention-date-picker'));
     fireEvent.changeText(screen.getByPlaceholderText('Descrizione'), 'Descrizione valida');
     fireEvent.press(screen.getByRole('button', { name: 'Salva' }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
@@ -57,7 +86,8 @@ describe('PrivateInterventionForm', () => {
       .mockResolvedValue({ ok: false, code: 'private_intervention.rate_limit' });
     render(<PrivateInterventionForm onSubmit={onSubmit} onCancel={jest.fn()} />);
     fireEvent.changeText(screen.getByPlaceholderText('Es. Lavaggio, Cambio gomme'), 'Lavaggio');
-    fireEvent.changeText(screen.getByPlaceholderText('AAAA-MM-GG'), '2020-05-10');
+    fireEvent.press(screen.getByTestId('intervention-date-field'));
+    fireEvent.press(screen.getByTestId('intervention-date-picker'));
     fireEvent.changeText(screen.getByPlaceholderText('Descrizione'), 'Descrizione valida');
     fireEvent.press(screen.getByRole('button', { name: 'Salva' }));
     await waitFor(() => {
@@ -86,7 +116,7 @@ describe('PrivateInterventionForm', () => {
       />,
     );
     expect(screen.getByDisplayValue('Gomme')).toBeOnTheScreen();
-    expect(screen.getByDisplayValue('2021-03-03')).toBeOnTheScreen();
+    expect(screen.getByText('03/03/2021')).toBeOnTheScreen();
     expect(screen.getByDisplayValue('90000')).toBeOnTheScreen();
     expect(screen.getByDisplayValue('Cambio gomme invernali')).toBeOnTheScreen();
   });
@@ -114,5 +144,18 @@ describe('PrivateInterventionForm', () => {
   it('does not render Elimina without onDelete', () => {
     render(<PrivateInterventionForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
     expect(screen.queryByRole('button', { name: 'Elimina' })).toBeNull();
+  });
+
+  it('opens the native picker and stores the chosen date as yyyy-MM-dd', async () => {
+    const onSubmit = jest.fn().mockResolvedValue({ ok: true });
+    render(<PrivateInterventionForm onSubmit={onSubmit} onCancel={jest.fn()} />);
+    fireEvent.changeText(screen.getByPlaceholderText('Es. Lavaggio, Cambio gomme'), 'Lavaggio');
+    fireEvent.changeText(screen.getByPlaceholderText('Descrizione'), 'Descrizione valida');
+    fireEvent.press(screen.getByTestId('intervention-date-field'));
+    fireEvent.press(screen.getByTestId('intervention-date-picker'));
+    expect(screen.getByText('10/05/2020')).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole('button', { name: 'Salva' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].intervention_date).toBe('2020-05-10');
   });
 });

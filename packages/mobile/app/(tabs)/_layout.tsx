@@ -1,4 +1,5 @@
 import { Tabs, Redirect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/useAuth';
 import { LoadingState } from '@/components/LoadingState';
 import { colors } from '@/theme/colors';
@@ -21,6 +22,13 @@ export default function TabsLayout() {
         options={{
           title: 'I miei veicoli',
           tabBarLabel: 'Veicoli',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'car-sport' : 'car-sport-outline'}
+              size={size}
+              color={color}
+            />
+          ),
         }}
       />
       <Tabs.Screen
@@ -28,6 +36,9 @@ export default function TabsLayout() {
         options={{
           title: 'Scadenze',
           tabBarLabel: 'Scadenze',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -35,8 +46,15 @@ export default function TabsLayout() {
         options={{
           title: 'Profilo',
           tabBarLabel: 'Profilo',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
+          ),
         }}
       />
+      {/* #5: il dettaglio veicolo è sotto (tabs) → Expo Router lo registra come
+          tab ("Fiat Panda"). href:null lo rimuove dalla bar, resta navigabile
+          via router.push dalla lista veicoli. */}
+      <Tabs.Screen name="vehicles/[id]" options={{ href: null }} />
     </Tabs>
   );
 }

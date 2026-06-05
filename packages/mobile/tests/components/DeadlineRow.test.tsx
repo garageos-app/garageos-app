@@ -68,4 +68,19 @@ describe('DeadlineRow', () => {
   it('renders without an onPress handler', () => {
     expect(() => render(<DeadlineRow deadline={base} hideVehicle />)).not.toThrow();
   });
+
+  it('renders the absolute due date below the badge when dueDate is set', () => {
+    render(<DeadlineRow deadline={{ ...base, dueDate: '2026-06-10' }} onPress={() => {}} />);
+    expect(screen.getByText('10/06/2026')).toBeOnTheScreen();
+  });
+
+  it('does not render an absolute date for a km-only deadline', () => {
+    render(
+      <DeadlineRow
+        deadline={{ ...base, dueDate: null, dueOdometerKm: 60000 }}
+        onPress={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/\d{2}\/\d{2}\/\d{4}/)).toBeNull();
+  });
 });
