@@ -55,7 +55,16 @@ const deadlinesListCustomerRoutes: FastifyPluginAsync = async (app) => {
           : { status: { in: ['open', 'overdue'] as ('open' | 'overdue')[] } };
 
         const rows = await tx.deadline.findMany({
-          where: { ...statusFilter },
+          // Defense-in-depth: scope to vehicles the customer ACTIVELY owns at
+          // the application layer, not RLS alone. Relying solely on the
+          // deadlines_customer_select RLS policy leaked other customers'
+          // deadlines in prod when RLS was not enforced (privileged DB role /
+          // RLS-not-forced). Mirrors the app-layer ownership scope in
+          // me-vehicles.ts. See feedback_rls_split_lookup_auth_table.
+          where: {
+            ...statusFilter,
+            vehicle: { ownerships: { some: { customerId, endedAt: null } } },
+          },
           orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
           take: limit + 1,
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
