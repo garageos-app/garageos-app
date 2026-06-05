@@ -323,6 +323,8 @@ enum AccessLogAction {
   create
   update
   search_match
+  vehicle_registered // F-CLI-304: registrazione veicolo, distinta da `create`
+                     // di intervento così l'audit cliente (BR-155) non le confonde
 }
 
 enum InvitationType {

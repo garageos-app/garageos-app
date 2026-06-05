@@ -38,6 +38,12 @@ interface FakePrisma {
     findMany: ReturnType<typeof vi.fn>;
     findFirst: ReturnType<typeof vi.fn>;
   };
+  accessLog: {
+    findMany: ReturnType<typeof vi.fn>;
+  };
+  customerTenantRelation: {
+    findMany: ReturnType<typeof vi.fn>;
+  };
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
@@ -45,6 +51,12 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     vehicleOwnership: {
       findMany: vi.fn().mockResolvedValue([OWNERSHIP_ROW]),
       findFirst: vi.fn().mockResolvedValue(OWNERSHIP_ROW),
+    },
+    accessLog: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    customerTenantRelation: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
     ...overrides,
   };
@@ -352,5 +364,170 @@ describe('GET /v1/me/vehicles/:id', () => {
       url: `/v1/me/vehicles/${VEHICLE_ID}`,
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('GET /v1/me/vehicles/:id/access-log', () => {
+  let app: FastifyInstance | undefined;
+
+  const ACCESS_ROW_VIEW = {
+    id: 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1',
+    action: 'view',
+    createdAt: new Date('2026-06-04T10:00:00.000Z'),
+    tenant: { id: TENANT_ID, businessName: 'Officina Rossi' },
+    location: { city: 'Bologna' },
+    user: { firstName: 'Mario', lastName: 'Bianchi' },
+  };
+  const ACCESS_ROW_CREATE = {
+    id: 'b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2',
+    action: 'create',
+    createdAt: new Date('2026-06-03T09:00:00.000Z'),
+    tenant: { id: TENANT_ID, businessName: 'Officina Rossi' },
+    location: { city: 'Bologna' },
+    user: { firstName: 'Mario', lastName: 'Bianchi' },
+  };
+
+  function accessPrisma(rows: unknown[], relations: Array<{ tenantId: string }> = []) {
+    return buildFakePrisma({
+      vehicleOwnership: { findMany: vi.fn(), findFirst: vi.fn().mockResolvedValue(OWNERSHIP_ROW) },
+      accessLog: { findMany: vi.fn().mockResolvedValue(rows) },
+      customerTenantRelation: { findMany: vi.fn().mockResolvedValue(relations) },
+    });
+  }
+
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it('returns 404 me.vehicle.not_found when the customer does not own the vehicle', async () => {
+    const prisma = buildFakePrisma({
+      vehicleOwnership: { findMany: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
+    });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/access-log`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/me.vehicle.not_found',
+      status: 404,
+    });
+  });
+
+  it('runs the reads in admin context', async () => {
+    const withContext = vi.fn(async (_ctx, fn) => fn(accessPrisma([ACCESS_ROW_VIEW])));
+    app = await buildApp({ withContext });
+    await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/access-log`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    expect(withContext).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'admin' }),
+      expect.any(Function),
+    );
+  });
+
+  it('filters access_logs to view + create, newest first', async () => {
+    const prisma = accessPrisma([ACCESS_ROW_VIEW]);
+    app = await buildApp({ prisma });
+    await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/access-log`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    expect(prisma.accessLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          vehicleId: VEHICLE_ID,
+          action: { in: ['view', 'create'] },
+        }),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 21,
+      }),
+    );
+  });
+
+  it('maps actions and emits the redacted BR-155 shape with mechanicName when related', async () => {
+    const prisma = accessPrisma([ACCESS_ROW_VIEW, ACCESS_ROW_CREATE], [{ tenantId: TENANT_ID }]);
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/access-log`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: Array<Record<string, unknown>> };
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0]).toEqual({
+      action: 'view',
+      tenantName: 'Officina Rossi',
+      locationCity: 'Bologna',
+      occurredAt: '2026-06-04T10:00:00.000Z',
+      mechanicName: 'Mario Bianchi',
+    });
+    expect(body.data[1]!.action).toBe('new_intervention');
+    expect(body.data[0]).not.toHaveProperty('ipAddress');
+    expect(body.data[0]).not.toHaveProperty('userId');
+    expect(body.data[0]).not.toHaveProperty('tenantId');
+  });
+
+  it('omits mechanicName when the customer has no relation with the tenant', async () => {
+    const prisma = accessPrisma([ACCESS_ROW_VIEW], []); // empty relation set
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/access-log`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    const body = res.json() as { data: Array<Record<string, unknown>> };
+    expect(body.data[0]).not.toHaveProperty('mechanicName');
+  });
+
+  it('paginates with limit + cursor and emits a cursor when has_more is true', async () => {
+    const rows = [
+      {
+        ...ACCESS_ROW_VIEW,
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        createdAt: new Date('2026-06-04T10:00:00.000Z'),
+      },
+      {
+        ...ACCESS_ROW_VIEW,
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        createdAt: new Date('2026-06-03T10:00:00.000Z'),
+      },
+      {
+        ...ACCESS_ROW_VIEW,
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        createdAt: new Date('2026-06-02T10:00:00.000Z'),
+      },
+    ];
+    const prisma = accessPrisma(rows);
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/access-log?limit=2`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    const body = res.json() as { data: unknown[]; meta: { has_more: boolean; cursor?: string } };
+    expect(body.data).toHaveLength(2);
+    expect(body.meta.has_more).toBe(true);
+    expect(body.meta.cursor).toBeDefined();
+
+    // Round-trip: the decoded cursor drives the "older than" where predicate.
+    await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/access-log?limit=2&cursor=${body.meta.cursor!}`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    const lastWhere = (
+      prisma.accessLog.findMany.mock.calls.at(-1)?.[0] as { where: { OR?: unknown[] } }
+    ).where;
+    expect(lastWhere.OR).toBeDefined();
   });
 });

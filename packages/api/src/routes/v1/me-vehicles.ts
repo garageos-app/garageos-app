@@ -1,8 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
-import { decodeCursor, encodeCursor } from '../../lib/cursor.js';
+import {
+  decodeCursor,
+  encodeCursor,
+  encodeCompoundCursor,
+  decodeDateCompoundCursor,
+} from '../../lib/cursor.js';
 import { businessError } from '../../lib/business-error.js';
+import { serializeCustomerAccessLog } from '../../lib/customer-access-log.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
@@ -161,6 +167,95 @@ const meVehicleRoutes: FastifyPluginAsync = async (app) => {
           currentOwnership: {
             id: ownership.id,
             startedAt: ownership.startedAt,
+          },
+        };
+      });
+    },
+  );
+
+  // GET /v1/me/vehicles/:id/access-log — F-CLI-304 / BR-155.
+  // The owning customer's audit trail of accesses to their vehicle.
+  //
+  // access_logs carries only the generic tenant_isolation RLS policy
+  // (is_admin_role() OR tenant_id = current_tenant_id()), which a
+  // customer (no tenant_id, not admin) cannot satisfy — so the reads run
+  // in admin context and the app-layer ownership gate below is the
+  // security boundary (the #154 lesson: never rely on RLS alone for a
+  // customer endpoint). All reads are explicitly scoped by the
+  // authenticated customerId / the gated vehicleId; no unscoped query
+  // runs under the elevated role.
+  //
+  // Only 'view' and intervention 'create' surface; vehicle registrations
+  // log the dedicated 'vehicle_registered' action and are excluded.
+  // BR-155 redaction (no ip/userAgent/internal ids) is enforced by the
+  // serializer. Mirrors the /me/profile precedent (admin context, scoped
+  // by id) from F-CLI-004.
+  app.get(
+    '/v1/me/vehicles/:id/access-log',
+    {
+      preHandler: [requireAuth, requireClientiPool, clientiContext],
+    },
+    async (request) => {
+      const { id: vehicleId } = idParamSchema.parse(request.params);
+      const { limit, cursor } = listQuerySchema.parse(request.query);
+      const customerId = request.customerId!;
+
+      return app.withContext({ role: 'admin' }, async (tx) => {
+        const ownership = await tx.vehicleOwnership.findFirst({
+          where: { vehicleId, customerId, endedAt: null },
+          select: { id: true },
+        });
+        if (!ownership) {
+          throw businessError(
+            'me.vehicle.not_found',
+            404,
+            'Veicolo non trovato o non più di tua proprietà.',
+          );
+        }
+
+        const cur = decodeDateCompoundCursor('at', cursor, 'timestamp');
+        const rows = await tx.accessLog.findMany({
+          where: {
+            vehicleId,
+            action: { in: ['view', 'create'] },
+            ...(cur
+              ? {
+                  OR: [
+                    { createdAt: { lt: new Date(cur.at) } },
+                    { createdAt: new Date(cur.at), id: { lt: cur.id } },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+          select: {
+            id: true,
+            action: true,
+            createdAt: true,
+            tenant: { select: { id: true, businessName: true } },
+            location: { select: { city: true } },
+            user: { select: { firstName: true, lastName: true } },
+          },
+        });
+
+        const relations = await tx.customerTenantRelation.findMany({
+          where: { customerId },
+          select: { tenantId: true },
+        });
+        const relationTenantIds = new Set(relations.map((r) => r.tenantId));
+
+        const hasMore = rows.length > limit;
+        const page = hasMore ? rows.slice(0, limit) : rows;
+        const data = serializeCustomerAccessLog(page, relationTenantIds);
+        const last = page.at(-1);
+        return {
+          data,
+          meta: {
+            has_more: hasMore,
+            ...(hasMore && last
+              ? { cursor: encodeCompoundCursor('at', last.createdAt.toISOString(), last.id) }
+              : {}),
           },
         };
       });

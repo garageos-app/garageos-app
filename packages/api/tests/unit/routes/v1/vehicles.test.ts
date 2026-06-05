@@ -1253,7 +1253,7 @@ describe('POST /v1/vehicles — data path', () => {
     expect(prisma.invitation.create).not.toHaveBeenCalled();
   });
 
-  it('writes an access_logs row with action=create (BR-154)', async () => {
+  it('writes an access_logs row with action=vehicle_registered (BR-154)', async () => {
     const bodyNew = {
       vehicle: validBody.vehicle,
       customer: {
@@ -1277,7 +1277,7 @@ describe('POST /v1/vehicles — data path', () => {
           vehicleId: VEHICLE_ID,
           tenantId: TENANT_ID,
           userId: USER_ID,
-          action: 'create',
+          action: 'vehicle_registered',
         }),
       }),
     );
