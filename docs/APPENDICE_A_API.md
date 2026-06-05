@@ -2279,12 +2279,43 @@ Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conse
 | PATCH | `/me/profile` | F-CLI-004 | Customer | Modifica nome/cognome/telefono (email immutabile) |
 | GET | `/me/vehicles` | F-CLI-105 | Customer | Lista veicoli del customer |
 | GET | `/me/vehicles/:id` | F-CLI-106 | Customer | Dettaglio veicolo per customer |
+| GET | `/me/vehicles/:id/access-log` | F-CLI-304 | Customer | Audit accessi al veicolo (BR-155, redatto) |
 | PATCH | `/me/vehicles/:id` | F-CLI-107 | Customer | Modifica dati non tecnici (nickname, foto) |
 | DELETE | `/me/vehicles/:id` | F-CLI-108 | Customer | Rimuove associazione (no cancellazione veicolo) |
 | POST | `/me/vehicles/pending` | F-CLI-104 | Customer | Pre-registrazione veicolo pendente con libretto |
 | POST | `/vehicles/:id/share-link` | F-CLI-502 | Customer | Genera link condivisione temporaneo |
 | DELETE | `/vehicles/:id/share-link/:token` | F-CLI-502 | Customer | Revoca link |
 | GET | `/vehicles/:id/export.pdf` | F-CLI-501 | Customer | Export PDF storico |
+
+#### GET /v1/me/vehicles/:id/access-log (F-CLI-304)
+
+Restituisce l'audit trail degli accessi a un veicolo di proprietà del cliente
+autenticato (BR-155). Solo pool clienti.
+
+Query: `limit` (1-50, default 20), `cursor` (cursor opaco composito `(createdAt, id)`).
+
+Risposta `200`:
+
+```jsonc
+{
+  "data": [
+    {
+      "action": "view",            // "view" | "new_intervention"
+      "tenantName": "Officina Rossi",
+      "locationCity": "Bologna",   // string | null
+      "occurredAt": "2026-06-04T14:32:10.123Z",
+      "mechanicName": "Mario Bianchi"  // presente solo se esiste un customer_tenant_relation (BR-151)
+    }
+  ],
+  "meta": { "has_more": true, "cursor": "<opaco>" }
+}
+```
+
+Redazione (BR-155): la risposta non include mai indirizzo IP, user agent o id
+interni. Compaiono solo `view` e la `create` di intervento (esposta come
+`new_intervention`); le registrazioni veicolo (`vehicle_registered`) e le altre
+azioni sono escluse. `404 me.vehicle.not_found` se il cliente non possiede
+attualmente il veicolo.
 
 ### 3.6 Interventions
 

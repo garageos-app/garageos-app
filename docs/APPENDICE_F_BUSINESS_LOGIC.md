@@ -711,6 +711,8 @@ Ogni accesso a `GET /vehicles/:id` o `GET /vehicles/search` che restituisce matc
 
 **Regola di deduplica:** accessi ripetuti dallo stesso `user_id` sullo stesso `vehicle_id` entro **30 minuti** vengono aggregati (un solo log con ultimo timestamp) per evitare inflazione log.
 
+**Nota (F-CLI-304):** la registrazione di un veicolo è loggata con l'azione dedicata `vehicle_registered` (non l'azione sovraccarica `create`), così l'audit cliente (BR-155) può esporre le `create` di intervento come "nuovo intervento" senza confonderle con la riga di registrazione una-tantum.
+
 ### BR-155 — Visibilità audit log al customer
 Il customer proprietario vede nella sua app la lista degli accessi al suo veicolo. Formato mostrato:
 - Nome tenant (obbligatorio)
@@ -723,6 +725,8 @@ Il customer proprietario vede nella sua app la lista degli accessi al suo veicol
 - IP address (solo admin)
 - User agent
 - ID interni (tenant_id, user_id)
+
+**Endpoint (F-CLI-304):** `GET /v1/me/vehicles/:id/access-log` espone solo le azioni `view` e la `create` di intervento (resa come `new_intervention`); il nome meccanico compare unicamente quando esiste un `customer_tenant_relation` (BR-151). Le registrazioni veicolo (`vehicle_registered`) e le altre azioni non compaiono.
 
 ### BR-156 — Nessuna notifica push per accessi
 **Confermato**: gli accessi al veicolo **non generano notifica push** al customer, solo audit log in-app consultabile. Decisione OPEN #7.
