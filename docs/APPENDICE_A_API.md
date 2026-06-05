@@ -577,34 +577,41 @@ Il client deve eseguire `PUT <uploadUrl>` con header `Content-Type` ricevuto e i
 
 ---
 
-### 2.4 `POST /vehicles/claim` — Aggancio veicolo da codice (cliente)
+### 2.4 `POST /me/vehicles/claim` — Aggancio veicolo da codice (cliente)
 
 **Feature:** F-CLI-101, F-CLI-102, F-CLI-103
 **Auth:** Customer
 
+> **Nota implementazione (F-CLI-101):** path `/v1/me/vehicles/claim` — divergente
+> dalla v1 della doc (`/v1/vehicles/claim`) per coerenza con la superficie cliente
+> `/me/*`. Body/response in **camelCase**. Idempotenza allineata a **BR-042**:
+> veicolo già posseduto dal richiedente → `200 { "status": "already_owned" }`
+> (non più `409 vehicle_already_owned_by_you`). Codici errore in forma dotted
+> (`me.vehicle.claim.*`, vedi APPENDICE_G), wrappati RFC7807.
+
 #### Descrizione
 
-Il cliente finale aggancia un veicolo al proprio account inserendo il codice GarageOS. Usato sia per inserimento manuale che per scansione QR (client invia solo il codice estratto).
+Il cliente finale aggancia un veicolo al proprio account inserendo il codice GarageOS. Usato sia per inserimento manuale (F-CLI-101) che per scansione QR (F-CLI-102) e link invito (F-CLI-103): il client invia solo il codice estratto. Il server normalizza il codice (trim + uppercase) prima della validazione BR-020.
 
 #### Request
 
 ```http
-POST /v1/vehicles/claim
+POST /v1/me/vehicles/claim
 Content-Type: application/json
 Authorization: Bearer <customer_jwt>
 
 {
-  "garage_code": "GO-482-KXRT"
+  "garageCode": "GO-482-KXRT"
 }
 ```
 
-#### Response `200 OK` (veicolo libero)
+#### Response `200 OK`
 
 ```json
 {
   "vehicle": {
     "id": "01HKXN5...",
-    "garage_code": "GO-482-KXRT",
+    "garageCode": "GO-482-KXRT",
     "make": "Fiat",
     "model": "Panda",
     "year": 2021,
@@ -612,20 +619,23 @@ Authorization: Bearer <customer_jwt>
   },
   "ownership": {
     "id": "01HKXN7...",
-    "started_at": "2026-04-21T14:32:05Z"
+    "startedAt": "2026-04-21T14:32:05.000Z"
   },
   "status": "claimed"
 }
 ```
 
+`status` è `"claimed"` quando l'ownership viene creata, `"already_owned"` quando il richiedente possedeva già il veicolo (idempotente, BR-042 — in tal caso `ownership` è quella esistente).
+
 #### Errori
 
 | Status | Codice | Scenario |
 |---|---|---|
-| 404 | `garage_code_not_found` | Codice non esistente |
-| 409 | `vehicle_already_owned_by_other` | Veicolo già assegnato ad altro cliente (suggerisce percorso transfer o claim autonomo) |
-| 409 | `vehicle_already_owned_by_you` | Già agganciato allo stesso cliente |
-| 422 | `vehicle_pending_not_claimable` | Veicolo in stato pending non ancora certificato |
+| 400 | _(validazione Zod)_ | `garageCode` mancante o formato non valido (BR-020) |
+| 404 | `me.vehicle.claim.code_not_found` | Codice non esistente |
+| 409 | `me.vehicle.claim.owned_by_other` | Veicolo già di un altro cliente (usare il passaggio di proprietà) |
+| 422 | `me.vehicle.claim.pending` | Veicolo `pending` non ancora certificato |
+| 422 | `me.vehicle.claim.archived` | Veicolo archiviato |
 
 ---
 
@@ -2274,7 +2284,7 @@ Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conse
 | POST | `/vehicles/:id/tag-reprint` | F-OFF-109 | Tenant User | **[DETTAGLIATO §2.14]** Ristampa tag PDF veicolo (richiede audit precedente + reason) |
 | GET | `/vehicles/:id/access-log` | F-OFF-601, F-CLI-304 | Any User | Log accessi al veicolo |
 | GET | `/vehicles/:id/timeline` | F-OFF-105, F-CLI-201 | Any User | **[DETTAGLIATO §2.5]** Timeline interventi |
-| POST | `/vehicles/claim` | F-CLI-101, F-CLI-102 | Customer | **[DETTAGLIATO §2.4]** Aggancia veicolo tramite codice |
+| POST | `/me/vehicles/claim` | F-CLI-101, F-CLI-102, F-CLI-103 | Customer | **[DETTAGLIATO §2.4]** Aggancia veicolo tramite codice |
 | GET | `/me` | F-CLI-004 | Customer | Profilo del cliente autenticato |
 | PATCH | `/me/profile` | F-CLI-004 | Customer | Modifica nome/cognome/telefono (email immutabile) |
 | GET | `/me/vehicles` | F-CLI-105 | Customer | Lista veicoli del customer |

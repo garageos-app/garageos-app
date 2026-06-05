@@ -1,3 +1,4 @@
+import { Prisma } from '@garageos/database';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
@@ -72,6 +73,32 @@ const meVehicleDetailSelect = {
   status: true,
   certifiedAt: true,
   createdAt: true,
+} as const;
+
+// BR-020 garage code format: GO-NNN-AAAA, digits 2-9, letters minus
+// I/O/Q/S/U. Normalize (trim + uppercase) so QR/manual entry casing is
+// tolerated, then validate. Malformed input fails here → 400.
+const claimBodySchema = z.object({
+  garageCode: z
+    .string()
+    .transform((s) => s.trim().toUpperCase())
+    .pipe(z.string().regex(/^GO-[2-9]{3}-[A-HJ-NPRTV-Z]{4}$/, 'Codice GarageOS non valido')),
+});
+
+// Lookup projection: public display fields returned to the client, plus
+// status + active ownership rows used only for the BR-042 decision.
+const claimVehicleSelect = {
+  id: true,
+  garageCode: true,
+  make: true,
+  model: true,
+  year: true,
+  plate: true,
+  status: true,
+  ownerships: {
+    where: { endedAt: null },
+    select: { id: true, customerId: true, startedAt: true },
+  },
 } as const;
 
 const meVehicleRoutes: FastifyPluginAsync = async (app) => {
@@ -258,6 +285,109 @@ const meVehicleRoutes: FastifyPluginAsync = async (app) => {
               : {}),
           },
         };
+      });
+    },
+  );
+
+  // POST /v1/me/vehicles/claim — F-CLI-101/102/103 / BR-042.
+  // The customer attaches a certified vehicle to their account by garage
+  // code. Manual entry, QR scan and invite-link flows all converge here:
+  // the client sends only the extracted code.
+  //
+  // Runs in role:'user': vehicles + vehicle_ownerships RLS are USING(true),
+  // so the customer reads the vehicle and inserts the ownership without
+  // elevation. The security boundary is the explicit status/ownership
+  // check below plus the partial unique index uq_ownership_vehicle_active
+  // (BR-040) — never RLS alone (the #154 lesson).
+  app.post(
+    '/v1/me/vehicles/claim',
+    {
+      preHandler: [requireAuth, requireClientiPool, clientiContext],
+    },
+    async (request) => {
+      const { garageCode } = claimBodySchema.parse(request.body);
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        const vehicle = await tx.vehicle.findFirst({
+          where: { garageCode },
+          select: claimVehicleSelect,
+        });
+        if (!vehicle) {
+          throw businessError(
+            'me.vehicle.claim.code_not_found',
+            404,
+            'Nessun veicolo trovato per questo codice.',
+          );
+        }
+
+        const { status, ownerships, ...vehiclePublic } = vehicle;
+
+        if (status === 'pending') {
+          throw businessError(
+            'me.vehicle.claim.pending',
+            422,
+            'Veicolo non ancora certificato: non può essere agganciato.',
+          );
+        }
+        if (status === 'archived') {
+          throw businessError(
+            'me.vehicle.claim.archived',
+            422,
+            'Veicolo archiviato: non può essere agganciato.',
+          );
+        }
+        // status === 'certified' falls through.
+
+        const active = ownerships[0] ?? null;
+        if (!active) {
+          try {
+            const ownership = await tx.vehicleOwnership.create({
+              data: { vehicleId: vehicle.id, customerId, startedAt: new Date() },
+              select: { id: true, startedAt: true },
+            });
+            return { vehicle: vehiclePublic, ownership, status: 'claimed' as const };
+          } catch (err) {
+            // Concurrent claim won the active-ownership unique index
+            // (uq_ownership_vehicle_active). Refetch and resolve.
+            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+              const raced = await tx.vehicleOwnership.findFirst({
+                where: { vehicleId: vehicle.id, endedAt: null },
+                select: { id: true, customerId: true, startedAt: true },
+              });
+              if (raced && raced.customerId === customerId) {
+                return {
+                  vehicle: vehiclePublic,
+                  ownership: { id: raced.id, startedAt: raced.startedAt },
+                  status: 'already_owned' as const,
+                };
+              }
+              throw businessError(
+                'me.vehicle.claim.owned_by_other',
+                409,
+                'Veicolo già associato a un altro account.',
+              );
+            }
+            throw err;
+          }
+        }
+
+        if (active.customerId === customerId) {
+          // BR-042: already owned by the caller -> idempotent success.
+          return {
+            vehicle: vehiclePublic,
+            ownership: { id: active.id, startedAt: active.startedAt },
+            status: 'already_owned' as const,
+          };
+        }
+
+        // Owned by a different customer -> the caller must use the
+        // ownership-transfer flow, not claim.
+        throw businessError(
+          'me.vehicle.claim.owned_by_other',
+          409,
+          'Veicolo già associato a un altro account.',
+        );
       });
     },
   );

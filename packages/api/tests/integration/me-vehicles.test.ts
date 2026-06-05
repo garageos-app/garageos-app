@@ -539,3 +539,190 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe('POST /v1/me/vehicles/claim (integration)', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  async function claimer(prefix: string) {
+    const cognitoSub = `${prefix}-` + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+    return { customerId, token };
+  }
+
+  it('claims a free certified vehicle and creates exactly one active ownership', async () => {
+    const { customerId, token } = await claimer('claim-ok');
+    const { tenantId } = await createTenantWithLocation('claim-ok');
+    const { vehicleId, garageCode } = await createVehicle({
+      createdByTenantId: tenantId,
+      certifiedByTenantId: tenantId,
+      vin: 'ZFA1CLAIM00000001',
+      plate: 'CL001AA',
+      status: 'certified',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { garageCode },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      vehicle: { id: string; garageCode: string };
+      ownership: { id: string; startedAt: string };
+      status: string;
+    };
+    expect(body.status).toBe('claimed');
+    expect(body.vehicle.id).toBe(vehicleId);
+    expect(body.ownership.id).toBeTruthy();
+
+    const { rows } = await pgAdmin.query(
+      `SELECT customer_id FROM vehicle_ownerships WHERE vehicle_id = $1 AND ended_at IS NULL`,
+      [vehicleId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.customer_id).toBe(customerId);
+  });
+
+  it('is idempotent: re-claiming the same vehicle returns already_owned without a second ownership', async () => {
+    const { token } = await claimer('claim-idem');
+    const { tenantId } = await createTenantWithLocation('claim-idem');
+    const { vehicleId, garageCode } = await createVehicle({
+      createdByTenantId: tenantId,
+      certifiedByTenantId: tenantId,
+      vin: 'ZFA1CLAIMIDEM0001',
+      plate: 'CL002BB',
+      status: 'certified',
+    });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { garageCode },
+    });
+    expect(first.statusCode).toBe(200);
+    expect((first.json() as { status: string }).status).toBe('claimed');
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { garageCode },
+    });
+    expect(second.statusCode).toBe(200);
+    expect((second.json() as { status: string }).status).toBe('already_owned');
+
+    const { rows } = await pgAdmin.query(
+      `SELECT id FROM vehicle_ownerships WHERE vehicle_id = $1 AND ended_at IS NULL`,
+      [vehicleId],
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it('returns 409 owned_by_other when another customer owns the vehicle', async () => {
+    const { customerId: ownerId } = await createCustomer({
+      cognitoSub: 'claim-owner-' + Math.random().toString(36).slice(2, 10),
+    });
+    const { token } = await claimer('claim-other');
+    const { tenantId } = await createTenantWithLocation('claim-other');
+    const { vehicleId, garageCode } = await createVehicle({
+      createdByTenantId: tenantId,
+      certifiedByTenantId: tenantId,
+      vin: 'ZFA1CLAIMOTHER001',
+      plate: 'CL003CC',
+      status: 'certified',
+    });
+    await createOwnership({ vehicleId, customerId: ownerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { garageCode },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/me.vehicle.claim.owned_by_other',
+      status: 409,
+    });
+  });
+
+  // No integration test for the 422 pending branch: BR-003
+  // chk_pending_consistency forces pending vehicles to have garage_code
+  // NULL, so a pending vehicle can never be reached by a garage-code
+  // lookup (it would 404 first). The pending guard is defensive and is
+  // covered by the unit test. Archived vehicles keep their code, so the
+  // archived guard IS reachable and tested below.
+  it('returns 422 archived for an archived vehicle', async () => {
+    const { token } = await claimer('claim-arch');
+    const { tenantId } = await createTenantWithLocation('claim-arch');
+    const { garageCode } = await createVehicle({
+      createdByTenantId: tenantId,
+      certifiedByTenantId: tenantId,
+      vin: 'ZFA1CLAIMARCH0001',
+      plate: 'CL005EE',
+      status: 'archived',
+      garageCode: 'GO-456-CDFG',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { garageCode: garageCode! },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/me.vehicle.claim.archived',
+      status: 422,
+    });
+  });
+
+  it('returns 404 code_not_found for an unknown code', async () => {
+    const { token } = await claimer('claim-404');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { garageCode: 'GO-789-DFGH' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/me.vehicle.claim.code_not_found',
+      status: 404,
+    });
+  });
+
+  it('returns 400 for a malformed code', async () => {
+    const { token } = await claimer('claim-400');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { garageCode: 'NOPE' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 401 when the Authorization header is missing', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
