@@ -348,9 +348,23 @@ const meVehicleRoutes: FastifyPluginAsync = async (app) => {
           return { vehicle: vehiclePublic, ownership, status: 'claimed' as const };
         }
 
-        void active; // self/other branches added in Task 4
+        if (active.customerId === customerId) {
+          // BR-042: already owned by the caller -> idempotent success.
+          return {
+            vehicle: vehiclePublic,
+            ownership: { id: active.id, startedAt: active.startedAt },
+            status: 'already_owned' as const,
+          };
+        }
+
+        // Owned by a different customer -> the caller must use the
+        // ownership-transfer flow, not claim.
         void Prisma; // race handling added in Task 5
-        return { vehicle: vehiclePublic };
+        throw businessError(
+          'me.vehicle.claim.owned_by_other',
+          409,
+          'Veicolo già associato a un altro account.',
+        );
       });
     },
   );

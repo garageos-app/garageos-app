@@ -724,4 +724,63 @@ describe('POST /v1/me/vehicles/claim', () => {
       }),
     );
   });
+
+  it('is idempotent when the caller already owns the vehicle (status already_owned, no create)', async () => {
+    const prisma = claimPrisma({
+      ...CLAIM_VEHICLE_FREE,
+      ownerships: [
+        {
+          id: OWNERSHIP_ID,
+          customerId: CUSTOMER_ID,
+          startedAt: new Date('2026-01-15T00:00:00.000Z'),
+        },
+      ],
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      ownership: { id: string; startedAt: string };
+      status: string;
+    };
+    expect(body.status).toBe('already_owned');
+    expect(body.ownership.id).toBe(OWNERSHIP_ID);
+    expect(body.ownership.startedAt).toBe('2026-01-15T00:00:00.000Z');
+    expect(prisma.vehicleOwnership.create).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 me.vehicle.claim.owned_by_other when another customer owns it', async () => {
+    const prisma = claimPrisma({
+      ...CLAIM_VEHICLE_FREE,
+      ownerships: [
+        {
+          id: OWNERSHIP_ID,
+          customerId: '99999999-9999-4999-8999-999999999999',
+          startedAt: new Date('2026-01-15T00:00:00.000Z'),
+        },
+      ],
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/claim',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { garageCode: 'GO-234-ABCD' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/me.vehicle.claim.owned_by_other',
+      status: 409,
+    });
+    expect(prisma.vehicleOwnership.create).not.toHaveBeenCalled();
+  });
 });
