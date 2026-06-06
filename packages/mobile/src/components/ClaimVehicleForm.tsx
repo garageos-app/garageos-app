@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { validateClaimForm } from '@/lib/validators/claimVehicle';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
+import { QrScanner } from '@/components/QrScanner';
 import { colors, spacing } from '@/theme/colors';
 
 export type ClaimVehicleFormResult = { ok: true } | { ok: false; code: string; message?: string };
@@ -16,6 +18,14 @@ export function ClaimVehicleForm({ onSubmit, onCancel }: Props) {
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   const [banner, setBanner] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+
+  function handleScanned(scanned: string) {
+    setCode(scanned);
+    setShowScanner(false);
+    setFieldError(undefined);
+    setBanner(null);
+  }
 
   async function handleSubmit() {
     if (submitting) return;
@@ -33,6 +43,10 @@ export function ClaimVehicleForm({ onSubmit, onCancel }: Props) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (showScanner) {
+    return <QrScanner onScanned={handleScanned} onCancel={() => setShowScanner(false)} />;
   }
 
   return (
@@ -58,6 +72,15 @@ export function ClaimVehicleForm({ onSubmit, onCancel }: Props) {
         <Text style={styles.hint}>
           {"Lo trovi sul tag adesivo del veicolo o nell'email dell'officina."}
         </Text>
+        <Pressable
+          onPress={() => setShowScanner(true)}
+          accessibilityRole="button"
+          disabled={submitting}
+          style={styles.scanButton}
+        >
+          <Ionicons name="qr-code-outline" size={18} color={colors.primary} />
+          <Text style={styles.scanButtonText}>Scansiona QR</Text>
+        </Pressable>
         {fieldError ? <Text style={styles.fieldError}>{fieldError}</Text> : null}
       </View>
 
@@ -105,6 +128,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   hint: { fontSize: 12, color: colors.muted },
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  scanButtonText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   fieldError: { fontSize: 12, color: colors.danger },
   errorBanner: {
     backgroundColor: colors.dangerBg,

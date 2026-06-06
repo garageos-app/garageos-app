@@ -28,6 +28,21 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+// @expo/vector-icons pulls in expo-font/expo-asset, which fail to require under
+// jest-expo. Icons are decorative in tests — mock every icon family to a host
+// component so any component using them renders. The Proxy covers Ionicons,
+// MaterialIcons, etc. without enumerating them.
+jest.mock('@expo/vector-icons', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  return new Proxy(
+    {},
+    {
+      get: () => (props: Record<string, unknown>) => React.createElement('Icon', props),
+    },
+  );
+});
+
 // expo-constants: empty extra config (env vars read directly via process.env.EXPO_PUBLIC_*)
 jest.mock('expo-constants', () => ({
   default: {

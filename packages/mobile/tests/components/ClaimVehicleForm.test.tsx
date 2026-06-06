@@ -1,6 +1,23 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { ClaimVehicleForm } from '@/components/ClaimVehicleForm';
 
+// Mock the camera component: a stub button that, when pressed, emits a valid code
+// as if a QR had been scanned. Keeps the form test free of expo-camera.
+jest.mock('@/components/QrScanner', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const React = require('react');
+  const { Pressable, Text } = require('react-native');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  return {
+    QrScanner: ({ onScanned }: { onScanned: (code: string) => void }) =>
+      React.createElement(
+        Pressable,
+        { testID: 'scanner-stub', onPress: () => onScanned('GO-234-ABCD') },
+        React.createElement(Text, null, 'scanner'),
+      ),
+  };
+});
+
 describe('ClaimVehicleForm', () => {
   it('renders the code field, hint and submit button', () => {
     render(<ClaimVehicleForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
@@ -52,5 +69,20 @@ describe('ClaimVehicleForm', () => {
     render(<ClaimVehicleForm onSubmit={jest.fn()} onCancel={onCancel} />);
     fireEvent.press(screen.getByRole('button', { name: 'Annulla' }));
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the scanner when "Scansiona QR" is tapped', () => {
+    render(<ClaimVehicleForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
+    fireEvent.press(screen.getByRole('button', { name: 'Scansiona QR' }));
+    expect(screen.getByTestId('scanner-stub')).toBeOnTheScreen();
+  });
+
+  it('pre-fills the code field from a scanned QR', async () => {
+    render(<ClaimVehicleForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
+    fireEvent.press(screen.getByRole('button', { name: 'Scansiona QR' }));
+    fireEvent.press(screen.getByTestId('scanner-stub'));
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText('GO-NNN-AAAA').props.value).toBe('GO-234-ABCD'),
+    );
   });
 });
