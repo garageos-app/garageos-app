@@ -7,7 +7,7 @@ import { GARAGE_CODE_RE } from '@/lib/validators/claimVehicle';
 // authoritative; this only gates what we pre-fill into the form.
 export function extractGarageCode(raw: string): string | null {
   if (!raw) return null;
-  const withoutQuery = raw.split(/[?#]/)[0];
+  const withoutQuery = raw.split(/[?#]/)[0] ?? '';
   const lastSeg = withoutQuery.split('/').filter(Boolean).pop() ?? '';
   const code = lastSeg.trim().toUpperCase();
   return GARAGE_CODE_RE.test(code) ? code : null;
