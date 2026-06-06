@@ -36,7 +36,7 @@ export default function VehicleListScreen() {
       <EmptyState
         title="Nessun veicolo"
         body="Non hai ancora veicoli associati al tuo account."
-        cta={{ label: 'Aggiungi veicolo', onPress: () => {}, disabled: true }}
+        cta={{ label: 'Aggiungi veicolo', onPress: () => router.push('/claim-vehicle') }}
       />
     );
   }
