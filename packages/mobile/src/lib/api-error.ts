@@ -21,8 +21,15 @@ export class ApiError extends Error {
     let message = 'Si è verificato un errore. Riprova più tardi.';
     if (typeof body === 'object' && body !== null) {
       const obj = body as Record<string, unknown>;
-      if (typeof obj.error_code === 'string') code = obj.error_code;
-      if (typeof obj.error_message === 'string') message = obj.error_message;
+      // The API serialises every error as RFC 7807 Problem Details
+      // (application/problem+json): the machine code lives in `code` and
+      // the human message in `detail` (see api/src/plugins/error-handler.ts).
+      // Fall back to legacy error_code/error_message for any non-conforming
+      // response so older or third-party shapes still map to a code.
+      if (typeof obj.code === 'string') code = obj.code;
+      else if (typeof obj.error_code === 'string') code = obj.error_code;
+      if (typeof obj.detail === 'string') message = obj.detail;
+      else if (typeof obj.error_message === 'string') message = obj.error_message;
     }
     return new ApiError(code, status, message, body);
   }

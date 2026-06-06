@@ -125,7 +125,37 @@ describe('createApiClient', () => {
     expect(onAuthLost).toHaveBeenCalled();
   });
 
-  it('parses error_code + error_message from 4xx body', async () => {
+  it('parses RFC 7807 code + detail from 4xx body (the real API error envelope)', async () => {
+    (fetch as unknown as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({
+        type: 'https://api.garageos.it/errors/me.vehicle.claim.code_not_found',
+        title: 'Not Found',
+        status: 404,
+        code: 'me.vehicle.claim.code_not_found',
+        detail: 'Nessun veicolo trovato per questo codice.',
+        instance: '/v1/me/vehicles/claim',
+        request_id: 'abc',
+      }),
+    });
+    const client = createApiClient({
+      getIdToken: () => 'tok',
+      refreshTokens: jest.fn(),
+      onAuthLost: jest.fn(),
+    });
+    const promise = client.fetch('/v1/me/vehicles/claim', { method: 'POST', body: {} });
+    await expect(promise).rejects.toMatchObject({
+      code: 'me.vehicle.claim.code_not_found',
+      status: 404,
+    });
+    await expect(promise).rejects.toHaveProperty(
+      'message',
+      'Nessun veicolo trovato per questo codice.',
+    );
+  });
+
+  it('falls back to legacy error_code + error_message when present', async () => {
     (fetch as unknown as jest.Mock).mockResolvedValueOnce({
       ok: false,
       status: 404,

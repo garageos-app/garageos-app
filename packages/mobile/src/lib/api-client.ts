@@ -3,7 +3,7 @@
 // - 401 single-retry after refreshTokens()
 // - onAuthLost fired when refresh fails or second attempt still 401
 // - ApiError.network() on fetch throw (DNS / offline / TypeError)
-// - ApiError.fromResponse on non-ok responses (preserves error_code/error_message)
+// - ApiError.fromResponse on non-ok responses (parses RFC 7807 code/detail)
 // See plan 2026-05-14-mobile-b2c-scaffold §Task 5 and memory feedback_fastify_empty_body_under_json_content_type:
 // Content-Type must NOT be set when body is undefined (Fastify rejects empty JSON body with 400).
 
