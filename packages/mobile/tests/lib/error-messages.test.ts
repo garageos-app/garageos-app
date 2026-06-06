@@ -74,4 +74,11 @@ describe('mapErrorToUserMessage', () => {
       "Errore nell'invio del codice. Riprova tra qualche minuto.",
     );
   });
+
+  it('maps the claim domain codes to Italian copy', () => {
+    expect(mapErrorToUserMessage('me.vehicle.claim.code_not_found')).toMatch(/Nessun veicolo/);
+    expect(mapErrorToUserMessage('me.vehicle.claim.owned_by_other')).toMatch(/altro account/);
+    expect(mapErrorToUserMessage('me.vehicle.claim.pending')).toMatch(/non ancora certificato/);
+    expect(mapErrorToUserMessage('me.vehicle.claim.archived')).toMatch(/archiviato/);
+  });
 });

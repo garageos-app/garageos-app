@@ -12,6 +12,11 @@ const MESSAGES: Record<string, string> = {
 
   // API domain codes
   'me.vehicle.not_found': 'Veicolo non trovato o non più di tua proprietà.',
+  // Claim vehicle domain codes (F-CLI-101)
+  'me.vehicle.claim.code_not_found': 'Nessun veicolo trovato per questo codice.',
+  'me.vehicle.claim.owned_by_other': 'Questo veicolo è già associato a un altro account.',
+  'me.vehicle.claim.pending': "Veicolo non ancora certificato dall'officina.",
+  'me.vehicle.claim.archived': 'Veicolo archiviato: non può essere aggiunto.',
   'vehicle.timeline.not_owner': 'Solo il proprietario attivo può consultare la timeline.',
   'auth.session_expired': "Sessione scaduta. Effettua di nuovo l'accesso.",
   'network.unreachable': 'Connessione assente. Controlla la rete.',
