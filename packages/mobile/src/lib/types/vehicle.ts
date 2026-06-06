@@ -70,6 +70,21 @@ export type TimelineItem =
       attachments_count: number;
     };
 
+// POST /v1/me/vehicles/claim response (F-CLI-101). The vehicle projection is
+// claimVehicleSelect server-side; only vehicle.id is consumed by the UI today.
+export type ClaimVehicleResponse = {
+  vehicle: {
+    id: string;
+    garageCode: string;
+    make: string;
+    model: string;
+    year: number | null;
+    plate: string | null;
+  };
+  ownership: { id: string; startedAt: string };
+  status: 'claimed' | 'already_owned';
+};
+
 export type TimelineResponse = {
   data: TimelineItem[];
   meta: {

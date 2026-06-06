@@ -1,4 +1,5 @@
-import { Tabs, Redirect } from 'expo-router';
+import { Tabs, Redirect, useRouter } from 'expo-router';
+import { Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/useAuth';
 import { LoadingState } from '@/components/LoadingState';
@@ -6,6 +7,7 @@ import { colors } from '@/theme/colors';
 
 export default function TabsLayout() {
   const { status } = useAuth();
+  const router = useRouter();
   if (status === 'loading') return <LoadingState variant="fullscreen" />;
   if (status === 'unauthenticated') return <Redirect href="/login" />;
 
@@ -28,6 +30,17 @@ export default function TabsLayout() {
               size={size}
               color={color}
             />
+          ),
+          headerRight: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Aggiungi veicolo"
+              onPress={() => router.push('/claim-vehicle')}
+              hitSlop={12}
+              style={{ paddingHorizontal: 16 }}
+            >
+              <Ionicons name="add" size={26} color={colors.primary} />
+            </Pressable>
           ),
         }}
       />
