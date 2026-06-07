@@ -8,6 +8,7 @@ import { Login } from '@/pages/Login';
 import { HomeDashboard } from '@/pages/HomeDashboard';
 import { SearchResults } from '@/pages/SearchResults';
 import { VehicleDetail } from '@/pages/VehicleDetail';
+import { CustomerList } from '@/pages/CustomerList';
 import { CustomerDetail } from '@/pages/CustomerDetail';
 import { DeadlineDashboard } from '@/pages/DeadlineDashboard';
 import { InterventionCreate } from '@/pages/InterventionCreate';
@@ -46,6 +47,7 @@ export function App() {
                   <Route path="/search" element={<SearchResults />} />
                   <Route path="/vehicles/:id" element={<VehicleDetail />} />
                   <Route path="/vehicles/:id/interventions/new" element={<InterventionCreate />} />
+                  <Route path="/customers" element={<CustomerList />} />
                   <Route path="/customers/:id" element={<CustomerDetail />} />
                   <Route path="/interventions/:id" element={<InterventionDetail />} />
                   <Route path="/deadlines" element={<DeadlineDashboard />} />
