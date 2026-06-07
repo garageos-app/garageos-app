@@ -189,6 +189,24 @@ export interface CustomerSearchResponse {
   meta: { has_more: boolean; cursor?: string };
 }
 
+// /v1/customers (officina customer list, F-OFF-202). Least-PII DTO:
+// no email/taxCode/vatNumber (the detail endpoint exposes those).
+export interface CustomerListItem {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  isBusiness: boolean;
+  businessName: string | null;
+  vehicleCount: number;
+  lastInterventionAt: string | null;
+}
+
+export interface CustomerListResponse {
+  data: CustomerListItem[];
+  meta: { has_more: boolean; cursor?: string };
+}
+
 // /v1/deadlines (officina-side aggregate, F-OFF-402).
 //
 // `customer` follows the same MaskedCustomer shape used by
