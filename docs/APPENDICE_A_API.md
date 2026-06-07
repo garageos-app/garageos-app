@@ -1123,6 +1123,58 @@ Niente `404`: nessun match → `200` con `data: []`.
 
 ---
 
+### 2.8b `GET /v1/customers` — Elenco clienti officina (F-OFF-202)
+
+Lista paginata dei clienti del tenant, ordinata alfabeticamente per
+cognome/nome. Ricerca opzionale per nome (`q`). Tenant-scoped via
+`customer_tenant_relations` (BR-151).
+
+**Auth:** Tenant User (pool officine). `401` senza token, `403` con token pool
+clienti.
+
+**Query string:**
+
+| Param | Tipo | Default | Note |
+|---|---|---|---|
+| `q` | string | — | opzionale; se presente `2..60` char. Match case-insensitive su `firstName`/`lastName`/`businessName` (AND tra token whitespace, OR tra colonne). `email`/`taxCode`/`vatNumber` NON matchabili. |
+| `limit` | int | 20 | `1..50` |
+| `cursor` | string | — | cursore opaco id-only (dalla `meta.cursor` della pagina precedente) |
+
+**Ordinamento:** `lastName ASC, firstName ASC, id ASC`.
+
+**Response 200** (camelCase):
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "firstName": "Mario",
+      "lastName": "Rossi",
+      "phone": "+39 333 1234567",
+      "isBusiness": false,
+      "businessName": null,
+      "vehicleCount": 2,
+      "lastInterventionAt": "2026-05-01T10:00:00.000Z"
+    }
+  ],
+  "meta": { "has_more": true, "cursor": "<opaco>" }
+}
+```
+
+- `vehicleCount`: numero di ownership **attive** del cliente (`ended_at IS NULL`),
+  non tenant-scoped — coerente con l'array `vehicles` del dettaglio.
+- `lastInterventionAt`: colonna denormalizzata per-tenant
+  `customer_tenant_relations.last_intervention_at` (`null` se nessun intervento).
+- DTO **least-PII**: niente `email`/`taxCode`/`vatNumber` (esposti solo dal
+  dettaglio `GET /v1/customers/:id`).
+- `meta.cursor` presente solo quando `has_more` è `true`.
+
+Distinto da `GET /v1/customers/search` (autocomplete: `q` obbligatorio,
+ordinamento per `id`, DTO con email).
+
+---
+
 ### 2.9 `GET /v1/customers/:id` — Dettaglio cliente officina
 
 #### Descrizione
@@ -2261,7 +2313,7 @@ Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conse
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | GET | `/customers/search` | F-OFF-202 | Tenant User | **[DETTAGLIATO §2.8]** Autocomplete cliente per nome/ragione sociale (tenant-scoped) |
-| GET | `/customers` | F-OFF-202 | Tenant User | Lista clienti del tenant (con ricerca) |
+| GET | `/customers` | F-OFF-202 | Tenant User | **[DETTAGLIATO §2.8b]** Lista clienti del tenant (con ricerca) |
 | POST | `/customers` | F-OFF-201 | Tenant User | Crea nuovo cliente |
 | GET | `/customers/:id` | F-OFF-203 | Tenant User | **[DETTAGLIATO §2.9]** Dettaglio cliente officina (BR-151) |
 | PATCH | `/customers/:id` | F-OFF-204 | Tenant User | **[DETTAGLIATO §2.10]** Modifica cliente officina |
