@@ -1241,6 +1241,50 @@ Lookup tenant-scoped del singolo customer. Ritorna anagrafica + note tenant-priv
 
 ---
 
+### 2.9b `POST /v1/customers` — Creazione cliente standalone (F-OFF-201)
+
+Crea un cliente per il tenant, indipendentemente dalla creazione veicolo.
+`email` è **unique globale**: se esiste già, la riga viene riusata e si
+garantisce la relazione `customer_tenant_relations` (BR-041/BR-152).
+
+**Auth:** Tenant User (pool officine). `401` senza token, `403` con token pool clienti.
+
+**Body** (camelCase, `.strict()`):
+
+| Campo | Regola |
+|---|---|
+| `firstName` | string 1..100, obbligatorio |
+| `lastName` | string 1..100, obbligatorio |
+| `email` | email valida, max 255, obbligatorio |
+| `phone` | string max 30, opzionale |
+| `taxCode` | string max 20, opzionale |
+| `addressLine` | string max 255, opzionale |
+| `city` | string max 100, opzionale |
+| `province` | string max 2, opzionale |
+| `postalCode` | string max 10, opzionale |
+| `isBusiness` | boolean (default false) |
+| `businessName` | string max 200, opzionale (obbligatorio se `isBusiness`) |
+| `vatNumber` | string max 20, opzionale |
+
+**Errori:**
+
+- `400 VALIDATION_ERROR` — campo obbligatorio mancante o email malformata.
+- `422 customer.create.unknown_field` — chiave non riconosciuta nel body.
+- `422 customer.create.business_name_required` — `isBusiness` true senza `businessName`.
+
+**Response `201`:** il DTO completo come `GET /v1/customers/:id` + campo
+top-level `created: boolean` (true = nuova riga creata; false = cliente
+preesistente collegato a questa officina). `201` in entrambi i casi: `created`
+porta la distinzione (divergenza pragmatica dal REST stretto, per dare al
+client un solo path).
+
+Comportamento: dedupe per `email` → se esiste, upsert CTR e ritorna
+l'esistente (`created:false`, l'anagrafica digitata è ignorata); altrimenti
+crea cliente + CTR (`created:true`). Race P2002 → refetch + link.
+`tenantNotes` non è impostabile in creazione (usa `PATCH /v1/customers/:id`).
+
+---
+
 ### 2.10 `PATCH /v1/customers/:id` — Modifica cliente officina
 
 #### Descrizione
@@ -2314,7 +2358,7 @@ Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conse
 |---|---|---|---|---|
 | GET | `/customers/search` | F-OFF-202 | Tenant User | **[DETTAGLIATO §2.8]** Autocomplete cliente per nome/ragione sociale (tenant-scoped) |
 | GET | `/customers` | F-OFF-202 | Tenant User | **[DETTAGLIATO §2.8b]** Lista clienti del tenant (con ricerca) |
-| POST | `/customers` | F-OFF-201 | Tenant User | Crea nuovo cliente |
+| POST | `/customers` | F-OFF-201 | Tenant User | **[DETTAGLIATO §2.9b]** Crea nuovo cliente (dedupe email + link CTR) |
 | GET | `/customers/:id` | F-OFF-203 | Tenant User | **[DETTAGLIATO §2.9]** Dettaglio cliente officina (BR-151) |
 | PATCH | `/customers/:id` | F-OFF-204 | Tenant User | **[DETTAGLIATO §2.10]** Modifica cliente officina |
 | POST | `/customers/:id/invite` | F-OFF-205 | Tenant User | Invia invito app a cliente |
