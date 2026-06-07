@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -100,5 +100,15 @@ describe('CustomerList', () => {
     apiFetchMock.mockResolvedValueOnce({ ...onePage, meta: { has_more: true, cursor: 'CUR1' } });
     renderPage();
     expect(await screen.findByRole('button', { name: /carica altre/i })).toBeInTheDocument();
+  });
+
+  it('opens the create-customer dialog from the "Nuovo cliente" button', async () => {
+    apiFetchMock.mockResolvedValue(onePage);
+    renderPage();
+    await screen.findByText('Rossi Mario');
+    await userEvent.click(screen.getByRole('button', { name: /nuovo cliente/i }));
+    const dialog = await screen.findByRole('dialog');
+    // The form is present inside the dialog (email field is unique to it).
+    expect(within(dialog).getByLabelText('Email')).toBeInTheDocument();
   });
 });

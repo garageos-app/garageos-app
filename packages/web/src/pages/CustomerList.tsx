@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Users, SearchX } from 'lucide-react';
 
 import { useCustomersList } from '@/queries/customersList';
+import { CreateCustomerDialog } from '@/components/customers/CreateCustomerDialog';
 import { customerDisplayName } from '@/lib/customer-display';
 import { formatDate } from '@/lib/format';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
@@ -15,6 +16,7 @@ import type { CustomerListItem } from '@/queries/types';
 
 export function CustomerList() {
   const [q, setQ] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const debouncedQ = useDebouncedValue(q, 300);
   const query = useCustomersList(debouncedQ);
   const navigate = useNavigate();
@@ -23,10 +25,15 @@ export function CustomerList() {
 
   return (
     <div className="p-8 space-y-6 max-w-5xl">
-      <div className="flex items-center gap-3">
-        <Users size={24} className="text-muted-foreground" />
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Clienti</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Users size={24} className="text-muted-foreground" />
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Clienti</h1>
+        </div>
+        <Button onClick={() => setCreateOpen(true)}>Nuovo cliente</Button>
       </div>
+
+      <CreateCustomerDialog open={createOpen} onOpenChange={setCreateOpen} />
 
       <Input
         value={q}

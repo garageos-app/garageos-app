@@ -304,6 +304,26 @@ export type CustomerDetailUpdate = Partial<{
   tenantNotes: string | null;
 }>;
 
+// POST /v1/customers — F-OFF-201 standalone create body.
+export interface CustomerCreateBody {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  taxCode?: string;
+  addressLine?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  isBusiness: boolean;
+  businessName?: string;
+  vatNumber?: string;
+}
+
+// POST /v1/customers response: full detail DTO + `created` (true=new row,
+// false=pre-existing customer linked to this tenant).
+export type CustomerCreateResponse = CustomerDetail & { created: boolean };
+
 // /v1/interventions/:id/disputes — F-OFF-602 read companion (PR #82).
 // Mirror del DTO emesso da packages/api/src/routes/v1/interventions-disputes-list.ts.
 export type DisputeReasonCategory = 'not_performed' | 'wrong_data' | 'not_authorized' | 'other';
