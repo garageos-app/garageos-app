@@ -52,6 +52,7 @@ import { usersAdminUpdateRoutes } from './routes/v1/users-admin-update.js';
 import { usersAdminDeleteRoutes } from './routes/v1/users-admin-delete.js';
 import { usersAdminReactivateRoutes } from './routes/v1/users-admin-reactivate.js';
 import customerDetailRoutes from './routes/v1/customers-detail.js';
+import customerListRoutes from './routes/v1/customers-list.js';
 import customerUpdateRoutes from './routes/v1/customers-update.js';
 import customerRoutes from './routes/v1/customers.js';
 import tenantRoutes from './routes/v1/tenants.js';
@@ -164,6 +165,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(tenantsLocationsListRoutes);
   await app.register(tenantsLocationsWriteRoutes);
   await app.register(customerRoutes);
+  await app.register(customerListRoutes);
   await app.register(customerDetailRoutes);
   await app.register(customerUpdateRoutes);
   await app.register(vehicleRoutes);
