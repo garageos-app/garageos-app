@@ -8,7 +8,7 @@ const navItems = [
   { id: 'home', label: 'Home', icon: Home, to: '/', enabled: true },
   { id: 'interventions', label: 'Interventi', icon: Wrench, enabled: false },
   { id: 'deadlines', label: 'Scadenze', icon: Calendar, to: '/deadlines', enabled: true },
-  { id: 'customers', label: 'Clienti', icon: Users, enabled: false },
+  { id: 'customers', label: 'Clienti', icon: Users, to: '/customers', enabled: true },
   { id: 'settings', label: 'Impostazioni', icon: Settings, to: '/settings', enabled: true },
 ] as const;
 
@@ -21,6 +21,9 @@ function isActiveFor(itemId: string, pathname: string): boolean {
   }
   if (itemId === 'settings') {
     return pathname.startsWith('/settings');
+  }
+  if (itemId === 'customers') {
+    return pathname.startsWith('/customers');
   }
   return false;
 }

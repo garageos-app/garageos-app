@@ -55,6 +55,14 @@ describe('Sidebar', () => {
     expect(interventi.closest('[aria-disabled="true"]')).not.toBeNull();
   });
 
+  it('"Clienti" linka a /customers ed è attivo su quel path', () => {
+    const { unmount } = renderAt('/customers');
+    const link = screen.getByRole('link', { name: /clienti/i });
+    expect(link).toHaveAttribute('href', '/customers');
+    expect(link).toHaveAttribute('aria-current', 'page');
+    unmount();
+  });
+
   it('"Esci" chiama signOut', async () => {
     const auth = mockAuth();
     renderAt('/', auth);
