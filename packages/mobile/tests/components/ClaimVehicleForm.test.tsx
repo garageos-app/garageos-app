@@ -1,3 +1,4 @@
+import { Modal } from 'react-native';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { ClaimVehicleForm } from '@/components/ClaimVehicleForm';
 
@@ -74,6 +75,17 @@ describe('ClaimVehicleForm', () => {
   it('opens the scanner when "Scansiona QR" is tapped', () => {
     render(<ClaimVehicleForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
     fireEvent.press(screen.getByRole('button', { name: 'Scansiona QR' }));
+    expect(screen.getByTestId('scanner-stub')).toBeOnTheScreen();
+  });
+
+  it('presents the scanner in a full-screen Modal (not inline in the scroll content)', () => {
+    // Regression: the form lives inside a ScrollView; rendering the
+    // absoluteFill QrScanner as an in-flow child collapses it to 0 height
+    // (blank/white screen). A Modal escapes the scroll layout.
+    render(<ClaimVehicleForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
+    expect(screen.UNSAFE_getByType(Modal).props.visible).toBe(false);
+    fireEvent.press(screen.getByRole('button', { name: 'Scansiona QR' }));
+    expect(screen.UNSAFE_getByType(Modal).props.visible).toBe(true);
     expect(screen.getByTestId('scanner-stub')).toBeOnTheScreen();
   });
 
