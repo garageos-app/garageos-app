@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { validateClaimForm } from '@/lib/validators/claimVehicle';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
@@ -45,12 +53,22 @@ export function ClaimVehicleForm({ onSubmit, onCancel }: Props) {
     }
   }
 
-  if (showScanner) {
-    return <QrScanner onScanned={handleScanned} onCancel={() => setShowScanner(false)} />;
-  }
-
   return (
     <View style={styles.container}>
+      {/* The form lives inside a ScrollView; the QrScanner root is
+          absoluteFill, which collapses to 0 height as an in-flow child of
+          scroll content (blank screen). A full-screen Modal escapes that
+          layout and gives the scanner the whole viewport. */}
+      <Modal
+        visible={showScanner}
+        animationType="slide"
+        onRequestClose={() => setShowScanner(false)}
+      >
+        {showScanner ? (
+          <QrScanner onScanned={handleScanned} onCancel={() => setShowScanner(false)} />
+        ) : null}
+      </Modal>
+
       {banner ? (
         <View style={styles.errorBanner} accessibilityRole="alert">
           <Text style={styles.errorText}>{banner}</Text>
