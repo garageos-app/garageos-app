@@ -97,4 +97,18 @@ describe('ClaimVehicleForm', () => {
       expect(screen.getByPlaceholderText('GO-NNN-AAAA').props.value).toBe('GO-234-ABCD'),
     );
   });
+
+  it('pre-fills the code field from initialCode', () => {
+    render(
+      <ClaimVehicleForm onSubmit={jest.fn()} onCancel={jest.fn()} initialCode="GO-482-KXRT" />,
+    );
+    expect(screen.getByDisplayValue('GO-482-KXRT')).toBeOnTheScreen();
+  });
+
+  it('submits the pre-filled initialCode when "Aggiungi" is tapped', async () => {
+    const onSubmit = jest.fn().mockResolvedValue({ ok: true });
+    render(<ClaimVehicleForm onSubmit={onSubmit} onCancel={jest.fn()} initialCode="GO-482-KXRT" />);
+    fireEvent.press(screen.getByRole('button', { name: 'Aggiungi' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('GO-482-KXRT'));
+  });
 });
