@@ -639,6 +639,73 @@ Authorization: Bearer <customer_jwt>
 
 ---
 
+### 2.4b `POST /me/push-tokens` + `DELETE /me/push-tokens/:id` — Registrazione push token (cliente)
+
+**Feature:** F-CLI-302 (PR1)
+**Auth:** Customer
+
+> **Nota implementazione (F-CLI-302 PR1):** solo registrazione del token; la
+> _delivery_ delle push (estensione del dispatcher all'Expo Push API) è una PR
+> successiva. La tabella `push_tokens` e la sua RLS esistono già (init migration).
+> Body/response in **camelCase**. **POST gira sotto `role:'admin'`** (pinnando
+> sempre `customer_id` al chiamante): `expo_push_token` è univoco globale, quindi
+> su uno switch di account sullo stesso device occorre **riassegnare** una riga di
+> un altro cliente — impossibile sotto `role:'user'` (la RLS la nasconde → P2002).
+> **DELETE gira sotto `role:'user'`** (la RLS limita al chiamante; un id altrui è
+> invisibile → 404).
+
+#### Descrizione
+
+Il cliente registra il push token Expo del proprio dispositivo (opt-in dalla
+schermata Notifiche). Upsert **BR-254**: (1) se il token esiste già → refresh +
+riassegnazione al chiamante; (2) altrimenti se esiste una riga attiva per lo
+stesso `(customerId, deviceName)` → aggiorna il token (rotazione device);
+(3) altrimenti crea una nuova riga. Imposta `customer.app_installed = true`
+(BR-224).
+
+#### Request — POST
+
+```http
+POST /v1/me/push-tokens
+Content-Type: application/json
+Authorization: Bearer <customer_jwt>
+
+{
+  "expoPushToken": "ExpoPushToken[xxxxxxxxxxxxxxxxxxxxxx]",
+  "platform": "android",
+  "deviceName": "Pixel 7",
+  "appVersion": "0.1.0"
+}
+```
+
+`platform` ∈ `{ ios, android }`. `deviceName` e `appVersion` sono opzionali.
+
+#### Response `201 Created`
+
+```json
+{ "id": "01HKXN5..." }
+```
+
+#### Request — DELETE
+
+```http
+DELETE /v1/me/push-tokens/01HKXN5...
+Authorization: Bearer <customer_jwt>
+```
+
+#### Response `204 No Content`
+
+#### Errori
+
+| Status | Codice | Scenario |
+|---|---|---|
+| 400 | _(validazione Zod)_ | `platform` non valido, `expoPushToken` mancante, o `:id` non UUID |
+| 422 | `me.push-token.register.invalid_token` | `expoPushToken` malformato (atteso `ExpoPushToken[...]`) |
+| 422 | `me.push-token.register.unknown_field` | Chiave fuori schema nel body POST |
+| 404 | `me.push-token.not_found` | DELETE di un id inesistente o di un altro cliente (RLS) |
+
+---
+
 ### 2.5 `GET /vehicles/:id/timeline` — Storico interventi veicolo
 
 **Feature:** F-OFF-105, F-CLI-201, F-CLI-205
@@ -2505,8 +2572,8 @@ L'`owner_type=intervention` resta officina-only.
 | POST | `/me/notifications/read-all` | F-CLI-305 | Customer | Marca tutte come lette |
 | GET | `/me/notification-preferences` | F-CLI-005 | Customer | Preferenze canali |
 | PATCH | `/me/notification-preferences` | F-CLI-005 | Customer | Modifica preferenze |
-| POST | `/me/push-tokens` | - | Customer | Registra push token device |
-| DELETE | `/me/push-tokens/:id` | - | Customer | Rimuove push token |
+| POST | `/me/push-tokens` | F-CLI-302 | Customer | **[DETTAGLIATO §2.4b]** Registra push token device |
+| DELETE | `/me/push-tokens/:id` | F-CLI-302 | Customer | **[DETTAGLIATO §2.4b]** Rimuove push token |
 
 ### 3.12 Admin (team GarageOS)
 

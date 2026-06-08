@@ -205,6 +205,9 @@ Per fornire dati utili al client per gestire l'errore:
 | `me.profile.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/me/profile con chiave non in schema (es. email, status) | F-CLI-004 |
 | `me.notification-preferences.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/me/notification-preferences con body vuoto o senza preferenze edibili | F-CLI-005 |
 | `me.notification-preferences.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/me/notification-preferences con chiave fuori schema (transfer_invitation, push, dispute_response) o valore non booleano | F-CLI-005, BR-260 |
+| `me.push-token.not_found` | 404 | info | Token push non trovato | DELETE /v1/me/push-tokens/:id con id inesistente o di un altro cliente (RLS) | F-CLI-302 (BR-254) |
+| `me.push-token.register.invalid_token` | 422 | info | Token push non valido | POST /v1/me/push-tokens con expoPushToken malformato (atteso ExpoPushToken[...]) | F-CLI-302 (BR-254) |
+| `me.push-token.register.unknown_field` | 422 | info | Campo non riconosciuto | POST /v1/me/push-tokens con chiave fuori schema | F-CLI-302 |
 | `me.vehicle.claim.code_not_found` | 404 | info | Codice non trovato | POST /v1/me/vehicles/claim con garageCode inesistente | F-CLI-101 (BR-042) |
 | `me.vehicle.claim.owned_by_other` | 409 | info | Veicolo di un altro cliente | POST /v1/me/vehicles/claim su veicolo con ownership attiva di altro cliente (usare passaggio di proprietà) | F-CLI-101 (BR-042) |
 | `me.vehicle.claim.pending` | 422 | info | Veicolo non certificato | POST /v1/me/vehicles/claim su veicolo pending | F-CLI-101 (BR-042) |
@@ -954,6 +957,9 @@ location.not_found
 location.not_in_tenant
 me.notification-preferences.update.empty_body
 me.notification-preferences.update.unknown_field
+me.push-token.not_found
+me.push-token.register.invalid_token
+me.push-token.register.unknown_field
 notification.push_token.already_registered
 notification.push_token.invalid
 notification.rate_limit
