@@ -133,7 +133,7 @@ Mirror of `me-profile.test.ts` (auth via `signTestToken` + `createCustomer`).
 6. PATCH `{email:{}}` → 422 `…empty_body`.
 7. PATCH `{email:{transfer_invitation:true}}` → 422 `…unknown_field` (**BR-260**).
 8. PATCH `{push:{...}}` → 422 `…unknown_field`.
-9. PATCH `{email:{marketing:"yes"}}` (non-boolean) → 422.
+9. PATCH `{email:{marketing:"yes"}}` (non-boolean) → 400 (ZodError; `invalid_type` is not `unrecognized_keys`, so it is a validation error, not a business error — consistent with `me-profile.ts`).
 
 ### Unit — `tests/unit/routes/v1/me-notification-preferences.test.ts`
 
