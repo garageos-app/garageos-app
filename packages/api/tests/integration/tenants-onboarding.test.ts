@@ -34,10 +34,15 @@ describe('POST /v1/tenants/me/onboarding/complete (integration)', () => {
     });
   }
   function complete(token: string) {
+    // Mirror the browser wire: apiFetch always sets Content-Type:
+    // application/json and sends body '{}' (the endpoint takes no payload).
+    // Injecting without the header would NOT exercise Fastify's empty-body
+    // rejection — see queries/tenantOnboarding.ts.
     return app.inject({
       method: 'POST',
       url: '/v1/tenants/me/onboarding/complete',
-      headers: { authorization: `Bearer ${token}` },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: {},
     });
   }
 

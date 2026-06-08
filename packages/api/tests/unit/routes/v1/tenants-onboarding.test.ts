@@ -71,7 +71,9 @@ describe('POST /v1/tenants/me/onboarding/complete', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/tenants/me/onboarding/complete',
-      headers: { authorization: 'Bearer valid.jwt' },
+      // Mirror the browser wire (apiFetch: content-type json + body '{}').
+      headers: { authorization: 'Bearer valid.jwt', 'content-type': 'application/json' },
+      payload: {},
     });
     expect(res.statusCode).toBe(204);
     const updateArg = built.update.mock.calls[0]?.[0] as {
@@ -89,7 +91,8 @@ describe('POST /v1/tenants/me/onboarding/complete', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/tenants/me/onboarding/complete',
-      headers: { authorization: 'Bearer valid.jwt' },
+      headers: { authorization: 'Bearer valid.jwt', 'content-type': 'application/json' },
+      payload: {},
     });
     expect(res.statusCode).toBe(403);
     expect(built.update).not.toHaveBeenCalled();

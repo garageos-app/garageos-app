@@ -29,7 +29,10 @@ describe('useCompleteOnboarding', () => {
     apiFetch.mockResolvedValue({});
     const { result } = renderHook(() => useCompleteOnboarding(), { wrapper });
     await result.current.mutateAsync();
-    expect(apiFetch).toHaveBeenCalledWith('/v1/tenants/me/onboarding/complete', { method: 'POST' });
+    expect(apiFetch).toHaveBeenCalledWith('/v1/tenants/me/onboarding/complete', {
+      method: 'POST',
+      body: '{}',
+    });
     await waitFor(() =>
       expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['tenants-me'] }),
     );
