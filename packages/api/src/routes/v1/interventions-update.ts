@@ -293,6 +293,7 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           },
           recipient: result.recipient,
           logger: request.log,
+          app,
         });
       }
 
