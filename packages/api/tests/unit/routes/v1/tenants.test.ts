@@ -23,6 +23,7 @@ const TENANT_ROW = {
   plan: 'starter',
   billingStatus: 'manual' as const,
   createdAt: new Date('2026-01-15T09:00:00Z'),
+  settings: {},
 };
 
 interface AppDeps {
@@ -97,37 +98,29 @@ describe('GET /v1/tenants/me', () => {
     });
   });
 
-  it('enumerates a minimal safe projection (no settings, no logoUrl, no deletedAt)', async () => {
-    const findUniqueOrThrow = vi.fn().mockResolvedValue(TENANT_ROW);
+  it('selects the safe projection plus settings (for onboarding flag), and the response omits settings', async () => {
+    const findUniqueOrThrow = vi.fn().mockResolvedValue({
+      ...TENANT_ROW,
+      settings: { onboardingCompletedAt: '2026-06-08T10:00:00.000Z' },
+    });
     app = await buildApp({ findUniqueOrThrow });
 
-    await app.inject({
+    const res = await app.inject({
       method: 'GET',
       url: '/v1/tenants/me',
       headers: { authorization: 'Bearer valid.jwt' },
     });
 
     const call = findUniqueOrThrow.mock.calls[0]?.[0] as { select: Record<string, boolean> };
-    expect(call.select).toEqual({
-      id: true,
-      businessName: true,
-      vatNumber: true,
-      email: true,
-      phone: true,
-      addressLine: true,
-      city: true,
-      province: true,
-      postalCode: true,
-      status: true,
-      plan: true,
-      billingStatus: true,
-      createdAt: true,
-    });
-    expect(call.select).not.toHaveProperty('settings');
+    expect(call.select).toMatchObject({ id: true, businessName: true, settings: true });
     expect(call.select).not.toHaveProperty('logoUrl');
     expect(call.select).not.toHaveProperty('deletedAt');
     expect(call.select).not.toHaveProperty('updatedAt');
     expect(call.select).not.toHaveProperty('taxCode');
+
+    const body = res.json();
+    expect(body).not.toHaveProperty('settings');
+    expect(body.onboardingCompletedAt).toBe('2026-06-08T10:00:00.000Z');
   });
 
   it('returns 401 when Authorization header is missing', async () => {
