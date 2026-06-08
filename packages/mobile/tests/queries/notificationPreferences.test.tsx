@@ -20,6 +20,11 @@ const PREFS: NotificationPreferences = {
     ownership_transfer: true,
     marketing: false,
   },
+  push: {
+    intervention_updates: true,
+    deadline_reminder: true,
+    ownership_transfer: true,
+  },
 };
 
 function makeWrapper(qc: QueryClient) {
@@ -55,7 +60,7 @@ describe('useUpdateNotificationPreference', () => {
     const { result } = renderHook(() => useUpdateNotificationPreference(), {
       wrapper: makeWrapper(qc),
     });
-    result.current.mutate({ key: 'marketing', value: true });
+    result.current.mutate({ channel: 'email', key: 'marketing', value: true });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(apiFetch).toHaveBeenCalledWith('/v1/me/notification-preferences', {
       method: 'PATCH',
@@ -76,7 +81,7 @@ describe('useUpdateNotificationPreference', () => {
       wrapper: makeWrapper(qc),
     });
     act(() => {
-      result.current.mutate({ key: 'marketing', value: true });
+      result.current.mutate({ channel: 'email', key: 'marketing', value: true });
     });
     await waitFor(() =>
       expect(qc.getQueryData<NotificationPreferences>(QUERY_KEY)?.email.marketing).toBe(true),
@@ -94,8 +99,36 @@ describe('useUpdateNotificationPreference', () => {
     const { result } = renderHook(() => useUpdateNotificationPreference(), {
       wrapper: makeWrapper(qc),
     });
-    result.current.mutate({ key: 'marketing', value: true });
+    result.current.mutate({ channel: 'email', key: 'marketing', value: true });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(qc.getQueryData<NotificationPreferences>(QUERY_KEY)?.email.marketing).toBe(false);
+  });
+
+  it('PATCHes a push body and the optimistic write preserves the email channel', async () => {
+    let resolve!: (v: NotificationPreferences) => void;
+    const apiFetch = jest
+      .fn()
+      .mockReturnValue(new Promise<NotificationPreferences>((r) => (resolve = r)));
+    mockedHook.useApiClient.mockReturnValue({ fetch: apiFetch });
+    const qc = newClient();
+    qc.setQueryData(QUERY_KEY, PREFS);
+    const { result } = renderHook(() => useUpdateNotificationPreference(), {
+      wrapper: makeWrapper(qc),
+    });
+    act(() => {
+      result.current.mutate({ channel: 'push', key: 'deadline_reminder', value: false });
+    });
+    await waitFor(() => {
+      const data = qc.getQueryData<NotificationPreferences>(QUERY_KEY);
+      expect(data?.push.deadline_reminder).toBe(false);
+      // email channel must be untouched by a push write
+      expect(data?.email.intervention_updates).toBe(true);
+    });
+    expect(apiFetch).toHaveBeenCalledWith('/v1/me/notification-preferences', {
+      method: 'PATCH',
+      body: { push: { deadline_reminder: false } },
+    });
+    act(() => resolve(PREFS));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 });

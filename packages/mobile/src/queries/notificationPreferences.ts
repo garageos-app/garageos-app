@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApiClient } from '@/lib/use-api-client';
 import type {
   EditableEmailKey,
+  EditablePushKey,
   NotificationPreferences,
 } from '@/lib/types/notification-preferences';
 
@@ -19,10 +20,9 @@ export function useNotificationPreferences() {
   });
 }
 
-interface UpdateVars {
-  key: EditableEmailKey;
-  value: boolean;
-}
+type UpdateVars =
+  | { channel: 'email'; key: EditableEmailKey; value: boolean }
+  | { channel: 'push'; key: EditablePushKey; value: boolean };
 
 interface MutationContext {
   previous?: NotificationPreferences;
@@ -32,18 +32,21 @@ export function useUpdateNotificationPreference() {
   const api = useApiClient();
   const qc = useQueryClient();
   return useMutation<NotificationPreferences, Error, UpdateVars, MutationContext>({
-    mutationFn: ({ key, value }) =>
+    mutationFn: ({ channel, key, value }) =>
       api.fetch<NotificationPreferences>('/v1/me/notification-preferences', {
         method: 'PATCH',
-        body: { email: { [key]: value } },
+        body: { [channel]: { [key]: value } },
       }),
-    onMutate: async ({ key, value }) => {
+    onMutate: async ({ channel, key, value }) => {
       // Cancel in-flight refetches so they don't clobber the optimistic write.
       await qc.cancelQueries({ queryKey: QUERY_KEY });
       const previous = qc.getQueryData<NotificationPreferences>(QUERY_KEY);
       if (previous) {
+        // Spread `previous` so the untouched channel is preserved (a push write
+        // must not drop the email channel from cache, and vice versa).
         qc.setQueryData<NotificationPreferences>(QUERY_KEY, {
-          email: { ...previous.email, [key]: value },
+          ...previous,
+          [channel]: { ...previous[channel], [key]: value },
         });
       }
       return { previous };
