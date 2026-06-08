@@ -1,0 +1,132 @@
+import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useMeShopInterventionDetail } from '@/queries/meShopInterventionDetail';
+import { LoadingState } from '@/components/LoadingState';
+import { ErrorState } from '@/components/ErrorState';
+import { BadgeContestato } from '@/components/BadgeContestato';
+import { ApiError } from '@/lib/api-error';
+import { mapErrorToUserMessage } from '@/lib/error-messages';
+import { formatDate, formatKm } from '@/lib/format';
+import {
+  DISPUTE_STATUS_LABELS,
+  REASON_CATEGORY_LABELS,
+  isDisputeActive,
+} from '@/lib/dispute-labels';
+import { colors, spacing } from '@/theme/colors';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default function InterventionDetailScreen() {
+  const params = useLocalSearchParams<{ id: string }>();
+  const id = typeof params.id === 'string' && UUID_RE.test(params.id) ? params.id : '';
+  const router = useRouter();
+  const detail = useMeShopInterventionDetail(id);
+
+  if (!id) return <ErrorState message="Intervento non valido." />;
+  if (detail.isLoading || !detail.data) {
+    if (detail.isError) {
+      const code = detail.error instanceof ApiError ? detail.error.code : undefined;
+      return <ErrorState message={mapErrorToUserMessage(code)} onRetry={detail.refetch} />;
+    }
+    return <LoadingState variant="fullscreen" />;
+  }
+
+  const { intervention, disputes } = detail.data;
+  const hasActiveDispute = disputes.some((d) => isDisputeActive(d.status));
+
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: true, title: 'Intervento' }} />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          <View style={styles.badgeRow}>
+            {intervention.isDisputed ? <BadgeContestato /> : null}
+            <Text style={styles.tenant}>
+              {intervention.tenant.businessName}
+              {intervention.tenant.locationCity ? ` · ${intervention.tenant.locationCity}` : ''}
+            </Text>
+          </View>
+          <Text style={styles.title}>{intervention.title ?? intervention.type.name_it}</Text>
+          <Text style={styles.meta}>
+            {formatDate(intervention.interventionDate)} · {formatKm(intervention.odometerKm)}
+          </Text>
+          {intervention.description ? (
+            <Text style={styles.description}>{intervention.description}</Text>
+          ) : null}
+        </View>
+
+        {disputes.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Contestazioni</Text>
+            {disputes.map((d) => (
+              <View key={d.id} style={styles.dispute}>
+                <Text style={styles.disputeStatus}>{DISPUTE_STATUS_LABELS[d.status]}</Text>
+                <Text style={styles.disputeReason}>{REASON_CATEGORY_LABELS[d.reasonCategory]}</Text>
+                <Text style={styles.disputeBody}>{d.customerDescription}</Text>
+                {d.tenantResponse ? (
+                  <View style={styles.response}>
+                    <Text style={styles.responseLabel}>Risposta dell&apos;officina</Text>
+                    <Text style={styles.disputeBody}>{d.tenantResponse}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {!hasActiveDispute ? (
+          <Pressable
+            accessibilityRole="button"
+            style={styles.disputeBtn}
+            onPress={() => router.push(`/interventions/${id}/dispute`)}
+          >
+            <Text style={styles.disputeBtnText}>Contesta intervento</Text>
+          </Pressable>
+        ) : null}
+      </ScrollView>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.lg, gap: spacing.lg },
+  card: { gap: spacing.xs },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  tenant: { fontSize: 13, color: colors.muted, fontWeight: '600' },
+  title: { fontSize: 18, fontWeight: '700', color: colors.fg },
+  meta: { fontSize: 13, color: colors.muted },
+  description: { fontSize: 15, color: colors.fg, marginTop: spacing.xs },
+  section: { gap: spacing.sm },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.fg },
+  dispute: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  disputeStatus: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.danger,
+    textTransform: 'uppercase',
+  },
+  disputeReason: { fontSize: 14, fontWeight: '600', color: colors.fg },
+  disputeBody: { fontSize: 14, color: colors.fg },
+  response: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+    paddingLeft: spacing.md,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.primary,
+  },
+  responseLabel: { fontSize: 12, fontWeight: '600', color: colors.muted },
+  disputeBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  disputeBtnText: { color: colors.primaryFg, fontSize: 16, fontWeight: '600' },
+});
