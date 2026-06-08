@@ -203,6 +203,8 @@ Per fornire dati utili al client per gestire l'errore:
 | `tenants.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/tenants/me con chiave non in schema (es. vatNumber, status, plan) | F-OFF-007 |
 | `me.profile.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/me/profile con body vuoto o senza campi edibili | F-CLI-004 |
 | `me.profile.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/me/profile con chiave non in schema (es. email, status) | F-CLI-004 |
+| `me.notification-preferences.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/me/notification-preferences con body vuoto o senza preferenze edibili | F-CLI-005 |
+| `me.notification-preferences.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/me/notification-preferences con chiave fuori schema (transfer_invitation, push, dispute_response) o valore non booleano | F-CLI-005, BR-260 |
 | `me.vehicle.claim.code_not_found` | 404 | info | Codice non trovato | POST /v1/me/vehicles/claim con garageCode inesistente | F-CLI-101 (BR-042) |
 | `me.vehicle.claim.owned_by_other` | 409 | info | Veicolo di un altro cliente | POST /v1/me/vehicles/claim su veicolo con ownership attiva di altro cliente (usare passaggio di proprietà) | F-CLI-101 (BR-042) |
 | `me.vehicle.claim.pending` | 422 | info | Veicolo non certificato | POST /v1/me/vehicles/claim su veicolo pending | F-CLI-101 (BR-042) |
@@ -950,6 +952,8 @@ location.cannot_disable_last
 location.cannot_remove_primary
 location.not_found
 location.not_in_tenant
+me.notification-preferences.update.empty_body
+me.notification-preferences.update.unknown_field
 notification.push_token.already_registered
 notification.push_token.invalid
 notification.rate_limit
