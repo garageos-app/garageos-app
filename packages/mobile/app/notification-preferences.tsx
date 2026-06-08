@@ -1,9 +1,18 @@
-import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import {
   useNotificationPreferences,
   useUpdateNotificationPreference,
 } from '@/queries/notificationPreferences';
+import { useRegisterPushToken, useDeletePushToken } from '@/queries/pushTokens';
+import {
+  ensurePushPermission,
+  getPushPermissionStatus,
+  getDevicePushToken,
+  buildRegistrationPayload,
+} from '@/lib/push';
+import { readPushTokenId } from '@/lib/push-token-storage';
 import { EDITABLE_EMAIL_KEYS, type EditableEmailKey } from '@/lib/types/notification-preferences';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
@@ -24,6 +33,76 @@ export default function NotificationPreferencesScreen() {
   const prefs = useNotificationPreferences();
   const update = useUpdateNotificationPreference();
 
+  // Device-level push opt-in (F-CLI-302). Declared before the early returns
+  // below so hook order stays stable across loading/error renders.
+  const register = useRegisterPushToken();
+  const del = useDeletePushToken();
+  const [pushOn, setPushOn] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  // Once the user toggles, the async mount refresh must not clobber the
+  // resulting state (its later-resolving setState would otherwise win).
+  const interacted = useRef(false);
+
+  // Initial state: ON only when OS permission is granted AND we hold a stored
+  // token id. When granted, silently refresh the token (idempotent upsert;
+  // absorbs rotation). Best-effort — a failed refresh never surfaces an error.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const status = await getPushPermissionStatus();
+      const id = await readPushTokenId();
+      if (cancelled || interacted.current) return;
+      setBlocked(status === 'blocked');
+      setPushOn(status === 'granted' && !!id);
+      if (status === 'granted') {
+        try {
+          const token = await getDevicePushToken();
+          await register.mutateAsync(buildRegistrationPayload(token));
+          if (!cancelled && !interacted.current) setPushOn(true);
+        } catch {
+          // ignore — best-effort refresh
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onTogglePush = async (next: boolean) => {
+    interacted.current = true;
+    if (next) {
+      const perm = await ensurePushPermission();
+      if (perm === 'blocked') {
+        setBlocked(true);
+        setPushOn(false);
+        return;
+      }
+      if (perm !== 'granted') {
+        setPushOn(false);
+        return;
+      }
+      setBlocked(false);
+      try {
+        const token = await getDevicePushToken();
+        await register.mutateAsync(buildRegistrationPayload(token));
+        setPushOn(true);
+      } catch {
+        setPushOn(false);
+      }
+    } else {
+      const id = await readPushTokenId();
+      if (id) {
+        try {
+          await del.mutateAsync(id);
+        } catch {
+          // best-effort
+        }
+      }
+      setPushOn(false);
+    }
+  };
+
   if (prefs.isError) {
     const code = prefs.error instanceof ApiError ? prefs.error.code : undefined;
     return <ErrorState message={mapErrorToUserMessage(code)} onRetry={prefs.refetch} />;
@@ -38,6 +117,25 @@ export default function NotificationPreferencesScreen() {
     <>
       <Stack.Screen options={{ headerShown: true, title: 'Notifiche' }} />
       <ScrollView style={styles.container} contentContainerStyle={styles.body}>
+        <Text style={styles.sectionTitle}>Dispositivo</Text>
+        <View style={styles.row}>
+          <Text style={styles.label}>Notifiche su questo dispositivo</Text>
+          <Switch
+            testID="toggle-device-push"
+            accessibilityLabel="Notifiche su questo dispositivo"
+            value={pushOn}
+            onValueChange={(v) => void onTogglePush(v)}
+          />
+        </View>
+        {blocked && (
+          <Pressable onPress={() => void Linking.openSettings()}>
+            <Text style={styles.hint}>
+              Le notifiche sono disattivate. Abilitale nelle impostazioni del dispositivo.
+            </Text>
+          </Pressable>
+        )}
+
+        <Text style={styles.sectionTitle}>Email</Text>
         {EDITABLE_EMAIL_KEYS.map((key) => (
           <View key={key} style={styles.row}>
             <Text style={styles.label}>{LABELS[key]}</Text>
@@ -62,6 +160,12 @@ export default function NotificationPreferencesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   body: { padding: spacing.lg, gap: spacing.md },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.muted,
+    marginTop: spacing.sm,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
