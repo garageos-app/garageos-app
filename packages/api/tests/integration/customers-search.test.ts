@@ -383,4 +383,129 @@ describe('GET /v1/customers/search (integration)', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it('matches by phone (exact stored value)', async () => {
+    const { tenantId } = await createTenantWithLocation('cs-phone-exact');
+    const cognitoSub = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    await createUser({ tenantId, cognitoSub });
+
+    const { customerId: match } = await createCustomer({
+      firstName: 'Anna',
+      lastName: 'Neri',
+      phone: '3331234567',
+    });
+    const { customerId: other } = await createCustomer({
+      firstName: 'Luca',
+      lastName: 'Gialli',
+      phone: '3339999999',
+    });
+    await createCustomerTenantRelation({ tenantId, customerId: match });
+    await createCustomerTenantRelation({ tenantId, customerId: other });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/customers/search?q=3331234567',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: Array<{ id: string }> };
+    expect(body.data.map((c) => c.id)).toEqual([match]);
+    expect(body.data.map((c) => c.id)).not.toContain(other);
+  });
+
+  it('matches a spaced phone query against a stored value with separators (substring-per-token)', async () => {
+    const { tenantId } = await createTenantWithLocation('cs-phone-spaced');
+    const cognitoSub = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    await createUser({ tenantId, cognitoSub });
+
+    const { customerId } = await createCustomer({
+      firstName: 'Marco',
+      lastName: 'Blu',
+      phone: '+39 333 1234567',
+    });
+    await createCustomerTenantRelation({ tenantId, customerId });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    // Query "333 1234567" → tokens ["333","1234567"], both substrings of the
+    // stored "+39 333 1234567" → AND match.
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/customers/search?q=${encodeURIComponent('333 1234567')}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: Array<{ id: string }> };
+    expect(body.data.map((c) => c.id)).toEqual([customerId]);
+  });
+
+  it('does NOT match phone of a customer not related to the calling tenant (BR-151)', async () => {
+    const { tenantId: tenantA } = await createTenantWithLocation('cs-phone-scope-A');
+    const { tenantId: tenantB } = await createTenantWithLocation('cs-phone-scope-B');
+    const cognitoSub = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    await createUser({ tenantId: tenantB, cognitoSub });
+
+    const { customerId } = await createCustomer({
+      firstName: 'Hidden',
+      lastName: 'Phone',
+      phone: '3335550000',
+    });
+    await createCustomerTenantRelation({ tenantId: tenantA, customerId });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId: tenantB,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/customers/search?q=3335550000',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ data: [], meta: { has_more: false } });
+  });
+
+  it('does NOT match on email / taxCode / vatNumber via q (PII surface regression)', async () => {
+    const { tenantId } = await createTenantWithLocation('cs-no-pii-match');
+    const cognitoSub = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    await createUser({ tenantId, cognitoSub });
+
+    const { customerId } = await createCustomer({
+      firstName: 'Privacy',
+      lastName: 'Guard',
+      email: 'unique-pii-token@example.it',
+      isBusiness: true,
+      businessName: 'Guard Srl',
+      vatNumber: 'IT99887766554',
+    });
+    await createCustomerTenantRelation({ tenantId, customerId });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    for (const needle of ['unique-pii-token', 'IT99887766554']) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/customers/search?q=${encodeURIComponent(needle)}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { data: unknown[] }).data).toEqual([]);
+    }
+  });
 });

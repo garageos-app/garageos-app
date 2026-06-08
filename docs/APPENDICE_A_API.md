@@ -1059,11 +1059,11 @@ Authorization: Bearer <officina_user_jwt>
 
 ---
 
-### 2.8 `GET /v1/customers/search` — Autocomplete cliente officina
+### 2.8 `GET /v1/customers/search` — Ricerca cliente officina
 
 #### Descrizione
 
-Ricerca tenant-scoped di customer per nome / ragione sociale, pensata per autocomplete operatore officina nel form `intervention create`. Ritorna solo customer presenti in `customer_tenant_relations` per il tenant chiamante (BR-151 soddisfatto by-construction dalla JOIN: ogni riga ritornata è già relata, niente PII redaction necessaria).
+Ricerca tenant-scoped di customer per nome / ragione sociale / telefono, usata sia dall'autocomplete operatore nel form `intervention create` sia dalla barra di ricerca globale (F-OFF-502). Ritorna solo customer presenti in `customer_tenant_relations` per il tenant chiamante (BR-151 soddisfatto by-construction dalla JOIN: ogni riga ritornata è già relata, niente PII redaction necessaria).
 
 Complementa `GET /v1/vehicles/search?customer=<uuid>` (PR #76): questo endpoint trova il customer per nome digitato, l'altro filtra i veicoli del customer scelto.
 
@@ -1077,7 +1077,7 @@ Complementa `GET /v1/vehicles/search?customer=<uuid>` (PR #76): questo endpoint 
 
 | Nome | Tipo | Required | Default | Note |
 |---|---|---|---|---|
-| `q` | string | sì | — | Min 2, max 60 char. Match ILIKE substring case-insensitive su `firstName`, `lastName`, `businessName`. |
+| `q` | string | sì | — | Min 2, max 60 char. Match ILIKE substring case-insensitive su `firstName`, `lastName`, `businessName`, `phone` (telefono aggiunto in F-OFF-502). Token whitespace-split: AND tra token, OR tra colonne. |
 | `limit` | integer | no | 20 | 1-50. |
 | `cursor` | string | no | — | Cursor opaco base64url ritornato dalla `meta.cursor` di una response precedente. |
 
@@ -2356,7 +2356,7 @@ Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conse
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
-| GET | `/customers/search` | F-OFF-202 | Tenant User | **[DETTAGLIATO §2.8]** Autocomplete cliente per nome/ragione sociale (tenant-scoped) |
+| GET | `/customers/search` | F-OFF-202, F-OFF-502 | Tenant User | **[DETTAGLIATO §2.8]** Ricerca cliente per nome/ragione sociale/telefono (tenant-scoped) |
 | GET | `/customers` | F-OFF-202 | Tenant User | **[DETTAGLIATO §2.8b]** Lista clienti del tenant (con ricerca) |
 | POST | `/customers` | F-OFF-201 | Tenant User | **[DETTAGLIATO §2.9b]** Crea nuovo cliente (dedupe email + link CTR) |
 | GET | `/customers/:id` | F-OFF-203 | Tenant User | **[DETTAGLIATO §2.9]** Dettaglio cliente officina (BR-151) |

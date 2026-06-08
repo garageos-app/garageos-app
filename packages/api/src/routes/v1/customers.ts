@@ -6,16 +6,18 @@ import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 
-// E2 customer autocomplete (Persona Giuseppe demo). Tenant-scoped via
-// the customer_tenant_relations JOIN — see
+// E2 customer search (officina). Tenant-scoped via the
+// customer_tenant_relations JOIN — see
 // docs/superpowers/specs/2026-05-09-api-customers-search-endpoint-design.md
 // §2.3 for the BR-151 rationale (customers_read RLS is permissive,
 // PII gating happens in WHERE here).
 //
-// q matches firstName / lastName / businessName only. email / taxCode /
-// vatNumber are intentionally NOT matchable via q to keep PII exposure
-// from the search surface low; email is still returned in the DTO because
-// the calling tenant is by construction related to every returned customer.
+// q matches firstName / lastName / businessName / phone (phone added in
+// F-OFF-502 — the global search bar must find customers by phone). email /
+// taxCode / vatNumber are intentionally NOT matchable via q to keep PII
+// exposure from the search surface low; email is still returned in the DTO
+// because the calling tenant is by construction related to every returned
+// customer.
 
 const searchQuerySchema = z.object({
   q: z.string().trim().min(2).max(60),
@@ -63,6 +65,12 @@ const customerRoutes: FastifyPluginAsync = async (app) => {
                 { firstName: { contains: token, mode: 'insensitive' as const } },
                 { lastName: { contains: token, mode: 'insensitive' as const } },
                 { businessName: { contains: token, mode: 'insensitive' as const } },
+                // F-OFF-502: phone is searchable from the global search bar.
+                // Substring-per-token tolerates separators on the stored side
+                // (token "1234567" matches "+39 333 1234567"). email/taxCode/
+                // vatNumber stay non-matchable (PII surface). Results remain
+                // tenant-scoped via the CTR join below (BR-151).
+                { phone: { contains: token, mode: 'insensitive' as const } },
               ],
             })),
           },
