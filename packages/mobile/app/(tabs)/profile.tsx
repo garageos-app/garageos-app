@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/useAuth';
 import { useMe, useUpdateMeProfile } from '@/queries/me';
+import { useDeletePushToken } from '@/queries/pushTokens';
+import { readPushTokenId } from '@/lib/push-token-storage';
 import { ProfileForm, type ProfileFormResult } from '@/components/ProfileForm';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
@@ -17,7 +19,20 @@ export default function ProfileScreen() {
   const router = useRouter();
   const me = useMe();
   const update = useUpdateMeProfile();
+  const delPush = useDeletePushToken();
   const [editing, setEditing] = useState(false);
+
+  async function handleSignOut(): Promise<void> {
+    // Best-effort: stop this device receiving pushes for the account.
+    // Never block logout on a failed deregistration.
+    try {
+      const id = await readPushTokenId();
+      if (id) await delPush.mutateAsync(id);
+    } catch {
+      // ignore
+    }
+    await signOut();
+  }
 
   async function onSubmit(body: UpdateMeProfileBody): Promise<ProfileFormResult> {
     try {
@@ -87,7 +102,7 @@ export default function ProfileScreen() {
       </Pressable>
 
       <Pressable
-        onPress={() => void signOut()}
+        onPress={() => void handleSignOut()}
         accessibilityRole="button"
         style={({ pressed }) => [styles.signOut, pressed && styles.signOutPressed]}
       >

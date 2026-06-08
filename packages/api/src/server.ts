@@ -40,6 +40,7 @@ import meVehicleRoutes from './routes/v1/me-vehicles.js';
 import mePrivateInterventionRoutes from './routes/v1/me-private-interventions.js';
 import meProfileRoutes from './routes/v1/me-profile.js';
 import meNotificationPreferencesRoutes from './routes/v1/me-notification-preferences.js';
+import mePushTokensRoutes from './routes/v1/me-push-tokens.js';
 import userRoutes from './routes/v1/users.js';
 import userUpdateRoutes from './routes/v1/users-update.js';
 import userAvatarRoutes from './routes/v1/users-avatar.js';
@@ -207,6 +208,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(mePrivateInterventionRoutes);
   await app.register(meProfileRoutes);
   await app.register(meNotificationPreferencesRoutes);
+  await app.register(mePushTokensRoutes);
 
   // Echo the request id back so clients can correlate. Fastify sets
   // this by default for 2xx responses; doing it via onSend covers
