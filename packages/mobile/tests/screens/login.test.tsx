@@ -67,6 +67,24 @@ describe('Login screen', () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/(tabs)'));
   });
 
+  it('redirects to the pre-filled claim when ?claimCode is present on success', async () => {
+    const replace = jest.fn();
+    mockedRouter.mockReturnValue({ replace, push: jest.fn() });
+    mockedParams.mockReturnValue({ claimCode: 'GO-482-KXRT' });
+    mockedCognito.signInSrp.mockResolvedValue({
+      idToken: 'id',
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      customerId: 'cust',
+      email: 'u@example.com',
+    });
+    await renderLogin();
+    fireEvent.changeText(screen.getByPlaceholderText('Email'), 'u@example.com');
+    fireEvent.changeText(screen.getByPlaceholderText('Password'), 'pwd123abc');
+    fireEvent.press(screen.getByRole('button', { name: 'Accedi' }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/claim-vehicle?code=GO-482-KXRT'));
+  });
+
   it('shows IT banner for NotAuthorizedException', async () => {
     mockedCognito.signInSrp.mockRejectedValue(
       Object.assign(new Error('not auth'), { code: 'NotAuthorizedException' }),

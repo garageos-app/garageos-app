@@ -19,10 +19,11 @@ export type ClaimVehicleFormResult = { ok: true } | { ok: false; code: string; m
 type Props = {
   onSubmit: (garageCode: string) => Promise<ClaimVehicleFormResult>;
   onCancel: () => void;
+  initialCode?: string;
 };
 
-export function ClaimVehicleForm({ onSubmit, onCancel }: Props) {
-  const [code, setCode] = useState('');
+export function ClaimVehicleForm({ onSubmit, onCancel, initialCode }: Props) {
+  const [code, setCode] = useState(initialCode ?? '');
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   const [banner, setBanner] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
