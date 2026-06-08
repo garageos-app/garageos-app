@@ -17,6 +17,11 @@ function makeState(overrides: Record<string, unknown> = {}) {
         ownership_transfer: true,
         marketing: false,
       },
+      push: {
+        intervention_updates: true,
+        deadline_reminder: false,
+        ownership_transfer: true,
+      },
     },
     ...overrides,
   };
@@ -61,10 +66,27 @@ describe('NotificationPreferences screen', () => {
     expect(screen.getByTestId('toggle-marketing').props.value).toBe(false);
   });
 
-  it('flipping a toggle calls mutate with key and new value', () => {
+  it('flipping an email toggle calls mutate with the email channel', () => {
     render(<NotificationPreferencesScreen />);
     fireEvent(screen.getByTestId('toggle-marketing'), 'valueChange', true);
-    expect(mockMutate).toHaveBeenCalledWith({ key: 'marketing', value: true });
+    expect(mockMutate).toHaveBeenCalledWith({ channel: 'email', key: 'marketing', value: true });
+  });
+
+  it('renders the push toggles reflecting current values', () => {
+    render(<NotificationPreferencesScreen />);
+    expect(screen.getByTestId('toggle-push-intervention_updates').props.value).toBe(true);
+    expect(screen.getByTestId('toggle-push-deadline_reminder').props.value).toBe(false);
+    expect(screen.getByTestId('toggle-push-ownership_transfer').props.value).toBe(true);
+  });
+
+  it('flipping a push toggle calls mutate with the push channel', () => {
+    render(<NotificationPreferencesScreen />);
+    fireEvent(screen.getByTestId('toggle-push-deadline_reminder'), 'valueChange', true);
+    expect(mockMutate).toHaveBeenCalledWith({
+      channel: 'push',
+      key: 'deadline_reminder',
+      value: true,
+    });
   });
 
   it('shows the loading state (no toggles)', () => {

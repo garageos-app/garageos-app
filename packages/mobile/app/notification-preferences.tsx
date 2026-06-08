@@ -13,7 +13,12 @@ import {
   buildRegistrationPayload,
 } from '@/lib/push';
 import { readPushTokenId } from '@/lib/push-token-storage';
-import { EDITABLE_EMAIL_KEYS, type EditableEmailKey } from '@/lib/types/notification-preferences';
+import {
+  EDITABLE_EMAIL_KEYS,
+  EDITABLE_PUSH_KEYS,
+  type EditableEmailKey,
+  type EditablePushKey,
+} from '@/lib/types/notification-preferences';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
 import { ApiError } from '@/lib/api-error';
@@ -27,6 +32,13 @@ const LABELS: Record<EditableEmailKey, string> = {
   deadline_reminder: 'Promemoria scadenze',
   ownership_transfer: 'Trasferimenti di proprietà',
   marketing: 'Novità e promozioni',
+};
+
+// Italian labels for the editable push events. Order follows EDITABLE_PUSH_KEYS.
+const PUSH_LABELS: Record<EditablePushKey, string> = {
+  intervention_updates: 'Aggiornamenti interventi',
+  deadline_reminder: 'Promemoria scadenze',
+  ownership_transfer: 'Trasferimenti di proprietà',
 };
 
 export default function NotificationPreferencesScreen() {
@@ -112,6 +124,7 @@ export default function NotificationPreferencesScreen() {
   if (prefs.isLoading || !prefs.data) return <LoadingState variant="fullscreen" />;
 
   const email = prefs.data.email;
+  const push = prefs.data.push;
 
   return (
     <>
@@ -135,6 +148,22 @@ export default function NotificationPreferencesScreen() {
           </Pressable>
         )}
 
+        <Text style={styles.sectionTitle}>Push</Text>
+        <Text style={styles.hint}>
+          Le notifiche push richiedono anche le notifiche abilitate su questo dispositivo (sopra).
+        </Text>
+        {EDITABLE_PUSH_KEYS.map((key) => (
+          <View key={key} style={styles.row}>
+            <Text style={styles.label}>{PUSH_LABELS[key]}</Text>
+            <Switch
+              testID={`toggle-push-${key}`}
+              accessibilityLabel={`Push: ${PUSH_LABELS[key]}`}
+              value={push[key]}
+              onValueChange={(value) => update.mutate({ channel: 'push', key, value })}
+            />
+          </View>
+        ))}
+
         <Text style={styles.sectionTitle}>Email</Text>
         {EDITABLE_EMAIL_KEYS.map((key) => (
           <View key={key} style={styles.row}>
@@ -143,7 +172,7 @@ export default function NotificationPreferencesScreen() {
               testID={`toggle-${key}`}
               accessibilityLabel={LABELS[key]}
               value={email[key]}
-              onValueChange={(value) => update.mutate({ key, value })}
+              onValueChange={(value) => update.mutate({ channel: 'email', key, value })}
             />
           </View>
         ))}
