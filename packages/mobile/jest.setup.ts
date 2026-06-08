@@ -43,11 +43,30 @@ jest.mock('@expo/vector-icons', () => {
   );
 });
 
-// expo-constants: empty extra config (env vars read directly via process.env.EXPO_PUBLIC_*)
+// expo-constants: env vars read directly via process.env.EXPO_PUBLIC_*; extra
+// carries the EAS projectId (push token acquisition) and the app version.
 jest.mock('expo-constants', () => ({
+  // __esModule so the `import Constants from 'expo-constants'` default-import
+  // interop returns this object directly (otherwise Babel double-wraps it and
+  // Constants.expoConfig reads undefined).
+  __esModule: true,
   default: {
     expoConfig: {
-      extra: {},
+      version: '0.1.0',
+      extra: { eas: { projectId: 'jest-project' } },
     },
   },
 }));
+
+// expo-notifications: in-memory permission + token. Tests override via the
+// mocked fns. Default = granted + a well-formed Expo push token.
+jest.mock('expo-notifications', () => ({
+  getPermissionsAsync: jest.fn(async () => ({ status: 'granted', canAskAgain: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ status: 'granted', canAskAgain: true })),
+  getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExpoPushToken[jest]' })),
+  setNotificationChannelAsync: jest.fn(async () => undefined),
+  AndroidImportance: { DEFAULT: 3 },
+}));
+
+// expo-device: stable device name for BR-254 upsert fixtures.
+jest.mock('expo-device', () => ({ deviceName: 'Jest Device' }));

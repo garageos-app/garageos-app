@@ -22,10 +22,16 @@
         {
           "cameraPermission": "Consenti a GarageOS di usare la camera per scansionare il QR del tag veicolo."
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "TODO-set-via-eas-init"
+      }
     }
   }
 }
