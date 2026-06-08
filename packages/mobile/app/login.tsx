@@ -20,7 +20,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function Login() {
   const { signIn } = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams<{ reset?: string }>();
+  const params = useLocalSearchParams<{ reset?: string; claimCode?: string }>();
   const justReset = params.reset === '1';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,7 +40,9 @@ export default function Login() {
     setSubmitting(true);
     try {
       await signIn(email.trim(), password);
-      router.replace('/(tabs)');
+      // A deep-link claim deferred through login (app/v/[code].tsx) carries the
+      // code in ?claimCode; land the user on the pre-filled claim form.
+      router.replace(params.claimCode ? `/claim-vehicle?code=${params.claimCode}` : '/(tabs)');
     } catch (e) {
       const code = (e as { code?: string } | null)?.code;
       setError(mapErrorToUserMessage(code));
