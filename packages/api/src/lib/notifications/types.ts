@@ -79,6 +79,14 @@ export type EmailEnabledKey =
   | 'dispute_response'
   | 'ownership_transfer';
 
+// The three preference keys an event can map to. Subset of EmailEnabledKey,
+// and all present in DEFAULT_NOTIFICATION_PREFERENCES.push — so it types both
+// the email and push gating lookups.
+export type NotificationEventPrefKey =
+  | 'intervention_updates'
+  | 'deadline_reminder'
+  | 'ownership_transfer';
+
 export interface CustomerForNotification {
   id: string;
   email: string;
@@ -90,8 +98,21 @@ export interface CustomerForNotification {
   status: 'active' | 'pending_verification' | 'deleted';
 }
 
+export interface PushDispatchResult {
+  attempted: number; // active, valid tokens we tried
+  sent: number; // tickets with status 'ok'
+  skipped?: 'pref-off' | 'no-token';
+  deactivated: number; // tokens marked active=false (BR-254)
+  appInstalledCleared: boolean; // true when the last active token died -> app_installed=false
+  error?: string; // channel-level send failure (whole batch)
+}
+
 export interface DispatchResult {
+  // EMAIL outcome — semantics unchanged (scheduler derives delivery_status).
   sent: boolean;
   skipped?: 'pref-off' | 'no-recipient' | 'invalid-email';
   error?: string;
+  // PUSH outcome — additive, best-effort, logging-only. Present only when a
+  // DB context (tx or app) was supplied to dispatchNotification.
+  push?: PushDispatchResult;
 }

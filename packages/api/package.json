@@ -28,6 +28,7 @@
     "@fastify/sensible": "^6.0.4",
     "@garageos/database": "workspace:*",
     "aws-jwt-verify": "^5.1.1",
+    "expo-server-sdk": "^6.1.0",
     "fastify": "^5.8.5",
     "fastify-plugin": "^5.1.0",
     "pdf-lib": "^1.17.1",

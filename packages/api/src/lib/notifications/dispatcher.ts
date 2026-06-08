@@ -1,7 +1,10 @@
+import type { PrismaClient } from '@garageos/database';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { sendEmail } from './email-channel.js';
+import { preferenceKeyForEvent } from './event-preference-key.js';
 import { isEmailEnabled } from './preferences.js';
+import { dispatchPush, type AdminRunner } from './push-channel.js';
 import {
   renderDeadlineReminderHtml,
   renderDeadlineReminderSubject,
@@ -25,43 +28,76 @@ import {
 import type {
   CustomerForNotification,
   DispatchResult,
-  EmailEnabledKey,
   NotificationEvent,
+  PushDispatchResult,
 } from './types.js';
+
+// Structural subset of FastifyInstance (and scheduler AppLike): just the
+// withContext decorator the dispatcher needs to open an admin context for push
+// when the caller is NOT already inside one.
+interface DispatcherAppLike {
+  withContext: <T>(
+    ctx: { role?: 'admin' | 'user'; tenantId?: string; customerId?: string },
+    fn: (tx: PrismaClient) => Promise<T>,
+  ) => Promise<T>;
+}
 
 interface DispatchInput {
   event: NotificationEvent;
   recipient: CustomerForNotification;
   logger: FastifyBaseLogger;
+  // Push context. Routes pass `app` (post-commit, no open tx) → the push
+  // channel opens its own admin context. The scheduler passes `tx` (its open
+  // admin tx) to reuse it. When neither is provided, push is skipped entirely
+  // (back-compat for email-only callers and unit tests).
+  app?: DispatcherAppLike;
+  tx?: PrismaClient;
 }
 
-// Maps each event type to the corresponding notification preference key.
-// intervention.* events are gated by intervention_updates; deadline
-// reminders are gated by deadline_reminder (both keys exist in EmailEnabledKey
-// since H1 forward-planning).
-function preferenceKeyForEvent(event: NotificationEvent): EmailEnabledKey {
-  switch (event.type) {
-    case 'intervention.revised':
-    case 'intervention.cancelled':
-      return 'intervention_updates';
-    case 'deadline.reminder':
-      return 'deadline_reminder';
-    case 'ownership.transferred':
-      return 'ownership_transfer';
-  }
-}
+type EmailOutcome = Pick<DispatchResult, 'sent' | 'skipped' | 'error'>;
 
-// Single entry point for all H1/H3 notifications. Channel-agnostic shape:
-// H2 will extend this to fan out to push + email; the handler call site
-// stays unchanged.
-//
-// CONTRACT: dispatchNotification NEVER throws. All errors are captured
-// into the returned DispatchResult and logged. Callers (handlers) rely
-// on this guarantee — no outer try/catch needed at the call site.
+// CONTRACT: dispatchNotification NEVER throws. All errors are captured into the
+// returned DispatchResult and logged. Email and push are dispatched
+// independently (BR-250): one being off/failing never suppresses the other.
 export async function dispatchNotification(input: DispatchInput): Promise<DispatchResult> {
-  const { event, recipient, logger } = input;
-
+  const { event, recipient, logger, app, tx } = input;
   const prefKey = preferenceKeyForEvent(event);
+
+  const email = await dispatchEmail({ event, recipient, logger, prefKey });
+
+  // Push runs only when a DB context is available.
+  const run: AdminRunner | null = tx
+    ? (fn) => fn(tx)
+    : app
+      ? (fn) => app.withContext({ role: 'admin' }, fn)
+      : null;
+
+  let push: PushDispatchResult | undefined;
+  if (run) {
+    try {
+      push = await dispatchPush({ event, recipient, run, logger });
+    } catch (err) {
+      // dispatchPush is best-effort and should not throw, but the contract is
+      // enforced here too so a push failure never breaks the email result.
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error({
+        push: { event: event.type, recipientId: recipient.id, result: 'error', error },
+      });
+      push = { attempted: 0, sent: 0, deactivated: 0, appInstalledCleared: false, error };
+    }
+  }
+
+  return push ? { ...email, push } : email;
+}
+
+async function dispatchEmail(args: {
+  event: NotificationEvent;
+  recipient: CustomerForNotification;
+  logger: FastifyBaseLogger;
+  prefKey: ReturnType<typeof preferenceKeyForEvent>;
+}): Promise<EmailOutcome> {
+  const { event, recipient, logger, prefKey } = args;
+
   if (!isEmailEnabled(recipient, prefKey)) {
     logger.info({
       notification: {
@@ -134,11 +170,7 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
   try {
     await sendEmail({ toAddress: recipient.email, subject, html, text });
     logger.info({
-      notification: {
-        event: event.type,
-        recipientId: recipient.id,
-        result: 'sent',
-      },
+      notification: { event: event.type, recipientId: recipient.id, result: 'sent' },
     });
     return { sent: true };
   } catch (err) {

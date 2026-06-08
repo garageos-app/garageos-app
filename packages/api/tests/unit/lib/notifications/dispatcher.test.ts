@@ -2,12 +2,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { mockClient } from 'aws-sdk-client-mock';
 
+import type { PrismaClient } from '@garageos/database';
 import { dispatchNotification } from '../../../../src/lib/notifications/dispatcher.js';
 import type {
   CustomerForNotification,
   NotificationEvent,
 } from '../../../../src/lib/notifications/types.js';
 import { _resetSesClientForTests } from '../../../../src/lib/ses-client.js';
+
+const dispatchPushMock = vi.fn();
+vi.mock('../../../../src/lib/notifications/push-channel.js', () => ({
+  dispatchPush: (args: unknown) => dispatchPushMock(args),
+}));
+
+// Fake app whose withContext just runs the callback with a dummy tx — the
+// push channel is mocked, so the tx is never really used.
+function fakeApp() {
+  return {
+    withContext: <T>(_ctx: unknown, fn: (tx: PrismaClient) => Promise<T>) => fn({} as PrismaClient),
+  };
+}
 
 process.env.AWS_ACCESS_KEY_ID ??= 'test';
 process.env.AWS_SECRET_ACCESS_KEY ??= 'test';
@@ -219,5 +233,86 @@ describe('dispatchNotification — ownership.transferred', () => {
     const result = await dispatchNotification({ event, recipient: optedOut, logger: fakeLogger });
     expect(result).toEqual({ sent: false, skipped: 'pref-off' });
     expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+  });
+});
+
+describe('dispatchNotification — push fan-out', () => {
+  beforeEach(() => {
+    sesMock.reset();
+    _resetSesClientForTests();
+    vi.clearAllMocks();
+    dispatchPushMock.mockReset();
+    process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
+    process.env.SES_CONFIGURATION_SET = 'test-config-set';
+  });
+
+  it('does NOT attempt push when neither app nor tx is provided', async () => {
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'm' });
+    const result = await dispatchNotification({
+      event: revisedEvent,
+      recipient: baseRecipient,
+      logger: fakeLogger,
+    });
+    expect(result.push).toBeUndefined();
+    expect(dispatchPushMock).not.toHaveBeenCalled();
+  });
+
+  it('attempts push (via app) even when email is preference-off', async () => {
+    dispatchPushMock.mockResolvedValue({
+      attempted: 1,
+      sent: 1,
+      deactivated: 0,
+      appInstalledCleared: false,
+    });
+    const recipient = {
+      ...baseRecipient,
+      notificationPreferences: { email: { intervention_updates: false } },
+    };
+    const result = await dispatchNotification({
+      event: revisedEvent,
+      recipient,
+      logger: fakeLogger,
+      app: fakeApp(),
+    });
+    expect(result.sent).toBe(false);
+    expect(result.skipped).toBe('pref-off');
+    expect(dispatchPushMock).toHaveBeenCalledTimes(1);
+    expect(result.push).toEqual({
+      attempted: 1,
+      sent: 1,
+      deactivated: 0,
+      appInstalledCleared: false,
+    });
+  });
+
+  it('sends both channels when both are enabled', async () => {
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'm' });
+    dispatchPushMock.mockResolvedValue({
+      attempted: 2,
+      sent: 2,
+      deactivated: 0,
+      appInstalledCleared: false,
+    });
+    const result = await dispatchNotification({
+      event: revisedEvent,
+      recipient: baseRecipient,
+      logger: fakeLogger,
+      app: fakeApp(),
+    });
+    expect(result.sent).toBe(true);
+    expect(result.push?.sent).toBe(2);
+  });
+
+  it('email success is unaffected when the push channel rejects', async () => {
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'm' });
+    dispatchPushMock.mockRejectedValue(new Error('boom'));
+    const result = await dispatchNotification({
+      event: revisedEvent,
+      recipient: baseRecipient,
+      logger: fakeLogger,
+      app: fakeApp(),
+    });
+    expect(result.sent).toBe(true);
+    expect(result.push?.error).toMatch(/boom/);
   });
 });

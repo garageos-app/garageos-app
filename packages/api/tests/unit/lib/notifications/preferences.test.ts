@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isEmailEnabled } from '../../../../src/lib/notifications/preferences.js';
+import { isEmailEnabled, isPushEnabled } from '../../../../src/lib/notifications/preferences.js';
 import type { CustomerForNotification } from '../../../../src/lib/notifications/types.js';
 
 function makeCustomer(prefs: unknown): CustomerForNotification {
@@ -71,6 +71,36 @@ describe('isEmailEnabled', () => {
         makeCustomer({ email: { intervention_updates: false, deadline_reminder: true } }),
         'deadline_reminder',
       ),
+    ).toBe(true);
+  });
+});
+
+describe('isPushEnabled', () => {
+  it('returns the BR-226 default (true) when prefs are empty', () => {
+    expect(isPushEnabled(makeCustomer({}), 'intervention_updates')).toBe(true);
+  });
+
+  it('returns the BR-226 default when prefs are malformed', () => {
+    expect(isPushEnabled(makeCustomer(null), 'deadline_reminder')).toBe(true);
+    expect(isPushEnabled(makeCustomer([]), 'deadline_reminder')).toBe(true);
+    expect(isPushEnabled(makeCustomer({ push: 'nope' }), 'deadline_reminder')).toBe(true);
+  });
+
+  it('honors an explicit false override', () => {
+    expect(
+      isPushEnabled(makeCustomer({ push: { ownership_transfer: false } }), 'ownership_transfer'),
+    ).toBe(false);
+  });
+
+  it('honors an explicit true override', () => {
+    expect(
+      isPushEnabled(makeCustomer({ push: { intervention_updates: true } }), 'intervention_updates'),
+    ).toBe(true);
+  });
+
+  it('falls back to default when the value is not a boolean', () => {
+    expect(
+      isPushEnabled(makeCustomer({ push: { deadline_reminder: 'yes' } }), 'deadline_reminder'),
     ).toBe(true);
   });
 });

@@ -235,6 +235,7 @@ export const vehiclesOwnershipTransferRoutes: FastifyPluginAsync = async (app) =
           },
           recipient: result.previousOwner,
           logger: request.log,
+          app,
         });
       }
 

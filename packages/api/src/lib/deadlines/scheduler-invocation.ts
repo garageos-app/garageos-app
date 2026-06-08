@@ -151,6 +151,8 @@ export async function processSchedulerInvocation(input: {
       },
       recipient,
       logger: app.log,
+      app,
+      tx,
     });
 
     // Branch 4: customer disabled deadline reminders. Mark cancelled
