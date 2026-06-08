@@ -120,6 +120,7 @@ const tenant: TenantMeDto = {
   plan: 'pilot',
   billingStatus: 'ok',
   createdAt: '2026-05-15T00:00:00Z',
+  onboardingCompletedAt: '2026-05-15T00:00:00Z',
 };
 
 function wrap(ui: React.ReactNode, { initialPath = '/settings' }: { initialPath?: string } = {}) {

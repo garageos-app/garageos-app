@@ -16,6 +16,7 @@ export interface TenantMeDto {
   plan: string;
   billingStatus: string;
   createdAt: string;
+  onboardingCompletedAt: string | null;
 }
 
 export function useTenantMe(options: { enabled?: boolean } = {}) {
