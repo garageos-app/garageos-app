@@ -13,6 +13,11 @@ jest.mock('@/queries/notificationPreferences', () => ({
         ownership_transfer: true,
         marketing: false,
       },
+      push: {
+        intervention_updates: true,
+        deadline_reminder: true,
+        ownership_transfer: true,
+      },
     },
     refetch: jest.fn(),
   }),

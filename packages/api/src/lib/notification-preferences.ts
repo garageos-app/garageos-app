@@ -41,8 +41,27 @@ export const EDITABLE_EMAIL_KEYS = [
 
 export type EditableEmailKey = (typeof EDITABLE_EMAIL_KEYS)[number];
 
+// The subset of push channels a customer may edit via F-CLI-005. These are the
+// only push keys with real delivery today (NotificationEventPrefKey, gated by
+// isPushEnabled). Excludes transfer_invitation (BR-260, no push template) and
+// dispute_response (no consumer); push has no `marketing`.
+export const EDITABLE_PUSH_KEYS = [
+  'intervention_updates',
+  'deadline_reminder',
+  'ownership_transfer',
+] as const;
+
+export type EditablePushKey = (typeof EDITABLE_PUSH_KEYS)[number];
+
 export interface ProjectedNotificationPreferences {
   email: Record<EditableEmailKey, boolean>;
+  push: Record<EditablePushKey, boolean>;
+}
+
+function subObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 // Effective preferences for the editable keys: stored value when it is a
@@ -51,19 +70,21 @@ export interface ProjectedNotificationPreferences {
 export function projectNotificationPreferences(
   stored: Prisma.JsonValue,
 ): ProjectedNotificationPreferences {
-  const email =
-    stored && typeof stored === 'object' && !Array.isArray(stored)
-      ? (stored as Record<string, unknown>).email
-      : undefined;
-  const emailObj =
-    email && typeof email === 'object' && !Array.isArray(email)
-      ? (email as Record<string, unknown>)
-      : {};
+  const root = subObject(stored);
 
-  const out = {} as Record<EditableEmailKey, boolean>;
+  const emailObj = subObject(root.email);
+  const email = {} as Record<EditableEmailKey, boolean>;
   for (const key of EDITABLE_EMAIL_KEYS) {
     const value = emailObj[key];
-    out[key] = typeof value === 'boolean' ? value : DEFAULT_NOTIFICATION_PREFERENCES.email[key];
+    email[key] = typeof value === 'boolean' ? value : DEFAULT_NOTIFICATION_PREFERENCES.email[key];
   }
-  return { email: out };
+
+  const pushObj = subObject(root.push);
+  const push = {} as Record<EditablePushKey, boolean>;
+  for (const key of EDITABLE_PUSH_KEYS) {
+    const value = pushObj[key];
+    push[key] = typeof value === 'boolean' ? value : DEFAULT_NOTIFICATION_PREFERENCES.push[key];
+  }
+
+  return { email, push };
 }

@@ -12,6 +12,16 @@ export const EDITABLE_EMAIL_KEYS = [
 
 export type EditableEmailKey = (typeof EDITABLE_EMAIL_KEYS)[number];
 
+// Mirror of the API EDITABLE_PUSH_KEYS — the 3 push events with real delivery.
+export const EDITABLE_PUSH_KEYS = [
+  'intervention_updates',
+  'deadline_reminder',
+  'ownership_transfer',
+] as const;
+
+export type EditablePushKey = (typeof EDITABLE_PUSH_KEYS)[number];
+
 export interface NotificationPreferences {
   email: Record<EditableEmailKey, boolean>;
+  push: Record<EditablePushKey, boolean>;
 }

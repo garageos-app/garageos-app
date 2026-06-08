@@ -4,8 +4,10 @@ import { z } from 'zod';
 import { businessError } from '../../lib/business-error.js';
 import {
   EDITABLE_EMAIL_KEYS,
+  EDITABLE_PUSH_KEYS,
   projectNotificationPreferences,
   type EditableEmailKey,
+  type EditablePushKey,
 } from '../../lib/notification-preferences.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -30,7 +32,20 @@ const editableEmailSchema = z
   .partial()
   .strict();
 
-const patchBodySchema = z.object({ email: editableEmailSchema }).partial().strict();
+const editablePushSchema = z
+  .object(
+    Object.fromEntries(EDITABLE_PUSH_KEYS.map((k) => [k, z.boolean()])) as Record<
+      EditablePushKey,
+      z.ZodBoolean
+    >,
+  )
+  .partial()
+  .strict();
+
+const patchBodySchema = z
+  .object({ email: editableEmailSchema, push: editablePushSchema })
+  .partial()
+  .strict();
 
 const meNotificationPreferencesRoutes: FastifyPluginAsync = async (app) => {
   app.get(
@@ -66,7 +81,8 @@ const meNotificationPreferencesRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const email = parsed.data.email ?? {};
-      if (Object.keys(email).length === 0) {
+      const push = parsed.data.push ?? {};
+      if (Object.keys(email).length + Object.keys(push).length === 0) {
         throw businessError(
           'me.notification-preferences.update.empty_body',
           422,
@@ -91,9 +107,14 @@ const meNotificationPreferencesRoutes: FastifyPluginAsync = async (app) => {
           stored.email && typeof stored.email === 'object' && !Array.isArray(stored.email)
             ? (stored.email as Record<string, unknown>)
             : {};
+        const storedPush =
+          stored.push && typeof stored.push === 'object' && !Array.isArray(stored.push)
+            ? (stored.push as Record<string, unknown>)
+            : {};
 
         const mergedEmail = { ...storedEmail, ...email };
-        const merged = { ...stored, email: mergedEmail };
+        const mergedPush = { ...storedPush, ...push };
+        const merged = { ...stored, email: mergedEmail, push: mergedPush };
 
         const row = await tx.customer.update({
           where: { id: customerId },

@@ -15,6 +15,11 @@ const DEFAULTS = {
   ownership_transfer: true,
   marketing: false,
 };
+const PUSH_DEFAULTS = {
+  intervention_updates: true,
+  deadline_reminder: true,
+  ownership_transfer: true,
+};
 
 describe('Customer notification preferences (F-CLI-005)', () => {
   let app: FastifyInstance;
@@ -117,13 +122,76 @@ describe('Customer notification preferences (F-CLI-005)', () => {
     expect((await patch(token, { email: { transfer_invitation: true } })).statusCode).toBe(422);
   });
 
-  it('PATCH with a push.* key returns 422', async () => {
+  it('GET returns push effective defaults too', async () => {
     const { token } = await authCustomer({});
-    expect((await patch(token, { push: { intervention_updates: false } })).statusCode).toBe(422);
+    const res = await get(token);
+    expect((res.json() as { push: unknown }).push).toEqual(PUSH_DEFAULTS);
+  });
+
+  it('PATCH updates a push key and GET reflects it', async () => {
+    const { token } = await authCustomer({});
+    const patchRes = await patch(token, { push: { deadline_reminder: false } });
+    expect(patchRes.statusCode).toBe(200);
+    const getRes = await get(token);
+    expect((getRes.json() as { push: unknown }).push).toEqual({
+      ...PUSH_DEFAULTS,
+      deadline_reminder: false,
+    });
+  });
+
+  it('PATCH merges push onto existing prefs and preserves non-editable push keys', async () => {
+    // dispute_response is a stored push key outside the editable surface; it must
+    // survive the merge. intervention_updates seeded off proves merge (not replace).
+    const { token } = await authCustomer({
+      push: { intervention_updates: false, dispute_response: true },
+    });
+    const patchRes = await patch(token, { push: { ownership_transfer: false } });
+    expect(patchRes.statusCode).toBe(200);
+    const getRes = await get(token);
+    expect((getRes.json() as { push: unknown }).push).toEqual({
+      ...PUSH_DEFAULTS,
+      intervention_updates: false,
+      ownership_transfer: false,
+    });
+  });
+
+  it('PATCH can update email and push in one body', async () => {
+    const { token } = await authCustomer({});
+    const patchRes = await patch(token, {
+      email: { marketing: true },
+      push: { intervention_updates: false },
+    });
+    expect(patchRes.statusCode).toBe(200);
+    const body = patchRes.json() as {
+      email: Record<string, boolean>;
+      push: Record<string, boolean>;
+    };
+    expect(body.email.marketing).toBe(true);
+    expect(body.push.intervention_updates).toBe(false);
+  });
+
+  it('PATCH with an unknown push key returns 422', async () => {
+    const { token } = await authCustomer({});
+    expect((await patch(token, { push: { marketing: true } })).statusCode).toBe(422);
+  });
+
+  it('PATCH with {push:{}} returns 422', async () => {
+    const { token } = await authCustomer({});
+    expect((await patch(token, { push: {} })).statusCode).toBe(422);
+  });
+
+  it('PATCH with {email:{},push:{}} returns 422', async () => {
+    const { token } = await authCustomer({});
+    expect((await patch(token, { email: {}, push: {} })).statusCode).toBe(422);
   });
 
   it('PATCH with a non-boolean value returns 400 (ZodError)', async () => {
     const { token } = await authCustomer({});
     expect((await patch(token, { email: { marketing: 'yes' } })).statusCode).toBe(400);
+  });
+
+  it('PATCH with a non-boolean push value returns 400 (ZodError)', async () => {
+    const { token } = await authCustomer({});
+    expect((await patch(token, { push: { deadline_reminder: 'yes' } })).statusCode).toBe(400);
   });
 });

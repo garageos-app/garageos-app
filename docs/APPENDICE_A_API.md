@@ -2571,7 +2571,7 @@ L'`owner_type=intervention` resta officina-only.
 | POST | `/me/notifications/:id/read` | F-CLI-305 | Customer | Marca come letta |
 | POST | `/me/notifications/read-all` | F-CLI-305 | Customer | Marca tutte come lette |
 | GET | `/me/notification-preferences` | F-CLI-005 | Customer | Preferenze canali |
-| PATCH | `/me/notification-preferences` | F-CLI-005 | Customer | Modifica preferenze |
+| PATCH | `/me/notification-preferences` | F-CLI-005 | Customer | Modifica preferenze (email + push per-evento) |
 | POST | `/me/push-tokens` | F-CLI-302 | Customer | **[DETTAGLIATO §2.4b]** Registra push token device |
 | DELETE | `/me/push-tokens/:id` | F-CLI-302 | Customer | **[DETTAGLIATO §2.4b]** Rimuove push token |
 
