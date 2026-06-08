@@ -202,6 +202,45 @@ export async function createCustomer(params: {
   return { customerId: rows[0]!.id, email };
 }
 
+// Insert a push_tokens row directly (admin connection) for RLS / BR-254
+// fixtures. lastUsedAt has NO DB default — set it explicitly.
+export async function createPushToken(params: {
+  customerId: string;
+  expoPushToken: string;
+  platform?: 'ios' | 'android';
+  deviceName?: string | null;
+  active?: boolean;
+}): Promise<{ id: string }> {
+  const {
+    customerId,
+    expoPushToken,
+    platform = 'android',
+    deviceName = null,
+    active = true,
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO push_tokens
+       (id, customer_id, expo_push_token, platform, device_name, last_used_at, active, created_at)
+     VALUES (gen_random_uuid(), $1, $2, $3::"PushTokenPlatform", $4, NOW(), $5, NOW())
+     RETURNING id`,
+    [customerId, expoPushToken, platform, deviceName, active],
+  );
+  return { id: rows[0]!.id };
+}
+
+export async function getPushTokens(
+  customerId: string,
+): Promise<
+  Array<{ id: string; expo_push_token: string; device_name: string | null; active: boolean }>
+> {
+  const { rows } = await pgAdmin.query(
+    `SELECT id, expo_push_token, device_name, active FROM push_tokens
+     WHERE customer_id = $1 ORDER BY created_at`,
+    [customerId],
+  );
+  return rows as never;
+}
+
 // BR-020 garage_code alphabet: digits 2-9 (no 0/1/1), letters minus
 // I/O/Q/U. Mirrors the regex in chk_garage_code_format.
 const GARAGE_CODE_DIGITS = '23456789';
