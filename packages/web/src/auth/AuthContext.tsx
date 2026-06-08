@@ -7,6 +7,7 @@ import {
 } from 'amazon-cognito-identity-js';
 import { officineUserPool } from '@/lib/cognito';
 import { mapCognitoError } from '@/lib/auth-errors';
+import { clearOnboardingSkipped } from '@/lib/onboardingSkip';
 
 export type UserRole = 'super_admin' | 'mechanic';
 
@@ -159,6 +160,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // logout → login in the same browser tab until each entry's staleTime
     // expires (5 min for users-me).
     queryClient.clear();
+    // Clear the session-scoped onboarding-skip flag so a same-tab
+    // logout → login re-prompts the wizard (F-OFF-002).
+    clearOnboardingSkipped();
   }, [queryClient]);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {

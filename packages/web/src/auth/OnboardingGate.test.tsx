@@ -11,6 +11,7 @@ vi.mock('@/auth/useAuth', () => ({ useAuth: () => ({ state: authState.value }) }
 vi.mock('@/queries/tenantMe', () => ({ useTenantMe: () => tenantQ.value }));
 
 import { OnboardingGate } from './OnboardingGate';
+import { markOnboardingSkipped } from '@/lib/onboardingSkip';
 
 function renderAt(path: string) {
   return render(
@@ -27,6 +28,7 @@ function renderAt(path: string) {
 
 describe('OnboardingGate', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     authState.value = { status: 'authenticated', user: { role: 'super_admin' } };
     tenantQ.value = { data: undefined, isPending: false, isError: false };
   });
@@ -35,6 +37,14 @@ describe('OnboardingGate', () => {
     tenantQ.value = { data: { onboardingCompletedAt: null }, isPending: false, isError: false };
     renderAt('/');
     expect(screen.getByText('WIZARD')).toBeInTheDocument();
+  });
+
+  it('does NOT redirect un-onboarded super_admin who skipped this session', () => {
+    markOnboardingSkipped();
+    tenantQ.value = { data: { onboardingCompletedAt: null }, isPending: false, isError: false };
+    renderAt('/');
+    expect(screen.getByText('APP')).toBeInTheDocument();
+    expect(screen.queryByText('WIZARD')).not.toBeInTheDocument();
   });
 
   it('renders app for super_admin with onboarding completed', () => {

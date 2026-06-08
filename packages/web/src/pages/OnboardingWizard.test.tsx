@@ -26,6 +26,7 @@ vi.mock('@/queries/tenantMe', () => ({
 }));
 
 import { OnboardingWizard } from './OnboardingWizard';
+import { isOnboardingSkipped } from '@/lib/onboardingSkip';
 
 function renderPage() {
   return render(
@@ -37,6 +38,7 @@ function renderPage() {
 
 describe('OnboardingWizard', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     navigate.mockReset();
     mutateAsync.mockReset();
   });
@@ -51,11 +53,12 @@ describe('OnboardingWizard', () => {
     expect(screen.getByText('DATI')).toBeInTheDocument();
   });
 
-  it('«Salta configurazione» navigates home WITHOUT completing', async () => {
+  it('«Salta configurazione» sets the session skip flag and navigates home WITHOUT completing', async () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole('button', { name: /salta configurazione/i }));
     expect(mutateAsync).not.toHaveBeenCalled();
+    expect(isOnboardingSkipped()).toBe(true);
     expect(navigate).toHaveBeenCalledWith('/');
   });
 
