@@ -24,13 +24,15 @@ export default function NotificationPreferencesScreen() {
   const prefs = useNotificationPreferences();
   const update = useUpdateNotificationPreference();
 
-  if (prefs.isLoading) return <LoadingState variant="fullscreen" />;
   if (prefs.isError) {
     const code = prefs.error instanceof ApiError ? prefs.error.code : undefined;
     return <ErrorState message={mapErrorToUserMessage(code)} onRetry={prefs.refetch} />;
   }
+  // `!prefs.data` also covers the offline-paused case (status 'pending',
+  // fetchStatus 'paused'), where isLoading is false but no data exists yet.
+  if (prefs.isLoading || !prefs.data) return <LoadingState variant="fullscreen" />;
 
-  const email = prefs.data!.email;
+  const email = prefs.data.email;
 
   return (
     <>
