@@ -192,4 +192,52 @@ describe('PATCH /v1/me/notification-preferences', () => {
     // `throw parsed.error` -> error-handler maps ZodError to 400.
     expect(res.statusCode).toBe(400);
   });
+
+  it('deep-merges a push key under role: admin, preserving non-editable push keys', async () => {
+    const findUniqueOrThrow = vi.fn().mockResolvedValue({
+      notificationPreferences: {
+        email: { marketing: true },
+        push: { intervention_updates: false, dispute_response: true },
+      },
+    });
+    const update = vi.fn().mockResolvedValue({ notificationPreferences: {} });
+    const withContext = vi.fn(async (_ctx, fn) =>
+      fn(buildFakePrisma({ findUniqueOrThrow, update })),
+    );
+    app = await buildApp({ withContext });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/me/notification-preferences',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { push: { ownership_transfer: false } },
+    });
+    expect(res.statusCode).toBe(200);
+    const updateArg = update.mock.calls[0]![0];
+    expect(updateArg.data.notificationPreferences).toEqual({
+      email: { marketing: true },
+      push: { intervention_updates: false, dispute_response: true, ownership_transfer: false },
+    });
+  });
+
+  it('rejects an unknown push key (marketing) with 422', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/me/notification-preferences',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { push: { marketing: true } },
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it('rejects {email:{},push:{}} with 422', async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/me/notification-preferences',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { email: {}, push: {} },
+    });
+    expect(res.statusCode).toBe(422);
+  });
 });
