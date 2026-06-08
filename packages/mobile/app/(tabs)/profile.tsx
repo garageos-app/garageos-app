@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/useAuth';
 import { useMe, useUpdateMeProfile } from '@/queries/me';
 import { ProfileForm, type ProfileFormResult } from '@/components/ProfileForm';
@@ -12,6 +14,7 @@ import { colors, spacing } from '@/theme/colors';
 
 export default function ProfileScreen() {
   const { signOut } = useAuth();
+  const router = useRouter();
   const me = useMe();
   const update = useUpdateMeProfile();
   const [editing, setEditing] = useState(false);
@@ -66,6 +69,16 @@ export default function ProfileScreen() {
       </View>
 
       <Pressable
+        onPress={() => router.push('/notification-preferences')}
+        accessibilityRole="button"
+        accessibilityLabel="Notifiche"
+        style={({ pressed }) => [styles.navRow, pressed && styles.navRowPressed]}
+      >
+        <Text style={styles.navLabel}>Notifiche</Text>
+        <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+      </Pressable>
+
+      <Pressable
         onPress={() => setEditing(true)}
         accessibilityRole="button"
         style={({ pressed }) => [styles.editBtn, pressed && styles.editBtnPressed]}
@@ -91,6 +104,16 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
   value: { fontSize: 16, color: colors.fg },
   hint: { fontSize: 12, color: colors.muted, fontStyle: 'italic' },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.mutedBg,
+    padding: spacing.md,
+    borderRadius: 8,
+  },
+  navRowPressed: { opacity: 0.7 },
+  navLabel: { fontSize: 16, color: colors.fg },
   editBtn: {
     marginTop: spacing.sm,
     borderWidth: 1,
