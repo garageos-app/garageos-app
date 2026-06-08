@@ -178,9 +178,13 @@ function HistoryTab({
           renderItem={({ item }) => (
             <TimelineRow
               item={item}
-              {...(item.kind === 'private_intervention'
-                ? { onPress: () => router.push(`/private-interventions/${item.id}`) }
-                : {})}
+              onPress={() =>
+                router.push(
+                  item.kind === 'private_intervention'
+                    ? `/private-interventions/${item.id}`
+                    : `/interventions/${item.id}`,
+                )
+              }
             />
           )}
           scrollEnabled={false}

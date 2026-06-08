@@ -208,6 +208,7 @@ Per fornire dati utili al client per gestire l'errore:
 | `me.push-token.not_found` | 404 | info | Token push non trovato | DELETE /v1/me/push-tokens/:id con id inesistente o di un altro cliente (RLS) | F-CLI-302 (BR-254) |
 | `me.push-token.register.invalid_token` | 422 | info | Token push non valido | POST /v1/me/push-tokens con expoPushToken malformato (atteso ExpoPushToken[...]) | F-CLI-302 (BR-254) |
 | `me.push-token.register.unknown_field` | 422 | info | Campo non riconosciuto | POST /v1/me/push-tokens con chiave fuori schema | F-CLI-302 |
+| `me.intervention.not_found` | 404 | info | Intervento non trovato o non più di proprietà del cliente | GET /v1/me/interventions/:id — intervento inesistente o veicolo non più di proprietà del cliente (gate app-layer) | F-CLI-206 |
 | `me.vehicle.claim.code_not_found` | 404 | info | Codice non trovato | POST /v1/me/vehicles/claim con garageCode inesistente | F-CLI-101 (BR-042) |
 | `me.vehicle.claim.owned_by_other` | 409 | info | Veicolo di un altro cliente | POST /v1/me/vehicles/claim su veicolo con ownership attiva di altro cliente (usare passaggio di proprietà) | F-CLI-101 (BR-042) |
 | `me.vehicle.claim.pending` | 422 | info | Veicolo non certificato | POST /v1/me/vehicles/claim su veicolo pending | F-CLI-101 (BR-042) |
@@ -955,6 +956,7 @@ location.cannot_disable_last
 location.cannot_remove_primary
 location.not_found
 location.not_in_tenant
+me.intervention.not_found
 me.notification-preferences.update.empty_body
 me.notification-preferences.update.unknown_field
 me.push-token.not_found

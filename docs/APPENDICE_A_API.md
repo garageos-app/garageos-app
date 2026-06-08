@@ -706,6 +706,49 @@ Authorization: Bearer <customer_jwt>
 
 ---
 
+### 2.4c `GET /v1/me/interventions/:id` — Dettaglio intervento officina + contestazioni
+
+**Feature:** F-CLI-206 · **Auth:** Customer (clienti pool)
+
+Restituisce un singolo intervento officina e il **thread delle contestazioni del cliente** su di esso. Il chiamante deve essere il proprietario attuale del veicolo (gate app-layer); altrimenti `404`.
+
+**Response 200:**
+
+```json
+{
+  "intervention": {
+    "id": "uuid",
+    "vehicleId": "uuid",
+    "interventionDate": "2026-05-01",
+    "odometerKm": 84210,
+    "type": { "code": "TAGLIANDO", "name_it": "Tagliando" },
+    "title": "Tagliando completo",
+    "description": "...",
+    "partsReplacedCount": 3,
+    "status": "disputed",
+    "isDisputed": true,
+    "tenant": { "businessName": "Officina Rossi", "locationCity": "Milano" },
+    "attachmentsCount": 2
+  },
+  "disputes": [
+    {
+      "id": "uuid",
+      "reasonCategory": "wrong_data",
+      "customerDescription": "...",
+      "status": "responded",
+      "createdAt": "2026-05-02T10:00:00.000Z",
+      "tenantResponse": "...",
+      "tenantResponseAt": "2026-05-03T09:00:00.000Z",
+      "resolvedAt": null
+    }
+  ]
+}
+```
+
+**Errori:** `404 me.intervention.not_found` (intervento inesistente o veicolo non più di proprietà del cliente).
+
+---
+
 ### 2.5 `GET /vehicles/:id/timeline` — Storico interventi veicolo
 
 **Feature:** F-OFF-105, F-CLI-201, F-CLI-205
@@ -2456,6 +2499,7 @@ Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conse
 | GET | `/me/vehicles/:id/access-log` | F-CLI-304 | Customer | Audit accessi al veicolo (BR-155, redatto) |
 | PATCH | `/me/vehicles/:id` | F-CLI-107 | Customer | Modifica dati non tecnici (nickname, foto) |
 | DELETE | `/me/vehicles/:id` | F-CLI-108 | Customer | Rimuove associazione (no cancellazione veicolo) |
+| GET | `/me/interventions/:id` | F-CLI-206 | Customer | **[DETTAGLIATO §2.4c]** Dettaglio intervento officina + thread contestazioni cliente |
 | POST | `/me/vehicles/pending` | F-CLI-104 | Customer | Pre-registrazione veicolo pendente con libretto |
 | POST | `/vehicles/:id/share-link` | F-CLI-502 | Customer | Genera link condivisione temporaneo |
 | DELETE | `/vehicles/:id/share-link/:token` | F-CLI-502 | Customer | Revoca link |
