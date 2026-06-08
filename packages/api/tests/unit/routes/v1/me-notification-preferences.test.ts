@@ -80,6 +80,11 @@ describe('GET /v1/me/notification-preferences', () => {
         ownership_transfer: true,
         marketing: false,
       },
+      push: {
+        intervention_updates: true,
+        deadline_reminder: true,
+        ownership_transfer: true,
+      },
     });
     expect(withContext).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: CUSTOMER_ID, role: 'user' }),
