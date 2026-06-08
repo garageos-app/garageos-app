@@ -15,7 +15,7 @@ import {
 } from './helpers.js';
 import { signTestToken } from '../helpers/jwt.js';
 
-async function seed(suffix: string) {
+async function seed(suffix: string, interventionStatus?: 'active' | 'disputed' | 'cancelled') {
   const { tenantId, locationId } = await createTenantWithLocation(suffix);
   const { userId } = await createUser({ tenantId, cognitoSub: `mech-${suffix}`, locationId });
   const { customerId } = await createCustomer({ cognitoSub: `cust-${suffix}` });
@@ -31,6 +31,9 @@ async function seed(suffix: string) {
     interventionDate: '2026-04-21',
     odometerKm: 45000,
     description: 'Tagliando con sostituzione olio',
+    // BR-127: a disputed intervention carries status='disputed'; the route
+    // derives isDisputed from it. Seed the precondition directly.
+    ...(interventionStatus ? { status: interventionStatus } : {}),
   });
   return { tenantId, customerId, vehicleId, interventionId, cognitoSub: `cust-${suffix}` };
 }
@@ -71,7 +74,7 @@ describe('GET /v1/me/interventions/:id (integration)', () => {
   });
 
   it('includes the tenant response once the officina has replied', async () => {
-    const s = await seed('me-int-resp');
+    const s = await seed('me-int-resp', 'disputed');
     await createDispute({
       interventionId: s.interventionId,
       customerId: s.customerId,
