@@ -1,13 +1,20 @@
 import { ScrollView, StyleSheet } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { ClaimVehicleForm, type ClaimVehicleFormResult } from '@/components/ClaimVehicleForm';
 import { useClaimVehicle } from '@/queries/claimVehicle';
+import { GARAGE_CODE_RE } from '@/lib/validators/claimVehicle';
 import { ApiError } from '@/lib/api-error';
 import { colors } from '@/theme/colors';
 
 export default function ClaimVehicleScreen() {
   const router = useRouter();
   const mutation = useClaimVehicle();
+  // A deep-link (app/v/[code].tsx) or post-login redirect lands here with the
+  // GarageOS code in ?code. Pre-fill only a well-formed code (BR-020); the form
+  // and server re-validate regardless.
+  const { code } = useLocalSearchParams<{ code?: string }>();
+  const normalized = code?.trim().toUpperCase();
+  const initialCode = normalized && GARAGE_CODE_RE.test(normalized) ? normalized : undefined;
 
   async function onSubmit(garageCode: string): Promise<ClaimVehicleFormResult> {
     try {
@@ -27,7 +34,11 @@ export default function ClaimVehicleScreen() {
     <>
       <Stack.Screen options={{ headerShown: true, title: 'Aggiungi veicolo' }} />
       <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-        <ClaimVehicleForm onSubmit={onSubmit} onCancel={() => router.back()} />
+        <ClaimVehicleForm
+          onSubmit={onSubmit}
+          onCancel={() => router.back()}
+          initialCode={initialCode}
+        />
       </ScrollView>
     </>
   );
