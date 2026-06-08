@@ -168,23 +168,91 @@ describe('SearchResults — t=customer branch', () => {
   });
 });
 
-describe('SearchResults — q+t branch (regression)', () => {
-  it('still works for plate search', async () => {
+describe('SearchResults — global query branch', () => {
+  it('renders the Veicoli section for a vehicle identifier', async () => {
     apiFetchMock.mockReset();
-    apiFetchMock.mockResolvedValueOnce({
-      data: [VEHICLE_FIXTURE],
-      meta: { has_more: false },
-    } satisfies VehicleSearchResponse);
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/v1/vehicles/search')) {
+        return Promise.resolve({
+          data: [VEHICLE_FIXTURE],
+          meta: { has_more: false },
+        } satisfies VehicleSearchResponse);
+      }
+      if (url.startsWith('/v1/customers/search')) {
+        return Promise.resolve({ data: [], meta: { has_more: false } });
+      }
+      return Promise.reject(new Error('unexpected url'));
+    });
 
-    render(
-      wrap({
-        initialPath: '/search?q=AB123CD&t=plate',
-        children: <SearchResults />,
-      }),
-    );
+    render(wrap({ initialPath: '/search?q=AB123CD', children: <SearchResults /> }));
 
     await waitFor(() => expect(screen.getByText(/Fiat Panda/i)).toBeInTheDocument());
     expect(apiFetchMock).toHaveBeenCalledWith(expect.stringContaining('plate=AB123CD'));
-    expect(screen.getByText(/Ricerca per/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Veicoli/)).toBeInTheDocument();
+  });
+
+  it('renders the Clienti section for a free-text query', async () => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/v1/customers/search')) {
+        return Promise.resolve({
+          data: [
+            {
+              id: '11111111-1111-4111-8111-111111111111',
+              firstName: 'Mario',
+              lastName: 'Rossi',
+              email: 'mario@example.it',
+              phone: '3331234567',
+              isBusiness: false,
+              businessName: null,
+              vatNumber: null,
+              status: 'active',
+            },
+          ],
+          meta: { has_more: false },
+        });
+      }
+      if (url.startsWith('/v1/vehicles/search')) {
+        return Promise.resolve({
+          data: [],
+          meta: { has_more: false },
+        } satisfies VehicleSearchResponse);
+      }
+      return Promise.reject(new Error('unexpected url'));
+    });
+
+    render(wrap({ initialPath: '/search?q=mario%20rossi', children: <SearchResults /> }));
+
+    await waitFor(() => expect(screen.getByText('Rossi Mario')).toBeInTheDocument());
+    expect(screen.getByText(/^Clienti/)).toBeInTheDocument();
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/v1/customers/search?q=mario'),
+    );
+  });
+
+  it('shows a single empty-state when both sections are empty', async () => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/v1/customers/search')) {
+        return Promise.resolve({ data: [], meta: { has_more: false } });
+      }
+      if (url.startsWith('/v1/vehicles/search')) {
+        return Promise.resolve({
+          data: [],
+          meta: { has_more: false },
+        } satisfies VehicleSearchResponse);
+      }
+      return Promise.reject(new Error('unexpected url'));
+    });
+
+    render(wrap({ initialPath: '/search?q=AB123CD', children: <SearchResults /> }));
+
+    await waitFor(() => expect(screen.getByText(/Nessun risultato trovato/i)).toBeInTheDocument());
+  });
+
+  it('shows the min-length alert for a 1-char query', () => {
+    apiFetchMock.mockReset();
+    render(wrap({ initialPath: '/search?q=a', children: <SearchResults /> }));
+    expect(screen.getByText(/almeno 2 caratteri/i)).toBeInTheDocument();
   });
 });
