@@ -198,13 +198,15 @@ describe('GET /v1/customers/search — data path', () => {
       some: { tenantId: TENANT_ID, customerDeleted: false },
     });
     // q is split into whitespace tokens: the single token "mar" yields a
-    // one-element AND of an OR across the 3 searchable columns.
+    // one-element AND of an OR across the 4 searchable columns (firstName,
+    // lastName, businessName, phone — phone added in F-OFF-502).
     expect(call.where.AND).toEqual([
       {
         OR: [
           { firstName: { contains: 'mar', mode: 'insensitive' } },
           { lastName: { contains: 'mar', mode: 'insensitive' } },
           { businessName: { contains: 'mar', mode: 'insensitive' } },
+          { phone: { contains: 'mar', mode: 'insensitive' } },
         ],
       },
     ]);
