@@ -31,6 +31,13 @@ const MESSAGES: Record<string, string> = {
     'Servizio di autenticazione temporaneamente non disponibile. Riprova tra qualche istante.',
   'auth.signup.rate_limited': 'Troppi tentativi di registrazione. Riprova tra qualche minuto.',
   'auth.resend_verification.rate_limited': 'Troppi tentativi. Riprova tra qualche minuto.',
+
+  // Dispute domain codes (F-CLI-206)
+  'me.intervention.not_found': 'Intervento non trovato o non più di tua proprietà.',
+  'intervention.dispute.not_owner':
+    'Solo il proprietario attuale può contestare questo intervento.',
+  'intervention.dispute.already_exists': 'Hai già una contestazione aperta per questo intervento.',
+  'intervention.dispute.intervention_cancelled': 'Non puoi contestare un intervento annullato.',
 };
 
 const FALLBACK = 'Si è verificato un errore. Riprova più tardi.';

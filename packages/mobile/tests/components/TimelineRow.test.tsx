@@ -72,3 +72,39 @@ describe('TimelineRow', () => {
     expect(() => render(<TimelineRow item={shopItem} />)).not.toThrow();
   });
 });
+
+describe('TimelineRow dispute affordances', () => {
+  const shopItem = {
+    kind: 'shop_intervention' as const,
+    id: 'int-1',
+    intervention_date: '2026-05-01',
+    odometer_km: 84210,
+    type: { id: 't', code: 'TAGLIANDO', name_it: 'Tagliando' },
+    title: 'Tagliando',
+    description: null,
+    parts_replaced_count: 0,
+    status: 'disputed',
+    is_disputed: true,
+    wiki_window_open: false,
+    tenant: { business_name: 'Officina Rossi', location_city: 'Milano' },
+    has_attachments: false,
+    attachments_count: 0,
+  };
+
+  it('shows the CONTESTATO badge when is_disputed', () => {
+    render(<TimelineRow item={shopItem} />);
+    expect(screen.getByText('Contestato')).toBeTruthy();
+  });
+
+  it('does not show the badge when not disputed', () => {
+    render(<TimelineRow item={{ ...shopItem, is_disputed: false }} />);
+    expect(screen.queryByText('Contestato')).toBeNull();
+  });
+
+  it('fires onPress for shop interventions', () => {
+    const onPress = jest.fn();
+    render(<TimelineRow item={shopItem} onPress={onPress} />);
+    fireEvent.press(screen.getByText('Tagliando'));
+    expect(onPress).toHaveBeenCalled();
+  });
+});

@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '@/theme/colors';
 import { BadgeCertificato } from './BadgeCertificato';
+import { BadgeContestato } from './BadgeContestato';
 import { formatDate, formatKm } from '@/lib/format';
 import type { TimelineItem } from '@/lib/types/vehicle';
 
@@ -22,6 +23,7 @@ export function TimelineRow({ item, onPress }: Props) {
       <View style={styles.body}>
         <View style={styles.badgeRow}>
           <BadgeCertificato variant={isShop ? 'certificato' : 'privato'} />
+          {isShop && item.is_disputed ? <BadgeContestato /> : null}
           {isShop ? <Text style={styles.tenantName}>{item.tenant.business_name}</Text> : null}
         </View>
         <Text style={styles.title}>{title}</Text>
