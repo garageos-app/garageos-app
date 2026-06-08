@@ -134,7 +134,7 @@ describe('PATCH /v1/me/notification-preferences', () => {
       expect.objectContaining({ role: 'admin' }),
       expect.any(Function),
     );
-    const updateArg = update.mock.calls[0][0];
+    const updateArg = update.mock.calls[0]![0];
     expect(updateArg.where).toEqual({ id: CUSTOMER_ID });
     expect(updateArg.data.notificationPreferences).toEqual({
       email: { intervention_updates: true, transfer_invitation: true, marketing: true },
