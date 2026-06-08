@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 
-import { TENANT_ME_SELECT } from '../../lib/dtos/tenant-me.js';
+import { serializeTenantMe, TENANT_ME_SELECT_WITH_SETTINGS } from '../../lib/dtos/tenant-me.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -28,12 +28,13 @@ const tenantRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const tenantId = request.tenantId!;
 
-      return app.withContext({ tenantId }, (tx) =>
+      const row = await app.withContext({ tenantId }, (tx) =>
         tx.tenant.findUniqueOrThrow({
           where: { id: tenantId },
-          select: TENANT_ME_SELECT,
+          select: TENANT_ME_SELECT_WITH_SETTINGS,
         }),
       );
+      return serializeTenantMe(row);
     },
   );
 };

@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import { TENANT_ME_SELECT } from '../../lib/dtos/tenant-me.js';
+import { serializeTenantMe, TENANT_ME_SELECT_WITH_SETTINGS } from '../../lib/dtos/tenant-me.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { requireSuperAdmin } from '../../middleware/require-super-admin.js';
@@ -94,13 +94,14 @@ const tenantUpdateRoutes: FastifyPluginAsync = async (app) => {
 
       const tenantId = request.tenantId!;
 
-      return app.withContext({ tenantId }, async (tx) =>
-        tx.tenant.update({
+      return app.withContext({ tenantId }, async (tx) => {
+        const row = await tx.tenant.update({
           where: { id: tenantId },
           data: patch,
-          select: TENANT_ME_SELECT,
-        }),
-      );
+          select: TENANT_ME_SELECT_WITH_SETTINGS,
+        });
+        return serializeTenantMe(row);
+      });
     },
   );
 };

@@ -120,6 +120,7 @@ const tenant: TenantMeDto = {
   plan: 'pilot',
   billingStatus: 'ok',
   createdAt: '2026-05-15T00:00:00Z',
+  onboardingCompletedAt: '2026-05-15T00:00:00Z',
 };
 
 function wrap(ui: React.ReactNode, { initialPath = '/settings' }: { initialPath?: string } = {}) {
@@ -191,6 +192,15 @@ describe('Settings page', () => {
     expect(screen.getByRole('tab', { name: 'Profilo' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Officina' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Sedi' })).toBeInTheDocument();
+  });
+
+  it('Officina tab shows a re-launch onboarding button that navigates to /onboarding', async () => {
+    const user = userEvent.setup();
+    mockAuthRole('super_admin');
+    render(wrap(<Settings />));
+    await user.click(screen.getByRole('tab', { name: 'Officina' }));
+    await user.click(screen.getByRole('button', { name: /riavvia configurazione guidata/i }));
+    expect(navigateMock).toHaveBeenCalledWith('/onboarding');
   });
 
   it('renders only Profilo tab for mechanic', () => {

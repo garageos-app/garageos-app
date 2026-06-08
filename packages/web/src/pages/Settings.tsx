@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PasswordForm } from '@/components/settings/PasswordForm';
 import { ProfileForm } from '@/components/settings/ProfileForm';
@@ -134,12 +135,19 @@ export function Settings() {
               <p className="text-red-600">Errore nel caricare i dati officina.</p>
             )}
             {tenantQuery.data && (
-              <TenantForm
-                tenant={tenantQuery.data}
-                formRef={(f) => {
-                  tenantFormRef.current = f;
-                }}
-              />
+              <>
+                <TenantForm
+                  tenant={tenantQuery.data}
+                  formRef={(f) => {
+                    tenantFormRef.current = f;
+                  }}
+                />
+                <div className="mt-6 border-t pt-4">
+                  <Button variant="outline" onClick={() => navigate('/onboarding')}>
+                    Riavvia configurazione guidata
+                  </Button>
+                </div>
+              </>
             )}
           </TabsContent>
         )}
