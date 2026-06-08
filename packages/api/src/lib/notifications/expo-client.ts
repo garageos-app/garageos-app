@@ -6,11 +6,16 @@ export type { ExpoPushMessage, ExpoPushTicket };
 // expo-server-sdk mock is re-read on each setup.
 let _client: Expo | null = null;
 
+// CDK seeds the app secret with this sentinel until an operator sets the real
+// value (see APPENDICE_C). Sending it as a real access token could make Expo
+// reject every push and trip BR-254 mass-deactivation, so we treat it as unset.
+const PLACEHOLDER_SECRET = 'REPLACE_AFTER_DEPLOY';
+
 export function getExpoClient(): Expo {
   if (_client) return _client;
-  _client = new Expo(
-    process.env.EXPO_ACCESS_TOKEN ? { accessToken: process.env.EXPO_ACCESS_TOKEN } : {},
-  );
+  const accessToken = process.env.EXPO_ACCESS_TOKEN;
+  const useToken = accessToken && accessToken !== PLACEHOLDER_SECRET;
+  _client = new Expo(useToken ? { accessToken } : {});
   return _client;
 }
 
