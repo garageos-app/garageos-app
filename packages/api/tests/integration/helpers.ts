@@ -241,6 +241,21 @@ export async function getPushTokens(
   return rows as never;
 }
 
+export async function getCustomerAppInstalled(customerId: string): Promise<boolean> {
+  const { rows } = await pgAdmin.query<{ app_installed: boolean }>(
+    `SELECT app_installed FROM customers WHERE id = $1`,
+    [customerId],
+  );
+  return rows[0]!.app_installed;
+}
+
+// app_installed defaults to false at the DB level and is normally flipped true
+// by POST /me/push-tokens (PR1). Tests that seed tokens directly via
+// createPushToken use this to establish the "app installed" precondition.
+export async function setCustomerAppInstalled(customerId: string, value: boolean): Promise<void> {
+  await pgAdmin.query(`UPDATE customers SET app_installed = $2 WHERE id = $1`, [customerId, value]);
+}
+
 // BR-020 garage_code alphabet: digits 2-9 (no 0/1/1), letters minus
 // I/O/Q/U. Mirrors the regex in chk_garage_code_format.
 const GARAGE_CODE_DIGITS = '23456789';
