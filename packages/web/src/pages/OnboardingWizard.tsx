@@ -8,6 +8,7 @@ import { UserManagement } from '@/pages/UserManagement';
 import { TenantForm } from '@/components/settings/TenantForm';
 import { useTenantMe } from '@/queries/tenantMe';
 import { useCompleteOnboarding } from '@/queries/tenantOnboarding';
+import { markOnboardingSkipped } from '@/lib/onboardingSkip';
 
 // F-OFF-002 — guided onboarding wizard. Full-page (rendered outside
 // AppLayout). Reuses the Settings section components for each step.
@@ -28,7 +29,10 @@ export function OnboardingWizard() {
   const [step, setStep] = useState<0 | 1 | 2>(0);
 
   function skipAll() {
-    // Intentionally does NOT call complete — see header comment.
+    // Intentionally does NOT call complete — see header comment. Set a
+    // session-scoped skip flag so the OnboardingGate lets us reach the
+    // dashboard now; the wizard reappears at the next login.
+    markOnboardingSkipped();
     navigate('/');
   }
 
