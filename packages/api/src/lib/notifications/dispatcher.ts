@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 
 import { sendEmail } from './email-channel.js';
+import { preferenceKeyForEvent } from './event-preference-key.js';
 import { isEmailEnabled } from './preferences.js';
 import {
   renderDeadlineReminderHtml,
@@ -22,33 +23,12 @@ import {
   renderOwnershipTransferredHtml,
   renderOwnershipTransferredText,
 } from './templates/ownership-transferred.js';
-import type {
-  CustomerForNotification,
-  DispatchResult,
-  EmailEnabledKey,
-  NotificationEvent,
-} from './types.js';
+import type { CustomerForNotification, DispatchResult, NotificationEvent } from './types.js';
 
 interface DispatchInput {
   event: NotificationEvent;
   recipient: CustomerForNotification;
   logger: FastifyBaseLogger;
-}
-
-// Maps each event type to the corresponding notification preference key.
-// intervention.* events are gated by intervention_updates; deadline
-// reminders are gated by deadline_reminder (both keys exist in EmailEnabledKey
-// since H1 forward-planning).
-function preferenceKeyForEvent(event: NotificationEvent): EmailEnabledKey {
-  switch (event.type) {
-    case 'intervention.revised':
-    case 'intervention.cancelled':
-      return 'intervention_updates';
-    case 'deadline.reminder':
-      return 'deadline_reminder';
-    case 'ownership.transferred':
-      return 'ownership_transfer';
-  }
 }
 
 // Single entry point for all H1/H3 notifications. Channel-agnostic shape:

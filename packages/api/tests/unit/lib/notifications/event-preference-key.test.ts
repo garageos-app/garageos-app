@@ -1,0 +1,61 @@
+import { describe, expect, it } from 'vitest';
+
+import { preferenceKeyForEvent } from '../../../../src/lib/notifications/event-preference-key.js';
+import type { NotificationEvent } from '../../../../src/lib/notifications/types.js';
+
+const tenant = { id: 't', businessName: 'O' };
+
+it('maps intervention.revised and cancelled to intervention_updates', () => {
+  const revised: NotificationEvent = {
+    type: 'intervention.revised',
+    intervention: {
+      id: 'i',
+      vehicleId: 'v',
+      title: null,
+      description: null,
+      cancelledReason: null,
+    },
+    revision: { id: 'r', revisedAt: new Date(), reason: null, changes: {} },
+    tenant,
+  };
+  const cancelled: NotificationEvent = {
+    type: 'intervention.cancelled',
+    intervention: {
+      id: 'i',
+      vehicleId: 'v',
+      title: null,
+      description: null,
+      cancelledReason: null,
+    },
+    tenant,
+  };
+  expect(preferenceKeyForEvent(revised)).toBe('intervention_updates');
+  expect(preferenceKeyForEvent(cancelled)).toBe('intervention_updates');
+});
+
+it('maps deadline.reminder and ownership.transferred', () => {
+  const deadline: NotificationEvent = {
+    type: 'deadline.reminder',
+    deadlineId: 'd',
+    reminderType: 't_minus_30',
+    dueDate: '2026-12-31',
+    dueOdometerKm: null,
+    vehicleId: 'v',
+    vehicleLicensePlate: 'AB123CD',
+    interventionTypeName: 'Revisione',
+    description: null,
+  };
+  const transfer: NotificationEvent = {
+    type: 'ownership.transferred',
+    vehicle: { id: 'v', plate: 'AB123CD' },
+    tenant,
+    transferReason: 'purchase',
+    transferredAt: '2026-05-22T10:30:00.000Z',
+  };
+  expect(preferenceKeyForEvent(deadline)).toBe('deadline_reminder');
+  expect(preferenceKeyForEvent(transfer)).toBe('ownership_transfer');
+});
+
+describe('preferenceKeyForEvent', () => {
+  it('is a function', () => expect(typeof preferenceKeyForEvent).toBe('function'));
+});

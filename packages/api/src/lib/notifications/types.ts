@@ -79,6 +79,14 @@ export type EmailEnabledKey =
   | 'dispute_response'
   | 'ownership_transfer';
 
+// The three preference keys an event can map to. Subset of EmailEnabledKey,
+// and all present in DEFAULT_NOTIFICATION_PREFERENCES.push — so it types both
+// the email and push gating lookups.
+export type NotificationEventPrefKey =
+  | 'intervention_updates'
+  | 'deadline_reminder'
+  | 'ownership_transfer';
+
 export interface CustomerForNotification {
   id: string;
   email: string;
