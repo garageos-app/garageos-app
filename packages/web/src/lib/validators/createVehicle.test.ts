@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CreateVehiclePayloadSchema,
+  VehicleFormSchema,
   transformToPayload,
   type VehicleFormValues,
 } from './createVehicle';
@@ -99,5 +100,53 @@ describe('transformToPayload', () => {
       businessName: 'Rossi SRL',
       vatNumber: 'IT01234567890',
     });
+  });
+});
+
+describe('VehicleFormSchema', () => {
+  it('accepts a fully valid create_new form', () => {
+    const result = VehicleFormSchema.safeParse(base);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects existing mode with empty customerId', () => {
+    const result = VehicleFormSchema.safeParse({
+      ...base,
+      customerMode: 'existing',
+      customerId: '',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error!.issues.some((i) => i.path[0] === 'customerId')).toBe(true);
+  });
+
+  it('rejects create_new with a malformed email', () => {
+    const result = VehicleFormSchema.safeParse({ ...base, email: 'nope' });
+    expect(result.success).toBe(false);
+    const emailIssue = result.error!.issues.find((i) => i.path[0] === 'email');
+    expect(emailIssue).toBeDefined();
+    expect(emailIssue!.message).toBe('Email non valida');
+  });
+
+  it('rejects create_new business with missing businessName', () => {
+    const result = VehicleFormSchema.safeParse({
+      ...base,
+      isBusiness: true,
+      businessName: '',
+      vatNumber: 'IT01234567890',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error!.issues.some((i) => i.path[0] === 'businessName')).toBe(true);
+  });
+
+  it('accepts existing mode with empty firstName/lastName/email', () => {
+    const result = VehicleFormSchema.safeParse({
+      ...base,
+      customerMode: 'existing',
+      customerId: '22222222-2222-4222-8222-222222222222',
+      firstName: '',
+      lastName: '',
+      email: '',
+    });
+    expect(result.success).toBe(true);
   });
 });

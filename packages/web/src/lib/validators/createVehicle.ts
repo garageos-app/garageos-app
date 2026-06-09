@@ -136,8 +136,11 @@ export const VehicleFormSchema = z
         ctx.addIssue({ code: 'custom', path: ['firstName'], message: 'Nome obbligatorio' });
       if (!d.lastName?.trim())
         ctx.addIssue({ code: 'custom', path: ['lastName'], message: 'Cognome obbligatorio' });
-      if (!d.email?.trim())
+      if (!d.email?.trim()) {
         ctx.addIssue({ code: 'custom', path: ['email'], message: 'Email obbligatoria' });
+      } else if (!z.email().safeParse(d.email.trim()).success) {
+        ctx.addIssue({ code: 'custom', path: ['email'], message: 'Email non valida' });
+      }
       if (d.isBusiness && !d.businessName?.trim())
         ctx.addIssue({
           code: 'custom',
@@ -150,6 +153,10 @@ export const VehicleFormSchema = z
           path: ['vatNumber'],
           message: 'P.IVA obbligatoria per aziende',
         });
+    }
+    const y = Number(d.year);
+    if (d.year && (y < 1900 || y > CURRENT_YEAR + 1)) {
+      ctx.addIssue({ code: 'custom', path: ['year'], message: 'Anno non valido' });
     }
     if (d.registrationDate && !dateRe.test(d.registrationDate)) {
       ctx.addIssue({ code: 'custom', path: ['registrationDate'], message: 'Data non valida' });
@@ -181,20 +188,33 @@ export function transformToPayload(v: VehicleFormValues): CreateVehiclePayload {
   const ed = optInt(v.engineDisplacement);
   const pk = optInt(v.powerKw);
 
+  const phone = opt(v.phone);
+  const taxCode = opt(v.taxCode);
+  const businessName = opt(v.businessName);
+  const vatNumber = opt(v.vatNumber);
+
   const customer: CreateVehiclePayload['customer'] =
     v.customerMode === 'existing'
-      ? { mode: 'existing', customerId: v.customerId ?? '' }
+      ? {
+          mode: 'existing',
+          // VehicleFormSchema guarantees customerId is non-empty when mode === 'existing'
+          customerId: v.customerId ?? '',
+        }
       : {
           mode: 'create_new',
           firstName: (v.firstName ?? '').trim(),
           lastName: (v.lastName ?? '').trim(),
           email: (v.email ?? '').trim(),
           isBusiness: v.isBusiness,
-          ...(opt(v.phone) ? { phone: opt(v.phone) } : {}),
-          ...(opt(v.taxCode) ? { taxCode: opt(v.taxCode) } : {}),
-          ...(v.isBusiness && opt(v.businessName) ? { businessName: opt(v.businessName) } : {}),
-          ...(v.isBusiness && opt(v.vatNumber) ? { vatNumber: opt(v.vatNumber) } : {}),
+          ...(phone !== undefined ? { phone } : {}),
+          ...(taxCode !== undefined ? { taxCode } : {}),
+          ...(v.isBusiness && businessName !== undefined ? { businessName } : {}),
+          ...(v.isBusiness && vatNumber !== undefined ? { vatNumber } : {}),
         };
+
+  const version = opt(v.version);
+  const registrationDate = opt(v.registrationDate);
+  const color = opt(v.color);
 
   return {
     vehicle: {
@@ -207,11 +227,11 @@ export function transformToPayload(v: VehicleFormValues): CreateVehiclePayload {
       vehicleType: v.vehicleType,
       fuelType: v.fuelType,
       odometerKm: Number(v.odometerKm),
-      ...(opt(v.version) ? { version: opt(v.version) } : {}),
-      ...(opt(v.registrationDate) ? { registrationDate: opt(v.registrationDate) } : {}),
+      ...(version !== undefined ? { version } : {}),
+      ...(registrationDate !== undefined ? { registrationDate } : {}),
       ...(ed !== undefined ? { engineDisplacement: ed } : {}),
       ...(pk !== undefined ? { powerKw: pk } : {}),
-      ...(opt(v.color) ? { color: opt(v.color) } : {}),
+      ...(color !== undefined ? { color } : {}),
     },
     customer,
     locationId: v.locationId,
