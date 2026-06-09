@@ -1,6 +1,6 @@
 // IT-strings — hardcoded, no i18n in demo-2
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Wrench, Users, Settings, LogOut, Calendar } from 'lucide-react';
+import { Home, Wrench, Users, Settings, LogOut, Calendar, Plus } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { Separator } from '@/components/ui/separator';
 
@@ -38,6 +38,13 @@ export function Sidebar() {
         <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">G</div>
         GarageOS
       </div>
+      <Link
+        to="/vehicles/new"
+        className="flex items-center justify-center gap-2 mb-4 px-3 py-2 rounded-md text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white transition"
+      >
+        <Plus size={16} />
+        Nuovo veicolo
+      </Link>
       <nav className="flex-1 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;

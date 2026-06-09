@@ -240,6 +240,13 @@ describe('CustomerDetail (edit mode)', () => {
     expect(screen.queryByText(/Cliente registrato/i)).not.toBeInTheDocument();
   });
 
+  it('links "Aggiungi veicolo" to /vehicles/new with the customerId', async () => {
+    apiFetchMock.mockResolvedValueOnce(FIXTURE);
+    renderRoute(<CustomerDetail />);
+    const link = await screen.findByRole('link', { name: /aggiungi veicolo/i });
+    expect(link).toHaveAttribute('href', `/vehicles/new?customerId=${CUSTOMER_ID}`);
+  });
+
   // Voce 11: B2B clear on toggle off
   it('clears businessName and vatNumber form state when user toggles isBusiness off', async () => {
     const user = userEvent.setup();

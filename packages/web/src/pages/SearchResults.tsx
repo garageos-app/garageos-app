@@ -80,6 +80,10 @@ function SearchResultsByCustomer({ customerId }: { customerId: string | null }) 
 function GlobalSearchResults({ q }: { q: string }) {
   const parsed = parseSearchInput(q);
   const vehicleActive = parsed.kind === 'valid';
+  const prefill =
+    parsed.kind === 'valid' && (parsed.type === 'vin' || parsed.type === 'plate')
+      ? `?${parsed.type}=${encodeURIComponent(parsed.value)}`
+      : '';
   const vehicleQuery = useVehicleSearch({
     kind: 'query',
     q: vehicleActive ? parsed.value : q,
@@ -120,6 +124,12 @@ function GlobalSearchResults({ q }: { q: string }) {
           <SearchX size={48} className="mb-3" />
           <div className="font-medium text-foreground">Nessun risultato trovato.</div>
           <div className="text-sm">Verifica il dato inserito.</div>
+          <Link
+            to={`/vehicles/new${prefill}`}
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white transition"
+          >
+            + Censisci questo veicolo
+          </Link>
         </div>
       )}
     </div>
