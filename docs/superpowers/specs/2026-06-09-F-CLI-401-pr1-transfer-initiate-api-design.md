@@ -55,10 +55,13 @@ di scadenza, qualunque UI.
    `GET /me/transfers`) → **divergenza da annotare in APPENDICE_A** (come già fatto per §3.5b export).
 2. **Validità del `transfer_code`:** **7 giorni** dal momento dell'avvio (stato `pending_recipient`),
    coerente con il timeout post-accettazione di BR-043 — un solo numero in tutto il flusso.
-3. **Famiglia error code:** nuova famiglia dotted **`transfer.*`** (distinta da `vehicle.transfer.*`
-   di F-OFF-110, che resta dedicata all'officina-mediated). La spec §2.3 cita codici flat
-   (`not_current_owner`) → si adottano i dotted per la convenzione attuale (FastifyError con
-   `name` dotted attraversa il global handler RFC7807).
+3. **Famiglia error code:** si **riusa la famiglia `transfer.creation.*` GIÀ REGISTRATA in
+   APPENDICE_G** (scoperta in fase di review: APPENDICE_G ha pre-popolato l'intero arco —
+   `transfer.creation.*`, `transfer.acceptance.*`, `transfer.confirmation.*`,
+   `transfer.rejection.*`, `transfer.claim_without_seller.*`, `transfer.not_found`). La famiglia
+   `vehicle.transfer.*` resta dedicata all'officina-mediated F-OFF-110. La decisione "famiglia
+   `transfer.*` dotted" presa con l'utente è quindi onorata dai codici pre-esistenti — NON si
+   inventano codici flat. (Lezione ricorrente: il pre-flight grep deve includere APPENDICE_G.)
 4. **Mapping method API ↔ DB:** il param API è `physical_code`; il valore enum DB
    `TransferMethod` è **`initiated_by_seller`** (l'enum descrive *chi* avvia, non *come* si
    raggiunge il cessionario). PR1 accetta solo `physical_code`.
@@ -124,21 +127,32 @@ del 404 di `me.vehicle.not_found`).
 1. Carica il veicolo + ownership attiva:
    `vehicle.findFirst({ where: { id: vehicleId }, select: { id, status, plate, make, model,
    ownerships: { where: { endedAt: null }, select: { id, customerId } } } })`.
-   Veicolo inesistente → **404** `me.transfer.vehicle_not_found`.
+   Veicolo inesistente → **404** `transfer.creation.vehicle_not_found` (codice NUOVO, §6).
 2. **BR-040** — proprietario attuale: l'ownership attiva deve esistere e `customerId === me`.
-   Altrimenti → **403** `transfer.not_current_owner`.
-3. **BR-046** — `status` deve essere `certified`. `pending` o `archived` →
-   **422** `transfer.vehicle_not_certified`.
-4. **BR-047** — nessun transfer attivo per il veicolo
+   Altrimenti → **403** `transfer.creation.not_current_owner`.
+3. **Veicolo archiviato** — `status === 'archived'` → **409** `vehicle.archived` (codice generico
+   multi-flusso già registrato, BR-026).
+4. **BR-046** — `status` deve essere `certified`. Se `pending` →
+   **422** `transfer.creation.vehicle_not_certified`.
+5. **BR-047** — nessun transfer attivo per il veicolo
    (`status ∈ {pending_recipient, pending_seller_confirmation, pending_validation}`) →
-   **409** `transfer.already_pending`.
-5. Genera codice (§3.3); crea la riga:
+   **409** `transfer.creation.already_pending`.
+6. Genera codice (§3.3); crea la riga:
    ```
    vehicleTransfer.create({ vehicleId, fromCustomerId: me, toCustomerId: null,
      transferCode: <code>, invitedEmail: null, method: 'initiated_by_seller',
      status: 'pending_recipient', expiresAt: now + 7d })
    ```
    `documentUrl`/`completedAt`/`rejectedReason` restano null.
+7. **Gestione P2002 (race + collisione codice):** la `create` può fallire con P2002 su due
+   constraint distinti — bisogna distinguerli via `err.meta.target`:
+   - `uq_transfer_vehicle_active` (partial-unique `vehicle_id WHERE status IN (attivi)`, BR-047):
+     due avvii concorrenti che superano entrambi il `findFirst` del passo 5 → il secondo perde la
+     race → **409** `transfer.creation.already_pending` (NON ritentare: il veicolo ha già un
+     transfer attivo). Questo indice è la vera ultima linea di difesa di BR-047.
+   - `vehicle_transfers_transfer_code_key` (`transfer_code` @unique): collisione del codice
+     generato → **ritenta** con un nuovo codice (fino a `CODE_RETRY_LIMIT`).
+   - Qualsiasi altro errore → propaga (500).
 
 **Response `201`** (serializer §4.4):
 ```json
@@ -154,8 +168,9 @@ del 404 di `me.vehicle.not_found`).
 }
 ```
 
-**Errori:** `404 me.transfer.vehicle_not_found` · `403 transfer.not_current_owner` ·
-`422 transfer.vehicle_not_certified` · `409 transfer.already_pending`.
+**Errori:** `404 transfer.creation.vehicle_not_found` · `403 transfer.creation.not_current_owner` ·
+`409 vehicle.archived` · `422 transfer.creation.vehicle_not_certified` ·
+`409 transfer.creation.already_pending` (check esplicito + race su `uq_transfer_vehicle_active`).
 
 > Nota: NON c'è write su `access_logs` (richiede `user_id` → `users`, che i clienti non occupano —
 > stesso motivo di `me-vehicles.ts`). L'audit del transfer vive nella riga `vehicle_transfers` stessa.
@@ -169,7 +184,8 @@ Ogni elemento è il DTO §4.4. Risposta: `{ "data": [ … ] }`.
 ### 4.3 `GET /v1/me/transfers/:id`
 
 `:id` = `z.uuid()`. `findFirst({ where: { id, fromCustomerId: me } })`. Non trovato (inesistente o
-di altro cedente) → **404** `me.transfer.not_found`. Trovato → DTO §4.4 in `{ "transfer": … }`.
+di altro cedente) → **404** `transfer.not_found` (codice già registrato). Trovato → DTO §4.4 in
+`{ "transfer": … }`.
 
 ### 4.4 DTO `serializeTransfer(row)`
 
@@ -196,19 +212,26 @@ PR1: nessuna ownership si sposta qui. Saranno verificati in PR2 al completamento
 
 ---
 
-## 6. Error codes nuovi (APPENDICE_G)
+## 6. Error codes (APPENDICE_G)
 
-Famiglia `transfer.*` (flusso cliente) + 2 `me.transfer.*` per i 404 di superficie cliente:
+**Scoperta in review:** APPENDICE_G ha GIÀ registrato la famiglia del flusso transfer cliente
+(pre-popolata per tutto l'arco F-CLI-401→405). PR1 **riusa** i codici esistenti; aggiunge **un solo
+codice nuovo**.
 
-| Codice | Status | Scenario |
-|---|---|---|
-| `transfer.not_current_owner` | 403 | Il chiamante non è il proprietario attivo (BR-040) |
-| `transfer.vehicle_not_certified` | 422 | Veicolo `pending`/`archived` non trasferibile (BR-046) |
-| `transfer.already_pending` | 409 | Esiste già un transfer attivo per il veicolo (BR-047) |
-| `me.transfer.vehicle_not_found` | 404 | `vehicleId` inesistente nel POST |
-| `me.transfer.not_found` | 404 | `GET :id` su transfer inesistente o di altro cedente |
+Codici usati da PR1 (tutti `transfer.creation.*` + due generici), con stato di registrazione:
 
-Da aggiungere alla tabella §2xx e all'indice alfabetico §7 di APPENDICE_G.
+| Codice | Status | Scenario | In APPENDICE_G? |
+|---|---|---|---|
+| `transfer.creation.not_current_owner` | 403 | Chiamante non è il proprietario attivo (BR-040) | ✅ già registrato |
+| `transfer.creation.vehicle_not_certified` | 422 | Veicolo `pending` non trasferibile (BR-046) | ✅ già registrato |
+| `transfer.creation.already_pending` | 409 | Transfer attivo esistente (BR-047) — check + race | ✅ già registrato |
+| `vehicle.archived` | 409 | Veicolo archiviato (BR-026, multi-flusso) | ✅ già registrato |
+| `transfer.not_found` | 404 | `GET :id` su transfer inesistente o di altro cedente | ✅ già registrato |
+| `transfer.creation.vehicle_not_found` | 404 | `vehicleId` inesistente nel POST | ➕ **NUOVO da aggiungere** |
+
+In Task docs: aggiungere SOLO `transfer.creation.vehicle_not_found` alla tabella §2xx e all'indice
+alfabetico §7; opzionalmente popolare le colonne Feature (`F-CLI-401`) dei codici `transfer.creation.*`
+oggi vuote. Nessun codice flat `transfer.*` o `me.transfer.*` (erano un errore della bozza iniziale).
 
 ---
 
@@ -244,6 +267,8 @@ Da aggiungere alla tabella §2xx e all'indice alfabetico §7 di APPENDICE_G.
 ## 9. Divergenze documentazione da registrare
 
 - **APPENDICE_A:** path consolidati sotto `/v1/me/transfers` (la §3.10 elenca path misti); il `method`
-  API resta `physical_code` mappato su enum DB `initiated_by_seller`; codici errore dotted `transfer.*`
-  / `me.transfer.*` al posto dei flat citati in §2.3. Aggiornare §2.3 / §3.10 di conseguenza.
-- **APPENDICE_G:** aggiungere i 5 codici di §6.
+  API resta `physical_code` mappato su enum DB `initiated_by_seller`; codici errore dotted
+  `transfer.creation.*` (i flat `not_current_owner` ecc. citati in §2.3 sono superati dai dotted già
+  in APPENDICE_G). Aggiornare §2.3 / §3.10 di conseguenza.
+- **APPENDICE_G:** aggiungere il solo codice nuovo `transfer.creation.vehicle_not_found` (§6); gli
+  altri sono già registrati.

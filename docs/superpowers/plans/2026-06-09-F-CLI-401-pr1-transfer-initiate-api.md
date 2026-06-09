@@ -255,6 +255,16 @@ git commit -m "feat(api): add transfer DTO serializer"
 
 ## Task 3: Route `POST /v1/me/transfers` + registrazione
 
+> **CORREZIONE post-review (2026-06-09):** la review ha scoperto che APPENDICE_G ha già registrato
+> la famiglia `transfer.creation.*` e che esiste l'indice partial-unique `uq_transfer_vehicle_active`
+> (BR-047). Rispetto al codice incollato sotto valgono le correzioni della **spec §4.1 e §6 aggiornate**:
+> (a) codici errore = `transfer.creation.vehicle_not_found` (404), `transfer.creation.not_current_owner`
+> (403), `vehicle.archived` (409) per archived, `transfer.creation.vehicle_not_certified` (422) per
+> pending, `transfer.creation.already_pending` (409); GET :id → `transfer.not_found` (404).
+> (b) il `catch` del P2002 distingue via `err.meta.target`: `uq_transfer_vehicle_active` → 409
+> `transfer.creation.already_pending` (no retry); `transfer_code` → retry. I test riflettono questo
+> (meta.target nei P2002, branch archived→409, race→409). Vedi le istruzioni di fix passate all'implementer.
+
 **Files:**
 - Create: `packages/api/src/routes/v1/me-transfers.ts`
 - Modify: `packages/api/src/server.ts` (import + register, accanto a `meVehicleRoutes`)
@@ -920,17 +930,17 @@ git commit -m "test(api): integration tests for /me/transfers initiate"
 - Modify: `docs/APPENDICE_G_ERROR_CODES.md`
 - Modify: `docs/APPENDICE_A_API.md`
 
-- [ ] **Step 1: Aggiungi i 5 codici in APPENDICE_G**
+- [ ] **Step 1: Aggiungi il codice NUOVO in APPENDICE_G** (gli altri sono già registrati)
 
-Aggiungi alla tabella dei codici (sezione appropriata per famiglia `transfer.*` / `me.transfer.*`) e all'indice alfabetico §7:
+> **CORREZIONE post-review:** APPENDICE_G ha già `transfer.creation.not_current_owner`,
+> `transfer.creation.vehicle_not_certified`, `transfer.creation.already_pending`, `transfer.not_found`,
+> `vehicle.archived`. PR1 NON aggiunge codici flat. Aggiungi SOLO il codice nuovo qui sotto alla
+> tabella §2xx e all'indice alfabetico §7; opzionalmente popola la colonna Feature (`F-CLI-401`) dei
+> tre `transfer.creation.*` oggi vuota.
 
 | Codice | Status | Scenario |
 |---|---|---|
-| `transfer.not_current_owner` | 403 | Il chiamante non è il proprietario attivo (BR-040) |
-| `transfer.vehicle_not_certified` | 422 | Veicolo `pending`/`archived` non trasferibile (BR-046) |
-| `transfer.already_pending` | 409 | Esiste già un transfer attivo per il veicolo (BR-047) |
-| `me.transfer.vehicle_not_found` | 404 | `vehicleId` inesistente in `POST /me/transfers` |
-| `me.transfer.not_found` | 404 | `GET /me/transfers/:id` su transfer inesistente o di altro cedente |
+| `transfer.creation.vehicle_not_found` | 404 | `vehicleId` inesistente in `POST /me/transfers` |
 
 - [ ] **Step 2: Aggiorna APPENDICE_A §2.3 / §3.10**
 
