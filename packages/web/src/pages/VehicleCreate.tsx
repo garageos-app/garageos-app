@@ -118,7 +118,6 @@ export function VehicleCreate() {
 
   return (
     <VehicleCreateForm
-      isSuperAdmin={isSuperAdmin}
       locationOptions={locationOptions}
       lockedLocationId={lockedLocationId}
       defaultLocationId={defaultLocationId}
@@ -127,7 +126,6 @@ export function VehicleCreate() {
 }
 
 interface FormProps {
-  isSuperAdmin: boolean;
   locationOptions: LocationOption[];
   lockedLocationId: string | null;
   defaultLocationId: string;
@@ -254,9 +252,11 @@ function VehicleCreateForm({ locationOptions, lockedLocationId, defaultLocationI
           {lockedCustomerId ? (
             <div className="rounded-md border p-3 text-sm">
               Cliente selezionato:{' '}
-              {selectedCustomerLabel && selectedCustomerLabel !== 'Cliente selezionato' ? (
-                <span className="font-medium">{selectedCustomerLabel}</span>
-              ) : null}
+              <span className="font-medium">
+                {selectedCustomerLabel && selectedCustomerLabel !== 'Cliente selezionato'
+                  ? selectedCustomerLabel
+                  : `ID ${lockedCustomerId.slice(0, 8)}…`}
+              </span>
             </div>
           ) : (
             <>
