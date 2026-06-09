@@ -337,9 +337,10 @@ Per fornire dati utili al client per gestire l'errore:
 | Code | HTTP | Severity | Titolo | Quando | BR |
 |---|---|---|---|---|---|
 | `transfer.not_found` | 404 | info | Trasferimento non trovato | | |
-| `transfer.creation.not_current_owner` | 403 | warning | Non sei il proprietario attuale | | |
-| `transfer.creation.already_pending` | 409 | warning | Transfer già attivo per questo veicolo | | BR-047 |
-| `transfer.creation.vehicle_not_certified` | 422 | info | Impossibile trasferire veicolo pending | | BR-046 |
+| `transfer.creation.not_current_owner` | 403 | warning | Non sei il proprietario attuale | | F-CLI-401 |
+| `transfer.creation.already_pending` | 409 | warning | Transfer già attivo per questo veicolo | | BR-047, F-CLI-401 |
+| `transfer.creation.vehicle_not_certified` | 422 | info | Impossibile trasferire veicolo pending | | BR-046, F-CLI-401 |
+| `transfer.creation.vehicle_not_found` | 404 | info | Veicolo non trovato | POST /v1/me/transfers con vehicleId inesistente | F-CLI-401 |
 | `transfer.acceptance.expired` | 410 | info | Trasferimento scaduto | expires_at passato | |
 | `transfer.acceptance.already_completed` | 409 | info | Trasferimento già completato | | |
 | `transfer.acceptance.not_pending_recipient` | 422 | warning | Stato non valido per accettazione | | |
@@ -992,6 +993,7 @@ transfer.confirmation.not_pending_seller
 transfer.creation.already_pending
 transfer.creation.not_current_owner
 transfer.creation.vehicle_not_certified
+transfer.creation.vehicle_not_found
 transfer.not_found
 transfer.rejection.not_permitted
 user.already_active

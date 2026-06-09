@@ -363,10 +363,12 @@ Authorization: Bearer <officine_user_jwt>
 
 ---
 
-### 2.3 `POST /transfers` — Avvia passaggio di proprietà
+### 2.3 `POST /v1/me/transfers` — Avvia passaggio di proprietà
 
 **Feature:** F-CLI-401
 **Auth:** Customer (deve essere attuale proprietario del veicolo)
+
+> **Nota implementazione PR1 (2026-06):** il path reale è `POST /v1/me/transfers` (consolidato nella surface `/me/*` del customer). PR1 implementa solo `method: "physical_code"` (genera un codice `TR-XXXX-XXXX`, DB enum `initiated_by_seller`). Il metodo `email_invitation` è differito a quando il canale email sarà sbloccato. I tre endpoint di PR1 sono: `POST /me/transfers`, `GET /me/transfers`, `GET /me/transfers/:id`.
 
 #### Descrizione
 
@@ -375,63 +377,50 @@ Il proprietario attuale avvia un passaggio di proprietà del veicolo. Può indic
 #### Request
 
 ```http
-POST /v1/transfers
+POST /v1/me/transfers
 Content-Type: application/json
 Authorization: Bearer <customer_jwt>
 
 {
-  "vehicle_id": "01HKXN5...",
-  "method": "email_invitation",
-  "invited_email": "luigi.bianchi@example.com"
-}
-```
-
-**Oppure:**
-
-```json
-{
-  "vehicle_id": "01HKXN5...",
+  "vehicleId": "01HKXN5...",
   "method": "physical_code"
 }
 ```
 
-#### Response `201 Created`
+> `email_invitation` (con campo `invitedEmail`) è differito; attualmente solo `physical_code` è accettato.
+
+#### Response `201 Created` (camelCase)
 
 ```json
 {
   "id": "01HKYT...",
-  "vehicle_id": "01HKXN5...",
-  "from_customer_id": "01HKXN6...",
-  "method": "email_invitation",
-  "invited_email": "luigi.bianchi@example.com",
-  "transfer_code": null,
-  "status": "pending_recipient",
-  "expires_at": "2026-04-28T14:32:05Z"
-}
-```
-
-**Se `method: "physical_code"`:**
-
-```json
-{
-  "id": "01HKYT...",
-  "vehicle_id": "01HKXN5...",
-  "from_customer_id": "01HKXN6...",
+  "vehicleId": "01HKXN5...",
   "method": "physical_code",
-  "invited_email": null,
-  "transfer_code": "TR-9K4M-7P2X",
-  "transfer_code_expires_at": "2026-04-28T14:32:05Z",
-  "status": "pending_recipient"
+  "transferCode": "TR-9K4M-7P2X",
+  "status": "pending_recipient",
+  "expiresAt": "2026-04-28T14:32:05Z",
+  "createdAt": "2026-04-21T14:32:05Z",
+  "vehicle": {
+    "plate": "AB123CD",
+    "make": "Fiat",
+    "model": "500"
+  }
 }
 ```
+
+`expiresAt` = 7 giorni dalla creazione. La risposta è in camelCase.
 
 #### Errori
 
 | Status | Codice | Scenario |
 |---|---|---|
-| 403 | `not_current_owner` | Il customer non è il proprietario attuale |
-| 409 | `transfer_already_pending` | Esiste già un trasferimento attivo per questo veicolo |
-| 422 | `vehicle_not_certified` | Impossibile trasferire veicolo in stato pending |
+| 404 | `transfer.creation.vehicle_not_found` | `vehicleId` inesistente o fuori perimetro del customer |
+| 403 | `transfer.creation.not_current_owner` | Il customer non è il proprietario attuale |
+| 409 | `vehicle.archived` | Il veicolo è archiviato |
+| 422 | `transfer.creation.vehicle_not_certified` | Impossibile trasferire veicolo in stato pending (BR-046) |
+| 409 | `transfer.creation.already_pending` | Esiste già un trasferimento attivo per questo veicolo (BR-047) |
+
+> I codici piatti `not_current_owner`, `transfer_already_pending`, `vehicle_not_certified` mostrati nella specifica originale sono sostituiti dalla famiglia dotted `transfer.creation.*` (vedi APPENDICE_G §3.8).
 
 ---
 
@@ -2639,13 +2628,13 @@ L'`owner_type=intervention` resta officina-only.
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
-| POST | `/transfers` | F-CLI-401 | Customer | **[DETTAGLIATO §2.3]** Avvia passaggio di proprietà |
-| GET | `/transfers/:id` | F-CLI-402 | Customer | Dettaglio trasferimento |
-| POST | `/transfers/:code/accept` | F-CLI-402, F-CLI-403 | Customer | Cessionario accetta trasferimento |
-| POST | `/transfers/:id/confirm` | F-CLI-403 | Customer | Cedente conferma dopo accettazione cessionario |
-| POST | `/transfers/:id/reject` | F-CLI-403 | Customer | Rifiuta trasferimento |
-| POST | `/transfers/claim-without-seller` | F-CLI-404 | Customer | Claim autonomo con libretto |
-| GET | `/me/transfers` | F-CLI-401, F-CLI-402 | Customer | Miei trasferimenti in corso |
+| POST | `/me/transfers` | F-CLI-401 | Customer | **[DETTAGLIATO §2.3]** Avvia passaggio di proprietà (PR1) |
+| GET | `/me/transfers` | F-CLI-401 | Customer | Lista trasferimenti del customer (PR1) |
+| GET | `/me/transfers/:id` | F-CLI-401 | Customer | Dettaglio trasferimento (PR1) |
+| POST | `/me/transfers/:code/accept` | F-CLI-402, F-CLI-403 | Customer | Cessionario accetta trasferimento (PR2+) |
+| POST | `/me/transfers/:id/confirm` | F-CLI-403 | Customer | Cedente conferma dopo accettazione cessionario (PR2+) |
+| POST | `/me/transfers/:id/reject` | F-CLI-403 | Customer | Rifiuta trasferimento (PR2+) |
+| POST | `/me/transfers/claim-without-seller` | F-CLI-404 | Customer | Claim autonomo con libretto (PR2+) |
 
 ### 3.11 Notifications
 
