@@ -24,5 +24,11 @@
     },
     "types": ["vite/client"]
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests"],
+  // Parity tests intentionally deep-import backend schemas (@garageos/database)
+  // for drift detection. Those cross-package imports pull files outside this
+  // project's file list (TS6307 under `tsc -b`) — e.g. vehicle.ts -> common.ts.
+  // They are dev/Vitest-only (Vitest resolves them at test time), so they are
+  // excluded from the type-check build.
+  "exclude": ["src/**/*.parity.test.ts"]
 }
