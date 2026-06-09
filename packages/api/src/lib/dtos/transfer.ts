@@ -1,4 +1,4 @@
-import type { Prisma } from '@garageos/database';
+import type { Prisma, TransferMethod } from '@garageos/database';
 
 // Select shared by every /me/transfers response. No recipient PII: in the
 // physical_code flow toCustomerId is null until acceptance (PR2), and even
@@ -34,7 +34,7 @@ export interface TransferDto {
 // DB enum TransferMethod describes WHO initiated; the client speaks the
 // API-facing method (HOW the recipient is reached). Only initiated_by_seller
 // reaches this serializer in the customer flow -> expose it as physical_code.
-function mapMethod(method: string): string {
+function mapMethod(method: TransferMethod): string {
   return method === 'initiated_by_seller' ? 'physical_code' : method;
 }
 
@@ -49,7 +49,7 @@ export function serializeTransfer(row: TransferRow): TransferDto {
     expiresAt: row.expiresAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
   };
-  if (row.completedAt) dto.completedAt = row.completedAt.toISOString();
-  if (row.rejectedReason) dto.rejectedReason = row.rejectedReason;
+  if (row.completedAt != null) dto.completedAt = row.completedAt.toISOString();
+  if (row.rejectedReason != null) dto.rejectedReason = row.rejectedReason;
   return dto;
 }

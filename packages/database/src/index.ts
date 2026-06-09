@@ -4,6 +4,7 @@ export {
   Prisma,
   UserRole,
   UserStatus,
+  TransferMethod,
 } from '../prisma/generated/prisma/client/client.js';
 export * from './validators/index.js';
 export * from './factories/index.js';
