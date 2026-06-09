@@ -2503,7 +2503,7 @@ Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conse
 | POST | `/me/vehicles/pending` | F-CLI-104 | Customer | Pre-registrazione veicolo pendente con libretto |
 | POST | `/vehicles/:id/share-link` | F-CLI-502 | Customer | Genera link condivisione temporaneo |
 | DELETE | `/vehicles/:id/share-link/:token` | F-CLI-502 | Customer | Revoca link |
-| GET | `/vehicles/:id/export.pdf` | F-CLI-501 | Customer | Export PDF storico |
+| GET | `/me/vehicles/:id/export.pdf` | F-CLI-501 | Customer | **[DETTAGLIATO §3.5b]** Export PDF storico interventi officina |
 
 #### GET /v1/me/vehicles/:id/access-log (F-CLI-304)
 
@@ -2534,6 +2534,46 @@ interni. Compaiono solo `view` e la `create` di intervento (esposta come
 `new_intervention`); le registrazioni veicolo (`vehicle_registered`) e le altre
 azioni sono escluse. `404 me.vehicle.not_found` se il cliente non possiede
 attualmente il veicolo.
+
+#### GET /v1/me/vehicles/:id/export.pdf (F-CLI-501)
+
+Genera un PDF professionale con lo **storico completo degli interventi officina**
+del veicolo posseduto dal cliente autenticato, da mostrare a un potenziale
+acquirente. Solo pool clienti.
+
+> **Divergenza dal path storico.** La specifica originale citava
+> `GET /vehicles/:id/export.pdf`; l'endpoint vive sulla superficie cliente
+> `/me/...` per coerenza con il resto dell'app cliente (stessa scelta di
+> `POST /me/vehicles/claim`, F-CLI-101). Riusa la meccanica PDF di F-OFF-309
+> (`pdf-lib` render server-side → S3 → presigned URL).
+
+Comportamento:
+
+- **Gate ownership** (frontiera di sicurezza, mai solo RLS): solo il proprietario
+  attivo (`vehicle_ownerships.ended_at IS NULL`, BR-040) può generare il PDF;
+  altrimenti `404 me.vehicle.not_found` (nessun leak di esistenza).
+- **Contenuto**: interventi officina con stato `active` e `disputed`,
+  **cross-tenant** (BR-150: ogni officina che ha lavorato sul veicolo). Gli
+  interventi `cancelled` sono **esclusi**; il thread di contestazione non è
+  esposto; le `internal_notes` non sono mai incluse.
+- Header GarageOS-branded (documento multi-officina, nessun logo officina,
+  nessun nome proprietario); ogni intervento è etichettato `officina · città`.
+- PDF rigenerato e sovrascritto a ogni richiesta (storico mutabile), persistito
+  su S3 con chiave `vehicle-history-pdfs/<vehicleId>.pdf`, presigned 1h.
+- Storico vuoto (0 interventi) → `200` con PDF "Nessun intervento officina
+  registrato".
+
+Risposta `200`:
+
+```jsonc
+{
+  "pdf_download_url": "https://<bucket>.s3.<region>.amazonaws.com/vehicle-history-pdfs/<vehicleId>.pdf?X-Amz-…",
+  "expires_at": "2026-06-09T19:00:00Z"
+}
+```
+
+Errori: `401`, `404 me.vehicle.not_found`, `429`, `500`. Nessun codice
+4xx domain-specific nuovo.
 
 ### 3.6 Interventions
 

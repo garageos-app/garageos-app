@@ -1,5 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
 
+import { DOT, TIMES, formatDateIt, formatKm, wrapText } from './pdf-format.js';
+
 // F-OFF-309 — single intervention PDF, A4 portrait, 1 page.
 // Customer-facing document handed to the client. internal_notes are NEVER
 // passed in (route excludes them). All formatting is manual (no Intl/ICU) to
@@ -9,12 +11,6 @@ const A4_WIDTH_PT = 595.28;
 const A4_HEIGHT_PT = 841.89;
 const MARGIN = 50;
 const LINE = 16;
-
-// U+00B7 MIDDLE DOT — valid WinAnsi (0xB7). Used as field separator in header
-// and vehicle line. \uXXXX escape avoids any editor encoding ambiguity.
-const DOT = '\u00b7'; // U+00B7 MIDDLE DOT
-// U+00D7 MULTIPLICATION SIGN — valid WinAnsi (0xD7). Used as quantity marker.
-const TIMES = '\u00d7'; // U+00D7 MULTIPLICATION SIGN
 
 export interface InterventionPdfData {
   tenant: {
@@ -40,47 +36,6 @@ export interface InterventionPdfData {
 export interface LogoImage {
   bytes: Buffer;
   format: 'png' | 'jpg';
-}
-
-// dd/MM/yyyy from an ISO yyyy-MM-dd string — manual, no ICU dependency.
-function formatDateIt(iso: string): string {
-  const [y, m, d] = iso.slice(0, 10).split('-');
-  return `${d}/${m}/${y}`;
-}
-
-// Thousands separator with a dot (it-IT) — manual, no toLocaleString.
-function formatKm(n: number): string {
-  return Math.trunc(n)
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-}
-
-// Greedy word-wrap to a max width in points.
-// Split on '\n' first, then filter empty tokens per line to avoid a spurious
-// trailing '' entry from trailing whitespace (e.g. 'text '.split(/\s+/)).
-// Intentional blank lines (empty rawLine after trimming) are preserved as-is.
-function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const out: string[] = [];
-  for (const rawLine of text.split('\n')) {
-    const words = rawLine.split(/\s+/).filter((w) => w !== '');
-    if (words.length === 0) {
-      // Preserve intentional blank line.
-      out.push('');
-      continue;
-    }
-    let current = '';
-    for (const word of words) {
-      const candidate = current ? `${current} ${word}` : word;
-      if (font.widthOfTextAtSize(candidate, size) > maxWidth && current) {
-        out.push(current);
-        current = word;
-      } else {
-        current = candidate;
-      }
-    }
-    out.push(current);
-  }
-  return out;
 }
 
 export async function renderInterventionPdf(
