@@ -255,4 +255,25 @@ describe('SearchResults — global query branch', () => {
     render(wrap({ initialPath: '/search?q=a', children: <SearchResults /> }));
     expect(screen.getByText(/almeno 2 caratteri/i)).toBeInTheDocument();
   });
+
+  it('offers "Censisci questo veicolo" prefilled with the plate when nothing is found', async () => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/v1/customers/search')) {
+        return Promise.resolve({ data: [], meta: { has_more: false } });
+      }
+      if (url.startsWith('/v1/vehicles/search')) {
+        return Promise.resolve({
+          data: [],
+          meta: { has_more: false },
+        } satisfies VehicleSearchResponse);
+      }
+      return Promise.reject(new Error('unexpected url'));
+    });
+
+    render(wrap({ initialPath: '/search?q=AB123CD', children: <SearchResults /> }));
+
+    const link = await screen.findByRole('link', { name: /censisci questo veicolo/i });
+    expect(link).toHaveAttribute('href', '/vehicles/new?plate=AB123CD');
+  });
 });

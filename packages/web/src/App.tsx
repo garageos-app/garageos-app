@@ -11,6 +11,7 @@ import { VehicleDetail } from '@/pages/VehicleDetail';
 import { CustomerList } from '@/pages/CustomerList';
 import { CustomerDetail } from '@/pages/CustomerDetail';
 import { DeadlineDashboard } from '@/pages/DeadlineDashboard';
+import { VehicleCreate } from '@/pages/VehicleCreate';
 import { InterventionCreate } from '@/pages/InterventionCreate';
 import { InterventionDetail } from '@/pages/InterventionDetail';
 import { Settings } from '@/pages/Settings';
@@ -49,6 +50,7 @@ export function App() {
                   <Route element={<OnboardingGate />}>
                     <Route path="/" element={<HomeDashboard />} />
                     <Route path="/search" element={<SearchResults />} />
+                    <Route path="/vehicles/new" element={<VehicleCreate />} />
                     <Route path="/vehicles/:id" element={<VehicleDetail />} />
                     <Route
                       path="/vehicles/:id/interventions/new"

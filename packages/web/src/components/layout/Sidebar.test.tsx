@@ -69,4 +69,10 @@ describe('Sidebar', () => {
     await userEvent.click(screen.getByRole('button', { name: /esci/i }));
     expect(auth.signOut).toHaveBeenCalledOnce();
   });
+
+  it('renders a "Nuovo veicolo" link to /vehicles/new', () => {
+    renderAt('/');
+    const link = screen.getByRole('link', { name: /nuovo veicolo/i });
+    expect(link).toHaveAttribute('href', '/vehicles/new');
+  });
 });

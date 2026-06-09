@@ -5,6 +5,11 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'intervention.creation.user_no_location':
     "Il tuo account non è associato a una location. Contatta l'amministratore.",
   'vehicle.modification.archived': 'Il veicolo è archiviato e non accetta nuovi interventi.',
+  'vehicle.creation.duplicate_vin': 'Esiste già un veicolo con questo VIN.',
+  'vehicle.creation.duplicate_plate_warning': 'Esiste già un veicolo con questa targa.',
+  'vehicle.creation.invalid_vin_checksum':
+    'Il VIN non rispetta il checksum standard. Conferma se è un veicolo storico o agricolo.',
+  'vehicle.creation.location_not_in_tenant': 'La sede selezionata non è valida.',
   'users.me.update.empty_body': 'Nessuna modifica da salvare.',
   'users.me.update.unknown_field': 'Campo non modificabile.',
   'tenants.me.update.empty_body': 'Nessuna modifica da salvare.',

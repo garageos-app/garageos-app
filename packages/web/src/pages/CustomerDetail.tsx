@@ -410,8 +410,20 @@ function ViewMode({ dto, onEdit }: { dto: CustomerDetailDto; onEdit: () => void 
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Veicoli ({dto.vehicles.length})</CardTitle>
+          <Link
+            to={`/vehicles/new?customerId=${dto.id}`}
+            state={{
+              customerLabel:
+                dto.isBusiness && dto.businessName
+                  ? dto.businessName
+                  : `${dto.firstName} ${dto.lastName}`.trim(),
+            }}
+            className="text-sm font-medium text-blue-600 hover:underline"
+          >
+            + Aggiungi veicolo
+          </Link>
         </CardHeader>
         <CardContent>
           {dto.vehicles.length === 0 ? (
