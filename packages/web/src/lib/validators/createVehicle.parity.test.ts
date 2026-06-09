@@ -51,4 +51,17 @@ describe('CreateVehiclePayloadSchema parity (web mirror vs backend)', () => {
     expect(CreateVehiclePayloadSchema.safeParse(noKm).success).toBe(false);
     expect(BackendCreateVehicleSchema.safeParse(noKm).success).toBe(false);
   });
+
+  it('both reject a VIN containing a forbidden character (ISO 3779: no I/O/Q)', () => {
+    // Replace last char with 'I' — length stays 17 but regex must reject it
+    const badVin = { ...canonical, vehicle: { ...canonical.vehicle, vin: '1HGCM82633A0043I2' } };
+    expect(CreateVehiclePayloadSchema.safeParse(badVin).success).toBe(false);
+    expect(BackendCreateVehicleSchema.safeParse(badVin).success).toBe(false);
+  });
+
+  it('both reject a malformed plate', () => {
+    const badPlate = { ...canonical, vehicle: { ...canonical.vehicle, plate: 'X' } };
+    expect(CreateVehiclePayloadSchema.safeParse(badPlate).success).toBe(false);
+    expect(BackendCreateVehicleSchema.safeParse(badPlate).success).toBe(false);
+  });
 });

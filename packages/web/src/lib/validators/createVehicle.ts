@@ -9,6 +9,24 @@ import { z } from 'zod';
 // route boundary (vehicles.ts) — it is NOT part of this payload shape. The
 // mutation hook (vehicleCreate.ts) adds `force` to the request body.
 
+// Mirror of backend VinSchema / ItalianPlateSchema (packages/database/src/validators/common.ts)
+// BR-001 — VIN: 17 characters, alphanumeric excluding I/O/Q (ISO 3779)
+const VinSchema = z
+  .string()
+  .length(17, { message: 'Il VIN deve essere di 17 caratteri' })
+  .regex(/^[A-HJ-NPR-Z0-9]{17}$/, {
+    message: 'VIN contiene caratteri non validi',
+  });
+
+// Italian plate, current format (AA123BB).
+const ItalianPlateSchema = z
+  .string()
+  .min(6)
+  .max(10)
+  .regex(/^[A-Z]{2}[0-9]{3}[A-Z]{2}$/, {
+    message: 'Formato targa italiana non valido (esempio: AB123CD)',
+  });
+
 export const VehicleTypeEnum = z.enum(['car', 'motorcycle', 'van', 'truck', 'agricultural']);
 export const FuelTypeEnum = z.enum([
   'petrol',
@@ -27,8 +45,8 @@ const CURRENT_YEAR = new Date().getUTCFullYear();
 
 export const CreateVehiclePayloadSchema = z.object({
   vehicle: z.object({
-    vin: z.string().length(17),
-    plate: z.string().min(1).max(10),
+    vin: VinSchema,
+    plate: ItalianPlateSchema,
     plateCountry: z.string().length(2).default('IT'),
     make: z.string().min(1).max(50),
     model: z.string().min(1).max(100),
