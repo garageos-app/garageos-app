@@ -12,6 +12,7 @@ import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
 import { TimelineRow } from '@/components/TimelineRow';
+import { VehicleHistoryExportButton } from '@/components/VehicleHistoryExportButton';
 import { ApiError } from '@/lib/api-error';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import { formatDate } from '@/lib/format';
@@ -251,6 +252,9 @@ function TechTab({
           <Text style={styles.techValue}>{value}</Text>
         </View>
       ))}
+      <View style={styles.exportSection}>
+        <VehicleHistoryExportButton vehicleId={vehicle.id} />
+      </View>
     </View>
   );
 }
@@ -283,6 +287,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 14, fontWeight: '500', color: colors.muted },
   tabTextActive: { color: colors.primary, fontWeight: '600' },
   techList: { padding: spacing.md, gap: spacing.sm },
+  exportSection: { marginTop: spacing.md },
   techRow: {
     flexDirection: 'row',
     paddingVertical: spacing.sm,
