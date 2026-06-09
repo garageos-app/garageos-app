@@ -91,3 +91,131 @@ export const CreateVehiclePayloadSchema = z.object({
 });
 
 export type CreateVehiclePayload = z.infer<typeof CreateVehiclePayloadSchema>;
+
+const yearRe = /^\d{4}$/;
+const intRe = /^\d+$/;
+const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+
+// RHF form schema. Numeric inputs are validated as strings here and converted
+// in transformToPayload (avoids z.coerce.number() turning "" into 0).
+export const VehicleFormSchema = z
+  .object({
+    customerMode: z.enum(['existing', 'create_new']),
+    customerId: z.string().optional(),
+    firstName: z.string().max(100).optional(),
+    lastName: z.string().max(100).optional(),
+    email: z.string().max(255).optional(),
+    phone: z.string().max(30).optional(),
+    taxCode: z.string().max(20).optional(),
+    isBusiness: z.boolean(),
+    businessName: z.string().max(200).optional(),
+    vatNumber: z.string().max(20).optional(),
+    vin: z.string().trim().length(17, 'Il VIN deve avere 17 caratteri'),
+    plate: z.string().trim().min(1, 'Targa obbligatoria').max(10),
+    plateCountry: z.string().trim().length(2, 'Codice paese a 2 lettere'),
+    make: z.string().trim().min(1, 'Marca obbligatoria').max(50),
+    model: z.string().trim().min(1, 'Modello obbligatorio').max(100),
+    version: z.string().max(150).optional(),
+    year: z.string().regex(yearRe, 'Anno non valido (AAAA)'),
+    registrationDate: z.string().optional(),
+    vehicleType: VehicleTypeEnum,
+    fuelType: FuelTypeEnum,
+    engineDisplacement: z.string().optional(),
+    powerKw: z.string().optional(),
+    color: z.string().max(50).optional(),
+    odometerKm: z.string().regex(intRe, 'Km non validi'),
+    locationId: z.string().min(1, 'Sede obbligatoria'),
+  })
+  .superRefine((d, ctx) => {
+    if (d.customerMode === 'existing') {
+      if (!d.customerId) {
+        ctx.addIssue({ code: 'custom', path: ['customerId'], message: 'Seleziona un cliente' });
+      }
+    } else {
+      if (!d.firstName?.trim())
+        ctx.addIssue({ code: 'custom', path: ['firstName'], message: 'Nome obbligatorio' });
+      if (!d.lastName?.trim())
+        ctx.addIssue({ code: 'custom', path: ['lastName'], message: 'Cognome obbligatorio' });
+      if (!d.email?.trim())
+        ctx.addIssue({ code: 'custom', path: ['email'], message: 'Email obbligatoria' });
+      if (d.isBusiness && !d.businessName?.trim())
+        ctx.addIssue({
+          code: 'custom',
+          path: ['businessName'],
+          message: 'Ragione sociale obbligatoria',
+        });
+      if (d.isBusiness && !d.vatNumber?.trim())
+        ctx.addIssue({
+          code: 'custom',
+          path: ['vatNumber'],
+          message: 'P.IVA obbligatoria per aziende',
+        });
+    }
+    if (d.registrationDate && !dateRe.test(d.registrationDate)) {
+      ctx.addIssue({ code: 'custom', path: ['registrationDate'], message: 'Data non valida' });
+    }
+    if (d.engineDisplacement && !intRe.test(d.engineDisplacement)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['engineDisplacement'],
+        message: 'Cilindrata non valida',
+      });
+    }
+    if (d.powerKw && !intRe.test(d.powerKw)) {
+      ctx.addIssue({ code: 'custom', path: ['powerKw'], message: 'Potenza non valida' });
+    }
+  });
+
+export type VehicleFormValues = z.infer<typeof VehicleFormSchema>;
+
+export function transformToPayload(v: VehicleFormValues): CreateVehiclePayload {
+  const opt = (s?: string) => {
+    const t = s?.trim();
+    return t ? t : undefined;
+  };
+  const optInt = (s?: string) => {
+    const t = s?.trim();
+    return t ? Number(t) : undefined;
+  };
+
+  const ed = optInt(v.engineDisplacement);
+  const pk = optInt(v.powerKw);
+
+  const customer: CreateVehiclePayload['customer'] =
+    v.customerMode === 'existing'
+      ? { mode: 'existing', customerId: v.customerId ?? '' }
+      : {
+          mode: 'create_new',
+          firstName: (v.firstName ?? '').trim(),
+          lastName: (v.lastName ?? '').trim(),
+          email: (v.email ?? '').trim(),
+          isBusiness: v.isBusiness,
+          ...(opt(v.phone) ? { phone: opt(v.phone) } : {}),
+          ...(opt(v.taxCode) ? { taxCode: opt(v.taxCode) } : {}),
+          ...(v.isBusiness && opt(v.businessName) ? { businessName: opt(v.businessName) } : {}),
+          ...(v.isBusiness && opt(v.vatNumber) ? { vatNumber: opt(v.vatNumber) } : {}),
+        };
+
+  return {
+    vehicle: {
+      vin: v.vin.trim().toUpperCase(),
+      plate: v.plate.trim().toUpperCase(),
+      plateCountry: v.plateCountry.trim().toUpperCase(),
+      make: v.make.trim(),
+      model: v.model.trim(),
+      year: Number(v.year),
+      vehicleType: v.vehicleType,
+      fuelType: v.fuelType,
+      odometerKm: Number(v.odometerKm),
+      ...(opt(v.version) ? { version: opt(v.version) } : {}),
+      ...(opt(v.registrationDate) ? { registrationDate: opt(v.registrationDate) } : {}),
+      ...(ed !== undefined ? { engineDisplacement: ed } : {}),
+      ...(pk !== undefined ? { powerKw: pk } : {}),
+      ...(opt(v.color) ? { color: opt(v.color) } : {}),
+    },
+    customer,
+    locationId: v.locationId,
+    sendInvitationEmail: false, // invito app differito (SES sandbox); toggle UI disabilitato
+    forceNonstandardVin: false,
+  };
+}
