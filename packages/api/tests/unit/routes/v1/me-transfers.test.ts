@@ -229,3 +229,80 @@ describe('POST /v1/me/transfers', () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('GET /v1/me/transfers', () => {
+  let app: FastifyInstance | undefined;
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it('lists transfers filtered by fromCustomerId', async () => {
+    const findMany = vi.fn().mockResolvedValue([createdRow()]);
+    const prisma = buildFakePrisma({
+      vehicleTransfer: { findFirst: vi.fn(), findMany, create: vi.fn() },
+    });
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/me/transfers',
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toHaveLength(1);
+    expect(findMany.mock.calls[0]![0].where).toEqual({ fromCustomerId: CUSTOMER_ID });
+  });
+
+  it('returns 401 without Authorization', async () => {
+    app = await buildApp(buildFakePrisma());
+    const res = await app.inject({ method: 'GET', url: '/v1/me/transfers' });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('GET /v1/me/transfers/:id', () => {
+  let app: FastifyInstance | undefined;
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it('returns the transfer when owned by the caller', async () => {
+    const findFirst = vi.fn().mockResolvedValue(createdRow());
+    const prisma = buildFakePrisma({
+      vehicleTransfer: { findFirst, findMany: vi.fn(), create: vi.fn() },
+    });
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/me/transfers/44444444-4444-4444-8444-444444444444',
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().transfer.id).toBe('tr-1');
+    expect(findFirst.mock.calls[0]![0].where).toEqual(
+      expect.objectContaining({ fromCustomerId: CUSTOMER_ID }),
+    );
+  });
+
+  it('returns 404 for a transfer the caller did not initiate', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn(),
+        create: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/me/transfers/44444444-4444-4444-8444-444444444444',
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
