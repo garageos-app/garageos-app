@@ -60,7 +60,9 @@ describe('CreateVehiclePayloadSchema parity (web mirror vs backend)', () => {
   });
 
   it('both reject a malformed plate', () => {
-    const badPlate = { ...canonical, vehicle: { ...canonical.vehicle, plate: 'X' } };
+    // 'ABCDEFG' is within the 6-10 length bounds but wrong format — exercises
+    // the Italian-plate regex, not just the length gate.
+    const badPlate = { ...canonical, vehicle: { ...canonical.vehicle, plate: 'ABCDEFG' } };
     expect(CreateVehiclePayloadSchema.safeParse(badPlate).success).toBe(false);
     expect(BackendCreateVehicleSchema.safeParse(badPlate).success).toBe(false);
   });
