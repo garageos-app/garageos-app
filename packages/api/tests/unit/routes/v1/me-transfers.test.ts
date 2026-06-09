@@ -113,6 +113,10 @@ describe('POST /v1/me/transfers', () => {
     expect(createArg.data.fromCustomerId).toBe(CUSTOMER_ID);
     expect(createArg.data.method).toBe('initiated_by_seller');
     expect(createArg.data.status).toBe('pending_recipient');
+    expect(createArg.data.expiresAt).toBeInstanceOf(Date);
+    const daysOut = (createArg.data.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(daysOut).toBeGreaterThan(6.9);
+    expect(daysOut).toBeLessThan(7.1);
   });
 
   it('returns 404 when the vehicle does not exist', async () => {
@@ -177,11 +181,15 @@ describe('POST /v1/me/transfers', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('retries code generation once on a P2002 collision', async () => {
+  it('retries code generation on a transfer_code P2002 collision', async () => {
     const create = vi
       .fn()
       .mockRejectedValueOnce(
-        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }),
+        new Prisma.PrismaClientKnownRequestError('dup', {
+          code: 'P2002',
+          clientVersion: 'x',
+          meta: { target: ['transfer_code'] },
+        }),
       )
       .mockResolvedValueOnce(createdRow());
     const prisma = buildFakePrisma({
@@ -191,5 +199,33 @@ describe('POST /v1/me/transfers', () => {
     const res = await post({ vehicleId: VEHICLE_ID, method: 'physical_code' });
     expect(res.statusCode).toBe(201);
     expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns 409 when the vehicle is archived', async () => {
+    const prisma = buildFakePrisma({
+      vehicle: {
+        findFirst: vi.fn().mockResolvedValue({ ...ownedCertifiedVehicle(), status: 'archived' }),
+      },
+    });
+    app = await buildApp(prisma);
+    const res = await post({ vehicleId: VEHICLE_ID, method: 'physical_code' });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('maps a uq_transfer_vehicle_active P2002 race to 409 without retrying', async () => {
+    const create = vi.fn().mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('race', {
+        code: 'P2002',
+        clientVersion: 'x',
+        meta: { target: ['uq_transfer_vehicle_active'] },
+      }),
+    );
+    const prisma = buildFakePrisma({
+      vehicleTransfer: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn(), create },
+    });
+    app = await buildApp(prisma);
+    const res = await post({ vehicleId: VEHICLE_ID, method: 'physical_code' });
+    expect(res.statusCode).toBe(409);
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });

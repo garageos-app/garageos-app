@@ -61,23 +61,33 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
           },
         });
         if (!vehicle) {
-          throw businessError('me.transfer.vehicle_not_found', 404, 'Veicolo non trovato.');
+          throw businessError('transfer.creation.vehicle_not_found', 404, 'Veicolo non trovato.');
         }
 
         // BR-040: only the active owner may initiate.
         const active = vehicle.ownerships[0] ?? null;
         if (!active || active.customerId !== customerId) {
           throw businessError(
-            'transfer.not_current_owner',
+            'transfer.creation.not_current_owner',
             403,
             'Non sei il proprietario attuale del veicolo.',
           );
         }
 
-        // BR-046: pending/archived vehicles are not transferable.
+        // BR-046: archived vehicles are not transferable (generic multi-flow 409).
+        if (vehicle.status === 'archived') {
+          throw businessError(
+            'vehicle.archived',
+            409,
+            'Veicolo archiviato: operazione non disponibile.',
+          );
+        }
+
+        // BR-046: pending (and any other non-certified) vehicles are not
+        // transferable.
         if (vehicle.status !== 'certified') {
           throw businessError(
-            'transfer.vehicle_not_certified',
+            'transfer.creation.vehicle_not_certified',
             422,
             'Veicolo non certificato: non puo essere trasferito.',
           );
@@ -90,7 +100,7 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
         });
         if (existing) {
           throw businessError(
-            'transfer.already_pending',
+            'transfer.creation.already_pending',
             409,
             'Esiste gia un trasferimento attivo per questo veicolo.',
           );
@@ -116,11 +126,23 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
             reply.code(201);
             return serializeTransfer(row);
           } catch (err) {
-            // transfer_code is @unique — a collision retries with a fresh
-            // code. Any other error propagates.
             if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-              lastErr = err;
-              continue;
+              const target = String(err.meta?.target ?? '');
+              // Concurrent initiation lost the BR-047 partial-unique race
+              // (uq_transfer_vehicle_active): the vehicle already has an active
+              // transfer. Do NOT retry — surface the same 409 as the pre-check.
+              if (target.includes('uq_transfer_vehicle_active')) {
+                throw businessError(
+                  'transfer.creation.already_pending',
+                  409,
+                  'Esiste gia un trasferimento attivo per questo veicolo.',
+                );
+              }
+              // transfer_code collision — retry with a fresh code.
+              if (target.includes('transfer_code')) {
+                lastErr = err;
+                continue;
+              }
             }
             throw err;
           }
@@ -163,7 +185,7 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
           select: TRANSFER_SELECT,
         });
         if (!row) {
-          throw businessError('me.transfer.not_found', 404, 'Trasferimento non trovato.');
+          throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
         }
         return { transfer: serializeTransfer(row) };
       });
