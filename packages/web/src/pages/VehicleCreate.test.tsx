@@ -96,7 +96,7 @@ describe('VehicleCreate', () => {
       isError: false,
     };
     renderAt('/vehicles/new');
-    expect(screen.getByText(/non sei associato a una sede/i)).toBeInTheDocument();
+    expect(screen.getByText(/non è associato a una sede/i)).toBeInTheDocument();
   });
 
   it('shows validation errors and does not submit an empty form', async () => {

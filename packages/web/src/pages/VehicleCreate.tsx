@@ -105,7 +105,7 @@ export function VehicleCreate() {
         <div className="p-8">
           <Alert variant="destructive">
             <AlertDescription>
-              Non sei associato a una sede. Contatta l&apos;amministratore.
+              Il tuo account non è associato a una sede. Contatta l&apos;amministratore.
             </AlertDescription>
           </Alert>
         </div>
