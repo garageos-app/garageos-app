@@ -75,6 +75,28 @@ export const CreateVehicleSchema = z.object({
   forceNonstandardVin: z.boolean().default(false),
 });
 
+// BR-006 (mandatory fields for pending vehicles) + BR-003 (customer-created
+// vehicles start as pending) + BR-001 (VIN shape; ISO 3779 checksum validation
+// is at route level). vehicleType and fuelType are extra vs BR-006 because
+// the DB columns are NOT NULL with no defaults. forceNonstandardVin is
+// deliberately absent: the BR-001 exception is mechanic-only (workshop flow).
+export const CreatePendingVehicleSchema = z
+  .object({
+    vin: VinSchema,
+    plate: ItalianPlateSchema,
+    plateCountry: z.string().length(2).default('IT'),
+    make: z.string().min(1).max(50),
+    model: z.string().min(1).max(100),
+    year: z
+      .number()
+      .int()
+      .min(1900)
+      .max(CURRENT_YEAR + 1),
+    vehicleType: VehicleTypeEnum,
+    fuelType: FuelTypeEnum,
+  })
+  .strict();
+
 // BR-024 — garage_code lookup is case-insensitive; upstream input is
 // normalized to uppercase before hitting the DB.
 export const ClaimVehicleSchema = z.object({
@@ -137,6 +159,7 @@ export const UpdateVehicleSchema = z
   );
 
 export type CreateVehicleInput = z.infer<typeof CreateVehicleSchema>;
+export type CreatePendingVehicleInput = z.infer<typeof CreatePendingVehicleSchema>;
 export type ClaimVehicleInput = z.infer<typeof ClaimVehicleSchema>;
 export type UpdateVehicleInput = z.infer<typeof UpdateVehicleSchema>;
 export type VehicleType = z.infer<typeof VehicleTypeEnum>;
