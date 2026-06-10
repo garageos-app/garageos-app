@@ -22,6 +22,9 @@ import { businessError } from './business-error.js';
 
 type TxClient = Prisma.TransactionClient | PrismaClient;
 
+// Precondition: fromCustomerId/toCustomerId are non-null (the DB columns are
+// nullable, but the route narrows them — it only calls this for a transfer
+// in pending_seller_confirmation, which always has both parties set).
 export interface ConfirmSwapInput {
   transferId: string;
   vehicleId: string;
@@ -41,7 +44,8 @@ export async function confirmTransferSwap(tx: TxClient, input: ConfirmSwapInput)
     data: { status: 'completed', completedAt: now },
   });
   if (cas.count === 0) {
-    // A concurrent confirm won the race and already advanced the status.
+    // The caller already verified the row exists, so count === 0 means a
+    // concurrent confirm won the race and already advanced the status.
     throw businessError(
       'transfer.confirmation.not_pending_seller',
       422,

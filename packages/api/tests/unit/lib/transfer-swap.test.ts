@@ -81,4 +81,15 @@ describe('confirmTransferSwap', () => {
       statusCode: 409,
     });
   });
+
+  it('rethrows a non-P2002 database error unchanged', async () => {
+    const dbError = new Prisma.PrismaClientKnownRequestError('boom', {
+      code: 'P2003',
+      clientVersion: 'x',
+      meta: { field_name: 'fk' },
+    });
+    const create = vi.fn().mockRejectedValue(dbError);
+    const tx = fakeTx({ ownershipCreate: create });
+    await expect(confirmTransferSwap(tx as never, INPUT)).rejects.toBe(dbError);
+  });
 });
