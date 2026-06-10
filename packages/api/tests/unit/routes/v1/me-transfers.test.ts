@@ -79,9 +79,11 @@ function pendingRow(
     toCustomerId?: string | null;
   } = {},
 ) {
+  // Default seller is a stranger so a test only triggers the self-accept
+  // path when it explicitly sets fromCustomerId to CUSTOMER_ID.
   return {
     ...createdRow(),
-    fromCustomerId: CUSTOMER_ID,
+    fromCustomerId: 'seller-default',
     toCustomerId: null,
     vehicleId: VEHICLE_ID,
     expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
@@ -449,15 +451,13 @@ describe('POST /v1/me/transfers/:code/accept', () => {
   it('returns 410 when the transfer has expired', async () => {
     const prisma = buildFakePrisma({
       vehicleTransfer: {
-        findFirst: vi
-          .fn()
-          .mockResolvedValue(
-            pendingRow({
-              fromCustomerId: 'seller-x',
-              status: 'pending_recipient',
-              expiresAt: new Date(Date.now() - 1000),
-            }),
-          ),
+        findFirst: vi.fn().mockResolvedValue(
+          pendingRow({
+            fromCustomerId: 'seller-x',
+            status: 'pending_recipient',
+            expiresAt: new Date(Date.now() - 1000),
+          }),
+        ),
         findMany: vi.fn(),
         create: vi.fn(),
         updateMany: vi.fn(),
@@ -465,6 +465,31 @@ describe('POST /v1/me/transfers/:code/accept', () => {
     });
     app = await buildApp(prisma);
     expect((await accept('TR-9K4M-7P2X')).statusCode).toBe(410);
+  });
+
+  it('returns 410 when the status is already expired', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValue(pendingRow({ fromCustomerId: 'seller-x', status: 'expired' })),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await accept('TR-9K4M-7P2X')).statusCode).toBe(410);
+  });
+
+  it('returns 401 without Authorization', async () => {
+    app = await buildApp(buildFakePrisma());
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/transfers/TR-9K4M-7P2X/accept',
+      payload: {},
+    });
+    expect(res.statusCode).toBe(401);
   });
 
   it('returns 422 when the CAS loses the race', async () => {

@@ -227,15 +227,17 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
             'Trasferimento gia completato.',
           );
         }
+        // A scheduler-flipped 'expired' status (PR3) precedes the timestamp
+        // guard below, so surface it with the proper 410 rather than 422.
+        if (row.status === 'expired' || row.expiresAt.getTime() < Date.now()) {
+          throw businessError('transfer.acceptance.expired', 410, 'Trasferimento scaduto.');
+        }
         if (row.status !== 'pending_recipient') {
           throw businessError(
             'transfer.acceptance.not_pending_recipient',
             422,
             'Trasferimento non accettabile in questo stato.',
           );
-        }
-        if (row.expiresAt.getTime() < Date.now()) {
-          throw businessError('transfer.acceptance.expired', 410, 'Trasferimento scaduto.');
         }
 
         const newExpiry = new Date(Date.now() + TRANSFER_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
@@ -257,7 +259,7 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
         }
 
         const updated = await tx.vehicleTransfer.findFirst({
-          where: { id: row.id },
+          where: { id: row.id, toCustomerId: customerId },
           select: TRANSFER_SELECT,
         });
         // TODO(F-CLI-notifications): notify the seller that the recipient
