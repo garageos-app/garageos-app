@@ -84,15 +84,29 @@ git commit -m "feat(api): add POST /vehicles endpoint"
 # 4. Push to remote
 git push origin feat/short-description
 
-# 5. Open a PR on GitHub via web UI or `gh` CLI
-# 6. Wait for review (the user will approve)
-# 7. Merge via "Squash and merge" — never "Create a merge commit"
-# 8. Delete the branch after merge
-# 9. Sync local main
+# 5. Open a PR on GitHub via `gh` CLI
+# 6. Watch CI until ALL checks are green
+gh pr checks <n> --watch
+
+# 7. Squash-merge the PR yourself (self-merge authorized by Michele, 2026-06-10)
+gh pr merge <n> --squash --delete-branch --admin
+
+# 8. Sync local main
 git checkout main
 git pull origin main
 git branch -D feat/short-description
 ```
+
+### Self-merge rules (Claude Code)
+
+Claude Code squash-merges its own PRs. The `--admin` flag bypasses **only** the 1-approval branch protection rule — it is explicitly authorized by the repo owner for this purpose. Non-negotiable preconditions, ALL required before merging:
+
+1. **CI is fully green** (`gh pr checks` — every check). GitHub has no required-checks list on this repo, so `--admin` *would* technically merge over a red CI: doing so is forbidden (see "Things Claude Code must NEVER do" #4).
+2. The **final whole-branch review gate** for the task size has passed (see "Right-sizing the workflow to the task").
+3. **No open questions for the user**: if the PR contains a spec deviation, an LOC-limit exception, a migration, or anything flagged "ask the user" by these rules, stop and wait for explicit approval before merging.
+4. The user can always say "wait for my review" on any PR — that overrides self-merge for that PR.
+
+Merge method is always "Squash and merge" (`--squash`); never merge commits or rebase merges.
 
 ### Force push
 
@@ -217,7 +231,7 @@ The squash commit message should be the PR title + a reference to the PR number 
 ## Things Claude Code must NEVER do
 
 1. **Never commit secrets.** Even in `.env.example`, use placeholder values. Real secrets go to AWS Secrets Manager or `.env` (gitignored).
-2. **Never push to `main` directly.** Always open a PR.
+2. **Never push to `main` directly.** Always open a PR. Self-merging the PR is allowed (see "Self-merge rules"), pushing commits to `main` is not. Never use `--admin` to bypass anything other than the 1-approval rule.
 3. **Never force-push to `main`.** On feature branches: use `--force-with-lease`, not `--force`.
 4. **Never bypass CI failures** by disabling checks or merging with red status.
 5. **Never delete the `main` branch** or rename it without explicit user approval.
