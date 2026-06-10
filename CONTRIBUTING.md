@@ -141,7 +141,7 @@ Link to feature spec (F-XXX-YYY) or business rule (BR-XXX) from docs/.
 - All conversations resolved
 - All CI checks green
 
-**AI-assisted PRs (Claude Code):** the repo owner has authorized Claude Code to squash-merge its own PRs using admin bypass of the 1-approval rule, **only** after the full review pipeline (see `CLAUDE.md` § "Self-merge rules") and with every CI check green. The owner can require manual review on any PR by saying so.
+**AI-assisted PRs (Claude Code):** the repo owner has authorized Claude Code to squash-merge its own PRs (branch protection on `main` requires a PR but 0 approvals, changed 2026-06-10), **only** after the full review pipeline (see `CLAUDE.md` § "Self-merge rules") and with every CI check green. The owner can require manual review on any PR by saying so.
 
 ## Code style
 
