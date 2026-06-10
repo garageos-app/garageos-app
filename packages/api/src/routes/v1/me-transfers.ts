@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { businessError } from '../../lib/business-error.js';
 import { serializeTransfer, TRANSFER_SELECT } from '../../lib/dtos/transfer.js';
 import { generateTransferCode } from '../../lib/transfer-code.js';
+import { confirmTransferSwap } from '../../lib/transfer-swap.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
@@ -37,6 +38,8 @@ const createBodySchema = z
   .strict();
 
 const idParamSchema = z.object({ id: z.uuid() });
+const codeParamSchema = z.object({ code: z.string().min(1) });
+const rejectBodySchema = z.object({ reason: z.string().trim().max(500).optional() }).strict();
 
 const meTransfersRoutes: FastifyPluginAsync = async (app) => {
   // POST /v1/me/transfers — F-CLI-401. Seller initiates a physical_code
@@ -188,6 +191,205 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
           throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
         }
         return { transfer: serializeTransfer(row) };
+      });
+    },
+  );
+
+  // POST /v1/me/transfers/:code/accept — F-CLI-402/403. The recipient
+  // accepts by entering the physical code. Sets toCustomerId = caller and
+  // advances to pending_seller_confirmation; ownership does NOT move yet
+  // (BR-043 step 2). Resets expiresAt so the seller's confirmation window
+  // (BR-043: 7gg dall'accettazione) starts now. No request body.
+  app.post(
+    '/v1/me/transfers/:code/accept',
+    { preHandler: [requireAuth, requireClientiPool, clientiContext] },
+    async (request) => {
+      const { code } = codeParamSchema.parse(request.params);
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        const row = await tx.vehicleTransfer.findFirst({
+          where: { transferCode: code },
+          select: { id: true, fromCustomerId: true, status: true, expiresAt: true },
+        });
+        if (!row) {
+          throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
+        }
+        if (row.fromCustomerId === customerId) {
+          throw businessError(
+            'transfer.acceptance.self_not_allowed',
+            403,
+            'Non puoi accettare un trasferimento avviato da te.',
+          );
+        }
+        if (row.status === 'completed') {
+          throw businessError(
+            'transfer.acceptance.already_completed',
+            409,
+            'Trasferimento gia completato.',
+          );
+        }
+        // A scheduler-flipped 'expired' status (PR3) precedes the timestamp
+        // guard below, so surface it with the proper 410 rather than 422.
+        if (row.status === 'expired' || row.expiresAt.getTime() < Date.now()) {
+          throw businessError('transfer.acceptance.expired', 410, 'Trasferimento scaduto.');
+        }
+        if (row.status !== 'pending_recipient') {
+          throw businessError(
+            'transfer.acceptance.not_pending_recipient',
+            422,
+            'Trasferimento non accettabile in questo stato.',
+          );
+        }
+
+        const newExpiry = new Date(Date.now() + TRANSFER_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
+        const cas = await tx.vehicleTransfer.updateMany({
+          where: { id: row.id, status: 'pending_recipient' },
+          data: {
+            toCustomerId: customerId,
+            status: 'pending_seller_confirmation',
+            expiresAt: newExpiry,
+          },
+        });
+        if (cas.count === 0) {
+          // Lost the race to another acceptor / a reject.
+          throw businessError(
+            'transfer.acceptance.not_pending_recipient',
+            422,
+            'Trasferimento non accettabile in questo stato.',
+          );
+        }
+
+        const updated = await tx.vehicleTransfer.findFirst({
+          where: { id: row.id, toCustomerId: customerId },
+          select: TRANSFER_SELECT,
+        });
+        // TODO(F-CLI-notifications): notify the seller that the recipient
+        // accepted (ownership_transfer push/email), post-commit.
+        return { transfer: serializeTransfer(updated!) };
+      });
+    },
+  );
+
+  // POST /v1/me/transfers/:id/confirm — F-CLI-403. The seller confirms after
+  // the recipient accepted; this is where ownership actually moves (BR-043
+  // step 4) via the atomic confirmTransferSwap. No request body.
+  app.post(
+    '/v1/me/transfers/:id/confirm',
+    { preHandler: [requireAuth, requireClientiPool, clientiContext] },
+    async (request) => {
+      const { id } = idParamSchema.parse(request.params);
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        const row = await tx.vehicleTransfer.findFirst({
+          where: { id },
+          select: {
+            id: true,
+            vehicleId: true,
+            fromCustomerId: true,
+            toCustomerId: true,
+            status: true,
+            expiresAt: true,
+          },
+        });
+        if (!row) {
+          throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
+        }
+        if (row.fromCustomerId !== customerId) {
+          throw businessError(
+            'transfer.confirmation.not_from_customer',
+            403,
+            'Non sei il cedente di questo trasferimento.',
+          );
+        }
+        // A scheduler-flipped 'expired' status (PR3) is surfaced as 410, before
+        // the generic wrong-state 422 below (mirrors the accept handler).
+        if (row.status === 'expired' || row.expiresAt.getTime() < Date.now()) {
+          throw businessError('transfer.confirmation.expired', 410, 'Trasferimento scaduto.');
+        }
+        // !toCustomerId is a data-invariant violation (a pending_seller_confirmation
+        // row always has a recipient); guarded defensively under the same 422.
+        if (row.status !== 'pending_seller_confirmation' || !row.toCustomerId) {
+          throw businessError(
+            'transfer.confirmation.not_pending_seller',
+            422,
+            'Trasferimento non in attesa di conferma del cedente.',
+          );
+        }
+
+        await confirmTransferSwap(tx, {
+          transferId: row.id,
+          vehicleId: row.vehicleId,
+          fromCustomerId: customerId,
+          toCustomerId: row.toCustomerId,
+          now: new Date(),
+        });
+
+        const updated = await tx.vehicleTransfer.findFirst({
+          where: { id: row.id },
+          select: TRANSFER_SELECT,
+        });
+        // TODO(F-CLI-notifications): notify the recipient that ownership
+        // transferred (ownership_transfer push/email), post-commit.
+        return { transfer: serializeTransfer(updated!) };
+      });
+    },
+  );
+
+  // POST /v1/me/transfers/:id/reject — F-CLI-403 / BR-048. Either party may
+  // reject while the transfer is still active (seller cancels, or recipient
+  // declines). Optional free-text reason. No ownership change.
+  app.post(
+    '/v1/me/transfers/:id/reject',
+    { preHandler: [requireAuth, requireClientiPool, clientiContext] },
+    async (request) => {
+      const { id } = idParamSchema.parse(request.params);
+      const { reason } = rejectBodySchema.parse(request.body ?? {});
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        const row = await tx.vehicleTransfer.findFirst({
+          where: { id },
+          select: { id: true, fromCustomerId: true, toCustomerId: true, status: true },
+        });
+        if (!row) {
+          throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
+        }
+        if (row.fromCustomerId !== customerId && row.toCustomerId !== customerId) {
+          throw businessError(
+            'transfer.rejection.not_permitted',
+            403,
+            'Non puoi rifiutare questo trasferimento.',
+          );
+        }
+        if (!(ACTIVE_TRANSFER_STATUSES as readonly string[]).includes(row.status)) {
+          throw businessError(
+            'transfer.rejection.not_pending',
+            409,
+            'Trasferimento gia in stato terminale.',
+          );
+        }
+
+        const cas = await tx.vehicleTransfer.updateMany({
+          where: { id: row.id, status: { in: [...ACTIVE_TRANSFER_STATUSES] } },
+          // `reason` is already trimmed by the schema; coerce an empty/absent
+          // value to null so a blank field never writes a zero-length string.
+          data: { status: 'rejected', rejectedReason: reason || null },
+        });
+        if (cas.count === 0) {
+          throw businessError(
+            'transfer.rejection.not_pending',
+            409,
+            'Trasferimento gia in stato terminale.',
+          );
+        }
+
+        const updated = await tx.vehicleTransfer.findFirst({
+          where: { id: row.id },
+          select: TRANSFER_SELECT,
+        });
+        return { transfer: serializeTransfer(updated!) };
       });
     },
   );

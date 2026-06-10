@@ -370,6 +370,8 @@ Authorization: Bearer <officine_user_jwt>
 
 > **Nota implementazione PR1 (2026-06):** il path reale è `POST /v1/me/transfers` (consolidato nella surface `/me/*` del customer). PR1 implementa solo `method: "physical_code"` (genera un codice `TR-XXXX-XXXX`, DB enum `initiated_by_seller`). Il metodo `email_invitation` è differito a quando il canale email sarà sbloccato. I tre endpoint di PR1 sono: `POST /me/transfers`, `GET /me/transfers`, `GET /me/transfers/:id`.
 
+> **Nota implementazione PR2 (2026-06):** implementati `POST /me/transfers/:code/accept` (cessionario accetta, stato -> `pending_seller_confirmation`, `expiresAt` resettato a +7gg dall'accettazione, BR-043), `POST /me/transfers/:id/confirm` (cedente conferma -> swap atomico della proprieta, stato `completed`) e `POST /me/transfers/:id/reject` (entrambe le parti, finche non `completed`). accept/confirm non hanno body; reject accetta `{ reason?: string }` (max 500). Solo `physical_code`; notifiche ed email differite.
+
 #### Descrizione
 
 Il proprietario attuale avvia un passaggio di proprietà del veicolo. Può indicare l'email del cessionario (invito via email) oppure generare un codice temporaneo da condividere fisicamente.
@@ -2631,9 +2633,9 @@ L'`owner_type=intervention` resta officina-only.
 | POST | `/me/transfers` | F-CLI-401 | Customer | **[DETTAGLIATO §2.3]** Avvia passaggio di proprietà (PR1) |
 | GET | `/me/transfers` | F-CLI-401 | Customer | Lista trasferimenti del customer (PR1) |
 | GET | `/me/transfers/:id` | F-CLI-401 | Customer | Dettaglio trasferimento (PR1) |
-| POST | `/me/transfers/:code/accept` | F-CLI-402, F-CLI-403 | Customer | Cessionario accetta trasferimento (PR2+) |
-| POST | `/me/transfers/:id/confirm` | F-CLI-403 | Customer | Cedente conferma dopo accettazione cessionario (PR2+) |
-| POST | `/me/transfers/:id/reject` | F-CLI-403 | Customer | Rifiuta trasferimento (PR2+) |
+| POST | `/me/transfers/:code/accept` | F-CLI-402, F-CLI-403 | Customer | Cessionario accetta trasferimento (PR2) |
+| POST | `/me/transfers/:id/confirm` | F-CLI-403 | Customer | Cedente conferma dopo accettazione cessionario (PR2) |
+| POST | `/me/transfers/:id/reject` | F-CLI-403 | Customer | Rifiuta trasferimento (PR2) |
 | POST | `/me/transfers/claim-without-seller` | F-CLI-404 | Customer | Claim autonomo con libretto (PR2+) |
 
 ### 3.11 Notifications

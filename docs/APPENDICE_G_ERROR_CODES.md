@@ -345,11 +345,15 @@ Per fornire dati utili al client per gestire l'errore:
 | `transfer.acceptance.already_completed` | 409 | info | Trasferimento già completato | | |
 | `transfer.acceptance.not_pending_recipient` | 422 | warning | Stato non valido per accettazione | | |
 | `transfer.acceptance.invited_email_mismatch` | 403 | warning | Email non corrisponde all'invito | | |
+| `transfer.acceptance.self_not_allowed` | 403 | warning | Non puoi accettare un trasferimento avviato da te | accept del proprio transfer | F-CLI-401, BR-043 |
 | `transfer.confirmation.not_pending_seller` | 422 | warning | Stato non valido per conferma cedente | | |
 | `transfer.confirmation.not_from_customer` | 403 | warning | Non sei il cedente di questo transfer | | |
+| `transfer.confirmation.expired` | 410 | info | Trasferimento scaduto | expires_at passato dopo accettazione | F-CLI-403, BR-043 |
+| `transfer.confirmation.ownership_conflict` | 409 | warning | Stato proprieta veicolo cambiato | concorrenza sullo swap | F-CLI-403 |
 | `transfer.claim_without_seller.libretto_required` | 400 | info | Libretto di circolazione obbligatorio | | BR-044 |
 | `transfer.claim_without_seller.ocr_mismatch` | 422 | warning | Dati libretto non corrispondono | Review manuale | BR-044 |
 | `transfer.rejection.not_permitted` | 403 | warning | Non puoi rifiutare questo transfer | | |
+| `transfer.rejection.not_pending` | 409 | info | Trasferimento gia in stato terminale | reject di un transfer non attivo | F-CLI-403, BR-048 |
 | `vehicle.transfer.pending_not_transferable` | 422 | info | Veicolo non certificato non trasferibile | F-OFF-110 | BR-046, BR-049 |
 | `vehicle.transfer.archived` | 422 | info | Veicolo archiviato non trasferibile | F-OFF-110 | BR-049 |
 | `vehicle.transfer.no_active_ownership` | 422 | info | Veicolo senza proprietario attivo | F-OFF-110 | BR-049 |
@@ -986,15 +990,19 @@ transfer.acceptance.already_completed
 transfer.acceptance.expired
 transfer.acceptance.invited_email_mismatch
 transfer.acceptance.not_pending_recipient
+transfer.acceptance.self_not_allowed
 transfer.claim_without_seller.libretto_required
 transfer.claim_without_seller.ocr_mismatch
+transfer.confirmation.expired
 transfer.confirmation.not_from_customer
 transfer.confirmation.not_pending_seller
+transfer.confirmation.ownership_conflict
 transfer.creation.already_pending
 transfer.creation.not_current_owner
 transfer.creation.vehicle_not_certified
 transfer.creation.vehicle_not_found
 transfer.not_found
+transfer.rejection.not_pending
 transfer.rejection.not_permitted
 user.already_active
 user.cannot_delete_self_via_admin
