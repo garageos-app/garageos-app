@@ -62,7 +62,9 @@ describe('Transfer expiry sweep (F-CLI-401 PR3)', () => {
 
     const result1 = await processTransferExpiry({ app: sweepApp() });
 
-    expect(result1.sweptCount).toBeGreaterThanOrEqual(1);
+    // Exactly one row matches (resetDb leaves a clean slate); toBe(1) also
+    // guards against the sweep touching rows it shouldn't (e.g. cross-tenant).
+    expect(result1.sweptCount).toBe(1);
     expect((await getTransferById(transferIdA))?.status).toBe('expired');
 
     // BR-047 slot is now free: insert a pending_seller_confirmation transfer
@@ -78,7 +80,7 @@ describe('Transfer expiry sweep (F-CLI-401 PR3)', () => {
 
     const result2 = await processTransferExpiry({ app: sweepApp() });
 
-    expect(result2.sweptCount).toBeGreaterThanOrEqual(1);
+    expect(result2.sweptCount).toBe(1);
     expect((await getTransferById(transferIdB))?.status).toBe('expired');
 
     // Seller ownership is untouched — vehicle stays with the seller.
