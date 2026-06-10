@@ -231,7 +231,8 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
         }
         // A scheduler-flipped 'expired' status (PR3) precedes the timestamp
         // guard below, so surface it with the proper 410 rather than 422.
-        if (row.status === 'expired' || row.expiresAt.getTime() < Date.now()) {
+        // <= matches the CAS `expiresAt:{gt:now}`: the window-close instant is itself expired.
+        if (row.status === 'expired' || row.expiresAt.getTime() <= Date.now()) {
           throw businessError('transfer.acceptance.expired', 410, 'Trasferimento scaduto.');
         }
         if (row.status !== 'pending_recipient') {
@@ -305,7 +306,8 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
         }
         // A scheduler-flipped 'expired' status (PR3) is surfaced as 410, before
         // the generic wrong-state 422 below (mirrors the accept handler).
-        if (row.status === 'expired' || row.expiresAt.getTime() < Date.now()) {
+        // <= matches the CAS `expiresAt:{gt:now}`: the window-close instant is itself expired.
+        if (row.status === 'expired' || row.expiresAt.getTime() <= Date.now()) {
           throw businessError('transfer.confirmation.expired', 410, 'Trasferimento scaduto.');
         }
         // !toCustomerId is a data-invariant violation (a pending_seller_confirmation

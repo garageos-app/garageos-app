@@ -128,4 +128,12 @@ describe('confirmTransferSwap', () => {
       statusCode: 410,
     });
   });
+
+  it('throws not_pending_seller (422) when the row disappears before the re-read', async () => {
+    const tx = fakeTx({ transferUpdateCount: 0, transferFindFirst: null });
+    await expect(confirmTransferSwap(tx as never, INPUT)).rejects.toMatchObject({
+      name: 'transfer.confirmation.not_pending_seller',
+      statusCode: 422,
+    });
+  });
 });
