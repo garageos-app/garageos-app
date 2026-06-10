@@ -17,7 +17,13 @@ import { formatDate } from '@/lib/format';
 import type { Transfer } from '@/lib/types/transfer';
 import { colors, spacing } from '@/theme/colors';
 
-type Phase = { name: 'input' } | { name: 'preview'; transfer: Transfer } | { name: 'accepted' };
+// The preview phase carries the code that found the transfer: accept always
+// resends exactly that capability, independent of the DTO's transferCode
+// (which is typed nullable for the deferred email_invitation method).
+type Phase =
+  | { name: 'input' }
+  | { name: 'preview'; transfer: Transfer; code: string }
+  | { name: 'accepted' };
 
 export default function AcceptTransferScreen() {
   const router = useRouter();
@@ -47,7 +53,7 @@ export default function AcceptTransferScreen() {
     setSubmitting(true);
     try {
       const t = await preview.mutateAsync(normalized);
-      setPhase({ name: 'preview', transfer: t });
+      setPhase({ name: 'preview', transfer: t, code: normalized });
     } catch (e) {
       setBanner(mapErrorToUserMessage(e instanceof ApiError ? e.code : undefined));
     } finally {
@@ -55,12 +61,12 @@ export default function AcceptTransferScreen() {
     }
   }
 
-  async function onAccept(t: Transfer) {
+  async function onAccept(codeToAccept: string) {
     if (submitting) return;
     setBanner(null);
     setSubmitting(true);
     try {
-      await accept.mutateAsync(t.transferCode ?? code.trim().toUpperCase());
+      await accept.mutateAsync(codeToAccept);
       setPhase({ name: 'accepted' });
     } catch (e) {
       setBanner(mapErrorToUserMessage(e instanceof ApiError ? e.code : undefined));
@@ -131,7 +137,7 @@ export default function AcceptTransferScreen() {
             </View>
             <Text style={styles.hint}>Scade il {formatDate(phase.transfer.expiresAt)}.</Text>
             <Pressable
-              onPress={() => void onAccept(phase.transfer)}
+              onPress={() => void onAccept(phase.code)}
               accessibilityRole="button"
               disabled={submitting}
               style={({ pressed }) => [
@@ -147,7 +153,10 @@ export default function AcceptTransferScreen() {
               )}
             </Pressable>
             <Pressable
-              onPress={() => setPhase({ name: 'input' })}
+              onPress={() => {
+                setBanner(null);
+                setPhase({ name: 'input' });
+              }}
               accessibilityRole="button"
               disabled={submitting}
               style={styles.cancel}

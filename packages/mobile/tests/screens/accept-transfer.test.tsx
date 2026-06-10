@@ -96,9 +96,33 @@ describe('Accept transfer screen', () => {
     );
   });
 
+  it('shows the banner on the preview when the accept itself fails (raced 410)', async () => {
+    mockPreviewMutateAsync.mockResolvedValue(TRANSFER);
+    mockAcceptMutateAsync.mockRejectedValue(new ApiError('transfer.acceptance.expired', 410, 'x'));
+    render(<AcceptTransferScreen />);
+    fireEvent.changeText(screen.getByTestId('transfer-code-input'), 'TR-ABCD-2345');
+    fireEvent.press(screen.getByText('Verifica'));
+    await waitFor(() => expect(screen.getByText('Accetta')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Accetta'));
+    await waitFor(() =>
+      expect(
+        screen.getByText('Codice scaduto: chiedi al venditore di avviare un nuovo trasferimento.'),
+      ).toBeOnTheScreen(),
+    );
+    // still on the preview phase, accept was attempted with the verified code
+    expect(screen.getByText('Accetta')).toBeOnTheScreen();
+    expect(mockAcceptMutateAsync).toHaveBeenCalledWith('TR-ABCD-2345');
+  });
+
   it('prefills a well-formed ?code param (claim-vehicle redirect)', () => {
     mockParams = { code: 'TR-ABCD-2345' };
     render(<AcceptTransferScreen />);
     expect(screen.getByTestId('transfer-code-input').props.value).toBe('TR-ABCD-2345');
+  });
+
+  it('does not prefill a malformed ?code param', () => {
+    mockParams = { code: 'TR-INVALID' };
+    render(<AcceptTransferScreen />);
+    expect(screen.getByTestId('transfer-code-input').props.value).toBe('');
   });
 });
