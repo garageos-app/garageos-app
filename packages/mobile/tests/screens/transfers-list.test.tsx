@@ -59,6 +59,8 @@ describe('Transfers list screen', () => {
     mockTransfersState = makeState({ data: [] });
     render(<TransfersScreen />);
     expect(screen.getByText('Nessun trasferimento')).toBeOnTheScreen();
+    // The accept-transfer entry must survive the empty state (ListHeaderComponent).
+    expect(screen.getByText('Hai ricevuto un codice?')).toBeOnTheScreen();
   });
 
   it('always offers the "Hai ricevuto un codice?" entry to accept-transfer', () => {
