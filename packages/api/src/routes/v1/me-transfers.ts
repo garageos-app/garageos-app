@@ -37,6 +37,7 @@ const createBodySchema = z
   .strict();
 
 const idParamSchema = z.object({ id: z.uuid() });
+const codeParamSchema = z.object({ code: z.string().min(1) });
 
 const meTransfersRoutes: FastifyPluginAsync = async (app) => {
   // POST /v1/me/transfers — F-CLI-401. Seller initiates a physical_code
@@ -188,6 +189,80 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
           throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
         }
         return { transfer: serializeTransfer(row) };
+      });
+    },
+  );
+
+  // POST /v1/me/transfers/:code/accept — F-CLI-402/403. The recipient
+  // accepts by entering the physical code. Sets toCustomerId = caller and
+  // advances to pending_seller_confirmation; ownership does NOT move yet
+  // (BR-043 step 2). Resets expiresAt so the seller's confirmation window
+  // (BR-043: 7gg dall'accettazione) starts now. No request body.
+  app.post(
+    '/v1/me/transfers/:code/accept',
+    { preHandler: [requireAuth, requireClientiPool, clientiContext] },
+    async (request) => {
+      const { code } = codeParamSchema.parse(request.params);
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        const row = await tx.vehicleTransfer.findFirst({
+          where: { transferCode: code },
+          select: { id: true, fromCustomerId: true, status: true, expiresAt: true },
+        });
+        if (!row) {
+          throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
+        }
+        if (row.fromCustomerId === customerId) {
+          throw businessError(
+            'transfer.acceptance.self_not_allowed',
+            403,
+            'Non puoi accettare un trasferimento avviato da te.',
+          );
+        }
+        if (row.status === 'completed') {
+          throw businessError(
+            'transfer.acceptance.already_completed',
+            409,
+            'Trasferimento gia completato.',
+          );
+        }
+        if (row.status !== 'pending_recipient') {
+          throw businessError(
+            'transfer.acceptance.not_pending_recipient',
+            422,
+            'Trasferimento non accettabile in questo stato.',
+          );
+        }
+        if (row.expiresAt.getTime() < Date.now()) {
+          throw businessError('transfer.acceptance.expired', 410, 'Trasferimento scaduto.');
+        }
+
+        const newExpiry = new Date(Date.now() + TRANSFER_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
+        const cas = await tx.vehicleTransfer.updateMany({
+          where: { id: row.id, status: 'pending_recipient' },
+          data: {
+            toCustomerId: customerId,
+            status: 'pending_seller_confirmation',
+            expiresAt: newExpiry,
+          },
+        });
+        if (cas.count === 0) {
+          // Lost the race to another acceptor / a reject.
+          throw businessError(
+            'transfer.acceptance.not_pending_recipient',
+            422,
+            'Trasferimento non accettabile in questo stato.',
+          );
+        }
+
+        const updated = await tx.vehicleTransfer.findFirst({
+          where: { id: row.id },
+          select: TRANSFER_SELECT,
+        });
+        // TODO(F-CLI-notifications): notify the seller that the recipient
+        // accepted (ownership_transfer push/email), post-commit.
+        return { transfer: serializeTransfer(updated!) };
       });
     },
   );
