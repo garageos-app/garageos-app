@@ -283,6 +283,10 @@ describe('POST /v1/me/vehicles/pending', () => {
     ['year below 1900', { ...VALID_BODY, year: 1899 }],
     ['malformed plate', { ...VALID_BODY, plate: 'XX99' }],
     ['unknown key status (strict schema)', { ...VALID_BODY, status: 'certified' }],
+    [
+      'unknown key createdByCustomerId (strict schema)',
+      { ...VALID_BODY, createdByCustomerId: '5b5fb6db-94a8-4f0c-a4f2-8e7f3a1b2c3d' },
+    ],
   ])('returns 400 on invalid body: %s', async (_label, payload) => {
     const prisma = buildFakePrisma();
     app = await buildApp({ prisma });
