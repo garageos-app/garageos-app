@@ -38,13 +38,25 @@ export async function confirmTransferSwap(tx: TxClient, input: ConfirmSwapInput)
 
   // Step 1: CAS the transfer to completed. Leaving pending_seller_confirmation
   // also drops the row out of the uq_transfer_vehicle_active predicate,
-  // freeing the BR-047 active-transfer slot.
+  // freeing the BR-047 active-transfer slot. The expiresAt:{gt:now} guard
+  // closes the sub-ms window between the route's read-guard (me-transfers.ts:308)
+  // and this swap: a row that expired in between (or was flipped to 'expired'
+  // by the PR3 sweep) fails the CAS. See F-CLI-401 PR3 spec.
   const cas = await tx.vehicleTransfer.updateMany({
-    where: { id: transferId, status: 'pending_seller_confirmation' },
+    where: { id: transferId, status: 'pending_seller_confirmation', expiresAt: { gt: now } },
     data: { status: 'completed', completedAt: now },
   });
   if (cas.count === 0) {
-    // The caller already verified the row exists, so count === 0 means a
+    // Distinguish expiry-in-between (410) from a concurrent-confirm race (422)
+    // via a light re-read on the (rare) failure branch.
+    const current = await tx.vehicleTransfer.findFirst({
+      where: { id: transferId },
+      select: { status: true, expiresAt: true },
+    });
+    if (current && (current.status === 'expired' || current.expiresAt.getTime() <= now.getTime())) {
+      throw businessError('transfer.confirmation.expired', 410, 'Trasferimento scaduto.');
+    }
+    // The caller already verified the row exists, so count === 0 here means a
     // concurrent confirm won the race and already advanced the status.
     throw businessError(
       'transfer.confirmation.not_pending_seller',

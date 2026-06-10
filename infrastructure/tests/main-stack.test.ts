@@ -471,9 +471,24 @@ describe('MainStack (integration)', () => {
     });
   });
 
-  it('SchedulerConstruct provisions exactly one ScheduleGroup and one Schedule', () => {
+  it('SchedulerConstruct provisions one ScheduleGroup and two Schedules (warming + transfer-expiry)', () => {
     template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
-    template.resourceCountIs('AWS::Scheduler::Schedule', 1);
+    template.resourceCountIs('AWS::Scheduler::Schedule', 2);
+  });
+
+  it('SchedulerConstruct provisions the daily transfer-expiry Schedule (F-CLI-401 PR3)', () => {
+    template.hasResourceProperties(
+      'AWS::Scheduler::Schedule',
+      Match.objectLike({
+        Name: 'garageos-transfer-expiry',
+        GroupName: 'default',
+        ScheduleExpression: 'cron(0 3 * * ? *)',
+        ScheduleExpressionTimezone: 'UTC',
+        Target: Match.objectLike({
+          Input: JSON.stringify({ source: 'transfer-expiry' }),
+        }),
+      }),
+    );
   });
 
   it('Lambda env vars include SCHEDULER_GROUP_NAME and SCHEDULER_ROLE_ARN', () => {

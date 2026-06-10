@@ -1,11 +1,13 @@
 import { withWarmingGuard } from './lambda-warming.js';
 import { withSchedulerGuard } from './lambda-scheduler.js';
+import { withTransferExpiryGuard } from './lambda-transfer-expiry.js';
 import { loadSecretsIntoEnv } from './config/secrets.js';
 import {
   processSchedulerInvocation,
   type SchedulerInvocationDetail,
   type SchedulerInvocationResult,
 } from './lib/deadlines/scheduler-invocation.js';
+import { processTransferExpiry } from './lib/transfers/expire-transfers.js';
 
 // Step 1 of cold-start boot: hydrate process.env from Secrets Manager
 // (APP_SECRETS_ARN is set by CDK in the Lambda env). No-op outside
@@ -28,9 +30,10 @@ const app = await buildServer();
 // readiness internally on the first invocation.
 //
 // Wrapping order (outermost → innermost):
-//   withWarmingGuard   — short-circuit {source:'warming'} events (G2)
-//   withSchedulerGuard — short-circuit EventBridge Scheduler events (H3)
-//   awsLambdaFastify   — real Fastify routing for APIGW v2 requests
+//   withWarmingGuard        — short-circuit {source:'warming'} events (G2)
+//   withTransferExpiryGuard — short-circuit {source:'transfer-expiry'} events (F-CLI-401 PR3)
+//   withSchedulerGuard      — short-circuit EventBridge Scheduler events (H3)
+//   awsLambdaFastify        — real Fastify routing for APIGW v2 requests
 const schedulerHandler = (detail: SchedulerInvocationDetail): Promise<SchedulerInvocationResult> =>
   processSchedulerInvocation({
     app: { withContext: app.withContext.bind(app), log: app.log },
@@ -45,8 +48,16 @@ const warmup = async (): Promise<void> => {
   await app.prisma.$queryRaw`SELECT 1`;
 };
 
+const transferExpiryHandler = (): ReturnType<typeof processTransferExpiry> =>
+  processTransferExpiry({
+    app: { withContext: app.withContext.bind(app), log: app.log },
+  });
+
 const innerHandler = withWarmingGuard(
-  withSchedulerGuard(schedulerHandler)(awsLambdaFastify(app)),
+  withTransferExpiryGuard(
+    withSchedulerGuard(schedulerHandler)(awsLambdaFastify(app)),
+    transferExpiryHandler,
+  ),
   warmup,
 );
 
