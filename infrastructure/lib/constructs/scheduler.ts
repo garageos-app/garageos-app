@@ -40,6 +40,7 @@ export class SchedulerConstruct extends Construct {
   public readonly schedulerRole: iam.Role;
   public readonly scheduleGroup: scheduler.CfnScheduleGroup;
   public readonly warmingSchedule: scheduler.CfnSchedule;
+  public readonly transferExpirySchedule: scheduler.CfnSchedule;
   public readonly scheduleGroupName: string;
 
   constructor(scope: Construct, id: string, props: SchedulerConstructProps) {
@@ -105,6 +106,33 @@ export class SchedulerConstruct extends Construct {
         input: JSON.stringify({ source: 'warming' }),
         retryPolicy: {
           maximumRetryAttempts: 0,
+        },
+      },
+    });
+
+    // Daily housekeeping sweep that flips expired pending transfers to
+    // 'expired' (F-CLI-401 PR3, BR-043). Recurring singleton mirroring
+    // WarmingSchedule — NOT the per-row one-shot pattern used for deadline
+    // reminders. Lives in the 'default' group; the garageos-deadlines group
+    // stays reserved for runtime-created deadline schedules. Gated by the same
+    // warmingEnabled env flag (the single "schedules active in this env"
+    // switch). UTC (not Europe/Rome) — it is timezone-indifferent night work
+    // and UTC avoids DST edge cases. Retries are safe because the sweep is
+    // idempotent (the status IN (pending_*) predicate no-ops on re-run).
+    this.transferExpirySchedule = new scheduler.CfnSchedule(this, 'TransferExpirySchedule', {
+      name: 'garageos-transfer-expiry',
+      groupName: 'default',
+      description: 'Daily sweep: expire pending vehicle transfers past their 7-day window (BR-043)',
+      state: props.warmingEnabled ? 'ENABLED' : 'DISABLED',
+      scheduleExpression: 'cron(0 3 * * ? *)',
+      scheduleExpressionTimezone: 'UTC',
+      flexibleTimeWindow: { mode: 'OFF' },
+      target: {
+        arn: props.lambdaFunction.functionArn,
+        roleArn: this.schedulerRole.roleArn,
+        input: JSON.stringify({ source: 'transfer-expiry' }),
+        retryPolicy: {
+          maximumRetryAttempts: 2,
         },
       },
     });
