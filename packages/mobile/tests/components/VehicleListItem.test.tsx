@@ -30,4 +30,20 @@ describe('VehicleListItem', () => {
     fireEvent.press(screen.getByRole('button'));
     expect(onPress).toHaveBeenCalledTimes(1);
   });
+
+  it('shows the pending badge for a pending vehicle', () => {
+    render(
+      <VehicleListItem
+        vehicle={{ ...vehicle, status: 'pending', garageCode: null }}
+        onPress={() => {}}
+      />,
+    );
+    expect(screen.getByText('In attesa di certificazione')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Veicolo in attesa di certificazione')).toBeOnTheScreen();
+  });
+
+  it('shows no pending badge for a certified vehicle', () => {
+    render(<VehicleListItem vehicle={{ ...vehicle, status: 'certified' }} onPress={() => {}} />);
+    expect(screen.queryByText('In attesa di certificazione')).toBeNull();
+  });
 });

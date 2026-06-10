@@ -24,6 +24,11 @@ export function VehicleListItem({ vehicle, onPress }: Props) {
         </Text>
         <Text style={styles.plate}>{vehicle.plate}</Text>
         {vehicle.year ? <Text style={styles.year}>Anno {vehicle.year}</Text> : null}
+        {vehicle.status === 'pending' ? (
+          <View accessibilityLabel="Veicolo in attesa di certificazione" style={styles.pendingPill}>
+            <Text style={styles.pendingPillText}>In attesa di certificazione</Text>
+          </View>
+        ) : null}
       </View>
       <Text style={styles.chevron}>›</Text>
     </Pressable>
@@ -49,4 +54,23 @@ const styles = StyleSheet.create({
   plate: { fontSize: 13, color: colors.muted },
   year: { fontSize: 12, color: colors.muted, fontStyle: 'italic' },
   chevron: { fontSize: 24, color: colors.muted, marginLeft: spacing.sm },
+  // Outlined pill, same shape as BadgeCertificato's 'privato' variant but in
+  // the warning/amber palette (vehicle awaiting workshop certification).
+  pendingPill: {
+    marginTop: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.warningFg,
+    backgroundColor: colors.warningBg,
+    alignSelf: 'flex-start',
+  },
+  pendingPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: colors.warningFg,
+  },
 });

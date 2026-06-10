@@ -1,12 +1,14 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import ClaimVehicleScreen from '../../app/claim-vehicle';
 import { useLocalSearchParams } from 'expo-router';
+
+const mockPush = jest.fn();
 
 jest.mock('@/queries/claimVehicle', () => ({
   useClaimVehicle: () => ({ mutateAsync: jest.fn() }),
 }));
 jest.mock('expo-router', () => ({
-  useRouter: jest.fn(() => ({ replace: jest.fn(), back: jest.fn() })),
+  useRouter: jest.fn(() => ({ replace: jest.fn(), back: jest.fn(), push: mockPush })),
   useLocalSearchParams: jest.fn(),
   Stack: { Screen: () => null },
 }));
@@ -43,5 +45,14 @@ describe('ClaimVehicle screen', () => {
     mockedParams.mockReturnValue({});
     render(<ClaimVehicleScreen />);
     expect(screen.getByText('INITIAL:none')).toBeOnTheScreen();
+  });
+
+  it('shows the pre-registration link and navigates to /pending-vehicle on press', () => {
+    mockedParams.mockReturnValue({});
+    render(<ClaimVehicleScreen />);
+    fireEvent.press(
+      screen.getByRole('button', { name: 'Non hai il codice? Pre-registra il veicolo' }),
+    );
+    expect(mockPush).toHaveBeenCalledWith('/pending-vehicle');
   });
 });
