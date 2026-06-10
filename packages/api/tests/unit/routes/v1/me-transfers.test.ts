@@ -840,3 +840,108 @@ describe('POST /v1/me/transfers/:id/reject', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('GET /v1/me/transfers/:code/preview', () => {
+  let app: FastifyInstance | undefined;
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  function preview(code: string) {
+    return app!.inject({
+      method: 'GET',
+      url: `/v1/me/transfers/${code}/preview`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+  }
+
+  function prismaWithRow(row: unknown) {
+    return buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(row),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+  }
+
+  it('returns the transfer DTO for a pending_recipient transfer of another customer', async () => {
+    const prisma = prismaWithRow(pendingRow({ fromCustomerId: 'seller-x' }));
+    app = await buildApp(prisma);
+    const res = await preview('TR-9K4M-7P2X');
+    expect(res.statusCode).toBe(200);
+    const { transfer } = res.json();
+    expect(transfer.status).toBe('pending_recipient');
+    expect(transfer.vehicle).toEqual({ plate: 'AB123CD', make: 'Fiat', model: 'Panda' });
+    expect(transfer.transferCode).toBe('TR-9K4M-7P2X');
+    // Read-only: the peek must never write.
+    expect(prisma.vehicleTransfer.updateMany).not.toHaveBeenCalled();
+    expect(prisma.vehicleTransfer.create).not.toHaveBeenCalled();
+  });
+
+  it('filters by exact transferCode', async () => {
+    const prisma = prismaWithRow(pendingRow({ fromCustomerId: 'seller-x' }));
+    app = await buildApp(prisma);
+    await preview('TR-9K4M-7P2X');
+    const arg = prisma.vehicleTransfer.findFirst.mock.calls[0]![0];
+    expect(arg.where).toEqual({ transferCode: 'TR-9K4M-7P2X' });
+  });
+
+  it('returns 404 when the code is unknown', async () => {
+    app = await buildApp(prismaWithRow(null));
+    const res = await preview('TR-0000-0000');
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('transfer.not_found');
+  });
+
+  it('returns 403 when the caller initiated the transfer (self-preview)', async () => {
+    app = await buildApp(prismaWithRow(pendingRow({ fromCustomerId: CUSTOMER_ID })));
+    const res = await preview('TR-9K4M-7P2X');
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('transfer.acceptance.self_not_allowed');
+  });
+
+  it('returns 409 when the transfer is already completed', async () => {
+    app = await buildApp(
+      prismaWithRow(pendingRow({ fromCustomerId: 'seller-x', status: 'completed' })),
+    );
+    const res = await preview('TR-9K4M-7P2X');
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('transfer.acceptance.already_completed');
+  });
+
+  it('returns 410 when the scheduler already flipped the status to expired', async () => {
+    app = await buildApp(
+      prismaWithRow(pendingRow({ fromCustomerId: 'seller-x', status: 'expired' })),
+    );
+    const res = await preview('TR-9K4M-7P2X');
+    expect(res.statusCode).toBe(410);
+    expect(res.json().code).toBe('transfer.acceptance.expired');
+  });
+
+  it('returns 410 when expiresAt is in the past (<= now boundary)', async () => {
+    app = await buildApp(
+      prismaWithRow(
+        pendingRow({ fromCustomerId: 'seller-x', expiresAt: new Date(Date.now() - 1000) }),
+      ),
+    );
+    const res = await preview('TR-9K4M-7P2X');
+    expect(res.statusCode).toBe(410);
+    expect(res.json().code).toBe('transfer.acceptance.expired');
+  });
+
+  it('returns 422 when the transfer is not pending_recipient', async () => {
+    app = await buildApp(
+      prismaWithRow(
+        pendingRow({ fromCustomerId: 'seller-x', status: 'pending_seller_confirmation' }),
+      ),
+    );
+    const res = await preview('TR-9K4M-7P2X');
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('transfer.acceptance.not_pending_recipient');
+  });
+});

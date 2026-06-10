@@ -395,6 +395,59 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
       });
     },
   );
+
+  // GET /v1/me/transfers/:code/preview — F-CLI-402 (PR4). Read-only peek by
+  // code so the recipient can see the vehicle BEFORE the one-shot accept.
+  // Mirrors the accept guard chain (same codes, same order, same <= expiry
+  // boundary) without the CAS: no writes, no side effects. The TR code is
+  // the capability (physical_code model: handed over by the seller), so any
+  // authenticated customer holding it may peek. No seller PII: TRANSFER_SELECT
+  // only exposes plate/make/model (BR-045/BR-151).
+  app.get(
+    '/v1/me/transfers/:code/preview',
+    { preHandler: [requireAuth, requireClientiPool, clientiContext] },
+    async (request) => {
+      const { code } = codeParamSchema.parse(request.params);
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        const row = await tx.vehicleTransfer.findFirst({
+          where: { transferCode: code },
+          select: { ...TRANSFER_SELECT, fromCustomerId: true },
+        });
+        if (!row) {
+          throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
+        }
+        if (row.fromCustomerId === customerId) {
+          throw businessError(
+            'transfer.acceptance.self_not_allowed',
+            403,
+            'Non puoi accettare un trasferimento avviato da te.',
+          );
+        }
+        if (row.status === 'completed') {
+          throw businessError(
+            'transfer.acceptance.already_completed',
+            409,
+            'Trasferimento gia completato.',
+          );
+        }
+        // Same ordering and <= boundary as accept: a scheduler-flipped
+        // 'expired' status precedes the timestamp guard.
+        if (row.status === 'expired' || row.expiresAt.getTime() <= Date.now()) {
+          throw businessError('transfer.acceptance.expired', 410, 'Trasferimento scaduto.');
+        }
+        if (row.status !== 'pending_recipient') {
+          throw businessError(
+            'transfer.acceptance.not_pending_recipient',
+            422,
+            'Trasferimento non accettabile in questo stato.',
+          );
+        }
+        return { transfer: serializeTransfer(row) };
+      });
+    },
+  );
 };
 
 export default meTransfersRoutes;
