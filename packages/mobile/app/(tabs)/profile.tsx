@@ -94,6 +94,16 @@ export default function ProfileScreen() {
       </Pressable>
 
       <Pressable
+        onPress={() => router.push('/transfers')}
+        accessibilityRole="button"
+        accessibilityLabel="Trasferimenti"
+        style={({ pressed }) => [styles.navRow, pressed && styles.navRowPressed]}
+      >
+        <Text style={styles.navLabel}>Trasferimenti</Text>
+        <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+      </Pressable>
+
+      <Pressable
         onPress={() => setEditing(true)}
         accessibilityRole="button"
         style={({ pressed }) => [styles.editBtn, pressed && styles.editBtnPressed]}

@@ -13,6 +13,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
 import { TimelineRow } from '@/components/TimelineRow';
 import { VehicleHistoryExportButton } from '@/components/VehicleHistoryExportButton';
+import { VehicleTransferSection } from '@/components/VehicleTransferSection';
 import { ApiError } from '@/lib/api-error';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import { formatDate } from '@/lib/format';
@@ -254,6 +255,12 @@ function TechTab({
       ))}
       <View style={styles.exportSection}>
         <VehicleHistoryExportButton vehicleId={vehicle.id} />
+      </View>
+      <View style={styles.exportSection}>
+        <VehicleTransferSection
+          vehicleId={vehicle.id}
+          vehicleLabel={`${vehicle.make} ${vehicle.model} · ${vehicle.plate}`}
+        />
       </View>
     </View>
   );

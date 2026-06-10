@@ -111,4 +111,24 @@ describe('ClaimVehicleForm', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Aggiungi' }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('GO-482-KXRT'));
   });
+
+  it('detects a TR- code and hands it to onTransferCode without submitting', async () => {
+    const onSubmit = jest.fn();
+    const onTransferCode = jest.fn();
+    render(
+      <ClaimVehicleForm onSubmit={onSubmit} onCancel={jest.fn()} onTransferCode={onTransferCode} />,
+    );
+    fireEvent.changeText(screen.getByPlaceholderText('GO-NNN-AAAA'), 'tr-abcd-2345');
+    fireEvent.press(screen.getByText('Aggiungi'));
+    await waitFor(() => expect(onTransferCode).toHaveBeenCalledWith('TR-ABCD-2345'));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('without onTransferCode a TR- input falls through to normal validation', () => {
+    const onSubmit = jest.fn();
+    render(<ClaimVehicleForm onSubmit={onSubmit} onCancel={jest.fn()} />);
+    fireEvent.changeText(screen.getByPlaceholderText('GO-NNN-AAAA'), 'TR-ABCD-2345');
+    fireEvent.press(screen.getByText('Aggiungi'));
+    expect(onSubmit).not.toHaveBeenCalled(); // fails GO validation, stays client-side
+  });
 });

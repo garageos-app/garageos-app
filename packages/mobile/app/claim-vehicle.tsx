@@ -38,6 +38,7 @@ export default function ClaimVehicleScreen() {
           onSubmit={onSubmit}
           onCancel={() => router.back()}
           initialCode={initialCode}
+          onTransferCode={(c) => router.push({ pathname: '/accept-transfer', params: { code: c } })}
         />
       </ScrollView>
     </>
