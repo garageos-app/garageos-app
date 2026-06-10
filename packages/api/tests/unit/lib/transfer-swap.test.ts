@@ -18,11 +18,21 @@ function fakeTx(
     transferUpdateCount?: number;
     ownershipUpdateCount?: number;
     ownershipCreate?: ReturnType<typeof vi.fn>;
+    // Row returned by the re-read on a failed CAS. Default: a still-pending,
+    // not-yet-expired row → the failure is a concurrent-confirm race (422).
+    transferFindFirst?: { status: string; expiresAt: Date } | null;
   } = {},
 ) {
   return {
     vehicleTransfer: {
       updateMany: vi.fn().mockResolvedValue({ count: overrides.transferUpdateCount ?? 1 }),
+      findFirst: vi
+        .fn()
+        .mockResolvedValue(
+          overrides.transferFindFirst === undefined
+            ? { status: 'pending_seller_confirmation', expiresAt: new Date(NOW.getTime() + 60_000) }
+            : overrides.transferFindFirst,
+        ),
     },
     vehicleOwnership: {
       updateMany: vi.fn().mockResolvedValue({ count: overrides.ownershipUpdateCount ?? 1 }),
@@ -37,7 +47,7 @@ describe('confirmTransferSwap', () => {
     await confirmTransferSwap(tx as never, INPUT);
 
     expect(tx.vehicleTransfer.updateMany.mock.calls[0]![0]).toEqual({
-      where: { id: 'tr-1', status: 'pending_seller_confirmation' },
+      where: { id: 'tr-1', status: 'pending_seller_confirmation', expiresAt: { gt: NOW } },
       data: { status: 'completed', completedAt: NOW },
     });
     expect(tx.vehicleOwnership.updateMany.mock.calls[0]![0]).toEqual({
@@ -91,5 +101,31 @@ describe('confirmTransferSwap', () => {
     const create = vi.fn().mockRejectedValue(dbError);
     const tx = fakeTx({ ownershipCreate: create });
     await expect(confirmTransferSwap(tx as never, INPUT)).rejects.toBe(dbError);
+  });
+
+  it('throws confirmation.expired (410) when the CAS fails because the row is expired by status', async () => {
+    const tx = fakeTx({
+      transferUpdateCount: 0,
+      transferFindFirst: { status: 'expired', expiresAt: new Date(NOW.getTime() + 60_000) },
+    });
+    await expect(confirmTransferSwap(tx as never, INPUT)).rejects.toMatchObject({
+      name: 'transfer.confirmation.expired',
+      statusCode: 410,
+    });
+    expect(tx.vehicleOwnership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('throws confirmation.expired (410) when the CAS fails because expiresAt has passed', async () => {
+    const tx = fakeTx({
+      transferUpdateCount: 0,
+      transferFindFirst: {
+        status: 'pending_seller_confirmation',
+        expiresAt: new Date(NOW.getTime() - 1),
+      },
+    });
+    await expect(confirmTransferSwap(tx as never, INPUT)).rejects.toMatchObject({
+      name: 'transfer.confirmation.expired',
+      statusCode: 410,
+    });
   });
 });
