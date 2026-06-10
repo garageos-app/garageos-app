@@ -727,16 +727,27 @@ describe('POST /v1/me/transfers/:id/reject', () => {
         }),
       )
       .mockResolvedValueOnce({ ...createdRow(), status: 'rejected' });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const prisma = buildFakePrisma({
-      vehicleTransfer: {
-        findFirst,
-        findMany: vi.fn(),
-        create: vi.fn(),
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      },
+      vehicleTransfer: { findFirst, findMany: vi.fn(), create: vi.fn(), updateMany },
     });
     app = await buildApp(prisma);
     expect((await reject()).statusCode).toBe(200);
+    expect(updateMany.mock.calls[0]![0].data.rejectedReason).toBeNull();
+  });
+
+  it('coerces a blank reason to null', async () => {
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(rejectable())
+      .mockResolvedValueOnce({ ...createdRow(), status: 'rejected' });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = buildFakePrisma({
+      vehicleTransfer: { findFirst, findMany: vi.fn(), create: vi.fn(), updateMany },
+    });
+    app = await buildApp(prisma);
+    expect((await reject({ reason: '   ' })).statusCode).toBe(200);
+    expect(updateMany.mock.calls[0]![0].data.rejectedReason).toBeNull();
   });
 
   it('returns 404 when the transfer does not exist', async () => {
@@ -771,6 +782,19 @@ describe('POST /v1/me/transfers/:id/reject', () => {
     const prisma = buildFakePrisma({
       vehicleTransfer: {
         findFirst: vi.fn().mockResolvedValue(rejectable({ status: 'completed' })),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await reject()).statusCode).toBe(409);
+  });
+
+  it('returns 409 for an expired transfer', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(rejectable({ status: 'expired' })),
         findMany: vi.fn(),
         create: vi.fn(),
         updateMany: vi.fn(),

@@ -373,7 +373,9 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
 
         const cas = await tx.vehicleTransfer.updateMany({
           where: { id: row.id, status: { in: [...ACTIVE_TRANSFER_STATUSES] } },
-          data: { status: 'rejected', rejectedReason: reason ?? null },
+          // `reason` is already trimmed by the schema; coerce an empty/absent
+          // value to null so a blank field never writes a zero-length string.
+          data: { status: 'rejected', rejectedReason: reason || null },
         });
         if (cas.count === 0) {
           throw businessError(
