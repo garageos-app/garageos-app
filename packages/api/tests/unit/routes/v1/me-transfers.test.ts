@@ -509,3 +509,134 @@ describe('POST /v1/me/transfers/:code/accept', () => {
     expect((await accept('TR-9K4M-7P2X')).statusCode).toBe(422);
   });
 });
+
+describe('POST /v1/me/transfers/:id/confirm', () => {
+  const TRANSFER_ID = '44444444-4444-4444-8444-444444444444';
+  let app: FastifyInstance | undefined;
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  function confirm() {
+    return app!.inject({
+      method: 'POST',
+      url: `/v1/me/transfers/${TRANSFER_ID}/confirm`,
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: {},
+    });
+  }
+
+  // Row at pending_seller_confirmation owned by the caller, recipient set.
+  function awaitingConfirm(over: Record<string, unknown> = {}) {
+    return {
+      id: 'tr-1',
+      vehicleId: VEHICLE_ID,
+      fromCustomerId: CUSTOMER_ID,
+      toCustomerId: 'buyer-1',
+      status: 'pending_seller_confirmation',
+      expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+      ...over,
+    };
+  }
+
+  it('confirms and swaps ownership', async () => {
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(awaitingConfirm())
+      .mockResolvedValueOnce({ ...createdRow(), status: 'completed', completedAt: new Date() });
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst,
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    });
+    app = await buildApp(prisma);
+    const res = await confirm();
+    expect(res.statusCode).toBe(200);
+    expect(res.json().transfer.status).toBe('completed');
+    expect(prisma.vehicleOwnership.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.vehicleOwnership.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 404 when the transfer does not exist', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await confirm()).statusCode).toBe(404);
+  });
+
+  it('returns 403 when the caller is not the seller', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(awaitingConfirm({ fromCustomerId: 'seller-x' })),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await confirm()).statusCode).toBe(403);
+  });
+
+  it('returns 422 when the transfer is not pending_seller_confirmation', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(awaitingConfirm({ status: 'pending_recipient' })),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await confirm()).statusCode).toBe(422);
+  });
+
+  it('returns 410 when the transfer has expired', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValue(awaitingConfirm({ expiresAt: new Date(Date.now() - 1000) })),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await confirm()).statusCode).toBe(410);
+  });
+
+  it('returns 422 when the swap CAS loses the race', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(awaitingConfirm()),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await confirm()).statusCode).toBe(422);
+  });
+
+  it('returns 401 without Authorization', async () => {
+    app = await buildApp(buildFakePrisma());
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/transfers/${TRANSFER_ID}/confirm`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

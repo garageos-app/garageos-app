@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { businessError } from '../../lib/business-error.js';
 import { serializeTransfer, TRANSFER_SELECT } from '../../lib/dtos/transfer.js';
 import { generateTransferCode } from '../../lib/transfer-code.js';
+import { confirmTransferSwap } from '../../lib/transfer-swap.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
@@ -264,6 +265,68 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
         });
         // TODO(F-CLI-notifications): notify the seller that the recipient
         // accepted (ownership_transfer push/email), post-commit.
+        return { transfer: serializeTransfer(updated!) };
+      });
+    },
+  );
+
+  // POST /v1/me/transfers/:id/confirm — F-CLI-403. The seller confirms after
+  // the recipient accepted; this is where ownership actually moves (BR-043
+  // step 4) via the atomic confirmTransferSwap. No request body.
+  app.post(
+    '/v1/me/transfers/:id/confirm',
+    { preHandler: [requireAuth, requireClientiPool, clientiContext] },
+    async (request) => {
+      const { id } = idParamSchema.parse(request.params);
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        const row = await tx.vehicleTransfer.findFirst({
+          where: { id },
+          select: {
+            id: true,
+            vehicleId: true,
+            fromCustomerId: true,
+            toCustomerId: true,
+            status: true,
+            expiresAt: true,
+          },
+        });
+        if (!row) {
+          throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
+        }
+        if (row.fromCustomerId !== customerId) {
+          throw businessError(
+            'transfer.confirmation.not_from_customer',
+            403,
+            'Non sei il cedente di questo trasferimento.',
+          );
+        }
+        if (row.status !== 'pending_seller_confirmation' || !row.toCustomerId) {
+          throw businessError(
+            'transfer.confirmation.not_pending_seller',
+            422,
+            'Trasferimento non in attesa di conferma del cedente.',
+          );
+        }
+        if (row.expiresAt.getTime() < Date.now()) {
+          throw businessError('transfer.confirmation.expired', 410, 'Trasferimento scaduto.');
+        }
+
+        await confirmTransferSwap(tx, {
+          transferId: row.id,
+          vehicleId: row.vehicleId,
+          fromCustomerId: customerId,
+          toCustomerId: row.toCustomerId,
+          now: new Date(),
+        });
+
+        const updated = await tx.vehicleTransfer.findFirst({
+          where: { id: row.id },
+          select: TRANSFER_SELECT,
+        });
+        // TODO(F-CLI-notifications): notify the recipient that ownership
+        // transferred (ownership_transfer push/email), post-commit.
         return { transfer: serializeTransfer(updated!) };
       });
     },
