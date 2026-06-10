@@ -38,6 +38,28 @@ const MESSAGES: Record<string, string> = {
     'Solo il proprietario attuale può contestare questo intervento.',
   'intervention.dispute.already_exists': 'Hai già una contestazione aperta per questo intervento.',
   'intervention.dispute.intervention_cancelled': 'Non puoi contestare un intervento annullato.',
+
+  // Transfer domain codes (F-CLI-401→403). Codes verified against
+  // api routes/v1/me-transfers.ts + lib/transfer-swap.ts.
+  'transfer.not_found': 'Codice o trasferimento non valido. Controlla e riprova.',
+  'transfer.creation.vehicle_not_found': 'Veicolo non trovato.',
+  'transfer.creation.not_current_owner': 'Non risulti il proprietario attuale del veicolo.',
+  'transfer.creation.vehicle_not_certified': 'Questo veicolo non può ancora essere trasferito.',
+  'transfer.creation.already_pending': "C'è già un trasferimento attivo per questo veicolo.",
+  'vehicle.archived': 'Veicolo archiviato: operazione non disponibile.',
+  'transfer.acceptance.self_not_allowed': 'Questo trasferimento è stato avviato da te.',
+  'transfer.acceptance.already_completed': 'Trasferimento già completato.',
+  'transfer.acceptance.expired':
+    'Codice scaduto: chiedi al venditore di avviare un nuovo trasferimento.',
+  'transfer.acceptance.not_pending_recipient': 'Il trasferimento non è più accettabile.',
+  'transfer.confirmation.not_from_customer':
+    'Solo chi ha avviato il trasferimento può confermarlo.',
+  'transfer.confirmation.expired': 'Trasferimento scaduto: avviane uno nuovo.',
+  'transfer.confirmation.not_pending_seller':
+    'Il trasferimento non è in attesa della tua conferma.',
+  'transfer.confirmation.ownership_conflict': 'La proprietà del veicolo è cambiata nel frattempo.',
+  'transfer.rejection.not_permitted': 'Non puoi annullare questo trasferimento.',
+  'transfer.rejection.not_pending': 'Il trasferimento non è più annullabile.',
 };
 
 const FALLBACK = 'Si è verificato un errore. Riprova più tardi.';
