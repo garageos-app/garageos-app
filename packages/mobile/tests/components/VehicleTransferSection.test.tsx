@@ -59,6 +59,14 @@ describe('VehicleTransferSection', () => {
     expect(screen.getByText('Trasferisci proprietà')).toBeOnTheScreen();
   });
 
+  it('falls back to the button when the transfers query errors', () => {
+    // isError shape: not loading, data undefined. Server re-guards BR-047
+    // with already_pending, so offering the button is safe.
+    mockTransfersState = { isLoading: false, data: undefined };
+    render(<VehicleTransferSection vehicleId={VEHICLE_ID} vehicleLabel="Fiat Panda · AB123CD" />);
+    expect(screen.getByText('Trasferisci proprietà')).toBeOnTheScreen();
+  });
+
   it('renders nothing while the transfers list is loading', () => {
     mockTransfersState = { isLoading: true, data: undefined };
     render(<VehicleTransferSection vehicleId={VEHICLE_ID} vehicleLabel="Fiat Panda · AB123CD" />);
