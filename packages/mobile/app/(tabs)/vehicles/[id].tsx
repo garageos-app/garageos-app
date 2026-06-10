@@ -79,7 +79,7 @@ export default function VehicleDetailScreen() {
             <Text style={styles.title}>{headerTitle}</Text>
             <Text style={styles.plate}>{v.plate}</Text>
             {v.year ? <Text style={styles.subtle}>Anno {v.year}</Text> : null}
-            <Text style={styles.subtle}>Codice: {v.garageCode}</Text>
+            {v.garageCode ? <Text style={styles.subtle}>Codice: {v.garageCode}</Text> : null}
           </View>
         </View>
 
@@ -231,7 +231,7 @@ function TechTab({
 }) {
   const rows: Array<[string, string]> = [
     ['Targa', vehicle.plate],
-    ['Codice GarageOS', vehicle.garageCode],
+    ['Codice GarageOS', vehicle.garageCode ?? 'Non ancora assegnato'],
     ['VIN', vehicle.vin],
     ['Marca', vehicle.make],
     ['Modello', vehicle.model],

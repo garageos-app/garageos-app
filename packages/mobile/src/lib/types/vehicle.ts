@@ -1,6 +1,6 @@
 export type MeVehicleSummary = {
   id: string;
-  garageCode: string;
+  garageCode: string | null;
   vin: string;
   plate: string;
   plateCountry: string;
@@ -21,7 +21,7 @@ export type MeVehiclesListResponse = {
 export type MeVehicleDetail = {
   vehicle: {
     id: string;
-    garageCode: string;
+    garageCode: string | null;
     vin: string;
     plate: string;
     plateCountry: string;
@@ -83,6 +83,36 @@ export type ClaimVehicleResponse = {
   };
   ownership: { id: string; startedAt: string };
   status: 'claimed' | 'already_owned';
+};
+
+// POST /v1/me/vehicles/pending request/response (F-CLI-104 customer
+// pre-registration). plateCountry is not sent by the client — the API
+// defaults it to 'IT'. Pending vehicles have no garageCode yet.
+export type CreatePendingVehicleRequest = {
+  vin: string;
+  plate: string;
+  make: string;
+  model: string;
+  year: number;
+  vehicleType: string;
+  fuelType: string;
+};
+
+export type CreatePendingVehicleResponse = {
+  vehicle: {
+    id: string;
+    garageCode: null;
+    vin: string;
+    plate: string;
+    plateCountry: string;
+    make: string;
+    model: string;
+    year: number;
+    vehicleType: string;
+    fuelType: string;
+    status: 'pending';
+  };
+  ownership: { id: string; startedAt: string };
 };
 
 export type TimelineResponse = {
