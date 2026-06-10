@@ -116,12 +116,16 @@ describe('useAcceptTransfer', () => {
     const apiFetch = jest.fn().mockResolvedValue({ transfer: TRANSFER });
     mockedHook.useApiClient.mockReturnValue({ fetch: apiFetch });
     const qc = newClient();
+    const invalidateSpy = jest.spyOn(qc, 'invalidateQueries');
     const { result } = renderHook(() => useAcceptTransfer(), { wrapper: makeWrapper(qc) });
     result.current.mutate('TR-ABCD-2345');
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(apiFetch).toHaveBeenCalledWith('/v1/me/transfers/TR-ABCD-2345/accept', {
       method: 'POST',
     });
+    expect(result.current.data).toEqual(TRANSFER);
+    // Ownership does not move on accept: no cache invalidation.
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -160,5 +164,18 @@ describe('useRejectTransfer', () => {
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['transfers'] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['transfers', TRANSFER.id] });
+  });
+
+  it('POSTs reject with the reason when provided', async () => {
+    const apiFetch = jest.fn().mockResolvedValue({ transfer: TRANSFER });
+    mockedHook.useApiClient.mockReturnValue({ fetch: apiFetch });
+    const qc = newClient();
+    const { result } = renderHook(() => useRejectTransfer(), { wrapper: makeWrapper(qc) });
+    result.current.mutate({ id: TRANSFER.id, reason: 'Cambio idea' });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(apiFetch).toHaveBeenCalledWith(`/v1/me/transfers/${TRANSFER.id}/reject`, {
+      method: 'POST',
+      body: { reason: 'Cambio idea' },
+    });
   });
 });
