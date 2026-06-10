@@ -118,7 +118,9 @@ export class SchedulerConstruct extends Construct {
     // warmingEnabled env flag (the single "schedules active in this env"
     // switch). UTC (not Europe/Rome) — it is timezone-indifferent night work
     // and UTC avoids DST edge cases. Retries are safe because the sweep is
-    // idempotent (the status IN (pending_*) predicate no-ops on re-run).
+    // idempotent: the handler's status IN ('pending_recipient',
+    // 'pending_seller_confirmation') predicate no-ops on re-run
+    // (pending_validation is intentionally NOT swept — BR-044).
     this.transferExpirySchedule = new scheduler.CfnSchedule(this, 'TransferExpirySchedule', {
       name: 'garageos-transfer-expiry',
       groupName: 'default',
