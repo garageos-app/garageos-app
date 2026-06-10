@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { pgAdmin } from './setup.js';
 
 // Subset of packages/database/tests/integration/helpers.ts — keeping
@@ -330,6 +332,70 @@ export async function createOwnership(params: {
     [vehicleId, customerId, startedAt, endedAt],
   );
   return { ownershipId: rows[0]!.id };
+}
+
+// Direct insert of a vehicle_transfers row (bypasses RLS). Enum columns
+// require explicit casts (see createVehicle). Defaults to a seller-initiated
+// physical-code transfer with a 7-day future expiry.
+export async function createTransfer(params: {
+  vehicleId: string;
+  fromCustomerId: string;
+  toCustomerId?: string | null;
+  status:
+    | 'pending_recipient'
+    | 'pending_seller_confirmation'
+    | 'pending_validation'
+    | 'completed'
+    | 'rejected'
+    | 'expired';
+  method?: 'initiated_by_seller' | 'claim_without_seller' | 'officina_mediated';
+  transferCode?: string | null;
+  expiresAt?: Date;
+}): Promise<{ transferId: string; transferCode: string | null }> {
+  const {
+    vehicleId,
+    fromCustomerId,
+    toCustomerId = null,
+    status,
+    method = 'initiated_by_seller',
+    transferCode = `TR-TST-${randomUUID().slice(0, 5).toUpperCase()}`,
+    expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO vehicle_transfers
+       (id, vehicle_id, from_customer_id, to_customer_id, transfer_code,
+        method, status, expires_at, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4,
+        $5::"TransferMethod", $6::"TransferStatus", $7, NOW(), NOW())
+     RETURNING id`,
+    [vehicleId, fromCustomerId, toCustomerId, transferCode, method, status, expiresAt],
+  );
+  return { transferId: rows[0]!.id, transferCode };
+}
+
+// Customer id of the single active (ended_at IS NULL) ownership, or null.
+export async function getActiveOwnerCustomerId(vehicleId: string): Promise<string | null> {
+  const { rows } = await pgAdmin.query<{ customer_id: string }>(
+    `SELECT customer_id FROM vehicle_ownerships WHERE vehicle_id = $1 AND ended_at IS NULL`,
+    [vehicleId],
+  );
+  return rows[0]?.customer_id ?? null;
+}
+
+export async function getTransferById(
+  transferId: string,
+): Promise<{ status: string; toCustomerId: string | null; completedAt: Date | null } | null> {
+  const { rows } = await pgAdmin.query<{
+    status: string;
+    to_customer_id: string | null;
+    completed_at: Date | null;
+  }>(`SELECT status, to_customer_id, completed_at FROM vehicle_transfers WHERE id = $1`, [
+    transferId,
+  ]);
+  const r = rows[0];
+  return r
+    ? { status: r.status, toCustomerId: r.to_customer_id, completedAt: r.completed_at }
+    : null;
 }
 
 export async function createCustomerTenantRelation(params: {
