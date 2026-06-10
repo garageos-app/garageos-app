@@ -275,12 +275,20 @@ See `docs/APPENDICE_E_TESTING.md` for the full testing strategy, including which
 
 ## Right-sizing the workflow to the task
 
-The slow part of a change is rarely the tests — those already run on CI in parallel (see above). The cost driver is applying the **full heavyweight review pipeline** (plan doc → one subagent per task → 3-4 review stages → smoke runbook → final Opus review) to a small change. That pipeline is calibrated for **large vertical slices (≥6 tasks, cross-layer)**, not for a single additive endpoint or component.
+The slow part of a change is rarely the tests — those already run on CI in parallel (see above). The cost driver is applying the **full heavyweight review pipeline** (plan doc → one subagent per task → 3-4 review stages → smoke runbook → final review) to a small change. That pipeline was calibrated in the Opus 4.x era; with current models the implementer drifts less and review stages consolidate. It remains appropriate only for **large vertical slices (≥6 tasks, cross-layer)**, not for a single additive endpoint or component.
 
 **Match the process to the task size:**
 
-- **Small / additive change** (one endpoint, one component, an isolated fix): lightweight plan, implement directly, **a single final Opus review**. No subagent-per-task, no 3-4 review stages.
-- **Large slice** (≥6 tasks, multiple layers): full subagent-driven review pipeline.
+- **Small / additive change** (one endpoint, one component, an isolated fix): lightweight plan, implement directly, then **one final whole-branch review via `/code-review`** (medium effort). No subagent-per-task, no multi-stage review.
+- **Medium change** (2-5 tasks, single layer): implement task-by-task (subagents optional), then **`/code-review high`** on the whole branch.
+- **Large slice** (≥6 tasks, cross-layer): subagent-driven implementation per task. Per-task reviewers only for the riskiest tasks (new public API surface, security/RLS, migrations); everything else is covered by the final whole-branch gate: **`/code-review high`**, or **`/code-review ultra`** for the biggest slices. For a parallel multi-dimension review fan-out, the Workflow tool may be used (it requires explicit opt-in in the prompt).
+
+**Rules that survive any model generation:**
+
+- The **final whole-branch review is load-bearing — never skip it.** It is the only gate that cross-references `schema.prisma`, `APPENDICE_F`/`APPENDICE_G`, and cross-task consistency (per-task reviewers read diffs in isolation by design).
+- **Do not hardcode model names** (sonnet/opus/haiku) in specs, plans, or review prescriptions. Subagents inherit the session model by default, which is the strongest available; "final Opus review" in older specs/plans means "final whole-branch review with the strongest available model".
+- The **smoke runbook stays mandatory** for UI/shell/layout PRs and anything device-facing — no review stage replaces it.
+- Implementation plans follow `docs/superpowers/PLAN_TEMPLATE.md` (includes the mandatory pre-flight grep checklist).
 
 **Local feedback loop (fastest first):**
 
