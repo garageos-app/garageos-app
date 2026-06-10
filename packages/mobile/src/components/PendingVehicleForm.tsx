@@ -111,15 +111,7 @@ export function PendingVehicleForm({ onSubmit, onCancel }: Props) {
     if (Object.keys(v).length > 0) return;
     setBanner(null);
 
-    const body: CreatePendingVehicleRequest = {
-      vin: values.vin,
-      plate: values.plate,
-      make: values.make,
-      model: values.model,
-      year: parseInt(values.year, 10),
-      vehicleType: values.vehicleType,
-      fuelType: values.fuelType,
-    };
+    const body: CreatePendingVehicleRequest = { ...values, year: parseInt(values.year, 10) };
 
     setSubmitting(true);
     try {

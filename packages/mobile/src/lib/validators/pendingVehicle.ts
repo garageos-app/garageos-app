@@ -47,7 +47,7 @@ export function validatePendingVehicleForm(
   else {
     const year = Number(values.year);
     const maxYear = new Date().getFullYear() + 1;
-    if (!/^\d+$/.test(values.year) || !Number.isInteger(year) || year < 1900 || year > maxYear) {
+    if (!/^\d+$/.test(values.year) || year < 1900 || year > maxYear) {
       errors.year = 'Anno non valido';
     }
   }
