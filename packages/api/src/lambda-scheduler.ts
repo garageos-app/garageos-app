@@ -15,7 +15,7 @@ type SchedulerHandler = (detail: SchedulerInvocationDetail) => Promise<Scheduler
 // reminders.
 //
 // Wrapping order in the Lambda entry (outermost to innermost):
-//   withWarmingGuard(withSchedulerGuard(schedulerHandler)(awsLambdaFastify(app)))
+//   withWarmingGuard(withTransferExpiryGuard(withSchedulerGuard(schedulerHandler)(awsLambdaFastify(app)), handler), warmup)
 export function withSchedulerGuard(handler: SchedulerHandler) {
   return (inner: LambdaHandler): LambdaHandler => {
     return async (event, context, callback) => {
