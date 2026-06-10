@@ -37,6 +37,7 @@ import disputesOpenRoutes from './routes/v1/disputes-open.js';
 import interventionTypesRoutes from './routes/v1/intervention-types.js';
 import attachmentsRoutes from './routes/v1/attachments.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
+import meVehiclesPendingRoutes from './routes/v1/me-vehicles-pending.js';
 import meVehicleExportPdfRoutes from './routes/v1/me-vehicles-export-pdf.js';
 import meTransfersRoutes from './routes/v1/me-transfers.js';
 import meInterventionsRoutes from './routes/v1/me-interventions.js';
@@ -208,6 +209,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(deadlinesListTenantRoutes);
   await app.register(attachmentsRoutes);
   await app.register(meVehicleRoutes);
+  await app.register(meVehiclesPendingRoutes);
   await app.register(meVehicleExportPdfRoutes);
   await app.register(meTransfersRoutes);
   await app.register(meInterventionsRoutes);
