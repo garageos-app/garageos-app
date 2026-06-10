@@ -120,7 +120,12 @@ export default function TransferDetailScreen() {
             <Pressable
               onPress={() => void Share.share({ message: transferShareMessage(t) })}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
+              disabled={busy}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && styles.pressed,
+                busy && styles.disabled,
+              ]}
             >
               <Text style={styles.primaryBtnText}>Condividi</Text>
             </Pressable>
@@ -128,7 +133,11 @@ export default function TransferDetailScreen() {
               onPress={onCancelTransfer}
               accessibilityRole="button"
               disabled={busy}
-              style={({ pressed }) => [styles.dangerBtn, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.dangerBtn,
+                pressed && styles.pressed,
+                busy && styles.disabled,
+              ]}
             >
               <Text style={styles.dangerBtnText}>Annulla trasferimento</Text>
             </Pressable>
@@ -145,7 +154,11 @@ export default function TransferDetailScreen() {
               onPress={onConfirmTransfer}
               accessibilityRole="button"
               disabled={busy}
-              style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && styles.pressed,
+                busy && styles.disabled,
+              ]}
             >
               <Text style={styles.primaryBtnText}>Conferma passaggio</Text>
             </Pressable>
@@ -153,7 +166,11 @@ export default function TransferDetailScreen() {
               onPress={onRejectTransfer}
               accessibilityRole="button"
               disabled={busy}
-              style={({ pressed }) => [styles.dangerBtn, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.dangerBtn,
+                pressed && styles.pressed,
+                busy && styles.disabled,
+              ]}
             >
               <Text style={styles.dangerBtnText}>Rifiuta</Text>
             </Pressable>
@@ -235,4 +252,6 @@ const styles = StyleSheet.create({
   },
   dangerBtnText: { color: colors.danger, fontSize: 16, fontWeight: '600' },
   pressed: { opacity: 0.8 },
+  // Works for both filled and outline buttons (unlike a background swap).
+  disabled: { opacity: 0.5 },
 });
