@@ -666,3 +666,153 @@ describe('POST /v1/me/transfers/:id/confirm', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('POST /v1/me/transfers/:id/reject', () => {
+  const TRANSFER_ID = '44444444-4444-4444-8444-444444444444';
+  let app: FastifyInstance | undefined;
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  function reject(payload: unknown = {}) {
+    return app!.inject({
+      method: 'POST',
+      url: `/v1/me/transfers/${TRANSFER_ID}/reject`,
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: payload as never,
+    });
+  }
+
+  function rejectable(over: Record<string, unknown> = {}) {
+    return {
+      id: 'tr-1',
+      fromCustomerId: CUSTOMER_ID,
+      toCustomerId: null,
+      status: 'pending_recipient',
+      ...over,
+    };
+  }
+
+  it('lets the seller reject and stores the reason', async () => {
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(rejectable())
+      .mockResolvedValueOnce({
+        ...createdRow(),
+        status: 'rejected',
+        rejectedReason: 'cambiato idea',
+      });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = buildFakePrisma({
+      vehicleTransfer: { findFirst, findMany: vi.fn(), create: vi.fn(), updateMany },
+    });
+    app = await buildApp(prisma);
+    const res = await reject({ reason: 'cambiato idea' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().transfer.status).toBe('rejected');
+    expect(updateMany.mock.calls[0]![0].data.rejectedReason).toBe('cambiato idea');
+  });
+
+  it('lets the recipient reject (no reason)', async () => {
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(
+        rejectable({
+          fromCustomerId: 'seller-x',
+          toCustomerId: CUSTOMER_ID,
+          status: 'pending_seller_confirmation',
+        }),
+      )
+      .mockResolvedValueOnce({ ...createdRow(), status: 'rejected' });
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst,
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await reject()).statusCode).toBe(200);
+  });
+
+  it('returns 404 when the transfer does not exist', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await reject()).statusCode).toBe(404);
+  });
+
+  it('returns 403 when the caller is neither party', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValue(rejectable({ fromCustomerId: 'seller-x', toCustomerId: 'buyer-y' })),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await reject()).statusCode).toBe(403);
+  });
+
+  it('returns 409 when the transfer is already terminal', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(rejectable({ status: 'completed' })),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await reject()).statusCode).toBe(409);
+  });
+
+  it('returns 409 when the CAS loses the race', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(rejectable()),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await reject()).statusCode).toBe(409);
+  });
+
+  it('rejects an unknown body field with 400', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(rejectable()),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await reject({ foo: 'bar' })).statusCode).toBe(400);
+  });
+
+  it('returns 401 without Authorization', async () => {
+    app = await buildApp(buildFakePrisma());
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/transfers/${TRANSFER_ID}/reject`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

@@ -39,6 +39,7 @@ const createBodySchema = z
 
 const idParamSchema = z.object({ id: z.uuid() });
 const codeParamSchema = z.object({ code: z.string().min(1) });
+const rejectBodySchema = z.object({ reason: z.string().trim().max(500).optional() }).strict();
 
 const meTransfersRoutes: FastifyPluginAsync = async (app) => {
   // POST /v1/me/transfers — F-CLI-401. Seller initiates a physical_code
@@ -331,6 +332,61 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
         });
         // TODO(F-CLI-notifications): notify the recipient that ownership
         // transferred (ownership_transfer push/email), post-commit.
+        return { transfer: serializeTransfer(updated!) };
+      });
+    },
+  );
+
+  // POST /v1/me/transfers/:id/reject — F-CLI-403 / BR-048. Either party may
+  // reject while the transfer is still active (seller cancels, or recipient
+  // declines). Optional free-text reason. No ownership change.
+  app.post(
+    '/v1/me/transfers/:id/reject',
+    { preHandler: [requireAuth, requireClientiPool, clientiContext] },
+    async (request) => {
+      const { id } = idParamSchema.parse(request.params);
+      const { reason } = rejectBodySchema.parse(request.body ?? {});
+      const customerId = request.customerId!;
+
+      return app.withContext({ customerId, role: 'user' }, async (tx) => {
+        const row = await tx.vehicleTransfer.findFirst({
+          where: { id },
+          select: { id: true, fromCustomerId: true, toCustomerId: true, status: true },
+        });
+        if (!row) {
+          throw businessError('transfer.not_found', 404, 'Trasferimento non trovato.');
+        }
+        if (row.fromCustomerId !== customerId && row.toCustomerId !== customerId) {
+          throw businessError(
+            'transfer.rejection.not_permitted',
+            403,
+            'Non puoi rifiutare questo trasferimento.',
+          );
+        }
+        if (!(ACTIVE_TRANSFER_STATUSES as readonly string[]).includes(row.status)) {
+          throw businessError(
+            'transfer.rejection.not_pending',
+            409,
+            'Trasferimento gia in stato terminale.',
+          );
+        }
+
+        const cas = await tx.vehicleTransfer.updateMany({
+          where: { id: row.id, status: { in: [...ACTIVE_TRANSFER_STATUSES] } },
+          data: { status: 'rejected', rejectedReason: reason ?? null },
+        });
+        if (cas.count === 0) {
+          throw businessError(
+            'transfer.rejection.not_pending',
+            409,
+            'Trasferimento gia in stato terminale.',
+          );
+        }
+
+        const updated = await tx.vehicleTransfer.findFirst({
+          where: { id: row.id },
+          select: TRANSFER_SELECT,
+        });
         return { transfer: serializeTransfer(updated!) };
       });
     },
