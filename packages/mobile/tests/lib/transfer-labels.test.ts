@@ -10,6 +10,7 @@ describe('transfer labels', () => {
   it('maps every status to the Italian label from the spec', () => {
     expect(TRANSFER_STATUS_LABELS.pending_recipient).toBe('In attesa del nuovo proprietario');
     expect(TRANSFER_STATUS_LABELS.pending_seller_confirmation).toBe('In attesa della tua conferma');
+    expect(TRANSFER_STATUS_LABELS.pending_validation).toBe('In verifica');
     expect(TRANSFER_STATUS_LABELS.completed).toBe('Completato');
     expect(TRANSFER_STATUS_LABELS.rejected).toBe('Rifiutato');
     expect(TRANSFER_STATUS_LABELS.expired).toBe('Scaduto');
@@ -26,6 +27,8 @@ describe('transfer labels', () => {
 
   it('transferStatusTone buckets statuses for badge styling', () => {
     expect(transferStatusTone('pending_recipient')).toBe('pending');
+    expect(transferStatusTone('pending_seller_confirmation')).toBe('pending');
+    expect(transferStatusTone('pending_validation')).toBe('pending');
     expect(transferStatusTone('completed')).toBe('done');
     expect(transferStatusTone('rejected')).toBe('closed');
     expect(transferStatusTone('expired')).toBe('closed');
