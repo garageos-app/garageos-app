@@ -106,7 +106,7 @@ export default function NewTransferScreen() {
           <>
             <Text style={styles.codeTitle}>Codice generato</Text>
             <Text style={styles.code} testID="transfer-code">
-              {phase.transfer.transferCode}
+              {phase.transfer.transferCode ?? '—'}
             </Text>
             <Text style={styles.hint}>
               {'Comunica questo codice al nuovo proprietario. Scade il '}
