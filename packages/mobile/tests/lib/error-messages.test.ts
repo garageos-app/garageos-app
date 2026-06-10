@@ -81,4 +81,19 @@ describe('mapErrorToUserMessage', () => {
     expect(mapErrorToUserMessage('me.vehicle.claim.pending')).toMatch(/non ancora certificato/);
     expect(mapErrorToUserMessage('me.vehicle.claim.archived')).toMatch(/archiviato/);
   });
+
+  it('maps the transfer domain codes (F-CLI-401)', () => {
+    expect(mapErrorToUserMessage('transfer.not_found')).toBe(
+      'Codice o trasferimento non valido. Controlla e riprova.',
+    );
+    expect(mapErrorToUserMessage('transfer.acceptance.expired')).toBe(
+      'Codice scaduto: chiedi al venditore di avviare un nuovo trasferimento.',
+    );
+    expect(mapErrorToUserMessage('transfer.creation.already_pending')).toBe(
+      "C'è già un trasferimento attivo per questo veicolo.",
+    );
+    expect(mapErrorToUserMessage('transfer.confirmation.ownership_conflict')).toBe(
+      'La proprietà del veicolo è cambiata nel frattempo.',
+    );
+  });
 });

@@ -20,9 +20,12 @@ type Props = {
   onSubmit: (garageCode: string) => Promise<ClaimVehicleFormResult>;
   onCancel: () => void;
   initialCode?: string;
+  // F-CLI-401 auto-detect: a TR- code entered here belongs to the transfer
+  // acceptance flow, not the GO claim. The parent redirects to /accept-transfer.
+  onTransferCode?: (code: string) => void;
 };
 
-export function ClaimVehicleForm({ onSubmit, onCancel, initialCode }: Props) {
+export function ClaimVehicleForm({ onSubmit, onCancel, initialCode, onTransferCode }: Props) {
   const [code, setCode] = useState(initialCode ?? '');
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   const [banner, setBanner] = useState<string | null>(null);
@@ -39,6 +42,10 @@ export function ClaimVehicleForm({ onSubmit, onCancel, initialCode }: Props) {
   async function handleSubmit() {
     if (submitting) return;
     const normalized = code.trim().toUpperCase();
+    if (onTransferCode && normalized.startsWith('TR-')) {
+      onTransferCode(normalized);
+      return;
+    }
     const err = validateClaimForm(normalized);
     setFieldError(err);
     if (err) return;
@@ -89,7 +96,9 @@ export function ClaimVehicleForm({ onSubmit, onCancel, initialCode }: Props) {
           editable={!submitting}
         />
         <Text style={styles.hint}>
-          {"Lo trovi sul tag adesivo del veicolo o nell'email dell'officina."}
+          {
+            "Lo trovi sul tag adesivo del veicolo o nell'email dell'officina. Hai un codice TR- per un passaggio di proprietà? Inseriscilo qui."
+          }
         </Text>
         <Pressable
           onPress={() => setShowScanner(true)}
