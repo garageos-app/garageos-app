@@ -372,6 +372,8 @@ Authorization: Bearer <officine_user_jwt>
 
 > **Nota implementazione PR2 (2026-06):** implementati `POST /me/transfers/:code/accept` (cessionario accetta, stato -> `pending_seller_confirmation`, `expiresAt` resettato a +7gg dall'accettazione, BR-043), `POST /me/transfers/:id/confirm` (cedente conferma -> swap atomico della proprieta, stato `completed`) e `POST /me/transfers/:id/reject` (entrambe le parti, finche non `completed`). accept/confirm non hanno body; reject accetta `{ reason?: string }` (max 500). Solo `physical_code`; notifiche ed email differite.
 
+> **Nota implementazione PR4 (2026-06):** aggiunto `GET /me/transfers/:code/preview`: peek read-only del transfer tramite codice (il cessionario vede il veicolo prima dell'accept one-shot). Stessa catena di guardie dell'accept — `transfer.not_found` 404, `transfer.acceptance.self_not_allowed` 403, `transfer.acceptance.already_completed` 409, `transfer.acceptance.expired` 410, `transfer.acceptance.not_pending_recipient` 422 — senza side effect; risposta `{ transfer }` con lo stesso DTO (nessuna PII venditore). Nessun nuovo error code.
+
 #### Descrizione
 
 Il proprietario attuale avvia un passaggio di proprietà del veicolo. Può indicare l'email del cessionario (invito via email) oppure generare un codice temporaneo da condividere fisicamente.
@@ -2634,6 +2636,7 @@ L'`owner_type=intervention` resta officina-only.
 | GET | `/me/transfers` | F-CLI-401 | Customer | Lista trasferimenti del customer (PR1) |
 | GET | `/me/transfers/:id` | F-CLI-401 | Customer | Dettaglio trasferimento (PR1) |
 | POST | `/me/transfers/:code/accept` | F-CLI-402, F-CLI-403 | Customer | Cessionario accetta trasferimento (PR2) |
+| GET | `/me/transfers/:code/preview` | F-CLI-402 | Customer | Anteprima trasferimento via codice, read-only (PR4) |
 | POST | `/me/transfers/:id/confirm` | F-CLI-403 | Customer | Cedente conferma dopo accettazione cessionario (PR2) |
 | POST | `/me/transfers/:id/reject` | F-CLI-403 | Customer | Rifiuta trasferimento (PR2) |
 | POST | `/me/transfers/claim-without-seller` | F-CLI-404 | Customer | Claim autonomo con libretto (PR2+) |
