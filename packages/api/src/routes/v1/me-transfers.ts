@@ -302,15 +302,19 @@ const meTransfersRoutes: FastifyPluginAsync = async (app) => {
             'Non sei il cedente di questo trasferimento.',
           );
         }
+        // A scheduler-flipped 'expired' status (PR3) is surfaced as 410, before
+        // the generic wrong-state 422 below (mirrors the accept handler).
+        if (row.status === 'expired' || row.expiresAt.getTime() < Date.now()) {
+          throw businessError('transfer.confirmation.expired', 410, 'Trasferimento scaduto.');
+        }
+        // !toCustomerId is a data-invariant violation (a pending_seller_confirmation
+        // row always has a recipient); guarded defensively under the same 422.
         if (row.status !== 'pending_seller_confirmation' || !row.toCustomerId) {
           throw businessError(
             'transfer.confirmation.not_pending_seller',
             422,
             'Trasferimento non in attesa di conferma del cedente.',
           );
-        }
-        if (row.expiresAt.getTime() < Date.now()) {
-          throw businessError('transfer.confirmation.expired', 410, 'Trasferimento scaduto.');
         }
 
         await confirmTransferSwap(tx, {

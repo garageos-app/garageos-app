@@ -617,6 +617,32 @@ describe('POST /v1/me/transfers/:id/confirm', () => {
     expect((await confirm()).statusCode).toBe(410);
   });
 
+  it('returns 410 when the status is already expired', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(awaitingConfirm({ status: 'expired' })),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await confirm()).statusCode).toBe(410);
+  });
+
+  it('returns 422 when the recipient slot is empty (data invariant)', async () => {
+    const prisma = buildFakePrisma({
+      vehicleTransfer: {
+        findFirst: vi.fn().mockResolvedValue(awaitingConfirm({ toCustomerId: null })),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    expect((await confirm()).statusCode).toBe(422);
+  });
+
   it('returns 422 when the swap CAS loses the race', async () => {
     const prisma = buildFakePrisma({
       vehicleTransfer: {
