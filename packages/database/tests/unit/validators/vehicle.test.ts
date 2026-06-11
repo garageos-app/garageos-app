@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import {
+  CertifyVehicleSchema,
   ClaimVehicleSchema,
   CreateVehicleSchema,
   FuelTypeEnum,
@@ -226,6 +227,99 @@ describe('UpdateVehicleSchema', () => {
     const result = UpdateVehicleSchema.safeParse({
       forceNonstandardVin: true,
       force: true,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// BR-004 — pending→certified promotion body (F-OFF-107).
+describe('CertifyVehicleSchema', () => {
+  it('accepts minimal body and applies defaults', () => {
+    const result = CertifyVehicleSchema.parse({ librettoVisioned: true });
+    expect(result).toEqual({
+      librettoVisioned: true,
+      forceNonstandardVin: false,
+      force: false,
+    });
+  });
+
+  it('defaults librettoVisioned to false when absent', () => {
+    const result = CertifyVehicleSchema.parse({});
+    expect(result.librettoVisioned).toBe(false);
+  });
+
+  it('accepts a corrections subset', () => {
+    const result = CertifyVehicleSchema.parse({
+      librettoVisioned: true,
+      corrections: { plate: 'XY987ZW', year: 2020 },
+    });
+    expect(result.corrections).toEqual({ plate: 'XY987ZW', year: 2020 });
+  });
+
+  it('accepts all correctable fields', () => {
+    const result = CertifyVehicleSchema.safeParse({
+      librettoVisioned: true,
+      corrections: {
+        vin: 'ZFA16900000512345',
+        plate: 'AB123CD',
+        plateCountry: 'IT',
+        make: 'Fiat',
+        model: 'Panda',
+        version: '1.2 Easy',
+        year: 2021,
+        registrationDate: '2021-03-15',
+        vehicleType: 'car',
+        fuelType: 'petrol',
+      },
+      forceNonstandardVin: true,
+      force: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects non-correctable keys in corrections (status, garageCode)', () => {
+    expect(
+      CertifyVehicleSchema.safeParse({
+        librettoVisioned: true,
+        corrections: { status: 'certified' },
+      }).success,
+    ).toBe(false);
+    expect(
+      CertifyVehicleSchema.safeParse({
+        librettoVisioned: true,
+        corrections: { garageCode: 'GO-234-ABCD' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects unknown top-level keys', () => {
+    const result = CertifyVehicleSchema.safeParse({
+      librettoVisioned: true,
+      certifiedByTenantId: randomUUID(),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects year outside BR-007 bounds inside corrections', () => {
+    const currentYear = new Date().getUTCFullYear();
+    expect(
+      CertifyVehicleSchema.safeParse({
+        librettoVisioned: true,
+        corrections: { year: 1899 },
+      }).success,
+    ).toBe(false);
+    expect(
+      CertifyVehicleSchema.safeParse({
+        librettoVisioned: true,
+        corrections: { year: currentYear + 2 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects malformed corrections vin', () => {
+    const result = CertifyVehicleSchema.safeParse({
+      librettoVisioned: true,
+      corrections: { vin: 'ABC' },
     });
     expect(result.success).toBe(false);
   });
