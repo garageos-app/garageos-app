@@ -217,8 +217,11 @@ export function VehicleDetail() {
         )}
       </section>
 
-      {v.status === 'pending' && (
-        <CertifyVehicleDialog open={certifyOpen} onOpenChange={setCertifyOpen} vehicle={v} />
+      {/* Mounted only while open: a fresh mount per attempt snapshots the
+          form defaults from the latest vehicle data and resets the BR-004
+          libretto declaration (it must be re-asserted on every attempt). */}
+      {v.status === 'pending' && certifyOpen && (
+        <CertifyVehicleDialog open onOpenChange={setCertifyOpen} vehicle={v} />
       )}
 
       {detail.data.currentOwnership?.customer && (

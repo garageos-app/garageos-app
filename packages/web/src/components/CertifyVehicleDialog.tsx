@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -105,12 +106,17 @@ interface CertifyVehicleDialogProps {
 
 export function CertifyVehicleDialog({ open, onOpenChange, vehicle }: CertifyVehicleDialogProps) {
   const mutation = useCertifyVehicle(vehicle.id);
+  const qc = useQueryClient();
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
 
+  // Snapshot taken ONCE at mount (the parent mounts the dialog per open):
+  // it is both the form defaults and the dirty-diff baseline, so a
+  // vehicle-detail refetch while the dialog is open cannot desync the two
+  // and turn untouched fields into unintended corrections.
   // queries/types.ts still declares legacy enum literals for
   // vehicleType/fuelType; the wire carries the backend Prisma values
   // ('car', 'petrol', ...) — cast through the runtime truth.
-  const initial = {
+  const [initial] = useState(() => ({
     vin: vehicle.vin,
     plate: vehicle.plate,
     make: vehicle.make,
@@ -120,7 +126,7 @@ export function CertifyVehicleDialog({ open, onOpenChange, vehicle }: CertifyVeh
     registrationDate: vehicle.registrationDate?.slice(0, 10) ?? '',
     vehicleType: vehicle.vehicleType as unknown as VehicleType,
     fuelType: vehicle.fuelType as unknown as FuelType,
-  };
+  }));
 
   const {
     register,
@@ -175,6 +181,13 @@ export function CertifyVehicleDialog({ open, onOpenChange, vehicle }: CertifyVeh
           return;
         }
         toast.error(translateError(e.code, e.message));
+        if (e.code === 'vehicle.certification.not_pending') {
+          // A concurrent certify won (or the page is stale): close and
+          // refetch so the banner/dialog stop claiming the vehicle is
+          // still pending.
+          void qc.invalidateQueries({ queryKey: ['vehicle-detail', vehicle.id] });
+          onOpenChange(false);
+        }
         return;
       }
       throw e;

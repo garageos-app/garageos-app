@@ -104,18 +104,23 @@ describe('CertifyVehicleDialog', () => {
     expect(submit).not.toBeDisabled();
   });
 
-  it('maps API errors to the Italian message', async () => {
+  it('maps the concurrent-loser 422 to the Italian message and closes the stale dialog', async () => {
     apiFetchMock.mockRejectedValue(
       new ApiError('vehicle.certification.not_pending', 422, 'not pending'),
     );
     const user = userEvent.setup();
-    renderDialog();
+    const { onOpenChange } = renderDialog();
 
     await user.click(screen.getByRole('switch', { name: /ho visionato il libretto/i }));
     await user.click(screen.getByRole('button', { name: /certifica veicolo/i }));
 
     await waitFor(() =>
-      expect(toastErrorMock).toHaveBeenCalledWith('Il veicolo è già stato certificato.'),
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'Il veicolo non è più in attesa di certificazione.',
+      ),
     );
+    // The page state is stale (another mechanic won): the dialog must close
+    // so the refetched detail can drop the pending banner.
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
