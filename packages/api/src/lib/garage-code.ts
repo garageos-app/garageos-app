@@ -65,13 +65,19 @@ export async function certifyVehicleWithGarageCode(
     const candidate = first.code;
 
     try {
+      // status = 'pending' belongs in the CAS, not just the caller's
+      // pre-read: an archived vehicle keeps garage_code NULL
+      // (chk_pending_consistency constrains only the pending state), so
+      // without it a concurrent pending→archived transition committed
+      // between the caller's status check and this UPDATE would be
+      // silently resurrected as certified.
       const affected = await tx.$executeRaw`
         UPDATE vehicles
         SET garage_code = ${candidate},
             status = 'certified',
             certified_at = NOW(),
             certified_by_tenant_id = ${tenantId}::uuid
-        WHERE id = ${vehicleId}::uuid AND garage_code IS NULL
+        WHERE id = ${vehicleId}::uuid AND garage_code IS NULL AND status = 'pending'
       `;
       if (affected === 1) return candidate;
       if (affected === 0) {

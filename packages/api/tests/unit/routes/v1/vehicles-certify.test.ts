@@ -54,7 +54,7 @@ interface FakeOptions {
   byPlate?: Record<string, unknown> | null;
 }
 
-function buildFakePrisma(opts: FakeOptions = {}, overrides: Partial<FakePrisma> = {}): FakePrisma {
+function buildFakePrisma(opts: FakeOptions = {}): FakePrisma {
   const byId = opts.byId === undefined ? pendingRow() : opts.byId;
   return {
     user: {
@@ -121,7 +121,6 @@ function buildFakePrisma(opts: FakeOptions = {}, overrides: Partial<FakePrisma> 
       return [];
     }),
     $executeRaw: vi.fn().mockResolvedValue(1),
-    ...overrides,
   };
 }
 
@@ -322,12 +321,9 @@ describe('POST /v1/vehicles/:id/certify', () => {
   });
 
   it('maps a lost corrections CAS (0 rows) to 422 not_pending', async () => {
-    const prisma = buildFakePrisma(
-      {},
-      // First by-id read says pending, but the CAS finds 0 rows: a
-      // concurrent certify won between read and write.
-      {},
-    );
+    const prisma = buildFakePrisma();
+    // First by-id read says pending, but the CAS finds 0 rows: a
+    // concurrent certify won between read and write.
     prisma.vehicle.updateMany.mockResolvedValue({ count: 0 });
     app = await buildApp(prisma);
     const res = await certify(app, {

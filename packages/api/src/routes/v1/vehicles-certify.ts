@@ -1,7 +1,6 @@
 import { CertifyVehicleSchema, Prisma, type PrismaClient } from '@garageos/database';
 import type { FastifyError, FastifyPluginAsync } from 'fastify';
 
-import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
 import { certifyVehicleWithGarageCode, VehicleNotCertifiableError } from '../../lib/garage-code.js';
 import { maskCustomer, resolvePiiVisibility } from '../../lib/pii-filter.js';
@@ -166,16 +165,26 @@ const vehicleCertifyRoutes: FastifyPluginAsync = async (app) => {
           throw err;
         }
 
-        await recordVehicleAccess({
-          tx,
-          vehicleId: id,
-          tenantId,
-          userId: user.id,
-          ...(user.locationId ? { locationId: user.locationId } : {}),
-          action: 'update',
-          ipAddress: request.ip,
-          log: request.log,
-        });
+        // Direct insert instead of recordVehicleAccess: certification is a
+        // discrete audit event, and the helper's BR-154 30-minute
+        // (vehicleId, userId) dedup has no action filter — the mechanic has
+        // virtually always just viewed this vehicle ('view' row from the
+        // detail page), which would swallow the certify row. Failures must
+        // never break the promotion (same stance as the helper).
+        try {
+          await tx.accessLog.create({
+            data: {
+              vehicleId: id,
+              tenantId,
+              userId: user.id,
+              ...(user.locationId ? { locationId: user.locationId } : {}),
+              action: 'update',
+              ...(request.ip ? { ipAddress: request.ip } : {}),
+            },
+          });
+        } catch (err) {
+          request.log.warn({ err, vehicleId: id }, 'access-log: certify write failed');
+        }
 
         // TODO(F-CLI-notifications): push+email to the owning customer
         // (BR-004 post-condition, deferred — spec §scope decision 2).
