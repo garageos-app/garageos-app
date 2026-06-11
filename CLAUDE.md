@@ -285,6 +285,21 @@ pnpm --filter @garageos/database test:integration   # ONLY to reproduce a CI fai
 
 Never run `pnpm test:integration` (root) locally unless explicitly instructed — it spins up Docker for both database + api integration suites and will likely freeze the machine.
 
+### Test depth — two tiers (adopted 2026-06-11)
+
+Writing tests is ~half the diff of a typical slice; spend that effort where it has historically caught real bugs (tenant leaks, RLS gaps, race conditions), not on rendering assertions.
+
+**Tier 1 — full coverage, mandatory:**
+- Every `BR-XXX` coded rule (unchanged — see "Business rules are non-negotiable")
+- Security boundaries: RLS, tenant isolation, ownership scoping, PII filtering — including negative tests
+- State machines, concurrency and race paths (CAS guards, P2002 handling, advisory locks)
+- API route contracts: status codes, error codes, RFC 7807 envelope
+
+**Tier 2 — minimal coverage, by design:**
+- UI screens/components (web and mobile): 2-3 tests per screen — happy path, the error state, and any conditional logic that gates data. **No pure-rendering tests** ("button shows spinner", "label is visible"): the smoke runbook covers visual behavior on real devices, JSDOM does not.
+
+When in doubt whether something is Tier 1, it is.
+
 See `docs/APPENDICE_E_TESTING.md` for the full testing strategy, including which `BR-XXX` rules require explicit tests.
 
 ## Right-sizing the workflow to the task
@@ -293,9 +308,15 @@ The slow part of a change is rarely the tests — those already run on CI in par
 
 **Match the process to the task size:**
 
-- **Small / additive change** (one endpoint, one component, an isolated fix): lightweight plan, implement directly, then **one final whole-branch review via `/code-review`** (medium effort). No subagent-per-task, no multi-stage review.
-- **Medium change** (2-5 tasks, single layer): implement task-by-task (subagents optional), then **`/code-review high`** on the whole branch.
-- **Large slice** (≥6 tasks, cross-layer): subagent-driven implementation per task. Per-task reviewers only for the riskiest tasks (new public API surface, security/RLS, migrations); everything else is covered by the final whole-branch gate: **`/code-review high`**, or **`/code-review ultra`** for the biggest slices. For a parallel multi-dimension review fan-out, the Workflow tool may be used (it requires explicit opt-in in the prompt).
+- **Small / additive change** (one endpoint, one component, an isolated fix): **no formal spec doc** (the brainstorming conversation is the design record), lightweight plan, implement directly, then **one final whole-branch review via `/code-review`** (medium effort). No subagent-per-task, no multi-stage review.
+- **Medium change** (2-5 tasks, single layer): **no formal spec doc**; implement task-by-task (subagents optional), then **`/code-review high`** on the whole branch.
+- **Large slice** (≥6 tasks, cross-layer) or any **multi-PR arc**: formal spec doc + subagent-driven implementation per task. Per-task reviewers only for the riskiest tasks (new public API surface, security/RLS, migrations); everything else is covered by the final whole-branch gate: **`/code-review high`**, or **`/code-review ultra`** for the biggest slices. For a parallel multi-dimension review fan-out, the Workflow tool may be used (it requires explicit opt-in in the prompt).
+
+**Process cost controls (adopted 2026-06-11):**
+
+- **Spec docs are reserved for large slices and multi-PR arcs.** For small/medium slices, the brainstorming conversation plus the lightweight plan are the design record — do not produce a separate `docs/superpowers/specs/*.md`.
+- **The final review is one pass.** Apply Critical/Important findings; Minor/cosmetic findings are listed in the PR description, not fixed in a dedicated cleanup round. (A defensible Minor finding left unapplied is not an "open question" blocking self-merge.)
+- **TDD is test-first for business logic, API routes, and validators.** For UI screens/components, implement first and add the Tier 2 targeted tests after (see "Test depth — two tiers"). The coverage gate is the same; the back-and-forth is not.
 
 **Rules that survive any model generation:**
 
