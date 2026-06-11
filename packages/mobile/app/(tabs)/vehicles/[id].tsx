@@ -79,9 +79,19 @@ export default function VehicleDetailScreen() {
             <Text style={styles.title}>{headerTitle}</Text>
             <Text style={styles.plate}>{v.plate}</Text>
             {v.year ? <Text style={styles.subtle}>Anno {v.year}</Text> : null}
-            <Text style={styles.subtle}>Codice: {v.garageCode}</Text>
+            {v.garageCode ? <Text style={styles.subtle}>Codice: {v.garageCode}</Text> : null}
           </View>
         </View>
+
+        {v.status === 'pending' ? (
+          <View style={styles.pendingBanner}>
+            <Text style={styles.pendingBannerText}>
+              {
+                "Veicolo in attesa di certificazione. Portalo in un'officina GarageOS per la verifica del libretto e il codice ufficiale."
+              }
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.tabsRow}>
           <Pressable
@@ -231,7 +241,7 @@ function TechTab({
 }) {
   const rows: Array<[string, string]> = [
     ['Targa', vehicle.plate],
-    ['Codice GarageOS', vehicle.garageCode],
+    ['Codice GarageOS', vehicle.garageCode ?? 'Non ancora assegnato'],
     ['VIN', vehicle.vin],
     ['Marca', vehicle.make],
     ['Modello', vehicle.model],
@@ -288,6 +298,17 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700', color: colors.fg },
   plate: { fontSize: 16, color: colors.fg, marginTop: 2 },
   subtle: { fontSize: 13, color: colors.muted, marginTop: 2 },
+  // Informational banner for vehicles awaiting workshop certification
+  // (F-CLI-104). Same shape as the form error banners, neutral palette.
+  pendingBanner: {
+    margin: spacing.md,
+    padding: spacing.md,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    backgroundColor: colors.mutedBg,
+  },
+  pendingBannerText: { fontSize: 13, color: colors.fg },
   tabsRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
   tabButton: { flex: 1, paddingVertical: spacing.md, alignItems: 'center' },
   tabButtonActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },

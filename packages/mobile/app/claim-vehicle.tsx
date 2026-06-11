@@ -1,10 +1,10 @@
-import { ScrollView, StyleSheet } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { ClaimVehicleForm, type ClaimVehicleFormResult } from '@/components/ClaimVehicleForm';
 import { useClaimVehicle } from '@/queries/claimVehicle';
 import { GARAGE_CODE_RE } from '@/lib/validators/claimVehicle';
 import { ApiError } from '@/lib/api-error';
-import { colors } from '@/theme/colors';
+import { colors, spacing } from '@/theme/colors';
 
 export default function ClaimVehicleScreen() {
   const router = useRouter();
@@ -40,6 +40,14 @@ export default function ClaimVehicleScreen() {
           initialCode={initialCode}
           onTransferCode={(c) => router.push({ pathname: '/accept-transfer', params: { code: c } })}
         />
+        {/* Entry point to customer pre-registration (F-CLI-104). */}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/pending-vehicle')}
+          style={styles.pendingLink}
+        >
+          <Text style={styles.pendingLinkText}>Non hai il codice? Pre-registra il veicolo</Text>
+        </Pressable>
       </ScrollView>
     </>
   );
@@ -47,4 +55,6 @@ export default function ClaimVehicleScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  pendingLink: { alignItems: 'center', padding: spacing.md, marginBottom: spacing.lg },
+  pendingLinkText: { color: colors.primary, fontSize: 14 },
 });
