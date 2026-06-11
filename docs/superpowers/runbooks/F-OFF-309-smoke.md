@@ -69,14 +69,16 @@ Atteso: nome proprietario corretto.
 
 Atteso: "Proprietario non in anagrafica".
 
-### Status
+### Status — ESEGUITO 2026-05-31 (operatore Michele, tenant Officina Giuseppe Bianchi, prod)
 
-- [ ] Step 1 — export base OK
-- [ ] Step 2 — intestazione tenant e logo OK
-- [ ] Step 3 — accenti italiani OK
-- [ ] Step 4 — note interne escluse OK
-- [ ] Step 5 — intervento cancelled OK
-- [ ] Step 6 — sezione ricambi OK (con ricambi + senza)
-- [ ] Step 7 — intestatario OK
+- [x] Step 1 — export base OK
+- [x] Step 2 — intestazione tenant OK (ragione sociale + indirizzo + P.IVA). **Logo: N/A** — `tenant.logo_url` è null per questo tenant (la seed pilot non lo valorizza e non esiste endpoint di upload logo), quindi il renderer omette il logo senza emettere `s3:GetObject` (`tenant-logo.ts:41`). Assenza logo = comportamento atteso, NON bug.
+- [x] Step 3 — accenti italiani OK
+- [x] Step 4 — note interne escluse OK
+- [x] Step 5 — intervento cancelled OK
+- [x] Step 6 — sezione ricambi OK (con ricambi + senza)
+- [x] Step 7 — intestatario OK
 
-**Esito:** registrare PASS/FAIL per ogni step. Qualsiasi FAIL = blocker.
+**Esito: PASS.** F-OFF-309 chiuso.
+
+**Verifica IAM logo DIFFERITA:** il path `s3:GetObject` del logo NON è stato esercitato (nessun tenant ha `logo_url` valorizzato e non c'è feature di upload). Rischio basso: grant `s3:GetObject` su `${attachmentsBucket}/*` bucket-wide (`lambda-api.ts:113-114`), già provata in prod da tag PDF + avatar. La verifica reale dell'IAM logo è demandata allo smoke della **futura feature upload logo officina**.
