@@ -83,6 +83,11 @@ temp/
 *.key
 !*.pub
 
+# Firebase (FCM client config kept out of the public repo; EAS builds get it
+# via the GOOGLE_SERVICES_JSON file env var — see packages/mobile/app.config.js)
+google-services.json
+*firebase-adminsdk*.json
+
 # Local-only assets (per-developer, e.g. downloaded TLS CA cert
 # for prod pooler verification — see packages/api/.env.example).
 .local/
