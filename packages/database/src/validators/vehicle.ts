@@ -158,8 +158,49 @@ export const UpdateVehicleSchema = z
     { message: 'Specifica almeno un campo da modificare' },
   );
 
+// POST /v1/vehicles/:id/certify (F-OFF-107). BR-004: pending→certified
+// promotion. `librettoVisioned` is a boolean (not literal(true)) so the
+// route can emit the dedicated 422 vehicle.certification.libretto_required
+// instead of a generic Zod 400. `corrections` covers the libretto identity
+// fields only (BR-004 "dati verificati e corretti"); engineDisplacement /
+// powerKw / color are corrected via PATCH /vehicles/:id (F-OFF-106).
+// Override flags mirror UpdateVehicleSchema: forceNonstandardVin (BR-001
+// exception, mechanic-only) and force (duplicate-plate confirmation).
+export const CertifyVehicleSchema = z
+  .object({
+    librettoVisioned: z.boolean().default(false),
+    corrections: z
+      .object({
+        vin: VinSchema.optional(),
+        plate: ItalianPlateSchema.optional(),
+        plateCountry: z.string().length(2).optional(),
+        make: z.string().min(1).max(50).optional(),
+        model: z.string().min(1).max(100).optional(),
+        version: z.string().max(150).nullable().optional(),
+        year: z
+          .number()
+          .int()
+          .min(1900)
+          .max(CURRENT_YEAR + 1)
+          .optional(),
+        registrationDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable()
+          .optional(),
+        vehicleType: VehicleTypeEnum.optional(),
+        fuelType: FuelTypeEnum.optional(),
+      })
+      .strict()
+      .optional(),
+    forceNonstandardVin: z.boolean().default(false),
+    force: z.boolean().default(false),
+  })
+  .strict();
+
 export type CreateVehicleInput = z.infer<typeof CreateVehicleSchema>;
 export type CreatePendingVehicleInput = z.infer<typeof CreatePendingVehicleSchema>;
+export type CertifyVehicleInput = z.infer<typeof CertifyVehicleSchema>;
 export type ClaimVehicleInput = z.infer<typeof ClaimVehicleSchema>;
 export type UpdateVehicleInput = z.infer<typeof UpdateVehicleSchema>;
 export type VehicleType = z.infer<typeof VehicleTypeEnum>;

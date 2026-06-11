@@ -10,6 +10,9 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'vehicle.creation.invalid_vin_checksum':
     'Il VIN non rispetta il checksum standard. Conferma se è un veicolo storico o agricolo.',
   'vehicle.creation.location_not_in_tenant': 'La sede selezionata non è valida.',
+  'vehicle.certification.not_pending': 'Il veicolo non è più in attesa di certificazione.',
+  'vehicle.certification.libretto_required':
+    'Conferma di aver visionato il libretto di circolazione.',
   'users.me.update.empty_body': 'Nessuna modifica da salvare.',
   'users.me.update.unknown_field': 'Campo non modificabile.',
   'tenants.me.update.empty_body': 'Nessuna modifica da salvare.',

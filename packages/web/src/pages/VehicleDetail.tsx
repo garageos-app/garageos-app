@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TimelineRow } from '@/components/TimelineRow';
+import { CertifyVehicleDialog } from '@/components/CertifyVehicleDialog';
 import { OwnershipTransferDialog } from '@/components/OwnershipTransferDialog';
 import { VehicleTagPrintButton } from '@/components/VehicleTagPrintButton';
 
@@ -39,6 +40,7 @@ export function VehicleDetail() {
   const detail = useVehicleDetail(id);
   const timeline = useVehicleTimeline(id);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [certifyOpen, setCertifyOpen] = useState(false);
 
   useEffect(() => {
     if (detail.isError && detail.error instanceof ApiError && detail.error.status === 404) {
@@ -124,6 +126,21 @@ export function VehicleDetail() {
         </div>
       </div>
 
+      {/* F-OFF-107: customer-pre-registered vehicle awaiting certification (BR-004). */}
+      {v.status === 'pending' && (
+        <Alert className="border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200">
+          <AlertDescription className="flex items-center justify-between gap-4">
+            <span>
+              Veicolo pre-registrato dal cliente, in attesa di certificazione. Verifica i dati con
+              il libretto per assegnare il codice GarageOS.
+            </span>
+            <Button size="sm" onClick={() => setCertifyOpen(true)}>
+              Certifica veicolo
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid grid-cols-4 gap-3">
         <div className="bg-card border border-border rounded-lg p-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -199,6 +216,13 @@ export function VehicleDetail() {
           </>
         )}
       </section>
+
+      {/* Mounted only while open: a fresh mount per attempt snapshots the
+          form defaults from the latest vehicle data and resets the BR-004
+          libretto declaration (it must be re-asserted on every attempt). */}
+      {v.status === 'pending' && certifyOpen && (
+        <CertifyVehicleDialog open onOpenChange={setCertifyOpen} vehicle={v} />
+      )}
 
       {detail.data.currentOwnership?.customer && (
         <OwnershipTransferDialog

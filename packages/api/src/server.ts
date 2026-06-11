@@ -68,6 +68,7 @@ import tenantsOnboardingRoutes from './routes/v1/tenants-onboarding.js';
 import { tenantsLocationsListRoutes } from './routes/v1/tenants-locations-list.js';
 import tenantsLocationsWriteRoutes from './routes/v1/tenants-locations-write.js';
 import { vehiclesOwnershipTransferRoutes } from './routes/v1/vehicles-ownership-transfer.js';
+import vehicleCertifyRoutes from './routes/v1/vehicles-certify.js';
 import vehicleTimelineRoutes from './routes/v1/vehicles-timeline.js';
 import vehicleUpdateRoutes from './routes/v1/vehicles-update.js';
 import vehicleRoutes from './routes/v1/vehicles.js';
@@ -180,6 +181,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(customerUpdateRoutes);
   await app.register(vehicleRoutes);
   await app.register(vehicleUpdateRoutes);
+  await app.register(vehicleCertifyRoutes);
   await app.register(vehiclesOwnershipTransferRoutes);
   await app.register(vehicleTagRoutes);
   await app.register(vehicleTagReprintRoutes);
