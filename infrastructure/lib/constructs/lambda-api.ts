@@ -211,7 +211,13 @@ export class LambdaApiConstruct extends Construct {
         banner:
           "import{createRequire as __createRequire}from'module';const require=__createRequire(import.meta.url);",
         externalModules: ['@aws-sdk/*'],
-        nodeModules: ['@prisma/client'],
+        // expo-server-sdk reads its own package.json lazily at send time
+        // (build/ExpoClient.js: require('../package.json').version for the
+        // User-Agent header); esbuild does not inline it, so inside the
+        // bundle the require fails at the first real push send. Ship it as
+        // a real node_modules package like @prisma/client. Caught by the
+        // push e2e smoke — unit/integration tests mock the SDK.
+        nodeModules: ['@prisma/client', 'expo-server-sdk'],
         commandHooks: {
           beforeBundling: () => [],
           beforeInstall: () => [],
