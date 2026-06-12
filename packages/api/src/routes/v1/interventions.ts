@@ -4,6 +4,8 @@ import { z } from 'zod';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
 import { todayUtcMidnight } from '../../lib/intervention-shared.js';
+import { dispatchNotification } from '../../lib/notifications/dispatcher.js';
+import { resolveCurrentOwner } from '../../lib/notifications/recipient-resolver.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -75,7 +77,7 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = request.tenantId!;
       const cognitoSub = request.userId!;
 
-      return app.withContext({ tenantId }, async (tx) => {
+      const result = await app.withContext({ tenantId }, async (tx) => {
         // User lookup mirrors vehicles.ts: JWT sub → DB user row. The
         // intervention.user_id FK points at users.id (UUID), not the
         // Cognito sub, so the round-trip is mandatory. Bound to
@@ -107,6 +109,10 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
             id: true,
             registrationDate: true,
             status: true,
+            // plate/make/model feed the BR-157 notification payload.
+            plate: true,
+            make: true,
+            model: true,
             ownerships: {
               where: { endedAt: null },
               select: { id: true, customerId: true },
@@ -296,19 +302,72 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
           log: request.log,
         });
 
-        reply.code(201);
+        // BR-157: resolve the notification recipient inside the tx so the
+        // post-commit dispatch has a consistent snapshot. resolveCurrentOwner
+        // applies BR-040 (single active owner) and the BR-158 deleted/
+        // anonymized-customer skips. The tenant row is only fetched when a
+        // recipient exists — no useless query on owner-less vehicles.
+        const recipient = await resolveCurrentOwner(tx, vehicleId);
+        const tenantRow = recipient
+          ? await tx.tenant.findUniqueOrThrow({
+              where: { id: tenantId },
+              select: { id: true, businessName: true },
+            })
+          : null;
+
         return {
-          intervention: {
-            ...intervention,
-            interventionType: {
-              id: interventionType.id,
-              code: interventionType.code,
-              nameIt: interventionType.nameIt,
+          response: {
+            intervention: {
+              ...intervention,
+              interventionType: {
+                id: interventionType.id,
+                code: interventionType.code,
+                nameIt: interventionType.nameIt,
+              },
             },
+            deadline: deadlineResponse,
           },
-          deadline: deadlineResponse,
+          recipient,
+          tenantRow,
+          vehicleForEmail: {
+            id: vehicle.id,
+            plate: vehicle.plate,
+            make: vehicle.make,
+            model: vehicle.model,
+          },
         };
       });
+
+      // BR-157 dispatch runs AFTER the transaction commits, mirroring the
+      // BR-064 pattern in interventions-update.ts. It is best-effort:
+      // dispatchNotification never throws (contract in dispatcher.ts), so a
+      // transport failure cannot roll back the intervention row or turn the
+      // 201 into an error. Gated by the intervention_updates preference
+      // toggle (BR-226 v1.3) inside the dispatcher.
+      if (result.recipient && result.tenantRow) {
+        const created = result.response.intervention;
+        await dispatchNotification({
+          event: {
+            type: 'intervention.created',
+            intervention: {
+              id: created.id,
+              vehicleId: created.vehicleId,
+              title: created.title,
+              description: created.description,
+              cancelledReason: null,
+            },
+            interventionTypeName: created.interventionType.nameIt,
+            vehicle: result.vehicleForEmail,
+            tenant: result.tenantRow,
+          },
+          recipient: result.recipient,
+          logger: request.log,
+          app,
+        });
+      }
+
+      reply.code(201);
+      return result.response;
     },
   );
 };

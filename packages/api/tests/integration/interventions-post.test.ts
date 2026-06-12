@@ -1,3 +1,5 @@
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import { mockClient } from 'aws-sdk-client-mock';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -46,6 +48,14 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
   let app: FastifyInstance;
   let taglianodoTypeId: string;
 
+  // BR-157: every create on a vehicle with an active owner now dispatches a
+  // post-commit notification. The SES mock is shared with the wider describe
+  // so the pre-existing tests (many seed an ownership) stay network-free —
+  // their dispatch resolves against the mock and is otherwise ignored.
+  process.env.AWS_ACCESS_KEY_ID ??= 'test';
+  process.env.AWS_SECRET_ACCESS_KEY ??= 'test';
+  const sesMock = mockClient(SESv2Client);
+
   beforeAll(async () => {
     app = await buildTestServer();
   });
@@ -54,6 +64,10 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
   });
   beforeEach(async () => {
     await resetDb();
+    sesMock.reset();
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'shared-mock' });
+    process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
+    process.env.SES_CONFIGURATION_SET = 'test-config-set';
     // resetDb() TRUNCATEs tenants CASCADE, which Postgres extends to
     // intervention_types as a whole — system-row tenant_id NULL doesn't
     // shield it. Re-seed TAGLIANDO per test so each scenario has a stable
@@ -339,5 +353,109 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
       payload: buildBody(taglianodoTypeId, { odometerKm: 15_000, interventionDate: '2026-03-01' }),
     });
     expect(res.statusCode).toBe(201);
+  });
+
+  describe('BR-157 — creation notification dispatch', () => {
+    async function setupCreationScenario(
+      opts: { customerPrefs?: object; withOwnership?: boolean } = {},
+    ): Promise<{ token: string; vehicleId: string; plate: string }> {
+      const { tenantId, locationId } = await createTenantWithLocation();
+      const cognitoSub = `office-${Math.random().toString(36).slice(2, 10)}`;
+      await createUser({ tenantId, cognitoSub, locationId });
+      const { vehicleId, plate } = await createVehicle({ createdByTenantId: tenantId });
+
+      if (opts.withOwnership !== false) {
+        const { customerId } = await createCustomer({
+          email: 'owner@test.it',
+          firstName: 'Mario',
+          notificationPreferences: opts.customerPrefs ?? {},
+        });
+        await createOwnership({ vehicleId, customerId });
+      }
+
+      const token = await signTestToken({
+        pool: 'officine',
+        sub: cognitoSub,
+        tenantId,
+        role: 'mechanic',
+      });
+
+      return { token, vehicleId, plate };
+    }
+
+    it('BR-157 — sends creation email to current owner with vehicle and type details', async () => {
+      const { token, vehicleId, plate } = await setupCreationScenario();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/vehicles/${vehicleId}/interventions`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: buildBody(taglianodoTypeId),
+      });
+
+      expect(res.statusCode).toBe(201);
+      const calls = sesMock.commandCalls(SendEmailCommand);
+      expect(calls).toHaveLength(1);
+      const input = calls[0]!.args[0]!.input as {
+        Destination?: { ToAddresses?: string[] };
+        Content?: { Simple?: { Subject?: { Data?: string }; Body?: { Html?: { Data?: string } } } };
+      };
+      expect(input.Destination?.ToAddresses).toEqual(['owner@test.it']);
+      expect(input.Content?.Simple?.Subject?.Data).toMatch(/nuovo intervento/i);
+      // Proves route→event threading of vehicle and intervention-type fields.
+      const html = input.Content?.Simple?.Body?.Html?.Data ?? '';
+      expect(html).toContain(plate);
+      expect(html).toContain('Tagliando');
+    });
+
+    it('BR-157/BR-226 — intervention_updates off blocks email but create succeeds', async () => {
+      const { token, vehicleId } = await setupCreationScenario({
+        customerPrefs: { email: { intervention_updates: false } },
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/vehicles/${vehicleId}/interventions`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: buildBody(taglianodoTypeId),
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+    });
+
+    it('BR-157 — no active owner: create succeeds, SES not invoked', async () => {
+      const { token, vehicleId } = await setupCreationScenario({ withOwnership: false });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/vehicles/${vehicleId}/interventions`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: buildBody(taglianodoTypeId),
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+    });
+
+    it('BR-157 — SES throws: create still 201 and the row is committed (best-effort post-commit)', async () => {
+      sesMock.on(SendEmailCommand).rejects(new Error('Throttling'));
+      const { token, vehicleId } = await setupCreationScenario();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/vehicles/${vehicleId}/interventions`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: buildBody(taglianodoTypeId),
+      });
+
+      expect(res.statusCode).toBe(201);
+      const { intervention } = res.json() as { intervention: { id: string } };
+      const { rows } = await pgAdmin.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM interventions WHERE id = $1`,
+        [intervention.id],
+      );
+      expect(Number(rows[0]!.count)).toBe(1);
+    });
   });
 });

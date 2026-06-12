@@ -5,6 +5,32 @@ import type { NotificationEvent } from '../../../../src/lib/notifications/types.
 
 const tenant = { id: 't', businessName: 'Officina Mario' };
 
+it('renders intervention.created per BR-157 format with ids in data', () => {
+  const event: NotificationEvent = {
+    type: 'intervention.created',
+    intervention: {
+      id: 'int-0',
+      vehicleId: 'veh-0',
+      title: 'Tagliando completo',
+      description: null,
+      cancelledReason: null,
+    },
+    interventionTypeName: 'Tagliando',
+    vehicle: { id: 'veh-0', plate: 'GG123ZZ', make: 'Fiat', model: 'Panda' },
+    tenant,
+  };
+  const p = renderPushPayload(event);
+  // BR-157: "Nuovo intervento registrato sulla tua [modello]"
+  expect(p.title).toBe('Nuovo intervento registrato sulla tua Panda');
+  // BR-157: "[Tenant name] ha registrato: [tipo intervento]"
+  expect(p.body).toBe('Officina Mario ha registrato: Tagliando');
+  expect(p.data).toEqual({
+    type: 'intervention.created',
+    interventionId: 'int-0',
+    vehicleId: 'veh-0',
+  });
+});
+
 it('renders intervention.revised with ids in data', () => {
   const event: NotificationEvent = {
     type: 'intervention.revised',

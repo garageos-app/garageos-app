@@ -31,6 +31,15 @@ export interface VehicleForEmail {
   plate: string;
 }
 
+// BR-157: the creation push title interpolates the vehicle model, so the
+// created event carries more vehicle fields than ownership.transferred.
+export interface VehicleForCreatedEmail {
+  id: string;
+  plate: string;
+  make: string;
+  model: string;
+}
+
 // TransferReason is kept here (not imported from lib/ownership-transfer.ts) to keep
 // this module free of Prisma-coupled imports — same boundary pattern as DeadlineReminderType.
 export type TransferReason = 'purchase' | 'inheritance' | 'company_assignment' | 'other';
@@ -52,6 +61,13 @@ export interface DeadlineReminderForEmail {
 }
 
 export type NotificationEvent =
+  | {
+      type: 'intervention.created';
+      intervention: InterventionForEmail; // cancelledReason is always null here
+      interventionTypeName: string; // interventionType.nameIt — BR-157 push body
+      vehicle: VehicleForCreatedEmail;
+      tenant: TenantForEmail;
+    }
   | {
       type: 'intervention.revised';
       intervention: InterventionForEmail;

@@ -5,6 +5,22 @@ const VEHICLE_ID = '7a1d4e9b-2c5f-4a8d-b3e6-9f0c2d5a8b1e';
 const DEADLINE_ID = 'c4e8b2a6-1d3f-4b7c-8a9e-5f2d0b6c3a7d';
 
 describe('parseNotificationTarget', () => {
+  it('maps intervention.created to the intervention detail (BR-157 deep link)', () => {
+    expect(
+      parseNotificationTarget({
+        type: 'intervention.created',
+        interventionId: INTERVENTION_ID,
+        vehicleId: VEHICLE_ID,
+      }),
+    ).toBe(`/interventions/${INTERVENTION_ID}`);
+  });
+
+  it('returns null on intervention.created without interventionId', () => {
+    expect(
+      parseNotificationTarget({ type: 'intervention.created', vehicleId: VEHICLE_ID }),
+    ).toBeNull();
+  });
+
   it('maps intervention.revised to the intervention detail', () => {
     expect(
       parseNotificationTarget({
@@ -87,6 +103,14 @@ describe('resolveNotificationTarget', () => {
     const trigger = { remoteMessage: { data: { body: JSON.stringify(data) } } };
     expect(resolveNotificationTarget(response({}, trigger))).toBe(
       `/(tabs)/deadlines?highlight=${DEADLINE_ID}`,
+    );
+  });
+
+  it('resolves intervention.created from the killed-state fallback payload', () => {
+    const data = { type: 'intervention.created', interventionId: INTERVENTION_ID };
+    const trigger = { remoteMessage: { data: { body: JSON.stringify(data) } } };
+    expect(resolveNotificationTarget(response({}, trigger))).toBe(
+      `/interventions/${INTERVENTION_ID}`,
     );
   });
 

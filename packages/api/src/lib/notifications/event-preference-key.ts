@@ -6,6 +6,7 @@ import type { NotificationEvent, NotificationEventPrefKey } from './types.js';
 // push-channel can reuse it without an import cycle.)
 export function preferenceKeyForEvent(event: NotificationEvent): NotificationEventPrefKey {
   switch (event.type) {
+    case 'intervention.created':
     case 'intervention.revised':
     case 'intervention.cancelled':
       return 'intervention_updates';
