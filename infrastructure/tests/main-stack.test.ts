@@ -161,6 +161,7 @@ describe('LambdaApiConstruct', () => {
       'arn:aws:ses:eu-central-1:123456789012:configuration-set/garageos-production',
     sesFromAddress: 'noreply@garageos.it',
     sesConfigurationSetName: 'garageos-production',
+    emailProvider: 'resend',
     verifyEmailBaseUrl: 'https://app.garageos.it/verify-email',
   });
   const template = Template.fromStack(stack);
@@ -185,13 +186,14 @@ describe('LambdaApiConstruct', () => {
     }
   });
 
-  it('Lambda env wires NODE_ENV, APP_SECRETS_ARN, NODE_EXTRA_CA_CERTS, and S3_ATTACHMENTS_BUCKET', () => {
+  it('Lambda env wires NODE_ENV, APP_SECRETS_ARN, NODE_EXTRA_CA_CERTS, EMAIL_PROVIDER, and S3_ATTACHMENTS_BUCKET', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       Environment: {
         Variables: Match.objectLike({
           NODE_ENV: 'production',
           APP_SECRETS_ARN: Match.anyValue(),
           NODE_EXTRA_CA_CERTS: '/var/task/supabase-ca.crt',
+          EMAIL_PROVIDER: 'resend',
           S3_ATTACHMENTS_BUCKET: Match.anyValue(),
         }),
       },
@@ -342,6 +344,7 @@ describe('ApiGatewayConstruct', () => {
         'arn:aws:ses:eu-central-1:123456789012:configuration-set/garageos-production',
       sesFromAddress: 'noreply@garageos.it',
       sesConfigurationSetName: 'garageos-production',
+      emailProvider: 'resend',
       verifyEmailBaseUrl: 'https://app.garageos.it/verify-email',
     });
     new ApiGatewayConstruct(stack, 'ApiGateway', {

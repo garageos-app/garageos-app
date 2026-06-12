@@ -20,6 +20,8 @@ describe('sendEmail (notifications channel)', () => {
     _resetSesClientForTests();
     process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
     process.env.SES_CONFIGURATION_SET = 'test-config-set';
+    // Isolate from ambient env: these tests assert the SES default path.
+    delete process.env.EMAIL_PROVIDER;
   });
 
   afterEach(() => {

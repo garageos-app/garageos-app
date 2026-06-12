@@ -15,6 +15,10 @@ export interface EnvironmentConfig {
   readonly appSubdomain: string;
   readonly emailFromDomain: string;
   readonly emailFromAddress: string;
+  // Backend email transport selector (packages/api/src/lib/email/transport.ts).
+  // 'resend' bypasses the SES sandbox (production access still DENIED by AWS
+  // T&S); 'ses' remains available as the rollback path.
+  readonly emailProvider: 'ses' | 'resend';
   readonly sesConfigurationSetName: string;
   readonly webBucketName: string;
   readonly lambda: {
@@ -49,6 +53,7 @@ export const productionConfig: EnvironmentConfig = {
   appSubdomain: 'app',
   emailFromDomain: 'garageos.aifollyadvisor.com',
   emailFromAddress: 'noreply@garageos.aifollyadvisor.com',
+  emailProvider: 'resend',
   sesConfigurationSetName: 'garageos-production',
   webBucketName: 'garageos-production-web',
   lambda: {

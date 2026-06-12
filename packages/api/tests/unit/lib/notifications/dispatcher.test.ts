@@ -90,6 +90,7 @@ describe('dispatchNotification', () => {
     vi.clearAllMocks();
     process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
     process.env.SES_CONFIGURATION_SET = 'test-config-set';
+    delete process.env.EMAIL_PROVIDER;
   });
 
   afterEach(() => {
@@ -188,6 +189,7 @@ describe('dispatchNotification — ownership.transferred', () => {
     vi.clearAllMocks();
     process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
     process.env.SES_CONFIGURATION_SET = 'test-config-set';
+    delete process.env.EMAIL_PROVIDER;
   });
 
   afterEach(() => {
@@ -244,6 +246,7 @@ describe('dispatchNotification — push fan-out', () => {
     dispatchPushMock.mockReset();
     process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
     process.env.SES_CONFIGURATION_SET = 'test-config-set';
+    delete process.env.EMAIL_PROVIDER;
   });
 
   it('does NOT attempt push when neither app nor tx is provided', async () => {

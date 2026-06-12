@@ -14,6 +14,7 @@ describe('sendVerificationEmail', () => {
     _resetSesClientForTests();
     process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
     process.env.SES_CONFIGURATION_SET = 'test-config-set';
+    delete process.env.EMAIL_PROVIDER;
   });
 
   afterEach(() => {
