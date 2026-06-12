@@ -16,6 +16,11 @@ import {
   renderCancellationEmailText,
 } from './templates/intervention-cancelled.js';
 import {
+  CREATED_EMAIL_SUBJECT,
+  renderCreatedEmailHtml,
+  renderCreatedEmailText,
+} from './templates/intervention-created.js';
+import {
   REVISION_EMAIL_SUBJECT,
   renderRevisionEmailHtml,
   renderRevisionEmailText,
@@ -115,6 +120,23 @@ async function dispatchEmail(args: {
   let text: string;
 
   switch (event.type) {
+    case 'intervention.created':
+      subject = CREATED_EMAIL_SUBJECT;
+      html = renderCreatedEmailHtml({
+        recipient,
+        intervention: event.intervention,
+        interventionTypeName: event.interventionTypeName,
+        vehicle: event.vehicle,
+        tenant: event.tenant,
+      });
+      text = renderCreatedEmailText({
+        recipient,
+        intervention: event.intervention,
+        interventionTypeName: event.interventionTypeName,
+        vehicle: event.vehicle,
+        tenant: event.tenant,
+      });
+      break;
     case 'intervention.revised':
       subject = REVISION_EMAIL_SUBJECT;
       html = renderRevisionEmailHtml({

@@ -39,6 +39,20 @@ const baseRecipient: CustomerForNotification = {
   status: 'active',
 };
 
+const createdEvent: NotificationEvent = {
+  type: 'intervention.created',
+  intervention: {
+    id: 'int-1',
+    vehicleId: 'veh-1',
+    title: 'Tagliando',
+    description: 'olio',
+    cancelledReason: null,
+  },
+  interventionTypeName: 'Tagliando',
+  vehicle: { id: 'veh-1', plate: 'GG123ZZ', make: 'Fiat', model: 'Panda' },
+  tenant: { id: 'ten-1', businessName: 'Officina Mario S.r.l.' },
+};
+
 const revisedEvent: NotificationEvent = {
   type: 'intervention.revised',
   intervention: {
@@ -95,6 +109,47 @@ describe('dispatchNotification', () => {
 
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
+  });
+
+  it('routes intervention.created to created template + sends email (BR-157)', async () => {
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'm0' });
+    const result = await dispatchNotification({
+      event: createdEvent,
+      recipient: baseRecipient,
+      logger: fakeLogger,
+    });
+    expect(result.sent).toBe(true);
+    const calls = sesMock.commandCalls(SendEmailCommand);
+    expect(calls).toHaveLength(1);
+    const subject = (
+      calls[0]!.args[0]!.input as { Content?: { Simple?: { Subject?: { Data?: string } } } }
+    ).Content?.Simple?.Subject?.Data;
+    expect(subject).toMatch(/nuovo intervento/i);
+  });
+
+  it('skips intervention.created when intervention_updates is off (BR-226)', async () => {
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'm0' });
+    const result = await dispatchNotification({
+      event: createdEvent,
+      recipient: {
+        ...baseRecipient,
+        notificationPreferences: { email: { intervention_updates: false } },
+      },
+      logger: fakeLogger,
+    });
+    expect(result).toEqual({ sent: false, skipped: 'pref-off' });
+    expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+  });
+
+  it('captures transport failure for intervention.created without throwing', async () => {
+    sesMock.on(SendEmailCommand).rejects(new Error('Throttling'));
+    const result = await dispatchNotification({
+      event: createdEvent,
+      recipient: baseRecipient,
+      logger: fakeLogger,
+    });
+    expect(result.sent).toBe(false);
+    expect(result.error).toBe('Throttling');
   });
 
   it('routes intervention.revised to revision template + sends email', async () => {
