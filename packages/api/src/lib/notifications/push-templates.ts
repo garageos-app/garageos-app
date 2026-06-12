@@ -11,6 +11,18 @@ export interface PushPayload {
 
 export function renderPushPayload(event: NotificationEvent): PushPayload {
   switch (event.type) {
+    case 'intervention.created':
+      // BR-157 prescribed format: title "Nuovo intervento registrato sulla
+      // tua [modello]", body "[Tenant name] ha registrato: [tipo intervento]".
+      return {
+        title: `Nuovo intervento registrato sulla tua ${event.vehicle.model}`,
+        body: `${event.tenant.businessName} ha registrato: ${event.interventionTypeName}`,
+        data: {
+          type: 'intervention.created',
+          interventionId: event.intervention.id,
+          vehicleId: event.intervention.vehicleId,
+        },
+      };
     case 'intervention.revised':
       return {
         title: 'Intervento aggiornato',
