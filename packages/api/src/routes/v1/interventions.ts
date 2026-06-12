@@ -329,14 +329,12 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
           },
           recipient,
           tenantRow,
-          createdIntervention: intervention,
           vehicleForEmail: {
             id: vehicle.id,
             plate: vehicle.plate,
             make: vehicle.make,
             model: vehicle.model,
           },
-          interventionTypeName: interventionType.nameIt,
         };
       });
 
@@ -347,17 +345,18 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
       // 201 into an error. Gated by the intervention_updates preference
       // toggle (BR-226 v1.3) inside the dispatcher.
       if (result.recipient && result.tenantRow) {
+        const created = result.response.intervention;
         await dispatchNotification({
           event: {
             type: 'intervention.created',
             intervention: {
-              id: result.createdIntervention.id,
-              vehicleId: result.createdIntervention.vehicleId,
-              title: result.createdIntervention.title,
-              description: result.createdIntervention.description,
+              id: created.id,
+              vehicleId: created.vehicleId,
+              title: created.title,
+              description: created.description,
               cancelledReason: null,
             },
-            interventionTypeName: result.interventionTypeName,
+            interventionTypeName: created.interventionType.nameIt,
             vehicle: result.vehicleForEmail,
             tenant: result.tenantRow,
           },
