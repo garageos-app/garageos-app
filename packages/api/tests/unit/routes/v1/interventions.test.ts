@@ -1,6 +1,10 @@
 import sensible from '@fastify/sensible';
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import { mockClient } from 'aws-sdk-client-mock';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { _resetSesClientForTests } from '../../../../src/lib/ses-client.js';
 
 import databasePlugin from '../../../../src/plugins/database.js';
 import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
@@ -47,6 +51,9 @@ function buildVehicleRow(
     id: VEHICLE_ID,
     registrationDate: null as Date | null,
     status: 'certified' as 'pending' | 'certified' | 'archived',
+    plate: 'GG123ZZ',
+    make: 'Fiat',
+    model: 'Panda',
     ownerships: [{ id: 'own-1', customerId: CUSTOMER_ID }] as Array<{
       id: string;
       customerId: string;
@@ -875,5 +882,94 @@ describe('PATCH /v1/interventions/:id (unit)', () => {
     expect(res.statusCode).toBe(200);
     expect(prisma.interventionRevision.create).toHaveBeenCalledOnce();
     expect((res.json() as { revision: { reason: string } | null }).revision).not.toBeNull();
+  });
+});
+
+describe('POST /v1/vehicles/:id/interventions — BR-157 creation notification', () => {
+  const sesMock = mockClient(SESv2Client);
+  const ORIGINAL_ENV = { ...process.env };
+  let app: FastifyInstance | undefined;
+
+  process.env.AWS_ACCESS_KEY_ID ??= 'test';
+  process.env.AWS_SECRET_ACCESS_KEY ??= 'test';
+
+  function buildOwnerRow() {
+    return {
+      customer: {
+        id: CUSTOMER_ID,
+        email: 'owner@test.it',
+        firstName: 'Pippo',
+        lastName: 'Baudo',
+        isBusiness: false,
+        businessName: null,
+        notificationPreferences: { email: { intervention_updates: true } },
+        status: 'active',
+      },
+    };
+  }
+
+  beforeEach(() => {
+    app = undefined;
+    sesMock.reset();
+    _resetSesClientForTests();
+    process.env.SES_FROM_ADDRESS = 'noreply@garageos.test';
+    process.env.SES_CONFIGURATION_SET = 'test-config-set';
+    delete process.env.EMAIL_PROVIDER;
+  });
+
+  afterEach(async () => {
+    await app?.close();
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it('dispatches the created email to the current owner', async () => {
+    sesMock.on(SendEmailCommand).resolves({ MessageId: 'm1' });
+    const prisma = buildFakePrisma();
+    prisma.vehicleOwnership.findFirst.mockResolvedValue(buildOwnerRow());
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(201);
+    const calls = sesMock.commandCalls(SendEmailCommand);
+    expect(calls).toHaveLength(1);
+    const input = calls[0]!.args[0]!.input as {
+      Destination?: { ToAddresses?: string[] };
+      Content?: { Simple?: { Subject?: { Data?: string } } };
+    };
+    expect(input.Destination?.ToAddresses).toEqual(['owner@test.it']);
+    expect(input.Content?.Simple?.Subject?.Data).toMatch(/nuovo intervento/i);
+  });
+
+  it('returns 201 even when the email transport fails (best-effort dispatch)', async () => {
+    sesMock.on(SendEmailCommand).rejects(new Error('Throttling'));
+    const prisma = buildFakePrisma();
+    prisma.vehicleOwnership.findFirst.mockResolvedValue(buildOwnerRow());
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prisma.intervention.create).toHaveBeenCalledOnce();
+  });
+
+  it('does not fetch the tenant when the vehicle has no active owner', async () => {
+    const prisma = buildFakePrisma(); // vehicleOwnership.findFirst defaults to null
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prisma.tenant.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
   });
 });
