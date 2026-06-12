@@ -5,6 +5,23 @@ import type { NotificationEvent } from '../../../../src/lib/notifications/types.
 
 const tenant = { id: 't', businessName: 'O' };
 
+it('maps intervention.created to intervention_updates (BR-226 v1.3)', () => {
+  const created: NotificationEvent = {
+    type: 'intervention.created',
+    intervention: {
+      id: 'i',
+      vehicleId: 'v',
+      title: null,
+      description: null,
+      cancelledReason: null,
+    },
+    interventionTypeName: 'Tagliando',
+    vehicle: { id: 'v', plate: 'AB123CD', make: 'Fiat', model: 'Panda' },
+    tenant,
+  };
+  expect(preferenceKeyForEvent(created)).toBe('intervention_updates');
+});
+
 it('maps intervention.revised and cancelled to intervention_updates', () => {
   const revised: NotificationEvent = {
     type: 'intervention.revised',
