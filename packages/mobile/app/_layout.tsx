@@ -4,6 +4,7 @@ import '@/lib/crypto-polyfill';
 import 'react-native-url-polyfill/auto';
 import { Stack } from 'expo-router';
 import { configureForegroundNotificationDisplay } from '@/lib/push';
+import { NotificationTapRouter } from '@/lib/useNotificationTapRouting';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
@@ -53,6 +54,7 @@ export default function RootLayout() {
             persistOptions={{ persister, maxAge: 24 * 60 * 60 * 1000 }}
           >
             <StatusBar style="auto" />
+            <NotificationTapRouter />
             <Stack screenOptions={{ headerShown: false }} />
           </PersistQueryClientProvider>
         </AuthProvider>
