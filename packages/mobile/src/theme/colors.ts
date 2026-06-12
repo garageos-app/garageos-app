@@ -12,6 +12,7 @@ export const colors = {
   privato: '#94A3B8',
   warningBg: '#FEF3C7',
   warningFg: '#92400E',
+  highlightBg: '#DBEAFE',
 };
 
 export const spacing = {

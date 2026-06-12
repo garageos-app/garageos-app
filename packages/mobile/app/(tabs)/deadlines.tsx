@@ -1,7 +1,8 @@
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useState, useCallback } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMeDeadlines } from '@/queries/meDeadlines';
+import type { MeDeadline } from '@/lib/types/deadline';
 import { DeadlineRow } from '@/components/DeadlineRow';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
@@ -12,8 +13,23 @@ import { colors } from '@/theme/colors';
 
 export default function DeadlinesScreen() {
   const router = useRouter();
+  // Set by the notification tap deep-link (useNotificationTapRouting): the
+  // deadline the push referred to gets tinted and scrolled into view.
+  const { highlight } = useLocalSearchParams<{ highlight?: string }>();
+  const listRef = useRef<FlatList<MeDeadline>>(null);
   const [refreshing, setRefreshing] = useState(false);
   const { data, isLoading, isError, error, refetch } = useMeDeadlines();
+
+  useEffect(() => {
+    if (!highlight || !data) return;
+    const index = data.findIndex((d) => d.id === highlight);
+    if (index < 0) return; // deadline gone (e.g. completed meanwhile) — plain list
+    // Defer so the FlatList has mounted its rows before scrolling.
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [highlight, data]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -38,14 +54,30 @@ export default function DeadlinesScreen() {
   return (
     <View style={styles.container}>
       <FlatList
+        ref={listRef}
         data={data}
         keyExtractor={(d) => d.id}
         renderItem={({ item }) => (
           <DeadlineRow
             deadline={item}
+            highlighted={item.id === highlight}
             onPress={() => router.push(`/(tabs)/vehicles/${item.vehicleId}`)}
           />
         )}
+        onScrollToIndexFailed={(info) => {
+          // Variable-height rows: fall back to an estimated offset, then retry.
+          listRef.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
+            animated: true,
+          });
+          setTimeout(() => {
+            listRef.current?.scrollToIndex({
+              index: info.index,
+              viewPosition: 0.3,
+              animated: true,
+            });
+          }, 300);
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

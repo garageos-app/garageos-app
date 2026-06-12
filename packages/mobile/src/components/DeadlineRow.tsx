@@ -11,14 +11,28 @@ const SEVERITY_COLORS: Record<DueSeverity, { bg: string; fg: string }> = {
   none: { bg: colors.mutedBg, fg: colors.muted },
 };
 
-type Props = { deadline: MeDeadline; onPress?: () => void; hideVehicle?: boolean };
+type Props = {
+  deadline: MeDeadline;
+  onPress?: () => void;
+  hideVehicle?: boolean;
+  highlighted?: boolean;
+};
 
-export function DeadlineRow({ deadline, onPress, hideVehicle = false }: Props) {
+export function DeadlineRow({
+  deadline,
+  onPress,
+  hideVehicle = false,
+  highlighted = false,
+}: Props) {
   const urgency = formatDueUrgency(deadline.dueDate, deadline.status);
   const sev = SEVERITY_COLORS[urgency.severity];
   return (
     <Pressable
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      style={({ pressed }) => [
+        styles.row,
+        highlighted && styles.rowHighlighted,
+        pressed && styles.rowPressed,
+      ]}
       onPress={onPress}
       accessibilityRole="button"
     >
@@ -61,6 +75,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   rowPressed: { backgroundColor: colors.mutedBg },
+  rowHighlighted: { backgroundColor: colors.highlightBg },
   body: { flex: 1, gap: spacing.xs },
   title: { fontSize: 15, fontWeight: '600', color: colors.fg },
   vehicle: { fontSize: 13, color: colors.muted },
