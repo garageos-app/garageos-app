@@ -65,6 +65,10 @@ export interface LambdaApiConstructProps {
   readonly sesConfigurationSetArn: string;
   readonly sesFromAddress: string;
   readonly sesConfigurationSetName: string;
+  // Selects the runtime email transport ('ses' | 'resend'). RESEND_API_KEY
+  // is NOT wired here: it lives in the app secret JSON and reaches
+  // process.env through the cold-start hydration (config/secrets.ts).
+  readonly emailProvider: string;
   readonly verifyEmailBaseUrl: string;
 }
 
@@ -194,6 +198,7 @@ export class LambdaApiConstruct extends Construct {
         // SES wiring (PR G1). All non-secret — no SecretsManager entries needed.
         SES_FROM_ADDRESS: props.sesFromAddress,
         SES_CONFIGURATION_SET: props.sesConfigurationSetName,
+        EMAIL_PROVIDER: props.emailProvider,
         VERIFY_EMAIL_BASE_URL: props.verifyEmailBaseUrl,
       },
       bundling: {

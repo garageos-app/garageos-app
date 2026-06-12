@@ -87,6 +87,7 @@ export class MainStack extends cdk.Stack {
       sesConfigurationSetArn: sesConstruct.configurationSetArn,
       sesFromAddress: config.emailFromAddress,
       sesConfigurationSetName: config.sesConfigurationSetName,
+      emailProvider: config.emailProvider,
       verifyEmailBaseUrl: `https://${config.appSubdomain}.${config.domainName}/verify-email`,
     });
 
