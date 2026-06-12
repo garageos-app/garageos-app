@@ -27,6 +27,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export function parseNotificationTarget(data: unknown): string | null {
   if (!isPlainObject(data)) return null;
   switch (data.type) {
+    // intervention.created: BR-157 deep link to the intervention detail.
+    case 'intervention.created':
     case 'intervention.revised':
     case 'intervention.cancelled':
       return isNonEmptyString(data.interventionId)
