@@ -3,6 +3,8 @@
 import '@/lib/crypto-polyfill';
 import 'react-native-url-polyfill/auto';
 import { Stack } from 'expo-router';
+import { configureForegroundNotificationDisplay } from '@/lib/push';
+import { NotificationTapRouter } from '@/lib/useNotificationTapRouting';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
@@ -12,6 +14,10 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider } from '@/auth/AuthContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ApiError } from '@/lib/api-error';
+
+// Module scope: the foreground display handler must be registered before any
+// notification can be received, not inside a component lifecycle.
+configureForegroundNotificationDisplay();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,6 +54,7 @@ export default function RootLayout() {
             persistOptions={{ persister, maxAge: 24 * 60 * 60 * 1000 }}
           >
             <StatusBar style="auto" />
+            <NotificationTapRouter />
             <Stack screenOptions={{ headerShown: false }} />
           </PersistQueryClientProvider>
         </AuthProvider>
