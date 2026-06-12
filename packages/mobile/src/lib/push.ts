@@ -1,6 +1,5 @@
 // Thin imperative wrappers around expo-notifications / expo-device, isolated so
 // the rest of the app (and its tests) never touch the native modules directly.
-// F-CLI-302 PR1: registration only; foreground handlers / tap deep-link are PR2.
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
@@ -34,6 +33,20 @@ export async function getDevicePushToken(): Promise<string> {
   }
   const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
   return data;
+}
+
+// Show notifications as a system banner while the app is foregrounded (the
+// expo-notifications default swallows them). Must run at module scope before
+// any notification can be received. SDK 52 NotificationBehavior shape —
+// shouldShowBanner/shouldShowList are SDK 53+.
+export function configureForegroundNotificationDisplay(): void {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  });
 }
 
 export function buildRegistrationPayload(expoPushToken: string): PushRegistrationPayload {
