@@ -17,13 +17,17 @@ export default function DeadlinesScreen() {
   // deadline the push referred to gets tinted and scrolled into view.
   const { highlight } = useLocalSearchParams<{ highlight?: string }>();
   const listRef = useRef<FlatList<MeDeadline>>(null);
+  // Scroll once per highlight value: `data` changes identity on every refetch
+  // (pull-to-refresh, invalidation) and must not re-yank the list afterwards.
+  const scrolledForRef = useRef<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const { data, isLoading, isError, error, refetch } = useMeDeadlines();
 
   useEffect(() => {
-    if (!highlight || !data) return;
+    if (!highlight || !data || scrolledForRef.current === highlight) return;
     const index = data.findIndex((d) => d.id === highlight);
     if (index < 0) return; // deadline gone (e.g. completed meanwhile) — plain list
+    scrolledForRef.current = highlight;
     // Defer so the FlatList has mounted its rows before scrolling.
     const timer = setTimeout(() => {
       listRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });

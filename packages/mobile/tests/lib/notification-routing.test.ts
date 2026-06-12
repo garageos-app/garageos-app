@@ -1,4 +1,4 @@
-import { parseNotificationTarget, extractNotificationData } from '@/lib/notification-routing';
+import { parseNotificationTarget, resolveNotificationTarget } from '@/lib/notification-routing';
 
 const INTERVENTION_ID = '3f9c2a1e-8b4d-4c6a-9e2f-1a7b5d3c8e0f';
 const VEHICLE_ID = '7a1d4e9b-2c5f-4a8d-b3e6-9f0c2d5a8b1e';
@@ -72,34 +72,38 @@ describe('parseNotificationTarget', () => {
   });
 });
 
-describe('extractNotificationData', () => {
+describe('resolveNotificationTarget', () => {
   const response = (content: { data?: unknown }, trigger?: unknown) => ({
     notification: { request: { content, trigger } },
   });
 
-  it('returns content.data when it is a non-empty object', () => {
+  it('resolves from content.data when it carries a routable payload', () => {
     const data = { type: 'intervention.revised', interventionId: INTERVENTION_ID };
-    expect(extractNotificationData(response({ data }))).toEqual(data);
+    expect(resolveNotificationTarget(response({ data }))).toBe(`/interventions/${INTERVENTION_ID}`);
   });
 
   it('falls back to trigger.remoteMessage.data.body JSON when content.data is missing', () => {
     const data = { type: 'deadline.reminder', deadlineId: DEADLINE_ID };
     const trigger = { remoteMessage: { data: { body: JSON.stringify(data) } } };
-    expect(extractNotificationData(response({}, trigger))).toEqual(data);
+    expect(resolveNotificationTarget(response({}, trigger))).toBe(
+      `/(tabs)/deadlines?highlight=${DEADLINE_ID}`,
+    );
   });
 
-  it('falls back when content.data is an empty object', () => {
+  it('falls back when content.data is hydrated with non-routable metadata only', () => {
     const data = { type: 'ownership.transferred', vehicleId: VEHICLE_ID };
     const trigger = { remoteMessage: { data: { body: JSON.stringify(data) } } };
-    expect(extractNotificationData(response({ data: {} }, trigger))).toEqual(data);
+    expect(resolveNotificationTarget(response({ data: { experienceId: '@x/y' } }, trigger))).toBe(
+      '/(tabs)',
+    );
   });
 
   it('returns null on unparseable remoteMessage body instead of throwing', () => {
     const trigger = { remoteMessage: { data: { body: '{not json' } } };
-    expect(extractNotificationData(response({}, trigger))).toBeNull();
+    expect(resolveNotificationTarget(response({}, trigger))).toBeNull();
   });
 
-  it('returns null when neither source carries data', () => {
-    expect(extractNotificationData(response({}))).toBeNull();
+  it('returns null when neither source carries a routable payload', () => {
+    expect(resolveNotificationTarget(response({}))).toBeNull();
   });
 });

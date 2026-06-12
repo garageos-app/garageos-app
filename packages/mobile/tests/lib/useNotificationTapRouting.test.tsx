@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
+  useRootNavigationState: () => ({ key: 'root' }),
 }));
 
 const mockAuth = { status: 'authenticated' };
@@ -33,8 +34,10 @@ describe('useNotificationTapRouting', () => {
     listenerMock.mockReset().mockReturnValue({ remove: jest.fn() });
   });
 
+  // NOTE: response identifiers must be unique per test — the handled-ids dedup
+  // set lives at module scope (by design: it must survive hook remounts).
   it('navigates to the parsed target on cold-start response when authenticated', async () => {
-    lastResponseMock.mockResolvedValue(makeResponse('n1', revisedData));
+    lastResponseMock.mockResolvedValue(makeResponse('cold-1', revisedData));
 
     renderHook(() => useNotificationTapRouting());
 
@@ -48,18 +51,19 @@ describe('useNotificationTapRouting', () => {
       listenerCb = cb;
       return { remove: jest.fn() };
     });
-    lastResponseMock.mockResolvedValue(makeResponse('n1', revisedData));
+    lastResponseMock.mockResolvedValue(makeResponse('dedup-1', revisedData));
 
     renderHook(() => useNotificationTapRouting());
     await waitFor(() => expect(mockPush).toHaveBeenCalledTimes(1));
 
     // Same tap surfacing again through the listener must not navigate twice.
-    act(() => listenerCb!(makeResponse('n1', revisedData)));
+    act(() => listenerCb!(makeResponse('dedup-1', revisedData)));
+    await act(async () => {});
     expect(mockPush).toHaveBeenCalledTimes(1);
 
     // A genuinely new tap navigates.
     act(() =>
-      listenerCb!(makeResponse('n2', { type: 'deadline.reminder', deadlineId: DEADLINE_ID })),
+      listenerCb!(makeResponse('dedup-2', { type: 'deadline.reminder', deadlineId: DEADLINE_ID })),
     );
     await waitFor(() => expect(mockPush).toHaveBeenCalledTimes(2));
     expect(mockPush).toHaveBeenLastCalledWith(`/(tabs)/deadlines?highlight=${DEADLINE_ID}`);
@@ -67,7 +71,7 @@ describe('useNotificationTapRouting', () => {
 
   it('drops the target without navigating when unauthenticated', async () => {
     mockAuth.status = 'unauthenticated';
-    lastResponseMock.mockResolvedValue(makeResponse('n1', revisedData));
+    lastResponseMock.mockResolvedValue(makeResponse('unauth-1', revisedData));
 
     renderHook(() => useNotificationTapRouting());
 
@@ -77,7 +81,7 @@ describe('useNotificationTapRouting', () => {
 
   it('defers navigation while auth is loading, then navigates once authenticated', async () => {
     mockAuth.status = 'loading';
-    lastResponseMock.mockResolvedValue(makeResponse('n1', revisedData));
+    lastResponseMock.mockResolvedValue(makeResponse('defer-1', revisedData));
 
     const { rerender } = renderHook(() => useNotificationTapRouting());
 
@@ -92,7 +96,7 @@ describe('useNotificationTapRouting', () => {
   });
 
   it('ignores malformed payloads without throwing', async () => {
-    lastResponseMock.mockResolvedValue(makeResponse('n1', { type: 'unknown.event' }));
+    lastResponseMock.mockResolvedValue(makeResponse('malformed-1', { type: 'unknown.event' }));
 
     renderHook(() => useNotificationTapRouting());
 

@@ -1,5 +1,7 @@
-// Thin imperative wrappers around expo-notifications / expo-device, isolated so
-// the rest of the app (and its tests) never touch the native modules directly.
+// Thin imperative wrappers around expo-notifications / expo-device so screens
+// and queries never touch the native modules directly. (Exception:
+// useNotificationTapRouting.ts subscribes to tap responses on its own — it is
+// itself an isolation module of the same kind, not a consumer.)
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';

@@ -45,16 +45,18 @@ export function parseNotificationTarget(data: unknown): string | null {
   }
 }
 
-export function extractNotificationData(response: NotificationResponseLike): unknown {
+// Resolve the routing target for a tap response. content.data is tried first;
+// if it yields no target (missing, empty, or hydrated with FCM metadata only),
+// fall back to the killed-state Android payload in trigger.remoteMessage.
+export function resolveNotificationTarget(response: NotificationResponseLike): string | null {
   const { content, trigger } = response.notification.request;
-  if (isPlainObject(content.data) && Object.keys(content.data).length > 0) {
-    return content.data;
-  }
+  const direct = parseNotificationTarget(content.data);
+  if (direct) return direct;
   if (isPlainObject(trigger) && isPlainObject(trigger.remoteMessage)) {
     const remoteData = trigger.remoteMessage.data;
     if (isPlainObject(remoteData) && isNonEmptyString(remoteData.body)) {
       try {
-        return JSON.parse(remoteData.body);
+        return parseNotificationTarget(JSON.parse(remoteData.body));
       } catch {
         return null;
       }

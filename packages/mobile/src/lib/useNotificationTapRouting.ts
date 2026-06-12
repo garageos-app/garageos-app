@@ -4,28 +4,32 @@
 // state (getLastNotificationResponseAsync). Navigation is gated on auth: while
 // the session is still loading the target stays pending; an unauthenticated
 // tap is dropped (the normal flow lands on login — no defer-through-login).
-import { useEffect, useRef, useState } from 'react';
-import { useRouter, type Href } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { useRouter, useRootNavigationState, type Href } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { useAuth } from '@/auth/useAuth';
-import { extractNotificationData, parseNotificationTarget } from '@/lib/notification-routing';
+import { resolveNotificationTarget } from '@/lib/notification-routing';
+
+// Module scope, not a ref: the same tap can surface through both the
+// cold-start read and the listener, and getLastNotificationResponseAsync keeps
+// returning the same response for the whole process lifetime — a remount of
+// the hook (e.g. ErrorBoundary reset) must not re-handle a stale tap.
+const handledIds = new Set<string>();
 
 export function useNotificationTapRouting(): void {
   const router = useRouter();
   const { status } = useAuth();
+  // Pushing before the root navigator has mounted throws in expo-router.
+  const navReady = Boolean(useRootNavigationState()?.key);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
-  // The same tap can surface through both the cold-start read and the
-  // listener (and the root layout can re-render) — handle each response
-  // identifier exactly once so a tap never navigates twice.
-  const handledIds = useRef(new Set<string>());
 
   useEffect(() => {
     let mounted = true;
     const handle = (response: Notifications.NotificationResponse) => {
       const id = response.notification.request.identifier;
-      if (handledIds.current.has(id)) return;
-      handledIds.current.add(id);
-      const href = parseNotificationTarget(extractNotificationData(response));
+      if (handledIds.has(id)) return;
+      handledIds.add(id);
+      const href = resolveNotificationTarget(response);
       if (href) setPendingHref(href);
     };
     void Notifications.getLastNotificationResponseAsync().then((response) => {
@@ -39,14 +43,22 @@ export function useNotificationTapRouting(): void {
   }, []);
 
   useEffect(() => {
-    if (!pendingHref || status === 'loading') return;
-    if (status === 'authenticated') {
+    if (!pendingHref || status === 'loading' || !navReady) return;
+    if (status === 'unauthenticated') {
+      setPendingHref(null);
+      return;
+    }
+    // Defer one macrotask: on a cold start the BootRedirect (app/index.tsx)
+    // replaces to /(tabs) on the same auth flip — pushing after it keeps the
+    // deep-link target on top instead of being clobbered by that redirect.
+    const timer = setTimeout(() => {
       // The parser only emits routes that exist in app/ — safe to narrow the
       // plain string to the typed-routes Href.
       router.push(pendingHref as Href);
-    }
-    setPendingHref(null);
-  }, [pendingHref, status, router]);
+      setPendingHref(null);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [pendingHref, status, navReady, router]);
 }
 
 // Null-rendering mount point for the hook (the root layout component itself
