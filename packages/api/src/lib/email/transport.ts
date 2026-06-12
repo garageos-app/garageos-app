@@ -74,6 +74,10 @@ async function deliverViaResend(message: EmailMessage): Promise<void> {
   }
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
+    // Bound the call well below the 30s Lambda timeout: a hung Resend
+    // request must not burn the whole invocation (scheduler path awaits
+    // the dispatcher directly).
+    signal: AbortSignal.timeout(10_000),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',

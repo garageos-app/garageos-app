@@ -101,6 +101,7 @@ describe('deliverEmail', () => {
       const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
       expect(url).toBe('https://api.resend.com/emails');
       expect(init.method).toBe('POST');
+      expect(init.signal).toBeInstanceOf(AbortSignal);
       expect(init.headers).toMatchObject({
         Authorization: 'Bearer re_test_key',
         'Content-Type': 'application/json',

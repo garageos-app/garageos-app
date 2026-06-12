@@ -68,7 +68,7 @@ export interface LambdaApiConstructProps {
   // Selects the runtime email transport ('ses' | 'resend'). RESEND_API_KEY
   // is NOT wired here: it lives in the app secret JSON and reaches
   // process.env through the cold-start hydration (config/secrets.ts).
-  readonly emailProvider: string;
+  readonly emailProvider: 'ses' | 'resend';
   readonly verifyEmailBaseUrl: string;
 }
 

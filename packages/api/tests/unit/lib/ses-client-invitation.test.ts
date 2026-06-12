@@ -11,6 +11,7 @@ describe('sendInvitationEmail', () => {
     _resetSesClientForTests();
     process.env.SES_FROM_ADDRESS = 'noreply@example.com';
     process.env.SES_CONFIGURATION_SET = 'test-config-set';
+    delete process.env.EMAIL_PROVIDER;
   });
 
   it('sends with FromEmailAddress + ToAddresses + ConfigurationSetName + HTML+text bodies', async () => {
