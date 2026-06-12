@@ -1,6 +1,22 @@
 # Runbook — Pulizia DB prod cumulata (dati smoke)
 
-**Stato: DA ESEGUIRE** (operator-driven, Supabase SQL editor come
+**Stato: SUPERATO — FULL RESET ESEGUITO 2026-06-12.** Su richiesta
+dell'utente la pulizia selettiva è stata sostituita da un **reset completo
+di prod**: TRUNCATE di tutte le tabelle applicative (preservati
+`_prisma_migrations` e i 12 `intervention_types` di sistema, ri-seedati),
+svuotati i 2 pool Cognito attivi e il bucket `garageos-production-attachments`
+(19 oggetti), eliminati gli 8 pool Cognito orfani di vecchi deploy.
+Ricreati: **Officina Matula** (tenant `4d286c7b-25aa-4ad1-91d6-e98affc49ad5`,
+SA `matulamichele@gmail.com`, mechanic `matulamichele+meccanico1@gmail.com`)
+e **Officina Soriente** (tenant `b0cc6b9d-6176-483b-a7cf-8453ab66eba8`,
+SA `luca@soriente.it`, mechanic `luca+meccanico1@soriente.it`), 1 location
+primaria ciascuna, P.IVA/indirizzi placeholder. Password mai emesse: ogni
+utente fa il bootstrap con "Password dimenticata" sulla web app (F-OFF-005).
+Esecuzione via `scripts/db-cleanup-query.mjs` + `scripts/rebuild-tenants.mjs`
+(operator-only, non committati) con `DIRECT_URL` superuser locale.
+Le sezioni sotto restano come riferimento storico del metodo selettivo.
+
+**Stato precedente: DA ESEGUIRE** (operator-driven, Supabase SQL editor come
 `postgres`/superuser — `garageos_app` non ha policy DELETE, RLS default-deny).
 
 Lista cumulata dei dati lasciati in prod dagli smoke test, aggiornata al
