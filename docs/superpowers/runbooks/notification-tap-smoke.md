@@ -1,6 +1,6 @@
 # Smoke notification tap deep-link (build standalone preview)
 
-**Stato: ⬜ DA ESEGUIRE — BLOCKER per la chiusura della feature**
+**Stato: ✅ ESEGUITO E PASS 2026-06-12 — feature chiusa (vedi Esiti)**
 
 Verifica su device del routing dal tap sulla notifica push alla schermata
 target, più il banner foreground. Il codice è JS-only ma il bundle è cotto
@@ -61,4 +61,33 @@ g. **Payload legacy/malformato**: push tool con `data: {"type":"boh"}` →
 
 ## Esiti
 
-_(da compilare all'esecuzione)_
+**Eseguito 2026-06-12 — PASS 7/7 (a-g).** Build EAS preview `b81840c0`
+(post-merge #197), device Xiaomi, account Pippo Baudo
+(`matulamichele+b2cpwd@gmail.com`).
+
+- a. Install APK dal link build page + login + permesso notifiche +
+  toggle ON: OK.
+- b. Background, trigger PATCH intervento `a2a66c05` dal web prod
+  (super_admin): tap → detail intervento. PASS.
+- c. App KILLED, stesso trigger: tap → cold start direttamente sul detail
+  intervento (fallback Android `trigger.remoteMessage.data.body` validato
+  — unico percorso non coperto dai test). PASS.
+- d. Foreground: la notifica viene CONSEGNATA (icona status bar + tendina;
+  prima di #197 veniva ingoiata) e il tap dalla tendina naviga al detail.
+  PASS funzionale. ⚠️ **Finding minor**: nessun banner heads-up a video,
+  nemmeno con "notifiche flottanti" MIUI abilitate → il canale Android
+  default ha importance DEFAULT. Candidato micro-fix futuro:
+  `Notifications.setNotificationChannelAsync('default', { importance: MAX })`
+  all'init (JS-only ma serve nuova build per verificarlo). Non bloccante.
+- e. Push tool Expo con `deadline.reminder` + deadlineId/vehicleId reali
+  (da SQL editor): tap → tab Scadenze con riga evidenziata azzurra e
+  scrollata in vista. PASS.
+- f. Logout prima del tap: tap → schermata login, nessun crash, nessuna
+  navigazione post-login (by design). PASS.
+- g. Payload malformato `{"type":"boh"}`: app si apre normalmente, nessun
+  crash. PASS.
+
+Note operative: le notifiche dal push tool Expo arrivano anche a token
+deregistrato lato server (vanno dirette via Expo) — atteso per il test f/g.
+Il PATCH di smoke ha aggiunto ~3 revisioni di test all'intervento
+`a2a66c05` (già candidato pulizia DB prod).
