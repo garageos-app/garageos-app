@@ -134,9 +134,12 @@ ALTER TABLE "personal_deadline_reminders" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "personal_deadline_reminders" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "personal_deadline_reminders_access" ON "personal_deadline_reminders" USING (true);
 
--- updated_at trigger (mirror other mutable tables; set_updated_at() exists)
-CREATE TRIGGER "personal_deadlines_set_updated_at"
-  BEFORE UPDATE ON "personal_deadlines"
+-- updated_at trigger (convenzione trg_<table>_updated_at, mirror del DO block
+-- in 20260424100000_rls_triggers_checks; set_updated_at() esiste già).
+-- personal_deadline_reminders NON ha updated_at → nessun trigger.
+DROP TRIGGER IF EXISTS trg_personal_deadlines_updated_at ON personal_deadlines;
+CREATE TRIGGER trg_personal_deadlines_updated_at
+  BEFORE UPDATE ON personal_deadlines
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- Grants (explicit, not relying on default privileges)
@@ -319,7 +322,7 @@ Tutte le route: `preHandler: [requireAuth, requireClientiPool, clientiContext]`,
 
 **PATCH `/v1/me/personal-deadlines/:id`** → `{ personalDeadline }`
 - `UpdatePersonalDeadlineSchema.parse(body)`. Carica la riga (`findFirst({ id, customerId }`); null → 404). 
-- Body vuoto (`Object.keys(parsed).length === 0`) → `businessError('validation.empty_body', 400, …)` (riusa il codice empty-body esistente — grep APPENDICE_G/altri route per il codice reale; se non esiste, 400 ZodError-style). 
+- Body vuoto (`Object.keys(parsed).length === 0`) → `businessError('personal_deadline.update.empty_body', 422, 'Nessun campo da aggiornare.')` (convenzione `<resource>.update.empty_body` — mirror di `me-profile.ts:66`; verifica lo status code esatto lì e allinea). 
 - Cross-field BR-294: categoria effettiva = `parsed.category ?? row.category`; label effettiva = `'customLabel' in parsed ? parsed.customLabel : row.customLabel`; se effettiva categoria `other` e label vuota/null → `businessError('personal_deadline.custom_label_required', 422, "Specifica un'etichetta per la categoria 'Altro'.")`.
 - Costruisci `data` con il pattern `'key' in parsed` (exactOptionalPropertyTypes) per ogni chiave editabile.
 - Se cambia `dueDate` **o** `reminderLeadDays` **o** `reminderDailyTailDays`: rigenera i reminder pending — `deleteMany({ personalDeadlineId: id, deliveryStatus: 'pending' })` poi `createMany` da `buildPersonalReminders(nuovaDueDate, nuoviLead, nuovoTail, now)`. I reminder `sent`/`failed`/`cancelled` restano (append-only). (In PR1 non c'è ancora sweep, ma la materializzazione dev'essere corretta.)
