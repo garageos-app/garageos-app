@@ -166,4 +166,56 @@ describe('PersonalDeadlineForm', () => {
     );
     expect(screen.getByText('Caricamento veicoli…')).toBeOnTheScreen();
   });
+
+  // Edit mode: toggling recurrence and tail OFF must send null for those fields
+  // (keys PRESENT with value null) rather than omitting them — the PATCH body
+  // always sends explicit nulls to allow clearing previously-set values.
+  it('edit mode: sends null for cleared recurrenceMonths / reminderDailyTailDays / customLabel', async () => {
+    const veh = vehicle({ id: 'veh-1' });
+    mockVehicles([veh]);
+    const onSubmit = jest.fn();
+
+    // Start with recurrence on (12 months) and tail on (3 days), category = insurance.
+    render(
+      <PersonalDeadlineForm
+        mode="edit"
+        submitLabel="Salva modifiche"
+        submitting={false}
+        onSubmit={onSubmit}
+        initial={{
+          vehicleId: 'veh-1',
+          category: 'insurance',
+          dueDate: '2099-05-10',
+          reminderLeadDays: [7],
+          notifyPush: true,
+          notifyEmail: true,
+          recurrenceMonths: 12,
+          reminderDailyTailDays: 3,
+          notes: '',
+        }}
+      />,
+    );
+
+    // Toggle recurrence OFF.
+    fireEvent(screen.getByTestId('recurrence-toggle'), 'valueChange', false);
+    // Toggle tail OFF.
+    fireEvent(screen.getByTestId('tail-toggle'), 'valueChange', false);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Salva modifiche' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const body = onSubmit.mock.calls[0][0];
+
+    // Keys must be present with explicit null (not omitted) in edit mode.
+    expect('recurrenceMonths' in body).toBe(true);
+    expect(body.recurrenceMonths).toBeNull();
+    expect('reminderDailyTailDays' in body).toBe(true);
+    expect(body.reminderDailyTailDays).toBeNull();
+    // Category is not 'other', so customLabel must also be sent as null.
+    expect('customLabel' in body).toBe(true);
+    expect(body.customLabel).toBeNull();
+
+    // vehicleId must NOT be in the edit body (no vehicle-reassign path).
+    expect('vehicleId' in body).toBe(false);
+  });
 });

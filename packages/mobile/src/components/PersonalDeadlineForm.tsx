@@ -188,13 +188,22 @@ export function PersonalDeadlineForm({
           <View style={styles.chipRow}>
             {vehicleList.map((v) => {
               const selected = v.id === effectiveVehicleId;
+              // In edit mode the API has no vehicle-reassign path, so vehicle
+              // chips are rendered read-only to avoid a misleading affordance.
+              const vehicleDisabled = mode === 'edit';
               return (
                 <Pressable
                   key={v.id}
                   testID={`vehicle-chip-${v.id}`}
                   accessibilityRole="button"
+                  accessibilityState={{ disabled: vehicleDisabled }}
+                  disabled={vehicleDisabled}
                   onPress={() => setVehicleId(v.id)}
-                  style={[styles.chip, selected && styles.chipSelected]}
+                  style={[
+                    styles.chip,
+                    selected && styles.chipSelected,
+                    vehicleDisabled && styles.chipDisabled,
+                  ]}
                 >
                   <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
                     {`${v.plate} — ${v.make} ${v.model}`}
@@ -474,6 +483,7 @@ const styles = StyleSheet.create({
   },
   chipIcon: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipDisabled: { backgroundColor: colors.mutedBg, borderColor: colors.border, opacity: 0.6 },
   chipText: { fontSize: 14, color: colors.fg },
   chipTextSelected: { color: colors.primaryFg, fontWeight: '600' },
   switchRow: {
