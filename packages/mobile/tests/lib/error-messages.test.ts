@@ -96,4 +96,39 @@ describe('mapErrorToUserMessage', () => {
       'La proprietà del veicolo è cambiata nel frattempo.',
     );
   });
+
+  // Personal deadline domain codes (F-CLI-306)
+  it('maps personal_deadline.not_found', () => {
+    expect(mapErrorToUserMessage('personal_deadline.not_found')).toBe('Scadenza non trovata.');
+  });
+
+  it('maps personal_deadline.not_open', () => {
+    expect(mapErrorToUserMessage('personal_deadline.not_open')).toBe(
+      'La scadenza è già completata o annullata.',
+    );
+  });
+
+  it('maps personal_deadline.vehicle_not_owned', () => {
+    expect(mapErrorToUserMessage('personal_deadline.vehicle_not_owned')).toBe(
+      'Non sei il proprietario di questo veicolo.',
+    );
+  });
+
+  it('maps personal_deadline.custom_label_required', () => {
+    expect(mapErrorToUserMessage('personal_deadline.custom_label_required')).toBe(
+      "Specifica un'etichetta per la categoria 'Altro'.",
+    );
+  });
+
+  it('maps personal_deadline.update.empty_body', () => {
+    expect(mapErrorToUserMessage('personal_deadline.update.empty_body')).toBe(
+      'Nessuna modifica da salvare.',
+    );
+  });
+
+  it('returns fallback for unknown personal_deadline subcode', () => {
+    expect(mapErrorToUserMessage('personal_deadline.nope')).toBe(
+      'Si è verificato un errore. Riprova più tardi.',
+    );
+  });
 });
