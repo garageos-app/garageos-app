@@ -1,7 +1,7 @@
 -- F-CLI-306 / BR-290..298: customer-owned personal vehicle deadlines.
 -- Spec: docs/superpowers/specs/2026-06-16-personal-vehicle-deadlines-design.md
 -- Security pattern: RLS USING(true) + app-layer customerId filter (mirror
--- vehicle_transfers / transfers_access; lezione #154). Customers create,
+-- vehicle_transfers / transfers_access; lesson #154). Customers create,
 -- read, update, delete their own rows; admin (scheduler) bypasses via
 -- role=admin context in PR2.
 

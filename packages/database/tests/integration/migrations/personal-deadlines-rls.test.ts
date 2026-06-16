@@ -13,7 +13,7 @@ import { pgAdmin } from '../setup.js';
 //   - personal_deadline_reminders:  RLS USING(true) (permissive), FORCE.
 // Tenant/customer isolation is enforced at the application layer by an
 // explicit `customer_id = <caller>` filter (mirror transfers_access;
-// lezione #154 — never rely on RLS alone for these tables).
+// lesson #154 — never rely on RLS alone for these tables).
 //
 // Test strategy:
 //   - Fixtures are inserted via pgAdmin (superuser, bypasses RLS).
@@ -56,7 +56,7 @@ describe('RLS — personal_deadlines (post-migration 20260616120000)', () => {
 
     // RLS is USING(true), so without the app-layer filter both rows would
     // be visible. The app-layer `where: { customerId }` is the actual
-    // isolation boundary (lezione #154).
+    // isolation boundary (lesson #154).
     const seenByA = await withContext({ customerId: customerAId }, (tx) =>
       tx.personalDeadline.findMany({ where: { customerId: customerAId } }),
     );
