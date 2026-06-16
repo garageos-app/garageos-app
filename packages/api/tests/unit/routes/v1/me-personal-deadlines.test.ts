@@ -19,6 +19,7 @@ interface FakePrisma {
     findMany: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
+    updateMany?: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
   };
   personalDeadlineReminder: {
@@ -325,6 +326,7 @@ describe('PATCH /v1/me/personal-deadlines/:id', () => {
         findMany: vi.fn(),
         create: vi.fn(),
         update: vi.fn().mockResolvedValue({ id: DEADLINE_ID }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         delete: vi.fn(),
       },
     });
@@ -468,6 +470,7 @@ describe('POST /v1/me/personal-deadlines/:id/complete', () => {
         findMany: vi.fn(),
         create: vi.fn(),
         update: vi.fn().mockResolvedValue({ id: DEADLINE_ID }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         delete: vi.fn(),
       },
     });
@@ -493,6 +496,7 @@ describe('POST /v1/me/personal-deadlines/:id/complete', () => {
         findMany: vi.fn(),
         create: vi.fn(),
         update: vi.fn().mockResolvedValue({ id: DEADLINE_ID }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         delete: vi.fn(),
       },
     });
@@ -500,6 +504,11 @@ describe('POST /v1/me/personal-deadlines/:id/complete', () => {
     const res = await complete();
     expect(res.statusCode).toBe(200);
     expect(res.json().renewalSuggestion).toBeUndefined();
+    // CAS guards the open->completed transition (concurrent-safe).
+    expect(prisma.personalDeadline.updateMany).toHaveBeenCalledWith({
+      where: { id: DEADLINE_ID, status: 'open' },
+      data: { status: 'completed', completedAt: expect.any(Date) },
+    });
   });
 
   it('returns 404 for another customer deadline', async () => {

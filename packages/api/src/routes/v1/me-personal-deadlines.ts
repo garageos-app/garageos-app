@@ -345,10 +345,20 @@ const mePersonalDeadlinesRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        await tx.personalDeadline.update({
-          where: { id },
+        // CAS on status='open' so two concurrent completes resolve to exactly
+        // one winner (mirrors the me-transfers state-machine idiom); the loser
+        // gets the same 409 as the pre-check.
+        const cas = await tx.personalDeadline.updateMany({
+          where: { id, status: 'open' },
           data: { status: 'completed', completedAt: new Date() },
         });
+        if (cas.count === 0) {
+          throw businessError(
+            'personal_deadline.not_open',
+            409,
+            'La scadenza non è in stato aperto.',
+          );
+        }
         // Pending reminders are no longer relevant once completed.
         await tx.personalDeadlineReminder.deleteMany({
           where: { personalDeadlineId: id, deliveryStatus: 'pending' },
