@@ -5,12 +5,12 @@
 export type DeadlineReminderType = 't_minus_30' | 't_minus_7' | 't_zero' | 'km_reached';
 
 const ROME = 'Europe/Rome';
-const REMINDER_HOUR_LOCAL = 8;
+export const REMINDER_HOUR_LOCAL = 8;
 
 // Clock-skew buffer: schedules within 60 seconds of "now" are treated as
 // already expired so we never attempt to create an AWS EventBridge schedule
 // with a firing time the service would reject as too-soon. See BR-103.
-const SKEW_BUFFER_MS = 60_000;
+export const SKEW_BUFFER_MS = 60_000;
 
 export interface ReminderSchedule {
   reminderType: DeadlineReminderType;
@@ -69,6 +69,41 @@ function shiftCalendarDays(
 }
 
 /**
+ * Compute the UTC instant for the Europe/Rome calendar date of `baseDate`
+ * shifted by `deltaDays`, anchored at `hourLocal` (default 08:00) Rome
+ * wall-clock time. Fully DST-aware via Intl.DateTimeFormat.
+ *
+ * The time-of-day component of `baseDate` is ignored — only its Europe/Rome
+ * calendar date is used. See BR-103 / BR-295.
+ *
+ * @param baseDate  - The reference date (time component ignored).
+ * @param deltaDays - Calendar-day shift (negative = before baseDate).
+ * @param hourLocal - Rome-local hour to anchor at (default REMINDER_HOUR_LOCAL).
+ * @returns UTC Date for the shifted Rome calendar day at `hourLocal` local.
+ */
+export function romeDayAtHourUtc(
+  baseDate: Date,
+  deltaDays: number,
+  hourLocal: number = REMINDER_HOUR_LOCAL,
+): Date {
+  // Extract the Europe/Rome calendar date from baseDate, ignoring any
+  // time-of-day component so the anchor is always at hourLocal local.
+  const dateFmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ROME,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = Object.fromEntries(dateFmt.formatToParts(baseDate).map((p) => [p.type, p.value]));
+  const year = parseInt(parts['year']!, 10);
+  const month1 = parseInt(parts['month']!, 10);
+  const day = parseInt(parts['day']!, 10);
+
+  const shifted = shiftCalendarDays(year, month1, day, deltaDays);
+  return romeLocalToUtc(shifted.year, shifted.month1, shifted.day, hourLocal);
+}
+
+/**
  * Given a deadline due date, compute the three UTC instants at which
  * reminder notifications should fire: T-30 days, T-7 days, and T-0.
  *
@@ -82,26 +117,10 @@ function shiftCalendarDays(
  * @returns ComputedReminderSet with tMinus30, tMinus7, tZero as UTC Dates.
  */
 export function computeReminderSchedule(dueDate: Date): ComputedReminderSet {
-  // Extract the Europe/Rome calendar date from dueDate, ignoring any
-  // time-of-day component so the anchor is always 08:00 local.
-  const dateFmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: ROME,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  const parts = Object.fromEntries(dateFmt.formatToParts(dueDate).map((p) => [p.type, p.value]));
-  const year = parseInt(parts['year']!, 10);
-  const month1 = parseInt(parts['month']!, 10);
-  const day = parseInt(parts['day']!, 10);
-
-  const dT30 = shiftCalendarDays(year, month1, day, -30);
-  const dT7 = shiftCalendarDays(year, month1, day, -7);
-
   return {
-    tMinus30: romeLocalToUtc(dT30.year, dT30.month1, dT30.day, REMINDER_HOUR_LOCAL),
-    tMinus7: romeLocalToUtc(dT7.year, dT7.month1, dT7.day, REMINDER_HOUR_LOCAL),
-    tZero: romeLocalToUtc(year, month1, day, REMINDER_HOUR_LOCAL),
+    tMinus30: romeDayAtHourUtc(dueDate, -30),
+    tMinus7: romeDayAtHourUtc(dueDate, -7),
+    tZero: romeDayAtHourUtc(dueDate, 0),
   };
 }
 
