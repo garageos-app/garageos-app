@@ -234,6 +234,69 @@ describe('processPersonalDeadlineSweep', () => {
     );
   });
 
+  it('mixed batch: row1 sent, row2 failed (dispatch error), row3 channels_off — counters and terminal statuses are correct per row', async () => {
+    // 3 due reminders processed in ONE sweep run, each landing in a different
+    // bucket. Guards against counter cross-contamination and continue-vs-
+    // fallthrough bugs across the per-row-tx iterations.
+    const r1 = dueReminder({ id: 'r1' }); // both channels on -> dispatch -> sent
+    const r2 = dueReminder({ id: 'r2' }); // both channels on -> dispatch error -> failed
+    const r3 = dueReminder({ id: 'r3', notifyEmail: false, notifyPush: false }); // pre-gate cancel
+
+    // Thread per-row dispatch results dynamically by the personalDeadlineId in
+    // the event (all three share pd1 here, so key off the row order via a queue
+    // keyed by the reminder's vehiclePlate is overkill — instead key off a
+    // counter, since dispatch is only called for r1 and r2 in order).
+    const dispatchResults = [
+      { sent: true }, // r1
+      { sent: false, error: 'SES boom' }, // r2
+    ];
+    let dispatchIdx = 0;
+    vi.mocked(dispatcherMod.dispatchNotification).mockImplementation(async () => {
+      const res = dispatchResults[dispatchIdx]!;
+      dispatchIdx++;
+      return res;
+    });
+
+    // Capture every per-row update so we can assert each row's terminal status.
+    const updateCalls: Array<{ id: string; data: Record<string, unknown> }> = [];
+    const pdrUpdate = vi
+      .fn()
+      .mockImplementation(async (arg: { where: { id: string }; data: Record<string, unknown> }) => {
+        updateCalls.push({ id: arg.where.id, data: arg.data });
+        return {};
+      });
+
+    const fake = makePrisma({
+      pdrFindMany: vi.fn().mockResolvedValue([r1, r2, r3]),
+      pdrUpdate,
+    });
+    const app = makeFakeApp(fake);
+
+    const result = await processPersonalDeadlineSweep({ app });
+
+    // Final counters: exactly one row in each bucket.
+    expect(result.sent).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.channelsOffCancelled).toBe(1);
+
+    // dispatch called only for the two channels-on rows (r3 short-circuits).
+    expect(dispatcherMod.dispatchNotification).toHaveBeenCalledTimes(2);
+
+    // Each row got its correct terminal deliveryStatus.
+    const byId = Object.fromEntries(updateCalls.map((c) => [c.id, c.data]));
+    expect(byId.r1).toMatchObject({ deliveryStatus: 'sent' });
+    expect(byId.r2).toEqual({ deliveryStatus: 'failed', failureReason: 'SES boom' });
+    expect(byId.r3).toEqual({ deliveryStatus: 'cancelled', failureReason: 'channels_off' });
+
+    // Each row was updated exactly once (no fallthrough double-write).
+    expect(updateCalls).toHaveLength(3);
+
+    // Per-row tx: withContext invoked once per step (overdue flip, stale-cancel,
+    // fetch) plus once per due row (3) = 6 total.
+    const withContextMock = app.withContext as unknown as ReturnType<typeof vi.fn>;
+    expect(withContextMock).toHaveBeenCalledTimes(6);
+  });
+
   it('idempotency gate: findMany filters pending + parent open + due', async () => {
     const pdrFindMany = vi.fn().mockResolvedValue([]);
     const fake = makePrisma({ pdrFindMany });

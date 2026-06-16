@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 
-import type { PrismaClient } from '@garageos/database';
+import type { PersonalDeadlineCategory, PrismaClient } from '@garageos/database';
 
 import { romeTodayDateOnly } from '../deadlines/compute-reminders.js';
 import { dispatchNotification } from '../notifications/dispatcher.js';
@@ -67,21 +67,141 @@ export function resolveSweepOutcome(result: DispatchResult): SweepOutcome {
   return { status: 'cancelled', reason: 'not_delivered' };
 }
 
+// A due reminder row in the shape the Step 3 findMany select returns. Named so
+// the per-row processor (processDueReminder) has a precise input type.
+type DueReminderRow = {
+  id: string;
+  kind: 'lead' | 'tail';
+  personalDeadline: {
+    id: string;
+    dueDate: Date;
+    category: PersonalDeadlineCategory;
+    customLabel: string | null;
+    notifyEmail: boolean;
+    notifyPush: boolean;
+    vehicle: { plate: string; make: string; model: string };
+    customer: CustomerForNotification;
+  };
+};
+
+// The terminal effect of processing a single due reminder, used to accumulate
+// the sweep counters in the handler's outer scope.
+type ProcessOutcome = 'sent' | 'failed' | 'channelsOffCancelled';
+
+// processDueReminder — handle ONE due reminder inside its OWN short admin
+// transaction. Returns the counter bucket the row landed in.
+//
+// Per-row tx — a reminder is re-dispatched on retry only if its OWN tx fails
+// after dispatch (minimal unavoidable at-least-once window); rows already
+// committed are not re-sent. This mirrors lib/deadlines/scheduler-invocation.ts,
+// which already uses one tx per reminder (it just processes one per invocation).
+// The previous single-tx structure held one transaction open across all N
+// network sends (connection-hold / idle-in-transaction risk) and, worse, a DB
+// error mid-loop rolled back the status writes of already-dispatched rows,
+// re-sending those emails/pushes on the EventBridge retry.
+async function processDueReminder(
+  app: AppLike,
+  reminder: DueReminderRow,
+  todayRome: Date,
+): Promise<ProcessOutcome> {
+  const deadline = reminder.personalDeadline;
+
+  // BR-292 pre-gate: when BOTH channels are off there is nothing to AND with
+  // the global pref — cancel without dispatching. No network I/O, so this is a
+  // pure DB write inside its own tx.
+  if (!deadline.notifyEmail && !deadline.notifyPush) {
+    await app.withContext({ role: 'admin' }, (tx) =>
+      tx.personalDeadlineReminder.update({
+        where: { id: reminder.id },
+        data: { deliveryStatus: 'cancelled', failureReason: 'channels_off' },
+      }),
+    );
+    return 'channelsOffCancelled';
+  }
+
+  const dueDate = deadline.dueDate;
+  const daysUntilDue = Math.round((dueDate.getTime() - todayRome.getTime()) / DAY_MS);
+  const dueDateIso = dueDate.toISOString().slice(0, 10);
+  const vehicleMakeModel = `${deadline.vehicle.make} ${deadline.vehicle.model}`;
+  const recipient = deadline.customer;
+
+  // One short tx per row: dispatch (email + push network I/O) then the single
+  // status write. A throw here loses ONLY this row's status write — rows
+  // already committed in prior per-row txs are untouched.
+  return app.withContext({ role: 'admin' }, async (tx) => {
+    const result = await dispatchNotification({
+      event: {
+        type: 'personal_deadline.reminder',
+        personalDeadlineId: deadline.id,
+        category: deadline.category,
+        customLabel: deadline.customLabel,
+        dueDate: dueDateIso,
+        vehiclePlate: deadline.vehicle.plate,
+        vehicleMakeModel,
+        kind: reminder.kind,
+        daysUntilDue,
+      },
+      recipient,
+      logger: app.log,
+      tx,
+      // BR-292: per-deadline mask, AND-ed with the global pref by the dispatcher.
+      channels: { email: deadline.notifyEmail, push: deadline.notifyPush },
+    });
+
+    const outcome = resolveSweepOutcome(result);
+    if (outcome.status === 'sent') {
+      await tx.personalDeadlineReminder.update({
+        where: { id: reminder.id },
+        data: { deliveryStatus: 'sent', sentAt: new Date() },
+      });
+      return 'sent';
+    }
+    if (outcome.status === 'failed') {
+      await tx.personalDeadlineReminder.update({
+        where: { id: reminder.id },
+        data: { deliveryStatus: 'failed', failureReason: outcome.reason },
+      });
+      return 'failed';
+    }
+    // Nothing delivered, no error (pref-off / channel-off / no-token): cancel —
+    // a retry would yield the same no-op. Counted under channelsOffCancelled
+    // (the "suppressed, not failed" bucket).
+    await tx.personalDeadlineReminder.update({
+      where: { id: reminder.id },
+      data: { deliveryStatus: 'cancelled', failureReason: outcome.reason },
+    });
+    return 'channelsOffCancelled';
+  });
+}
+
 // processPersonalDeadlineSweep — the daily cron handler (F-CLI-306 PR2).
 //
-// Runs entirely inside ONE admin-context transaction (the EventBridge cron
-// carries no JWT — see feedback_withcontext_empty_blocks_rls_writes.md). The
-// order is deliberate:
-//   1. BR-298 overdue flip FIRST: open deadlines past due become overdue, so
-//      step 4's `personalDeadline.status === 'open'` filter excludes them.
-//   2. Stale-cancel leftover pending reminders (independent of parent status).
-//   3. Fetch + deliver the still-due reminders on still-open deadlines.
+// Each unit of work runs in its OWN short admin-context transaction (the
+// EventBridge cron carries no JWT — see
+// feedback_withcontext_empty_blocks_rls_writes.md). Per-row tx — a reminder is
+// re-dispatched on retry only if its OWN tx fails after dispatch (minimal
+// unavoidable at-least-once window); rows already committed are not re-sent.
+// This mirrors lib/deadlines/scheduler-invocation.ts (one tx per reminder).
+// A single tx spanning all N network sends would hold a connection open across
+// every send and, on a mid-loop DB error, roll back the status writes of
+// already-dispatched rows (duplicate delivery on the EventBridge retry).
 //
-// Idempotency: every delivery gates on delivery_status === 'pending' (step 4
+// The order is deliberate:
+//   1. BR-298 overdue flip FIRST (own tx): open deadlines past due become
+//      overdue, so step 3's `personalDeadline.status === 'open'` filter
+//      excludes them.
+//   2. Stale-cancel leftover pending reminders (own tx, independent of parent).
+//   3. Fetch the still-due reminders (own read tx), then deliver each in its
+//      own per-row tx via processDueReminder.
+//
+// Idempotency: every delivery gates on delivery_status === 'pending' (step 3
 // where-clause). A daily re-run does NOT re-process sent/failed/cancelled
 // rows. A transient failure therefore strands a single reminder on `failed`
 // (accepted: the in-app overdue badge is the backstop; matches the stale-
-// recovery design rather than indefinite retry).
+// recovery design rather than indefinite retry). The fetched rows are read
+// once; re-reading inside each per-row tx is not required — the pending gate
+// already makes a same-day re-run idempotent, and there is a single daily
+// schedule (no concurrent sweep).
 //
 // BR-292: per-deadline notify flags are AND-ed with the customer's global
 // preference. The pre-gate short-circuits when BOTH flags are off; otherwise
@@ -90,40 +210,45 @@ export function resolveSweepOutcome(result: DispatchResult): SweepOutcome {
 // BR-295: reminder timing is already baked into scheduled_for at creation
 // time — this sweep only fires rows whose scheduled day has arrived.
 //
-// Lets DB errors propagate (no try/catch around the tx) so the Lambda returns
-// non-2xx and EventBridge retries the whole sweep.
+// Lets DB errors propagate (no try/catch) so the Lambda returns non-2xx and
+// EventBridge retries the sweep.
 export async function processPersonalDeadlineSweep(input: {
   app: AppLike;
 }): Promise<PersonalDeadlineSweepResult> {
   const { app } = input;
 
-  return app.withContext({ role: 'admin' }, async (tx) => {
-    const todayRome = romeTodayDateOnly();
-    const staleCutoff = new Date(todayRome.getTime() - STALE_DAYS * DAY_MS);
+  const todayRome = romeTodayDateOnly();
+  const staleCutoff = new Date(todayRome.getTime() - STALE_DAYS * DAY_MS);
 
-    // Step 1 — BR-298: flip open deadlines whose due date has passed to
-    // overdue. Done FIRST so step 4 (status === 'open') excludes them.
-    const overdue = await tx.personalDeadline.updateMany({
+  // Step 1 — BR-298: flip open deadlines whose due date has passed to overdue.
+  // Done FIRST so step 3 (status === 'open') excludes them. Own short tx.
+  const overdue = await app.withContext({ role: 'admin' }, (tx) =>
+    tx.personalDeadline.updateMany({
       where: { status: 'open', dueDate: { lt: todayRome } },
       data: { status: 'overdue' },
-    });
+    }),
+  );
 
-    // Step 2 — reap stale pending reminders (scheduled more than STALE_DAYS
-    // ago and never delivered). Independent of the parent deadline's status:
-    // this also sweeps leftovers on deadlines that just flipped to overdue.
-    const stale = await tx.personalDeadlineReminder.updateMany({
+  // Step 2 — reap stale pending reminders (scheduled more than STALE_DAYS ago
+  // and never delivered). Independent of the parent deadline's status: this
+  // also sweeps leftovers on deadlines that just flipped to overdue. Own tx.
+  const stale = await app.withContext({ role: 'admin' }, (tx) =>
+    tx.personalDeadlineReminder.updateMany({
       where: {
         deliveryStatus: 'pending',
         scheduledFor: { lt: staleCutoff },
       },
       data: { deliveryStatus: 'cancelled', failureReason: 'stale' },
-    });
+    }),
+  );
 
-    // Step 3 — fetch the due reminders to deliver: pending, scheduled day has
-    // arrived (<= today), and the parent deadline is still open (the BR-298
-    // flip above already excluded overdue parents). The recipient IS the
-    // owning customer — no ownership resolution needed for personal deadlines.
-    const due = await tx.personalDeadlineReminder.findMany({
+  // Step 3 — fetch the due reminders to deliver: pending, scheduled day has
+  // arrived (<= today), and the parent deadline is still open (the BR-298 flip
+  // above already excluded overdue parents). The recipient IS the owning
+  // customer — no ownership resolution needed for personal deadlines. Own read
+  // tx; the rows are then processed in their own per-row txs below.
+  const due = (await app.withContext({ role: 'admin' }, (tx) =>
+    tx.personalDeadlineReminder.findMany({
       where: {
         deliveryStatus: 'pending',
         scheduledFor: { lte: todayRome },
@@ -156,88 +281,31 @@ export async function processPersonalDeadlineSweep(input: {
           },
         },
       },
-    });
+    }),
+  )) as unknown as DueReminderRow[];
 
-    let channelsOffCancelled = 0;
-    let sent = 0;
-    let failed = 0;
+  let channelsOffCancelled = 0;
+  let sent = 0;
+  let failed = 0;
 
-    // Step 4 — deliver sequentially. NEVER Promise.all over a Prisma tx (the
-    // pg adapter warns and statements can interleave on one connection).
-    for (const reminder of due) {
-      const deadline = reminder.personalDeadline;
+  // Step 4 — deliver SEQUENTIALLY, each row in its own per-row tx. NEVER
+  // Promise.all (the pg adapter warns and statements can interleave on one
+  // connection). DB errors propagate: a throw on row N loses only row N's
+  // status write, not rows 1..N-1 (their per-row tx already committed).
+  for (const reminder of due) {
+    const bucket = await processDueReminder(app, reminder, todayRome);
+    if (bucket === 'sent') sent++;
+    else if (bucket === 'failed') failed++;
+    else channelsOffCancelled++;
+  }
 
-      // BR-292 pre-gate: when BOTH channels are off there is nothing to AND
-      // with the global pref — cancel without dispatching.
-      if (!deadline.notifyEmail && !deadline.notifyPush) {
-        await tx.personalDeadlineReminder.update({
-          where: { id: reminder.id },
-          data: { deliveryStatus: 'cancelled', failureReason: 'channels_off' },
-        });
-        channelsOffCancelled++;
-        continue;
-      }
-
-      const dueDate = deadline.dueDate;
-      const daysUntilDue = Math.round((dueDate.getTime() - todayRome.getTime()) / DAY_MS);
-      const dueDateIso = dueDate.toISOString().slice(0, 10);
-      const vehicleMakeModel = `${deadline.vehicle.make} ${deadline.vehicle.model}`;
-
-      // The select above returns exactly the CustomerForNotification shape.
-      const recipient = deadline.customer as CustomerForNotification;
-
-      const result = await dispatchNotification({
-        event: {
-          type: 'personal_deadline.reminder',
-          personalDeadlineId: deadline.id,
-          category: deadline.category,
-          customLabel: deadline.customLabel,
-          dueDate: dueDateIso,
-          vehiclePlate: deadline.vehicle.plate,
-          vehicleMakeModel,
-          kind: reminder.kind,
-          daysUntilDue,
-        },
-        recipient,
-        logger: app.log,
-        tx,
-        // BR-292: per-deadline mask, AND-ed with the global pref by the dispatcher.
-        channels: { email: deadline.notifyEmail, push: deadline.notifyPush },
-      });
-
-      const outcome = resolveSweepOutcome(result);
-      if (outcome.status === 'sent') {
-        await tx.personalDeadlineReminder.update({
-          where: { id: reminder.id },
-          data: { deliveryStatus: 'sent', sentAt: new Date() },
-        });
-        sent++;
-      } else if (outcome.status === 'failed') {
-        await tx.personalDeadlineReminder.update({
-          where: { id: reminder.id },
-          data: { deliveryStatus: 'failed', failureReason: outcome.reason },
-        });
-        failed++;
-      } else {
-        // Nothing delivered, no error (pref-off / channel-off / no-token):
-        // cancel — a retry would yield the same no-op. Counted under
-        // channelsOffCancelled (the "suppressed, not failed" bucket).
-        await tx.personalDeadlineReminder.update({
-          where: { id: reminder.id },
-          data: { deliveryStatus: 'cancelled', failureReason: outcome.reason },
-        });
-        channelsOffCancelled++;
-      }
-    }
-
-    const result: PersonalDeadlineSweepResult = {
-      overdueFlipped: overdue.count,
-      staleCancelled: stale.count,
-      channelsOffCancelled,
-      sent,
-      failed,
-    };
-    app.log.info({ personalDeadlineSweep: result });
-    return result;
-  });
+  const result: PersonalDeadlineSweepResult = {
+    overdueFlipped: overdue.count,
+    staleCancelled: stale.count,
+    channelsOffCancelled,
+    sent,
+    failed,
+  };
+  app.log.info({ personalDeadlineSweep: result });
+  return result;
 }
