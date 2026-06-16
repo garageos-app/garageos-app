@@ -1314,6 +1314,31 @@ export class SchedulerConstruct extends Construct {
       },
     });
 
+    // Personal deadline sweep: ogni giorno alle 06:00 UTC (~08:00 Europe/Rome,
+    // DST drift accettato). Porta a `overdue` le PersonalDeadline `open` con
+    // due_date < today(Rome) (BR-298) e invia i promemoria delle scadenze
+    // personali in arrivo (BR-292/295). Attivo solo se warmingEnabled = true;
+    // riutilizza il SchedulerRole esistente (nessun nuovo IAM).
+    // Payload: { "source": "personal-deadline-sweep" }.
+    // Schedule creato dal CDK al deploy automatico di main.
+    new scheduler.CfnSchedule(this, 'PersonalDeadlineSweepSchedule', {
+      name: 'garageos-personal-deadline-sweep',
+      groupName: 'default',
+      description: 'Daily sweep: open→overdue flip (BR-298) e reminder scadenze personali (BR-292/295)',
+      state: 'ENABLED',
+      scheduleExpression: 'cron(0 6 * * ? *)',
+      scheduleExpressionTimezone: 'UTC',
+      flexibleTimeWindow: { mode: 'OFF' },
+      target: {
+        arn: props.lambdaFunction.functionArn,
+        roleArn: this.schedulerRole.roleArn,
+        input: JSON.stringify({ source: 'personal-deadline-sweep' }),
+        retryPolicy: {
+          maximumRetryAttempts: 2,
+        },
+      },
+    });
+
     // Individual deadline schedules sono creati runtime dall'applicazione
     // tramite SchedulerClient SDK. Qui si prepara solo l'infrastruttura base.
   }

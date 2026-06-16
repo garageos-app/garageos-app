@@ -965,6 +965,7 @@ Alla creazione, un customer ha queste preferenze notifiche di default:
   "email": {
     "intervention_updates": true,
     "deadline_reminder": true,
+    "personal_deadline_reminder": true,
     "transfer_invitation": true,
     "dispute_response": true,
     "ownership_transfer": true,
@@ -973,6 +974,7 @@ Alla creazione, un customer ha queste preferenze notifiche di default:
   "push": {
     "intervention_updates": true,
     "deadline_reminder": true,
+    "personal_deadline_reminder": true,
     "transfer_invitation": true,
     "dispute_response": true
   }
@@ -982,6 +984,8 @@ Alla creazione, un customer ha queste preferenze notifiche di default:
 > **v1.3 (2026-05-08):** chiave `email.new_intervention` rinominata a `email.intervention_updates` (idem per `push`). Il toggle ora governa l'intero lifecycle dell'intervention (BR-040 create + BR-064 revise + BR-066 cancel) anziché la sola creazione. Migration data-only `20260508120000_rename_new_intervention_to_intervention_updates`.
 
 > **v1.4 (2026-05-22):** aggiunta chiave `email.ownership_transfer` (default `true`). Governa la notifica al cedente al completamento di un trasferimento officina-mediated (F-OFF-110 PR-2).
+
+> **v1.5 (2026-06-16):** aggiunta chiave `personal_deadline_reminder` sia in `email` che in `push` (default `true`). Governa i promemoria sulle scadenze personali del cliente, consegnati dallo sweep giornaliero F-CLI-306. Modificabile su entrambi i canali via F-CLI-005.
 
 Il customer può modificare queste preferenze via F-CLI-005.
 
@@ -1127,17 +1131,13 @@ Completare una scadenza ricorrente (`recurrence_months != null`) **non crea auto
 
 **Riferimento feature:** F-CLI-306
 
-### BR-297 — Cancellazione su cambio proprietà veicolo (PR2)
-
-> ⚠️ **Implementato in PR2** — non ancora attivo in PR1.
+### BR-297 — Cancellazione su cambio proprietà veicolo
 
 Quando un veicolo cambia proprietario (passaggio cliente F-CLI-401 o officina-mediato F-OFF-110), **tutte le `PersonalDeadline` `open` o `overdue` del precedente proprietario su quel veicolo passano a `cancelled`** e i loro reminder `pending` vengono marcati `cancelled`. Le scadenze già `completed` o `cancelled` restano invariate (storia immutabile).
 
 **Riferimento feature:** F-CLI-306
 
-### BR-298 — Transizione `open → overdue` (sweep giornaliero) (PR2)
-
-> ⚠️ **Implementato in PR2** — non ancora attivo in PR1.
+### BR-298 — Transizione `open → overdue` (sweep giornaliero)
 
 Lo sweep giornaliero porta a `overdue` ogni `PersonalDeadline` in stato `open` con `due_date < today(Rome)`. Lo stato è **persistito** (non derivato a runtime), così la lista e i filtri per `?status=overdue` restano coerenti senza calcolo extra. Le scadenze `overdue` restano visibili e modificabili finché il cliente non le completa o le elimina.
 
