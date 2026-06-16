@@ -451,7 +451,7 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 
 ---
 
-### 3.16 Attachments (F-OFF-305)
+### 3.17 Attachments (F-OFF-305)
 
 | Codice | HTTP | Trigger | Suggerimento client |
 | --- | --- | --- | --- |
@@ -476,7 +476,7 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 
 ---
 
-### 3.17 Tag PDF veicolo (F-OFF-104)
+### 3.18 Tag PDF veicolo (F-OFF-104)
 
 #### `vehicle.archived`
 
