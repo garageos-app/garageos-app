@@ -41,11 +41,18 @@ describe('validatePersonalDeadlineForm', () => {
     expect(validatePersonalDeadlineForm({ ...VALID, dueDate: '' }).dueDate).toBeDefined();
   });
 
-  it('rejects a past dueDate', () => {
+  it('rejects a past dueDate by default (create mode)', () => {
     const past = format(addDays(startOfToday(), -3), 'yyyy-MM-dd');
     expect(validatePersonalDeadlineForm({ ...VALID, dueDate: past }).dueDate).toBe(
       'La data non può essere nel passato',
     );
+  });
+
+  it('allows a past dueDate when allowPastDate is set (edit mode)', () => {
+    const past = format(addDays(startOfToday(), -3), 'yyyy-MM-dd');
+    expect(
+      validatePersonalDeadlineForm({ ...VALID, dueDate: past }, { allowPastDate: true }).dueDate,
+    ).toBeUndefined();
   });
 
   it('rejects a malformed dueDate', () => {
@@ -58,6 +65,24 @@ describe('validatePersonalDeadlineForm', () => {
     expect(
       validatePersonalDeadlineForm({ ...VALID, reminderLeadDays: [], reminderDailyTailDays: 0 })
         .form,
+    ).toBe('Scegli almeno un promemoria');
+  });
+
+  it('requires at least one notification channel (BR-292)', () => {
+    expect(
+      validatePersonalDeadlineForm({ ...VALID, notifyPush: false, notifyEmail: false }).form,
+    ).toBe('Attiva almeno un canale di notifica (push o email)');
+  });
+
+  it('lets the reminder error win when both reminder and channel are violated', () => {
+    expect(
+      validatePersonalDeadlineForm({
+        ...VALID,
+        reminderLeadDays: [],
+        reminderDailyTailDays: 0,
+        notifyPush: false,
+        notifyEmail: false,
+      }).form,
     ).toBe('Scegli almeno un promemoria');
   });
 

@@ -84,7 +84,7 @@ creazione, modifica, notifiche push+email, routing da tap, rinnovo guidato
 | # | Azione | Atteso | Esito |
 |---|---|---|---|
 | e1 | Tap sulla scadenza "Assicurazione" → detail | Schermata dettaglio aperta con tutti i campi | |
-| e2 | Tap "Modifica" | Form aperto in modalità edit; il picker veicolo è **read-only** (BR-291: il veicolo non è modificabile dopo la creazione) | |
+| e2 | Tap "Modifica" | Form aperto in modalità edit; il picker veicolo è di sola lettura in modifica (l'API non prevede riassegnazione del veicolo) | |
 | e3 | Cambiare data scadenza (es. spostare di un mese) e disabilitare il reminder a 30 giorni | Modifiche locali nel form | |
 | e4 | Salva | Modifica persistita; la scadenza si sposta nel gruppo urgency corretto nella lista | |
 | e5 | Riaprire il dettaglio | I valori aggiornati sono presenti | |

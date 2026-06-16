@@ -130,7 +130,7 @@ export function PersonalDeadlineForm({
       recurrenceMonths,
       notes,
     };
-    const v = validatePersonalDeadlineForm(input);
+    const v = validatePersonalDeadlineForm(input, { allowPastDate: mode === 'edit' });
     setErrors(v);
     if (Object.keys(v).length > 0) return;
 
@@ -179,7 +179,7 @@ export function PersonalDeadlineForm({
         </View>
       ) : null}
 
-      {/* 1. Veicolo */}
+      {/* 1. Vehicle */}
       <View style={styles.field}>
         <Text style={styles.label}>Veicolo</Text>
         {vehicles.isLoading ? (
@@ -216,7 +216,7 @@ export function PersonalDeadlineForm({
         {errors.vehicleId ? <Text style={styles.fieldError}>{errors.vehicleId}</Text> : null}
       </View>
 
-      {/* 2. Categoria */}
+      {/* 2. Category */}
       <View style={styles.field}>
         <Text style={styles.label}>Categoria</Text>
         <View style={styles.chipRow}>
@@ -245,7 +245,7 @@ export function PersonalDeadlineForm({
         </View>
       </View>
 
-      {/* 3. Etichetta (only for 'other') */}
+      {/* 3. Custom label (only for 'other') */}
       {category === 'other' ? (
         <View style={styles.field}>
           <Text style={styles.label}>Etichetta</Text>
@@ -262,7 +262,7 @@ export function PersonalDeadlineForm({
         </View>
       ) : null}
 
-      {/* 4. Scadenza */}
+      {/* 4. Due date */}
       <View style={styles.field}>
         <Text style={styles.label}>Scadenza</Text>
         <Pressable
@@ -289,7 +289,7 @@ export function PersonalDeadlineForm({
         {errors.dueDate ? <Text style={styles.fieldError}>{errors.dueDate}</Text> : null}
       </View>
 
-      {/* 5. Promemoria */}
+      {/* 5. Reminders */}
       <View style={styles.field}>
         <Text style={styles.label}>Promemoria</Text>
         <View style={styles.chipRow}>
@@ -312,7 +312,7 @@ export function PersonalDeadlineForm({
         </View>
       </View>
 
-      {/* 6. Coda giornaliera */}
+      {/* 6. Daily tail */}
       <View style={styles.field}>
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Poi ogni giorno negli ultimi giorni</Text>
@@ -352,7 +352,7 @@ export function PersonalDeadlineForm({
         ) : null}
       </View>
 
-      {/* 7. Canali */}
+      {/* 7. Channels */}
       <View style={styles.field}>
         <Text style={styles.label}>Canali</Text>
         <View style={styles.switchRow}>
@@ -375,7 +375,7 @@ export function PersonalDeadlineForm({
         </View>
       </View>
 
-      {/* 8. Ricorrenza */}
+      {/* 8. Recurrence */}
       <View style={styles.field}>
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Si ripete</Text>
@@ -415,7 +415,7 @@ export function PersonalDeadlineForm({
         ) : null}
       </View>
 
-      {/* 9. Note */}
+      {/* 9. Notes */}
       <View style={styles.field}>
         <Text style={styles.label}>Note</Text>
         <TextInput

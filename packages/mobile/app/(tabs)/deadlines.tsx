@@ -31,14 +31,28 @@ export default function DeadlinesScreen() {
     segmentParam === 'personal' ? 'personali' : 'officina',
   );
 
+  // Expo Router keeps the tab mounted, so a later deep-link (e.g. an officina
+  // deadline.reminder tap routing here with `highlight` but no segment param)
+  // must re-sync the segment. Keyed on the params only, so manual user toggles
+  // are not overridden between param changes.
+  useEffect(() => {
+    if (segmentParam === 'personal') {
+      setSegment('personali');
+    } else if (highlight) {
+      setSegment('officina');
+    }
+  }, [segmentParam, highlight]);
+
   return (
     <View style={styles.container}>
       <SegmentedControl options={SEGMENT_OPTIONS} value={segment} onChange={setSegment} />
-      {segment === 'officina' ? (
-        <OfficinaDeadlineList highlight={highlight} />
-      ) : (
-        <PersonalDeadlineList />
-      )}
+      <View style={styles.body}>
+        {segment === 'officina' ? (
+          <OfficinaDeadlineList highlight={highlight} />
+        ) : (
+          <PersonalDeadlineList />
+        )}
+      </View>
     </View>
   );
 }
@@ -122,4 +136,5 @@ function OfficinaDeadlineList({ highlight }: { highlight?: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  body: { flex: 1 },
 });

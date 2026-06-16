@@ -12,6 +12,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { PersonalDeadlineForm } from '@/components/PersonalDeadlineForm';
 import { LoadingState } from '@/components/LoadingState';
+import { ErrorState } from '@/components/ErrorState';
 import {
   useCreatePersonalDeadline,
   usePersonalDeadline,
@@ -80,6 +81,18 @@ export default function NewPersonalDeadlineScreen() {
 
   // Edit mode: gate render on the loaded detail.
   if (isEdit) {
+    if (detail.isError) {
+      return (
+        <>
+          <Stack.Screen options={{ headerShown: true, title: screenTitle }} />
+          <ErrorState
+            message={mapErrorToUserMessage(
+              detail.error instanceof ApiError ? detail.error.code : undefined,
+            )}
+          />
+        </>
+      );
+    }
     if (detail.isLoading || !detail.data) {
       return (
         <>
