@@ -943,7 +943,7 @@ Nessun body.
 | Status | Code | Scenario |
 |---|---|---|
 | 404 | `personal_deadline.not_found` | Scadenza inesistente o di un altro cliente |
-| 409 | `personal_deadline.not_open` | Scadenza non in stato `open` |
+| 409 | `personal_deadline.not_open` | Scadenza in stato terminale (`completed`/`cancelled`); `open`/`overdue` sono completabili (BR-298) |
 
 ---
 

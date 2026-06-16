@@ -430,7 +430,7 @@ Per fornire dati utili al client per gestire l'errore:
 | `personal_deadline.not_found` | 404 | info | Scadenza non trovata. | GET/PATCH/DELETE/POST .../complete con `id` inesistente o di un altro cliente (app-layer scoping) | F-CLI-306 |
 | `personal_deadline.custom_label_required` | 422 | info | Specifica un'etichetta per la categoria 'Altro'. | POST o PATCH con `category='other'` e `customLabel` assente o vuoto | F-CLI-306, BR-294 |
 | `personal_deadline.update.empty_body` | 422 | info | Specifica almeno un campo da aggiornare. | PATCH /v1/me/personal-deadlines/:id con body vuoto o senza campi edibili | F-CLI-306 |
-| `personal_deadline.not_open` | 409 | warning | La scadenza non è in stato aperto. | POST /v1/me/personal-deadlines/:id/complete su scadenza non in stato `open` (già completata, annullata o scaduta) | F-CLI-306 |
+| `personal_deadline.not_open` | 409 | warning | La scadenza è già completata o annullata. | POST /v1/me/personal-deadlines/:id/complete su scadenza in stato terminale (`completed`/`cancelled`); `open` e `overdue` sono completabili (BR-298) | F-CLI-306 |
 
 ### 3.16 Auth — Signup
 
