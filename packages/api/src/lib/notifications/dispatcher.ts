@@ -57,6 +57,10 @@ interface DispatchInput {
   // (back-compat for email-only callers and unit tests).
   app?: DispatcherAppLike;
   tx?: PrismaClient;
+  // Per-event channel mask AND-ed with the customer's global preference
+  // (BR-292). Absent => both channels enabled (every existing caller). The
+  // personal-deadline sweep passes the deadline's notifyEmail/notifyPush flags.
+  channels?: { email: boolean; push: boolean };
 }
 
 type EmailOutcome = Pick<DispatchResult, 'sent' | 'skipped' | 'error'>;

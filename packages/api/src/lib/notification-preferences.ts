@@ -12,6 +12,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   email: {
     intervention_updates: true,
     deadline_reminder: true,
+    personal_deadline_reminder: true,
     transfer_invitation: true,
     dispute_response: true,
     ownership_transfer: true,
@@ -20,6 +21,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   push: {
     intervention_updates: true,
     deadline_reminder: true,
+    personal_deadline_reminder: true,
     transfer_invitation: true,
     dispute_response: true,
     ownership_transfer: true,
