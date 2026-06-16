@@ -12,12 +12,14 @@ const TEST_IP = '10.20.40.9';
 const DEFAULTS = {
   intervention_updates: true,
   deadline_reminder: true,
+  personal_deadline_reminder: true,
   ownership_transfer: true,
   marketing: false,
 };
 const PUSH_DEFAULTS = {
   intervention_updates: true,
   deadline_reminder: true,
+  personal_deadline_reminder: true,
   ownership_transfer: true,
 };
 
@@ -193,5 +195,25 @@ describe('Customer notification preferences (F-CLI-005)', () => {
   it('PATCH with a non-boolean push value returns 400 (ZodError)', async () => {
     const { token } = await authCustomer({});
     expect((await patch(token, { push: { deadline_reminder: 'yes' } })).statusCode).toBe(400);
+  });
+
+  it('PATCH personal_deadline_reminder on email and GET reflects it (BR-297)', async () => {
+    const { token } = await authCustomer({});
+    const patchRes = await patch(token, { email: { personal_deadline_reminder: false } });
+    expect(patchRes.statusCode).toBe(200);
+    const getRes = await get(token);
+    expect(
+      (getRes.json() as { email: Record<string, boolean> }).email.personal_deadline_reminder,
+    ).toBe(false);
+  });
+
+  it('PATCH personal_deadline_reminder on push and GET reflects it (BR-297)', async () => {
+    const { token } = await authCustomer({});
+    const patchRes = await patch(token, { push: { personal_deadline_reminder: false } });
+    expect(patchRes.statusCode).toBe(200);
+    const getRes = await get(token);
+    expect(
+      (getRes.json() as { push: Record<string, boolean> }).push.personal_deadline_reminder,
+    ).toBe(false);
   });
 });

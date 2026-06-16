@@ -37,6 +37,7 @@ export type NotificationPreferences = typeof DEFAULT_NOTIFICATION_PREFERENCES;
 export const EDITABLE_EMAIL_KEYS = [
   'intervention_updates',
   'deadline_reminder',
+  'personal_deadline_reminder',
   'ownership_transfer',
   'marketing',
 ] as const;
@@ -50,6 +51,7 @@ export type EditableEmailKey = (typeof EDITABLE_EMAIL_KEYS)[number];
 export const EDITABLE_PUSH_KEYS = [
   'intervention_updates',
   'deadline_reminder',
+  'personal_deadline_reminder',
   'ownership_transfer',
 ] as const;
 

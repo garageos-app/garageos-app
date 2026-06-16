@@ -73,6 +73,21 @@ it('maps deadline.reminder and ownership.transferred', () => {
   expect(preferenceKeyForEvent(transfer)).toBe('ownership_transfer');
 });
 
+it('maps personal_deadline.reminder to personal_deadline_reminder (BR-297)', () => {
+  const event: NotificationEvent = {
+    type: 'personal_deadline.reminder',
+    personalDeadlineId: 'pd-1',
+    category: 'insurance',
+    customLabel: null,
+    dueDate: '2026-12-31',
+    vehiclePlate: 'AB123CD',
+    vehicleMakeModel: 'Fiat Panda',
+    kind: 'lead',
+    daysUntilDue: 7,
+  };
+  expect(preferenceKeyForEvent(event)).toBe('personal_deadline_reminder');
+});
+
 describe('preferenceKeyForEvent', () => {
   it('is a function', () => expect(typeof preferenceKeyForEvent).toBe('function'));
 });
