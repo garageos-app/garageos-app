@@ -933,6 +933,70 @@ model PushToken {
 
 ---
 
+### 2.4 `personal_deadlines` e `personal_deadline_reminders` — Scadenze personali cliente (F-CLI-306, BR-290..298)
+
+Due tabelle **customer-owned** aggiunte dalla migration `20260616120000_personal_deadlines`. Pattern sicurezza: RLS `USING(true)` (permissiva) + filtro `customer_id` app-layer su ogni query (lezione #154 — mai solo RLS).
+
+**Nuovi enum:**
+
+| Enum | Valori |
+|---|---|
+| `PersonalDeadlineCategory` | `insurance \| road_tax \| inspection \| service \| tires \| timing_belt \| other` |
+| `PersonalDeadlineStatus` | `open \| completed \| overdue \| cancelled` |
+| `PersonalDeadlineReminderKind` | `lead \| tail` |
+
+#### Tabella `personal_deadlines`
+
+| Campo | Tipo DB | Note |
+|---|---|---|
+| `id` | `UUID DEFAULT gen_random_uuid()` | PK |
+| `customer_id` | `UUID NOT NULL` | FK → `customers.id` ON DELETE CASCADE — chiave di scoping |
+| `vehicle_id` | `UUID NOT NULL` | FK → `vehicles.id` ON DELETE CASCADE — veicolo posseduto al momento della creazione (BR-290) |
+| `category` | `PersonalDeadlineCategory NOT NULL` | |
+| `custom_label` | `VARCHAR(80)` | Obbligatoria sse `category='other'`; ignorata altrimenti (BR-294) |
+| `due_date` | `DATE NOT NULL` | Componente orario ignorato |
+| `recurrence_months` | `SMALLINT` | Periodicità indicativa per rinnovo guidato; null = non ricorrente; range 1–120 |
+| `reminder_lead_days` | `INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]` | Anticipi scelti (es. `{30,7,0}`); `0` = giorno stesso; max 10 valori, range 0–365 (BR-293) |
+| `reminder_daily_tail_days` | `SMALLINT` | Coda giornaliera: notifica/giorno negli ultimi N giorni; null/0 = off; cap 30 (BR-293) |
+| `notify_push` | `BOOLEAN NOT NULL DEFAULT true` | Flag per-scadenza canale push (BR-292) |
+| `notify_email` | `BOOLEAN NOT NULL DEFAULT true` | Flag per-scadenza canale email (BR-292) |
+| `status` | `PersonalDeadlineStatus NOT NULL DEFAULT 'open'` | |
+| `notes` | `TEXT` | Max 500 char (validazione Zod) |
+| `completed_at` | `TIMESTAMPTZ` | |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Trigger `trg_personal_deadlines_updated_at` |
+
+**Indici:**
+
+- `idx_personal_deadlines_customer (customer_id, status, due_date)` — lista per urgenza con filtri status
+- `idx_personal_deadlines_vehicle (vehicle_id)` — cancellazione su transfer (BR-297, PR2)
+
+**RLS:** `personal_deadlines_access USING(true)` — permissiva; isolamento garantito interamente app-layer (`customer_id = $customerId` su ogni query).
+
+#### Tabella `personal_deadline_reminders`
+
+| Campo | Tipo DB | Note |
+|---|---|---|
+| `id` | `UUID DEFAULT gen_random_uuid()` | PK |
+| `personal_deadline_id` | `UUID NOT NULL` | FK → `personal_deadlines.id` ON DELETE CASCADE |
+| `scheduled_for` | `DATE NOT NULL` | Giorno in cui parte la notifica (08:00 Europe/Rome, BR-295) |
+| `kind` | `PersonalDeadlineReminderKind NOT NULL` | `lead \| tail` — determina il wording del template |
+| `delivery_status` | `NotificationDeliveryStatus NOT NULL DEFAULT 'pending'` | Riuso enum esistente: `pending \| sent \| failed \| cancelled` |
+| `sent_at` | `TIMESTAMPTZ` | |
+| `failure_reason` | `TEXT` | |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Nessun `updated_at` — la riga evolve via macchina a stati |
+
+**Indici:**
+
+- `idx_pdr_deadline (personal_deadline_id)` — join e delete reminder per scadenza
+- `idx_pdr_scheduled (scheduled_for, delivery_status)` — sweep giornaliero (PR2): `scheduledFor <= today AND deliveryStatus = 'pending'`
+
+**RLS:** `personal_deadline_reminders_access USING(true)` — permissiva; accesso reale mediato dai join con `personal_deadlines` (già filtrata per `customer_id`).
+
+**Grants:** `garageos_app` ottiene `SELECT, INSERT, UPDATE, DELETE` su entrambe le tabelle.
+
+---
+
 ## 3. Migration SQL aggiuntive (RLS, trigger)
 
 > **Nota di implementazione (PR 4b, 2026-04-24).** I tre file `sql/triggers.sql`, `sql/rls-policies.sql` e `sql/functions.sql` descritti qui di seguito sono stati **consolidati in un'unica migration Prisma** (`prisma/migrations/20260424100000_rls_triggers_checks/migration.sql`). Motivazione:

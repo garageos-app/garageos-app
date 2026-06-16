@@ -154,7 +154,7 @@ Queste decisioni vengono formalizzate qui perché impattano tutte le sezioni suc
 - ✅ **Recupero del codice**: (a) via email/SMS per utenti già registrati, (b) presso qualsiasi officina GarageOS autorizzata presentando il libretto di circolazione, (c) richiesta ad amministratore con verifica documentale come last resort
 - ✅ **Prevenzione duplicati**: quando un'officina censisce un veicolo, il sistema cerca per VIN (chiave forte) e per targa (chiave debole) e avvisa se esiste già un veicolo corrispondente, richiedendo conferma prima di creare un nuovo record
 - ✅ **Passaggio di proprietà**: il vecchio proprietario fornisce al nuovo il codice GarageOS, che inserisce sull'app per reclamare il veicolo. In alternativa, il nuovo proprietario può richiedere il codice a un'officina autorizzata presentando il libretto di circolazione (post-vendita). Il sistema mantiene lo storico officina, nasconde dati personali e interventi privati del precedente proprietario
-- ✅ **Scadenze/promemoria**: configurati dall'officina. v1 no scadenze auto-configurate dal sistema (revisione, bollo) — valutare per v2
+- ✅ **Scadenze/promemoria**: configurati dall'officina. v1 no scadenze auto-configurate dal sistema (revisione, bollo) — valutare per v2. **Aggiornamento (2026-06-16):** F-CLI-306 realizza la variante self-service: il cliente crea autonomamente le proprie scadenze con reminder configurabili (assicurazione, bollo, revisione, ecc.). Le scadenze ufficina (F-OFF-401) restano separate e non visibili al cliente. Vedi spec `docs/superpowers/specs/2026-06-16-personal-vehicle-deadlines-design.md`.
 - ✅ **Posizionamento: registro tecnico, non gestionale economico**. Il sistema non gestisce prezzi, preventivi, fatture o qualsiasi dato economico. Si concentra esclusivamente sullo storico tecnico degli interventi. Nessuna sovrapposizione con gestionali di officina esistenti
 - ✅ **Canali di notifica v1**: push (app mobile) + email. No SMS in v1
 - ✅ **Billing v1**: manuale (bonifico + fatturazione elettronica manuale) per la fase pilota. Stripe/self-service in v1.1
@@ -539,6 +539,7 @@ Ogni funzionalità è classificata secondo una delle seguenti priorità:
 | F-CLI-303 | Notifiche push nuovi interventi | Notifica quando un'officina registra un nuovo intervento su uno dei veicoli | 🟢 MUST |
 | F-CLI-304 | Audit accessi al veicolo | Sezione in-app dove il proprietario vede l'elenco degli accessi alla scheda del proprio veicolo (quale officina, quando). **Nessuna notifica push** per questi eventi: trasparenza passiva tramite audit log consultabile. Decisione motivata dalla volontà di evitare rumore di notifiche che porterebbe l'utente a disattivare tutte le push | 🟢 MUST |
 | F-CLI-305 | Centro notifiche in-app | Elenco di tutte le notifiche ricevute, filtrabili per tipo | 🟡 SHOULD |
+| F-CLI-306 | Scadenze personali | Il cliente crea e gestisce scadenze personali sui propri veicoli (assicurazione, bollo, revisione, ecc.) con reminder configurabili via push ed email, indipendenti dall'officina e privati (l'officina non le vede). Rinnovo guidato per scadenze ricorrenti. | 🟢 MUST |
 
 #### 3.3.5 Area Passaggio di proprietà
 

@@ -422,7 +422,17 @@ Per fornire dati utili al client per gestire l'errore:
 | `gdpr.export.in_progress` | 409 | info | Export già in corso | |
 | `gdpr.export.not_ready` | 404 | info | Export non ancora pronto | Job async in elaborazione |
 
-### 3.15 Auth — Signup
+### 3.15 Scadenze personali del cliente (F-CLI-306)
+
+| Code | HTTP | Severity | Titolo | Quando | BR |
+|---|---|---|---|---|---|
+| `personal_deadline.vehicle_not_owned` | 403 | warning | Non sei il proprietario di questo veicolo. | POST /v1/me/personal-deadlines — `vehicleId` inesistente o senza ownership attiva del caller | F-CLI-306, BR-290 |
+| `personal_deadline.not_found` | 404 | info | Scadenza non trovata. | GET/PATCH/DELETE/POST .../complete con `id` inesistente o di un altro cliente (app-layer scoping) | F-CLI-306 |
+| `personal_deadline.custom_label_required` | 422 | info | Specifica un'etichetta per la categoria 'Altro'. | POST o PATCH con `category='other'` e `customLabel` assente o vuoto | F-CLI-306, BR-294 |
+| `personal_deadline.update.empty_body` | 422 | info | Specifica almeno un campo da aggiornare. | PATCH /v1/me/personal-deadlines/:id con body vuoto o senza campi edibili | F-CLI-306 |
+| `personal_deadline.not_open` | 409 | warning | La scadenza è già completata o annullata. | POST /v1/me/personal-deadlines/:id/complete su scadenza in stato terminale (`completed`/`cancelled`); `open` e `overdue` sono completabili (BR-298) | F-CLI-306 |
+
+### 3.16 Auth — Signup
 
 ### `auth.signup.email_already_active` — HTTP 409
 Un account customer con questa email è già registrato e ha un Cognito user collegato. Il client deve mostrare "Effettua il login" (link a flow Cognito InitiateAuth USER_SRP_AUTH).
@@ -441,7 +451,7 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 
 ---
 
-### 3.16 Attachments (F-OFF-305)
+### 3.17 Attachments (F-OFF-305)
 
 | Codice | HTTP | Trigger | Suggerimento client |
 | --- | --- | --- | --- |
@@ -466,7 +476,7 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 
 ---
 
-### 3.17 Tag PDF veicolo (F-OFF-104)
+### 3.18 Tag PDF veicolo (F-OFF-104)
 
 #### `vehicle.archived`
 

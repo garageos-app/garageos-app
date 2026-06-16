@@ -12,6 +12,8 @@ import { pgAdmin } from './setup.js';
 // package minus intervention_types re-seeding (api tests so far do not
 // need those rows).
 const TABLES_TO_WIPE = [
+  'personal_deadline_reminders',
+  'personal_deadlines',
   'deadline_notifications',
   'deadlines',
   'intervention_disputes',

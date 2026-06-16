@@ -742,6 +742,211 @@ Restituisce un singolo intervento officina e il **thread delle contestazioni del
 
 ---
 
+### 2.4d Scadenze personali — `/v1/me/personal-deadlines` (F-CLI-306)
+
+**Feature:** F-CLI-306 · **Auth:** Customer (pool `clienti`) · **BR:** BR-290..BR-296
+
+Sei endpoint per la gestione delle scadenze personali del cliente sui propri veicoli (assicurazione, bollo, revisione, ecc.). La superficie è **interamente privata**: nessun endpoint officina espone questi dati (BR-291). Sicurezza app-layer: RLS `USING(true)` + filtro `customerId` su ogni query (lezione #154 — mai solo RLS).
+
+---
+
+#### `POST /v1/me/personal-deadlines` — Crea scadenza
+
+Crea una nuova scadenza sul veicolo indicato e materializza le righe reminder. BR-290: il caller deve essere proprietario attivo del veicolo.
+
+**Request:**
+
+```http
+POST /v1/me/personal-deadlines
+Content-Type: application/json
+Authorization: Bearer <customer_jwt>
+
+{
+  "vehicleId": "01HKXN5...",
+  "category": "insurance",
+  "dueDate": "2027-03-15",
+  "reminderLeadDays": [30, 7, 0],
+  "notifyPush": true,
+  "notifyEmail": true
+}
+```
+
+Campi opzionali: `customLabel` (stringa, obbligatoria sse `category='other'`, max 80 char, BR-294), `recurrenceMonths` (int 1–120), `reminderDailyTailDays` (int 0–30, BR-293), `notes` (max 500 char).
+
+**Response `201 Created`:**
+
+```json
+{
+  "id": "uuid",
+  "vehicleId": "uuid",
+  "vehicle": { "plate": "AB123CD", "make": "Fiat", "model": "500" },
+  "category": "insurance",
+  "customLabel": null,
+  "dueDate": "2027-03-15",
+  "recurrenceMonths": null,
+  "reminderLeadDays": [30, 7, 0],
+  "reminderDailyTailDays": null,
+  "notifyPush": true,
+  "notifyEmail": true,
+  "status": "open",
+  "notes": null,
+  "completedAt": null,
+  "createdAt": "2026-06-16T10:00:00.000Z",
+  "updatedAt": "2026-06-16T10:00:00.000Z"
+}
+```
+
+**Errori:**
+
+| Status | Code | Scenario |
+|---|---|---|
+| 403 | `personal_deadline.vehicle_not_owned` | `vehicleId` non di proprietà del caller o inesistente (BR-290) |
+| 422 | `personal_deadline.custom_label_required` | `category='other'` senza `customLabel` (BR-294) |
+
+---
+
+#### `GET /v1/me/personal-deadlines` — Lista scadenze
+
+Lista le scadenze del caller, ordinate per `dueDate` ascendente. Nessuna paginazione (volume atteso basso per cliente).
+
+**Request:**
+
+```http
+GET /v1/me/personal-deadlines?status=open&vehicleId=01HKXN5...
+Authorization: Bearer <customer_jwt>
+```
+
+Query opzionali: `status` (`open | completed | overdue | cancelled`), `vehicleId` (UUID).
+
+**Response `200 OK`:**
+
+```json
+{
+  "data": [
+    { /* PersonalDeadlineDto */ }
+  ]
+}
+```
+
+---
+
+#### `GET /v1/me/personal-deadlines/:id` — Dettaglio scadenza
+
+```http
+GET /v1/me/personal-deadlines/01HKXN5...
+Authorization: Bearer <customer_jwt>
+```
+
+**Response `200 OK`:**
+
+```json
+{
+  "personalDeadline": { /* PersonalDeadlineDto */ }
+}
+```
+
+**Errori:** `404 personal_deadline.not_found` (inesistente o di un altro cliente — non rivela l'esistenza).
+
+---
+
+#### `PATCH /v1/me/personal-deadlines/:id` — Modifica scadenza
+
+Aggiornamento parziale. Se cambia `dueDate`, `reminderLeadDays` o `reminderDailyTailDays`, i reminder `pending` vengono rigenerati (i `sent`/`failed`/`cancelled` restano intatti — append-only).
+
+**Request (tutti i campi opzionali):**
+
+```http
+PATCH /v1/me/personal-deadlines/01HKXN5...
+Content-Type: application/json
+Authorization: Bearer <customer_jwt>
+
+{
+  "dueDate": "2027-04-01",
+  "reminderLeadDays": [14, 0]
+}
+```
+
+Campi modificabili: `category`, `customLabel`, `dueDate`, `recurrenceMonths`, `reminderLeadDays`, `reminderDailyTailDays`, `notifyPush`, `notifyEmail`, `notes`.
+
+**Response `200 OK`:**
+
+```json
+{
+  "personalDeadline": { /* PersonalDeadlineDto aggiornato */ }
+}
+```
+
+**Errori:**
+
+| Status | Code | Scenario |
+|---|---|---|
+| 404 | `personal_deadline.not_found` | Scadenza inesistente o di un altro cliente |
+| 422 | `personal_deadline.update.empty_body` | Body vuoto o senza campi edibili |
+| 422 | `personal_deadline.custom_label_required` | `category='other'` effettivo (body + DB) senza `customLabel` (BR-294) |
+
+---
+
+#### `DELETE /v1/me/personal-deadlines/:id` — Elimina scadenza
+
+Eliminazione hard. La cascade DB rimuove anche le righe `personal_deadline_reminders`.
+
+```http
+DELETE /v1/me/personal-deadlines/01HKXN5...
+Authorization: Bearer <customer_jwt>
+```
+
+**Response:** `204 No Content`
+
+**Errori:** `404 personal_deadline.not_found`
+
+---
+
+#### `POST /v1/me/personal-deadlines/:id/complete` — Completa scadenza
+
+Porta la scadenza da `open` a `completed` e cancella i reminder `pending`. Se la scadenza è ricorrente (`recurrenceMonths != null`), la risposta include `renewalSuggestion` con i dati precompilati per la prossima scadenza (BR-296 — nessuna auto-creazione; il cliente conferma nel form).
+
+```http
+POST /v1/me/personal-deadlines/01HKXN5.../complete
+Authorization: Bearer <customer_jwt>
+```
+
+Nessun body.
+
+**Response `200 OK` (scadenza non ricorrente):**
+
+```json
+{
+  "personalDeadline": { /* PersonalDeadlineDto con status='completed' */ }
+}
+```
+
+**Response `200 OK` (scadenza ricorrente):**
+
+```json
+{
+  "personalDeadline": { /* PersonalDeadlineDto con status='completed' */ },
+  "renewalSuggestion": {
+    "suggestedDueDate": "2028-03-15",
+    "category": "insurance",
+    "recurrenceMonths": 12,
+    "reminderLeadDays": [30, 7, 0],
+    "notifyPush": true,
+    "notifyEmail": true
+  }
+}
+```
+
+`renewalSuggestion` può includere `customLabel` (se presente nella scadenza originale) e `reminderDailyTailDays` (se valorizzato). Il campo `suggestedDueDate` è calcolato come `dueDate + recurrenceMonths` con aritmetica UTC sul calendario.
+
+**Errori:**
+
+| Status | Code | Scenario |
+|---|---|---|
+| 404 | `personal_deadline.not_found` | Scadenza inesistente o di un altro cliente |
+| 409 | `personal_deadline.not_open` | Scadenza in stato terminale (`completed`/`cancelled`); `open`/`overdue` sono completabili (BR-298) |
+
+---
+
 ### 2.5 `GET /vehicles/:id/timeline` — Storico interventi veicolo
 
 **Feature:** F-OFF-105, F-CLI-201, F-CLI-205
@@ -2606,6 +2811,12 @@ Errori: `401`, `404 me.vehicle.not_found`, `429`, `500`. Nessun codice
 | POST | `/deadlines/:id/complete` | F-OFF-405 | Tenant User | Marca come completata |
 | GET | `/tenants/me/deadlines/upcoming` | F-OFF-402, F-OFF-404 | Tenant User | Scadenze in arrivo |
 | GET | `/me/deadlines` | F-CLI-301 | Customer | Scadenze sui miei veicoli |
+| POST | `/me/personal-deadlines` | F-CLI-306 | Customer | **[DETTAGLIATO §2.4d]** Crea scadenza personale su veicolo posseduto |
+| GET | `/me/personal-deadlines` | F-CLI-306 | Customer | **[DETTAGLIATO §2.4d]** Lista scadenze personali (filtri `?status=`, `?vehicleId=`) |
+| GET | `/me/personal-deadlines/:id` | F-CLI-306 | Customer | **[DETTAGLIATO §2.4d]** Dettaglio scadenza personale |
+| PATCH | `/me/personal-deadlines/:id` | F-CLI-306 | Customer | **[DETTAGLIATO §2.4d]** Modifica scadenza personale |
+| DELETE | `/me/personal-deadlines/:id` | F-CLI-306 | Customer | **[DETTAGLIATO §2.4d]** Elimina scadenza personale |
+| POST | `/me/personal-deadlines/:id/complete` | F-CLI-306 | Customer | **[DETTAGLIATO §2.4d]** Completa scadenza; risposta include `renewalSuggestion` se ricorrente (BR-296) |
 
 ### 3.9 Attachments
 

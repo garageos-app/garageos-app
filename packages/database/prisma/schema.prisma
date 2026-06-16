@@ -160,6 +160,28 @@ enum NotificationDeliveryStatus {
   cancelled
 }
 
+enum PersonalDeadlineCategory {
+  insurance
+  road_tax
+  inspection
+  service
+  tires
+  timing_belt
+  other
+}
+
+enum PersonalDeadlineStatus {
+  open
+  completed
+  overdue
+  cancelled
+}
+
+enum PersonalDeadlineReminderKind {
+  lead
+  tail
+}
+
 enum AttachmentOwnerType {
   intervention
   private_intervention
@@ -331,6 +353,7 @@ model Customer {
   transfersTo         VehicleTransfer[] @relation("TransferTo")
   createdVehicles     Vehicle[] @relation("CreatedByCustomer")
   emailVerifications  EmailVerification[]
+  personalDeadlines   PersonalDeadline[]
 
   @@index([cognitoSub], map: "idx_customers_cognito_sub")
   @@index([email], map: "idx_customers_email")
@@ -413,6 +436,7 @@ model Vehicle {
   accessLogs          AccessLog[]
   invitations         Invitation[]
   tagPrints           VehicleTagPrint[]
+  personalDeadlines   PersonalDeadline[]
 
   @@index([plate], map: "idx_vehicles_plate")
   @@index([status], map: "idx_vehicles_status")
@@ -676,6 +700,54 @@ model DeadlineNotification {
   @@index([deadlineId], map: "idx_dln_deadline")
   @@index([scheduledFor], map: "idx_dln_scheduled_pending")
   @@map("deadline_notifications")
+}
+
+// ---------------------------------------------------
+// PERSONAL DEADLINES (B2C, customer-owned) — F-CLI-306
+// ---------------------------------------------------
+
+model PersonalDeadline {
+  id                    String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId            String                   @map("customer_id") @db.Uuid
+  vehicleId             String                   @map("vehicle_id") @db.Uuid
+  category              PersonalDeadlineCategory
+  customLabel           String?                  @map("custom_label") @db.VarChar(80)
+  dueDate               DateTime                 @map("due_date") @db.Date
+  recurrenceMonths      Int?                     @map("recurrence_months") @db.SmallInt
+  reminderLeadDays      Int[]                    @default([]) @map("reminder_lead_days")
+  reminderDailyTailDays Int?                     @map("reminder_daily_tail_days") @db.SmallInt
+  notifyPush            Boolean                  @default(true) @map("notify_push")
+  notifyEmail           Boolean                  @default(true) @map("notify_email")
+  status                PersonalDeadlineStatus   @default(open)
+  notes                 String?                  @db.Text
+  completedAt           DateTime?                @map("completed_at") @db.Timestamptz
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+
+  customer  Customer                   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle                    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  reminders PersonalDeadlineReminder[]
+
+  @@index([customerId, status, dueDate], map: "idx_personal_deadlines_customer")
+  @@index([vehicleId], map: "idx_personal_deadlines_vehicle")
+  @@map("personal_deadlines")
+}
+
+model PersonalDeadlineReminder {
+  id                 String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  personalDeadlineId String                      @map("personal_deadline_id") @db.Uuid
+  scheduledFor       DateTime                    @map("scheduled_for") @db.Date
+  kind               PersonalDeadlineReminderKind
+  deliveryStatus     NotificationDeliveryStatus  @default(pending) @map("delivery_status")
+  sentAt             DateTime?                   @map("sent_at") @db.Timestamptz
+  failureReason      String?                     @map("failure_reason") @db.Text
+  createdAt          DateTime                    @default(now()) @map("created_at") @db.Timestamptz
+
+  personalDeadline PersonalDeadline @relation(fields: [personalDeadlineId], references: [id], onDelete: Cascade)
+
+  @@index([personalDeadlineId], map: "idx_pdr_deadline")
+  @@index([scheduledFor, deliveryStatus], map: "idx_pdr_scheduled")
+  @@map("personal_deadline_reminders")
 }
 
 // ---------------------------------------------------
