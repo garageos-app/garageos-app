@@ -3,6 +3,7 @@ import {
   computeReminderSchedule,
   filterFutureSchedules,
   buildPendingSchedules,
+  romeTodayDateOnly,
 } from '../../../../src/lib/deadlines/compute-reminders.js';
 
 describe('computeReminderSchedule', () => {
@@ -31,6 +32,30 @@ describe('computeReminderSchedule', () => {
     const result = computeReminderSchedule(new Date('2026-04-15T00:00:00Z'));
     expect(result.tMinus30.toISOString()).toBe('2026-03-16T07:00:00.000Z');
     expect(result.tZero.toISOString()).toBe('2026-04-15T06:00:00.000Z');
+  });
+});
+
+describe('romeTodayDateOnly', () => {
+  it('returns the Rome calendar day as UTC midnight (winter, just after Rome midnight)', () => {
+    // 2026-01-15 00:30 Rome (CET = UTC+1) == 2026-01-14 23:30Z. The Rome
+    // calendar day is the 15th, so the result must be 2026-01-15T00:00:00Z.
+    const result = romeTodayDateOnly(new Date('2026-01-14T23:30:00Z'));
+    expect(result.toISOString()).toBe('2026-01-15T00:00:00.000Z');
+  });
+
+  it('returns the Rome calendar day as UTC midnight (summer, before Rome midnight)', () => {
+    // 2026-07-15 23:30 Rome (CEST = UTC+2) == 2026-07-15 21:30Z. Rome day is
+    // still the 15th -> 2026-07-15T00:00:00Z.
+    const result = romeTodayDateOnly(new Date('2026-07-15T21:30:00Z'));
+    expect(result.toISOString()).toBe('2026-07-15T00:00:00.000Z');
+  });
+
+  it('always anchors at exact UTC midnight (time component is zeroed)', () => {
+    const result = romeTodayDateOnly(new Date('2026-03-10T13:47:11Z'));
+    expect(result.getUTCHours()).toBe(0);
+    expect(result.getUTCMinutes()).toBe(0);
+    expect(result.getUTCSeconds()).toBe(0);
+    expect(result.getUTCMilliseconds()).toBe(0);
   });
 });
 

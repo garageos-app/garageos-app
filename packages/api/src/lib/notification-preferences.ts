@@ -12,6 +12,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   email: {
     intervention_updates: true,
     deadline_reminder: true,
+    personal_deadline_reminder: true,
     transfer_invitation: true,
     dispute_response: true,
     ownership_transfer: true,
@@ -20,6 +21,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   push: {
     intervention_updates: true,
     deadline_reminder: true,
+    personal_deadline_reminder: true,
     transfer_invitation: true,
     dispute_response: true,
     ownership_transfer: true,
@@ -35,6 +37,7 @@ export type NotificationPreferences = typeof DEFAULT_NOTIFICATION_PREFERENCES;
 export const EDITABLE_EMAIL_KEYS = [
   'intervention_updates',
   'deadline_reminder',
+  'personal_deadline_reminder',
   'ownership_transfer',
   'marketing',
 ] as const;
@@ -48,6 +51,7 @@ export type EditableEmailKey = (typeof EDITABLE_EMAIL_KEYS)[number];
 export const EDITABLE_PUSH_KEYS = [
   'intervention_updates',
   'deadline_reminder',
+  'personal_deadline_reminder',
   'ownership_transfer',
 ] as const;
 

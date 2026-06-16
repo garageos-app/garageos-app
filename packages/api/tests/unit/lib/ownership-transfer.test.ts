@@ -251,6 +251,16 @@ function makeStub() {
         return Promise.resolve(data);
       }),
     },
+    // BR-297: performOwnershipTransfer now cancels the previous owner's active
+    // personal deadlines inside the same tx. Stub the two consumed delegates;
+    // default to "no active deadlines" (these tests don't seed any).
+    personalDeadline: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    personalDeadlineReminder: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
     tenant: {
       findUniqueOrThrow: vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
         const t = state.tenants.get(where.id);

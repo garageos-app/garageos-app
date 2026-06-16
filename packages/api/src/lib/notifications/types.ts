@@ -2,7 +2,7 @@
 // extend with 'dispute.response'. Each variant carries the data
 // templates need — keeping the dispatcher pure (no DB I/O).
 
-import type { Prisma } from '@garageos/database';
+import type { PersonalDeadlineCategory, Prisma } from '@garageos/database';
 
 export interface InterventionForEmail {
   id: string;
@@ -86,11 +86,23 @@ export type NotificationEvent =
       tenant: TenantForEmail;
       transferReason: TransferReason;
       transferredAt: string; // ISO 8601
+    }
+  | {
+      type: 'personal_deadline.reminder';
+      personalDeadlineId: string;
+      category: PersonalDeadlineCategory;
+      customLabel: string | null;
+      dueDate: string; // bare YYYY-MM-DD
+      vehiclePlate: string;
+      vehicleMakeModel: string; // `${make} ${model}`
+      kind: 'lead' | 'tail';
+      daysUntilDue: number; // dueDate − today(Rome); may be 0 or negative
     };
 
 export type EmailEnabledKey =
   | 'intervention_updates'
   | 'deadline_reminder'
+  | 'personal_deadline_reminder'
   | 'transfer_invitation'
   | 'dispute_response'
   | 'ownership_transfer';
@@ -101,6 +113,7 @@ export type EmailEnabledKey =
 export type NotificationEventPrefKey =
   | 'intervention_updates'
   | 'deadline_reminder'
+  | 'personal_deadline_reminder'
   | 'ownership_transfer';
 
 export interface CustomerForNotification {
@@ -117,7 +130,7 @@ export interface CustomerForNotification {
 export interface PushDispatchResult {
   attempted: number; // active, valid tokens we tried
   sent: number; // tickets with status 'ok'
-  skipped?: 'pref-off' | 'no-token';
+  skipped?: 'pref-off' | 'no-token' | 'channel-off';
   deactivated: number; // tokens marked active=false (BR-254)
   appInstalledCleared: boolean; // true when the last active token died -> app_installed=false
   error?: string; // channel-level send failure (whole batch)
@@ -126,7 +139,7 @@ export interface PushDispatchResult {
 export interface DispatchResult {
   // EMAIL outcome — semantics unchanged (scheduler derives delivery_status).
   sent: boolean;
-  skipped?: 'pref-off' | 'no-recipient' | 'invalid-email';
+  skipped?: 'pref-off' | 'no-recipient' | 'invalid-email' | 'channel-off';
   error?: string;
   // PUSH outcome — additive, best-effort, logging-only. Present only when a
   // DB context (tx or app) was supplied to dispatchNotification.

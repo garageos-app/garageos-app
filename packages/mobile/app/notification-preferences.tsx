@@ -32,6 +32,7 @@ const LABELS: Record<EditableEmailKey, string> = {
   deadline_reminder: 'Promemoria scadenze',
   ownership_transfer: 'Trasferimenti di proprietà',
   marketing: 'Novità e promozioni',
+  personal_deadline_reminder: 'Scadenze personali',
 };
 
 // Italian labels for the editable push events. Order follows EDITABLE_PUSH_KEYS.
@@ -39,6 +40,7 @@ const PUSH_LABELS: Record<EditablePushKey, string> = {
   intervention_updates: 'Aggiornamenti interventi',
   deadline_reminder: 'Promemoria scadenze',
   ownership_transfer: 'Trasferimenti di proprietà',
+  personal_deadline_reminder: 'Scadenze personali',
 };
 
 export default function NotificationPreferencesScreen() {

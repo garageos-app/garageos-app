@@ -445,6 +445,15 @@ function makeTransferStub(options: MakeTransferStubOptions = {}) {
         return Promise.resolve(t);
       }),
     },
+    // BR-297: performOwnershipTransfer cancels the previous owner's active
+    // personal deadlines inside the same tx. No deadlines seeded here.
+    personalDeadline: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    personalDeadlineReminder: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
   };
 
   // prisma mock for the outer app.prisma calls:

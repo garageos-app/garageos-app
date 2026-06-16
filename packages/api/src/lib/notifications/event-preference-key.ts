@@ -12,6 +12,8 @@ export function preferenceKeyForEvent(event: NotificationEvent): NotificationEve
       return 'intervention_updates';
     case 'deadline.reminder':
       return 'deadline_reminder';
+    case 'personal_deadline.reminder':
+      return 'personal_deadline_reminder';
     case 'ownership.transferred':
       return 'ownership_transfer';
   }

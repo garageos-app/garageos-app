@@ -30,6 +30,11 @@ import {
   renderOwnershipTransferredHtml,
   renderOwnershipTransferredText,
 } from './templates/ownership-transferred.js';
+import {
+  renderPersonalDeadlineReminderHtml,
+  renderPersonalDeadlineReminderSubject,
+  renderPersonalDeadlineReminderText,
+} from './templates/personal-deadline-reminder.js';
 import type {
   CustomerForNotification,
   DispatchResult,
@@ -57,6 +62,10 @@ interface DispatchInput {
   // (back-compat for email-only callers and unit tests).
   app?: DispatcherAppLike;
   tx?: PrismaClient;
+  // Per-event channel mask AND-ed with the customer's global preference
+  // (BR-292). Absent => both channels enabled (every existing caller). The
+  // personal-deadline sweep passes the deadline's notifyEmail/notifyPush flags.
+  channels?: { email: boolean; push: boolean };
 }
 
 type EmailOutcome = Pick<DispatchResult, 'sent' | 'skipped' | 'error'>;
@@ -68,7 +77,13 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
   const { event, recipient, logger, app, tx } = input;
   const prefKey = preferenceKeyForEvent(event);
 
-  const email = await dispatchEmail({ event, recipient, logger, prefKey });
+  const email = await dispatchEmail({
+    event,
+    recipient,
+    logger,
+    prefKey,
+    ...(input.channels !== undefined && { channels: input.channels }),
+  });
 
   // Push runs only when a DB context is available.
   const run: AdminRunner | null = tx
@@ -80,7 +95,13 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
   let push: PushDispatchResult | undefined;
   if (run) {
     try {
-      push = await dispatchPush({ event, recipient, run, logger });
+      push = await dispatchPush({
+        event,
+        recipient,
+        run,
+        logger,
+        ...(input.channels !== undefined && { channels: input.channels }),
+      });
     } catch (err) {
       // dispatchPush is best-effort and should not throw, but the contract is
       // enforced here too so a push failure never breaks the email result.
@@ -100,8 +121,23 @@ async function dispatchEmail(args: {
   recipient: CustomerForNotification;
   logger: FastifyBaseLogger;
   prefKey: ReturnType<typeof preferenceKeyForEvent>;
+  channels?: { email: boolean; push: boolean };
 }): Promise<EmailOutcome> {
   const { event, recipient, logger, prefKey } = args;
+
+  // BR-292: per-event channel mask AND-ed with the customer's global preference.
+  // Absent channels => email enabled (every existing caller unaffected).
+  if (args.channels && !args.channels.email) {
+    logger.info({
+      notification: {
+        event: event.type,
+        recipientId: recipient.id,
+        result: 'skipped',
+        reason: 'channel-off',
+      },
+    });
+    return { sent: false, skipped: 'channel-off' };
+  }
 
   if (!isEmailEnabled(recipient, prefKey)) {
     logger.info({
@@ -186,6 +222,11 @@ async function dispatchEmail(args: {
         transferReason: event.transferReason,
         transferredAt: event.transferredAt,
       });
+      break;
+    case 'personal_deadline.reminder':
+      subject = renderPersonalDeadlineReminderSubject(event);
+      html = renderPersonalDeadlineReminderHtml({ recipient, event });
+      text = renderPersonalDeadlineReminderText({ recipient, event });
       break;
   }
 

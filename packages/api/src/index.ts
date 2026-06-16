@@ -1,6 +1,7 @@
 import { withWarmingGuard } from './lambda-warming.js';
 import { withSchedulerGuard } from './lambda-scheduler.js';
 import { withTransferExpiryGuard } from './lambda-transfer-expiry.js';
+import { withPersonalDeadlineSweepGuard } from './lambda-personal-deadline-sweep.js';
 import { loadSecretsIntoEnv } from './config/secrets.js';
 import {
   processSchedulerInvocation,
@@ -8,6 +9,7 @@ import {
   type SchedulerInvocationResult,
 } from './lib/deadlines/scheduler-invocation.js';
 import { processTransferExpiry } from './lib/transfers/expire-transfers.js';
+import { processPersonalDeadlineSweep } from './lib/personal-deadlines/sweep.js';
 
 // Step 1 of cold-start boot: hydrate process.env from Secrets Manager
 // (APP_SECRETS_ARN is set by CDK in the Lambda env). No-op outside
@@ -30,10 +32,11 @@ const app = await buildServer();
 // readiness internally on the first invocation.
 //
 // Wrapping order (outermost → innermost):
-//   withWarmingGuard        — short-circuit {source:'warming'} events (G2)
-//   withTransferExpiryGuard — short-circuit {source:'transfer-expiry'} events (F-CLI-401 PR3)
-//   withSchedulerGuard      — short-circuit EventBridge Scheduler events (H3)
-//   awsLambdaFastify        — real Fastify routing for APIGW v2 requests
+//   withWarmingGuard                — short-circuit {source:'warming'} events (G2)
+//   withTransferExpiryGuard         — short-circuit {source:'transfer-expiry'} events (F-CLI-401 PR3)
+//   withPersonalDeadlineSweepGuard  — short-circuit {source:'personal-deadline-sweep'} events (F-CLI-306 PR2)
+//   withSchedulerGuard              — short-circuit EventBridge Scheduler events (H3)
+//   awsLambdaFastify                — real Fastify routing for APIGW v2 requests
 const schedulerHandler = (detail: SchedulerInvocationDetail): Promise<SchedulerInvocationResult> =>
   processSchedulerInvocation({
     app: { withContext: app.withContext.bind(app), log: app.log },
@@ -53,9 +56,17 @@ const transferExpiryHandler = (): ReturnType<typeof processTransferExpiry> =>
     app: { withContext: app.withContext.bind(app), log: app.log },
   });
 
+const personalDeadlineSweepHandler = (): ReturnType<typeof processPersonalDeadlineSweep> =>
+  processPersonalDeadlineSweep({
+    app: { withContext: app.withContext.bind(app), log: app.log },
+  });
+
 const innerHandler = withWarmingGuard(
   withTransferExpiryGuard(
-    withSchedulerGuard(schedulerHandler)(awsLambdaFastify(app)),
+    withPersonalDeadlineSweepGuard(
+      withSchedulerGuard(schedulerHandler)(awsLambdaFastify(app)),
+      personalDeadlineSweepHandler,
+    ),
     transferExpiryHandler,
   ),
   warmup,

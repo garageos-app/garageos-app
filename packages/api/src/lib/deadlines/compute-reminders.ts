@@ -104,6 +104,32 @@ export function romeDayAtHourUtc(
 }
 
 /**
+ * Compute the Europe/Rome calendar date of `now` as a UTC-midnight Date.
+ *
+ * Prisma returns `@db.Date` columns as JS Dates at UTC midnight of the
+ * calendar day, so a sweep that compares `dueDate`/`scheduledFor` against
+ * "today" must anchor today at UTC midnight of the *Rome* calendar day —
+ * not at the host's local midnight or at UTC's. This is DST-agnostic: only
+ * the Y-M-D in Rome matters, the result is always 00:00:00.000Z of that day.
+ *
+ * @param now - Reference instant (defaults to `new Date()`).
+ * @returns A Date at UTC midnight of the Europe/Rome calendar day of `now`.
+ */
+export function romeTodayDateOnly(now: Date = new Date()): Date {
+  const dateFmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ROME,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = Object.fromEntries(dateFmt.formatToParts(now).map((p) => [p.type, p.value]));
+  const year = parseInt(parts['year']!, 10);
+  const month1 = parseInt(parts['month']!, 10);
+  const day = parseInt(parts['day']!, 10);
+  return new Date(Date.UTC(year, month1 - 1, day));
+}
+
+/**
  * Given a deadline due date, compute the three UTC instants at which
  * reminder notifications should fire: T-30 days, T-7 days, and T-0.
  *

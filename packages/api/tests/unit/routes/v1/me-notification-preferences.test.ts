@@ -77,12 +77,14 @@ describe('GET /v1/me/notification-preferences', () => {
       email: {
         intervention_updates: true,
         deadline_reminder: true,
+        personal_deadline_reminder: true,
         ownership_transfer: true,
         marketing: false,
       },
       push: {
         intervention_updates: true,
         deadline_reminder: true,
+        personal_deadline_reminder: true,
         ownership_transfer: true,
       },
     });
@@ -228,6 +230,38 @@ describe('PATCH /v1/me/notification-preferences', () => {
       payload: { push: { marketing: true } },
     });
     expect(res.statusCode).toBe(422);
+  });
+
+  it('accepts personal_deadline_reminder on email channel (new editable key)', async () => {
+    const findUniqueOrThrow = vi.fn().mockResolvedValue({ notificationPreferences: {} });
+    const update = vi.fn().mockResolvedValue({ notificationPreferences: {} });
+    const withContext = vi.fn(async (_ctx, fn) =>
+      fn(buildFakePrisma({ findUniqueOrThrow, update })),
+    );
+    app = await buildApp({ withContext });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/me/notification-preferences',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { email: { personal_deadline_reminder: false } },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('accepts personal_deadline_reminder on push channel (new editable key)', async () => {
+    const findUniqueOrThrow = vi.fn().mockResolvedValue({ notificationPreferences: {} });
+    const update = vi.fn().mockResolvedValue({ notificationPreferences: {} });
+    const withContext = vi.fn(async (_ctx, fn) =>
+      fn(buildFakePrisma({ findUniqueOrThrow, update })),
+    );
+    app = await buildApp({ withContext });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/me/notification-preferences',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: { push: { personal_deadline_reminder: false } },
+    });
+    expect(res.statusCode).toBe(200);
   });
 
   it('rejects {email:{},push:{}} with 422', async () => {

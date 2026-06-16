@@ -9,6 +9,16 @@ type PrismaTxLike = Pick<PrismaClient, 'vehicleOwnership'>;
 // Loose tx type for the customer-keyed helper.
 type CustomerTxLike = Pick<PrismaClient, 'customer'>;
 
+// BR-158: deleted customers have status='deleted' and email rewritten to
+// deleted-<hash>@garageos.it — never notify them.
+export function isNotifiableRecipient(
+  c: Pick<CustomerForNotification, 'status' | 'email'>,
+): boolean {
+  if (c.status === 'deleted') return false;
+  if (c.email.startsWith('deleted-') && c.email.endsWith('@garageos.it')) return false;
+  return true;
+}
+
 // BR-040: at most one ownership row per vehicle has ended_at IS NULL.
 // BR-158: deleted customers have email rewritten to deleted-<hash>@garageos.it
 // — skip the notification rather than spam an alias.
@@ -35,10 +45,7 @@ export async function resolveCurrentOwner(
   });
   if (!ownership) return null;
   const customer = ownership.customer;
-  if (customer.status === 'deleted') return null;
-  if (customer.email.startsWith('deleted-') && customer.email.endsWith('@garageos.it')) {
-    return null;
-  }
+  if (!isNotifiableRecipient(customer)) return null;
   return customer as CustomerForNotification;
 }
 
@@ -65,9 +72,6 @@ export async function resolveCustomerForNotification(
     },
   });
   if (!customer) return null;
-  if (customer.status === 'deleted') return null;
-  if (customer.email.startsWith('deleted-') && customer.email.endsWith('@garageos.it')) {
-    return null;
-  }
+  if (!isNotifiableRecipient(customer)) return null;
   return customer as CustomerForNotification;
 }

@@ -2,6 +2,7 @@ import { Prisma } from '@garageos/database';
 import type { PrismaClient } from '@garageos/database';
 
 import { businessError } from './business-error.js';
+import { cancelPersonalDeadlinesForVehicleTransfer } from './personal-deadlines/cancel-on-transfer.js';
 
 // Atomic ownership swap for the customer-confirmed transfer (BR-043 step 4).
 //
@@ -79,6 +80,13 @@ export async function confirmTransferSwap(tx: TxClient, input: ConfirmSwapInput)
       'Stato proprieta del veicolo cambiato: riprova.',
     );
   }
+
+  // BR-297: cancel the seller's active personal deadlines (and their pending
+  // reminders) on this vehicle, now that their ownership is closed. Same tx.
+  await cancelPersonalDeadlinesForVehicleTransfer(tx, {
+    vehicleId,
+    previousOwnerCustomerId: fromCustomerId,
+  });
 
   // Step 3: open the new ownership for the recipient.
   try {

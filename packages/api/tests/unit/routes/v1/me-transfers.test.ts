@@ -24,6 +24,15 @@ interface FakePrisma {
     updateMany: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
   };
+  // BR-297: confirmTransferSwap cancels the seller's active personal deadlines
+  // inside the same tx.
+  personalDeadline: {
+    findMany: ReturnType<typeof vi.fn>;
+    updateMany: ReturnType<typeof vi.fn>;
+  };
+  personalDeadlineReminder: {
+    updateMany: ReturnType<typeof vi.fn>;
+  };
 }
 
 function ownedCertifiedVehicle() {
@@ -69,6 +78,15 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       create: vi.fn().mockResolvedValue({ id: 'own-new' }),
       ...(overrides.vehicleOwnership ?? {}),
+    },
+    personalDeadline: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      ...(overrides.personalDeadline ?? {}),
+    },
+    personalDeadlineReminder: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      ...(overrides.personalDeadlineReminder ?? {}),
     },
   };
 }

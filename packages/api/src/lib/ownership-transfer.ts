@@ -27,6 +27,7 @@ import type { PrismaClient } from '@garageos/database';
 
 import { businessError } from './business-error.js';
 import { resolveCustomerForNotification } from './notifications/recipient-resolver.js';
+import { cancelPersonalDeadlinesForVehicleTransfer } from './personal-deadlines/cancel-on-transfer.js';
 import type { CustomerForNotification } from './notifications/types.js';
 
 export type TransferReason = 'purchase' | 'inheritance' | 'company_assignment' | 'other';
@@ -232,6 +233,14 @@ export async function performOwnershipTransfer(
       transferReason: input.reason,
       transferNotes: input.notes,
     },
+  });
+
+  // BR-297: cancel the previous owner's active personal deadlines (and their
+  // pending reminders) on this vehicle, now that their ownership is closed.
+  // Same tx (admin context); RLS on personal_deadlines is USING(true).
+  await cancelPersonalDeadlinesForVehicleTransfer(tx, {
+    vehicleId: input.vehicleId,
+    previousOwnerCustomerId: currentOwnership.customerId,
   });
 
   // Step 6: open new ownership

@@ -5,12 +5,14 @@ import { projectNotificationPreferences } from '../../../src/lib/notification-pr
 const EMAIL_DEFAULTS = {
   intervention_updates: true,
   deadline_reminder: true,
+  personal_deadline_reminder: true,
   ownership_transfer: true,
   marketing: false,
 };
 const PUSH_DEFAULTS = {
   intervention_updates: true,
   deadline_reminder: true,
+  personal_deadline_reminder: true,
   ownership_transfer: true,
 };
 

@@ -16,11 +16,13 @@ function makeState(overrides: Record<string, unknown> = {}) {
         deadline_reminder: false,
         ownership_transfer: true,
         marketing: false,
+        personal_deadline_reminder: false,
       },
       push: {
         intervention_updates: true,
         deadline_reminder: false,
         ownership_transfer: true,
+        personal_deadline_reminder: false,
       },
     },
     ...overrides,
@@ -58,12 +60,24 @@ describe('NotificationPreferences screen', () => {
     mockPrefsState = makeState();
   });
 
-  it('renders the 4 toggles reflecting current values', () => {
+  it('renders the 5 email toggles reflecting current values', () => {
     render(<NotificationPreferencesScreen />);
     expect(screen.getByTestId('toggle-intervention_updates').props.value).toBe(true);
     expect(screen.getByTestId('toggle-deadline_reminder').props.value).toBe(false);
     expect(screen.getByTestId('toggle-ownership_transfer').props.value).toBe(true);
     expect(screen.getByTestId('toggle-marketing').props.value).toBe(false);
+    expect(screen.getByTestId('toggle-personal_deadline_reminder').props.value).toBe(false);
+  });
+
+  it('renders the "Scadenze personali" toggle row', () => {
+    render(<NotificationPreferencesScreen />);
+    // Confirm the new personal_deadline_reminder preference row appears for
+    // both the email section (toggle-personal_deadline_reminder) and the push
+    // section (toggle-push-personal_deadline_reminder). See F-CLI-306.
+    expect(screen.getByTestId('toggle-personal_deadline_reminder')).toBeOnTheScreen();
+    expect(screen.getByTestId('toggle-push-personal_deadline_reminder')).toBeOnTheScreen();
+    // The label "Scadenze personali" appears twice (email + push sections).
+    expect(screen.getAllByText('Scadenze personali')).toHaveLength(2);
   });
 
   it('flipping an email toggle calls mutate with the email channel', () => {
