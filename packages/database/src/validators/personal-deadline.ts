@@ -33,14 +33,14 @@ export const CreatePersonalDeadlineSchema = z
     notes: z.string().trim().max(500).optional(),
   })
   .strict()
-  // BR-294: customLabel obbligatoria sse category === 'other'.
+  // BR-294: customLabel is required when category === 'other'.
   .refine((d) => d.category !== 'other' || (d.customLabel != null && d.customLabel.length > 0), {
     path: ['customLabel'],
     message: 'custom_label_required',
   });
 
-// UPDATE — tutto opzionale, NIENTE default, strict. Il check BR-294
-// cross-field si fa a route-level (category può non essere nel body).
+// UPDATE — all fields optional, NO defaults, strict. The BR-294 cross-field
+// check is deferred to route level (category may be absent from the body).
 export const UpdatePersonalDeadlineSchema = z
   .object({
     category: PersonalDeadlineCategoryEnum.optional(),
