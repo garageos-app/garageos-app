@@ -86,6 +86,18 @@ describe('Customer personal deadlines (F-CLI-306)', () => {
     expect(body.status).toBe('open');
 
     expect(await countReminders(body.id)).toBe(3);
+
+    // BR-295 (Tier-1): assert the persisted scheduled_for dates, not just the
+    // row count. dueDate 2099-09-01 with lead [30,7,0] anchors at the Rome
+    // calendar days T-30 / T-7 / T-0. @db.Date stores the calendar day only.
+    const sched = await pgAdmin.query<{ d: string }>(
+      `SELECT to_char(scheduled_for, 'YYYY-MM-DD') AS d
+         FROM personal_deadline_reminders
+        WHERE personal_deadline_id = $1
+        ORDER BY scheduled_for ASC`,
+      [body.id],
+    );
+    expect(sched.rows.map((r) => r.d)).toEqual(['2099-08-02', '2099-08-25', '2099-09-01']);
   });
 
   it('returns 403 when the vehicle is not owned by the caller (BR-290)', async () => {

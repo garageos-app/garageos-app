@@ -459,6 +459,30 @@ describe('POST /v1/me/personal-deadlines/:id/complete', () => {
     expect(res.json().code).toBe('personal_deadline.not_open');
   });
 
+  it('completes an overdue deadline (BR-298: overdue is still completable)', async () => {
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(completeLoadRow({ status: 'overdue' }))
+      .mockResolvedValueOnce(deadlineRow({ status: 'completed', completedAt: new Date() }));
+    const prisma = buildFakePrisma({
+      personalDeadline: {
+        findFirst,
+        findMany: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn().mockResolvedValue({ id: DEADLINE_ID }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        delete: vi.fn(),
+      },
+    });
+    app = await buildApp(prisma);
+    const res = await complete();
+    expect(res.statusCode).toBe(200);
+    expect(prisma.personalDeadline.updateMany).toHaveBeenCalledWith({
+      where: { id: DEADLINE_ID, status: { in: ['open', 'overdue'] } },
+      data: { status: 'completed', completedAt: expect.any(Date) },
+    });
+  });
+
   it('returns a renewalSuggestion when the deadline recurs', async () => {
     const findFirst = vi
       .fn()
@@ -504,9 +528,9 @@ describe('POST /v1/me/personal-deadlines/:id/complete', () => {
     const res = await complete();
     expect(res.statusCode).toBe(200);
     expect(res.json().renewalSuggestion).toBeUndefined();
-    // CAS guards the open->completed transition (concurrent-safe).
+    // CAS guards the open|overdue -> completed transition (concurrent-safe).
     expect(prisma.personalDeadline.updateMany).toHaveBeenCalledWith({
-      where: { id: DEADLINE_ID, status: 'open' },
+      where: { id: DEADLINE_ID, status: { in: ['open', 'overdue'] } },
       data: { status: 'completed', completedAt: expect.any(Date) },
     });
   });

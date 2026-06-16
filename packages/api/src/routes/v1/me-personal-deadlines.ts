@@ -35,6 +35,10 @@ const statusEnum = z.enum(['open', 'completed', 'overdue', 'cancelled']);
 
 const idParamSchema = z.object({ id: z.uuid() });
 
+// BR-298: an overdue deadline is still completable (it stays editable until the
+// customer completes or deletes it). Only completed/cancelled are terminal.
+const COMPLETABLE_STATUSES = ['open', 'overdue'] as const;
+
 const listQuerySchema = z
   .object({
     status: statusEnum.optional(),
@@ -337,26 +341,26 @@ const mePersonalDeadlinesRoutes: FastifyPluginAsync = async (app) => {
         if (!row) {
           throw businessError('personal_deadline.not_found', 404, 'Scadenza non trovata.');
         }
-        if (row.status !== 'open') {
+        if (!COMPLETABLE_STATUSES.includes(row.status as (typeof COMPLETABLE_STATUSES)[number])) {
           throw businessError(
             'personal_deadline.not_open',
             409,
-            'La scadenza non è in stato aperto.',
+            'La scadenza è già completata o annullata.',
           );
         }
 
-        // CAS on status='open' so two concurrent completes resolve to exactly
-        // one winner (mirrors the me-transfers state-machine idiom); the loser
-        // gets the same 409 as the pre-check.
+        // CAS on the completable statuses (open|overdue, BR-298) so two
+        // concurrent completes resolve to exactly one winner (mirrors the
+        // me-transfers state-machine idiom); the loser gets the same 409.
         const cas = await tx.personalDeadline.updateMany({
-          where: { id, status: 'open' },
+          where: { id, status: { in: [...COMPLETABLE_STATUSES] } },
           data: { status: 'completed', completedAt: new Date() },
         });
         if (cas.count === 0) {
           throw businessError(
             'personal_deadline.not_open',
             409,
-            'La scadenza non è in stato aperto.',
+            'La scadenza è già completata o annullata.',
           );
         }
         // Pending reminders are no longer relevant once completed.
