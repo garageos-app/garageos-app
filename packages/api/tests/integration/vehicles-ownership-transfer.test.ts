@@ -698,4 +698,55 @@ describe('POST /v1/vehicles/:id/ownership-transfer — documentS3Key (integratio
     expect(rows[0]).toBeDefined();
     expect(rows[0]!.document_url).toBeNull();
   });
+
+  // BR-297: on officina-mediated transfer, the cedente's active personal
+  // deadlines on the vehicle (and their pending reminders) become cancelled;
+  // the swap itself still completes.
+  it('200: cancels the cedente active personal deadlines (BR-297)', async () => {
+    const s = await setupTransferScenario();
+
+    const { rows: dlRows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO personal_deadlines
+         (id, customer_id, vehicle_id, category, due_date, notify_email, notify_push,
+          status, reminder_lead_days, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, 'insurance'::"PersonalDeadlineCategory", $3::date,
+          true, true, 'open'::"PersonalDeadlineStatus", '{}', NOW(), NOW())
+       RETURNING id`,
+      [s.cedente.customerId, s.vehicleId, '2099-12-31'],
+    );
+    const deadlineId = dlRows[0]!.id;
+    const { rows: remRows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO personal_deadline_reminders
+         (id, personal_deadline_id, scheduled_for, kind, delivery_status, created_at)
+       VALUES (gen_random_uuid(), $1, $2::date, 'lead'::"PersonalDeadlineReminderKind",
+          'pending', NOW())
+       RETURNING id`,
+      [deadlineId, '2099-12-01'],
+    );
+    const reminderId = remRows[0]!.id;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${s.vehicleId}/ownership-transfer`,
+      headers: { authorization: `Bearer ${s.actorJwt}` },
+      payload: {
+        recipient: { kind: 'existing', customerId: s.cessionario.customerId },
+        reason: 'purchase',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().ownership.customerId).toBe(s.cessionario.customerId);
+
+    const dl = await pgAdmin.query<{ status: string }>(
+      `SELECT status FROM personal_deadlines WHERE id = $1`,
+      [deadlineId],
+    );
+    expect(dl.rows[0]!.status).toBe('cancelled');
+    const rem = await pgAdmin.query<{ delivery_status: string; failure_reason: string | null }>(
+      `SELECT delivery_status, failure_reason FROM personal_deadline_reminders WHERE id = $1`,
+      [reminderId],
+    );
+    expect(rem.rows[0]!.delivery_status).toBe('cancelled');
+    expect(rem.rows[0]!.failure_reason).toBe('ownership_transferred');
+  });
 });

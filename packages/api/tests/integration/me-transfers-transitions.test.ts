@@ -15,6 +15,7 @@ import {
   getTransferById,
   resetDb,
 } from './helpers.js';
+import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
 // F-CLI-401 PR2 — accept / confirm / reject transitions + atomic swap.
@@ -216,5 +217,70 @@ describe('Customer transfer transitions (F-CLI-401 PR2)', () => {
     expect(codes[0]).toBe(200);
     expect(codes[1]).toBeGreaterThanOrEqual(400);
     expect(await getActiveOwnerCustomerId(vehicleId)).toBe(buyer.customerId);
+  });
+
+  // BR-297: on confirm/swap, the seller's active personal deadlines on the
+  // vehicle (and their pending reminders) become cancelled; completed/cancelled
+  // history is immutable, and the buyer's (empty) deadlines are unaffected.
+  it('cancels the seller active personal deadlines on swap (BR-297)', async () => {
+    const seller = await makeCustomer();
+    const buyer = await makeCustomer();
+    const { vehicleId } = await certifiedVehicleOwnedBy(seller.customerId);
+
+    // Seller's open deadline on the vehicle, with a pending reminder.
+    const { rows: dlRows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO personal_deadlines
+         (id, customer_id, vehicle_id, category, due_date, notify_email, notify_push,
+          status, reminder_lead_days, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, 'insurance'::"PersonalDeadlineCategory", $3::date,
+          true, true, 'open'::"PersonalDeadlineStatus", '{}', NOW(), NOW())
+       RETURNING id`,
+      [seller.customerId, vehicleId, '2099-12-31'],
+    );
+    const deadlineId = dlRows[0]!.id;
+    const { rows: remRows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO personal_deadline_reminders
+         (id, personal_deadline_id, scheduled_for, kind, delivery_status, created_at)
+       VALUES (gen_random_uuid(), $1, $2::date, 'lead'::"PersonalDeadlineReminderKind",
+          'pending', NOW())
+       RETURNING id`,
+      [deadlineId, '2099-12-01'],
+    );
+    const reminderId = remRows[0]!.id;
+
+    const created = await post(seller.token, '/v1/me/transfers', {
+      vehicleId,
+      method: 'physical_code',
+    });
+    const { id: transferId, transferCode } = created.json();
+    expect((await post(buyer.token, `/v1/me/transfers/${transferCode}/accept`)).statusCode).toBe(
+      200,
+    );
+    const confirmed = await post(seller.token, `/v1/me/transfers/${transferId}/confirm`);
+    expect(confirmed.statusCode).toBe(200);
+
+    // The swap itself still succeeded.
+    expect(await getActiveOwnerCustomerId(vehicleId)).toBe(buyer.customerId);
+
+    // The seller's deadline + its reminder are now cancelled.
+    const dl = await pgAdmin.query<{ status: string }>(
+      `SELECT status FROM personal_deadlines WHERE id = $1`,
+      [deadlineId],
+    );
+    expect(dl.rows[0]!.status).toBe('cancelled');
+    const rem = await pgAdmin.query<{ delivery_status: string; failure_reason: string | null }>(
+      `SELECT delivery_status, failure_reason FROM personal_deadline_reminders WHERE id = $1`,
+      [reminderId],
+    );
+    expect(rem.rows[0]!.delivery_status).toBe('cancelled');
+    expect(rem.rows[0]!.failure_reason).toBe('ownership_transferred');
+
+    // The buyer owns no personal deadlines on the vehicle.
+    const buyerDeadlines = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM personal_deadlines
+         WHERE vehicle_id = $1 AND customer_id = $2`,
+      [vehicleId, buyer.customerId],
+    );
+    expect(buyerDeadlines.rows[0]!.count).toBe('0');
   });
 });

@@ -38,6 +38,15 @@ function fakeTx(
       updateMany: vi.fn().mockResolvedValue({ count: overrides.ownershipUpdateCount ?? 1 }),
       create: overrides.ownershipCreate ?? vi.fn().mockResolvedValue({ id: 'own-new' }),
     },
+    // BR-297: confirmTransferSwap now cancels the seller's active personal
+    // deadlines inside the same tx. Default to "no active deadlines".
+    personalDeadline: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    personalDeadlineReminder: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
   };
 }
 
