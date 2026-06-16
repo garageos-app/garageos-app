@@ -7,15 +7,61 @@ import { DeadlineRow } from '@/components/DeadlineRow';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
+import { SegmentedControl } from '@/components/SegmentedControl';
+import { PersonalDeadlineList } from '@/components/PersonalDeadlineList';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import { ApiError } from '@/lib/api-error';
 import { colors } from '@/theme/colors';
 
+type Segment = 'officina' | 'personali';
+
+const SEGMENT_OPTIONS: { key: Segment; label: string }[] = [
+  { key: 'officina', label: 'Officina' },
+  { key: 'personali', label: 'Personali' },
+];
+
 export default function DeadlinesScreen() {
+  // The notification tap deep-link may target the personal segment; default to
+  // officina otherwise (preserves the historical single-list behavior).
+  const { highlight, segment: segmentParam } = useLocalSearchParams<{
+    highlight?: string;
+    segment?: string;
+  }>();
+  const [segment, setSegment] = useState<Segment>(
+    segmentParam === 'personal' ? 'personali' : 'officina',
+  );
+
+  // Expo Router keeps the tab mounted, so a later deep-link (e.g. an officina
+  // deadline.reminder tap routing here with `highlight` but no segment param)
+  // must re-sync the segment. Keyed on the params only, so manual user toggles
+  // are not overridden between param changes.
+  useEffect(() => {
+    if (segmentParam === 'personal') {
+      setSegment('personali');
+    } else if (highlight) {
+      setSegment('officina');
+    }
+  }, [segmentParam, highlight]);
+
+  return (
+    <View style={styles.container}>
+      <SegmentedControl options={SEGMENT_OPTIONS} value={segment} onChange={setSegment} />
+      <View style={styles.body}>
+        {segment === 'officina' ? (
+          <OfficinaDeadlineList highlight={highlight} />
+        ) : (
+          <PersonalDeadlineList />
+        )}
+      </View>
+    </View>
+  );
+}
+
+// Workshop (officina) deadlines — read-only, tap routes to the vehicle detail.
+// Behavior preserved 1:1 from the pre-segment screen, including the
+// notification-tap highlight/scroll logic.
+function OfficinaDeadlineList({ highlight }: { highlight?: string }) {
   const router = useRouter();
-  // Set by the notification tap deep-link (useNotificationTapRouting): the
-  // deadline the push referred to gets tinted and scrolled into view.
-  const { highlight } = useLocalSearchParams<{ highlight?: string }>();
   const listRef = useRef<FlatList<MeDeadline>>(null);
   // Scroll once per highlight value: `data` changes identity on every refetch
   // (pull-to-refresh, invalidation) and must not re-yank the list afterwards.
@@ -56,44 +102,39 @@ export default function DeadlinesScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        ref={listRef}
-        data={data}
-        keyExtractor={(d) => d.id}
-        renderItem={({ item }) => (
-          <DeadlineRow
-            deadline={item}
-            highlighted={item.id === highlight}
-            onPress={() => router.push(`/(tabs)/vehicles/${item.vehicleId}`)}
-          />
-        )}
-        onScrollToIndexFailed={(info) => {
-          // Variable-height rows: fall back to an estimated offset, then retry.
-          listRef.current?.scrollToOffset({
-            offset: info.averageItemLength * info.index,
+    <FlatList
+      ref={listRef}
+      data={data}
+      keyExtractor={(d) => d.id}
+      renderItem={({ item }) => (
+        <DeadlineRow
+          deadline={item}
+          highlighted={item.id === highlight}
+          onPress={() => router.push(`/(tabs)/vehicles/${item.vehicleId}`)}
+        />
+      )}
+      onScrollToIndexFailed={(info) => {
+        // Variable-height rows: fall back to an estimated offset, then retry.
+        listRef.current?.scrollToOffset({
+          offset: info.averageItemLength * info.index,
+          animated: true,
+        });
+        setTimeout(() => {
+          listRef.current?.scrollToIndex({
+            index: info.index,
+            viewPosition: 0.3,
             animated: true,
           });
-          setTimeout(() => {
-            listRef.current?.scrollToIndex({
-              index: info.index,
-              viewPosition: 0.3,
-              animated: true,
-            });
-          }, 300);
-        }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
-        }
-      />
-    </View>
+        }, 300);
+      }}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  body: { flex: 1 },
 });

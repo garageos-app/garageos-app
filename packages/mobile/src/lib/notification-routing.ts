@@ -42,6 +42,12 @@ export function parseNotificationTarget(data: unknown): string | null {
       // Recipient is the PREVIOUS owner — the vehicle detail would 404 for
       // them, so land on the vehicles list instead.
       return '/(tabs)';
+    // personal_deadline.reminder: deep link to the personal-deadline detail (F-CLI-306).
+    // Payload carries personalDeadlineId only (no vehicleId).
+    case 'personal_deadline.reminder':
+      return isNonEmptyString(data.personalDeadlineId)
+        ? `/my-deadlines/${encodeURIComponent(data.personalDeadlineId)}`
+        : null;
     default:
       return null;
   }

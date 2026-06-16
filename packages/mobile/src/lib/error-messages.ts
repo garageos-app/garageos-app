@@ -66,6 +66,13 @@ const MESSAGES: Record<string, string> = {
   'transfer.confirmation.ownership_conflict': 'La proprietà del veicolo è cambiata nel frattempo.',
   'transfer.rejection.not_permitted': 'Non puoi annullare questo trasferimento.',
   'transfer.rejection.not_pending': 'Il trasferimento non è più annullabile.',
+
+  // Personal deadline domain codes (F-CLI-306)
+  'personal_deadline.vehicle_not_owned': 'Non sei il proprietario di questo veicolo.',
+  'personal_deadline.not_found': 'Scadenza non trovata.',
+  'personal_deadline.custom_label_required': "Specifica un'etichetta per la categoria 'Altro'.",
+  'personal_deadline.update.empty_body': 'Nessuna modifica da salvare.',
+  'personal_deadline.not_open': 'La scadenza è già completata o annullata.',
 };
 
 const FALLBACK = 'Si è verificato un errore. Riprova più tardi.';

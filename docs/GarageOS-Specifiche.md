@@ -539,7 +539,7 @@ Ogni funzionalità è classificata secondo una delle seguenti priorità:
 | F-CLI-303 | Notifiche push nuovi interventi | Notifica quando un'officina registra un nuovo intervento su uno dei veicoli | 🟢 MUST |
 | F-CLI-304 | Audit accessi al veicolo | Sezione in-app dove il proprietario vede l'elenco degli accessi alla scheda del proprio veicolo (quale officina, quando). **Nessuna notifica push** per questi eventi: trasparenza passiva tramite audit log consultabile. Decisione motivata dalla volontà di evitare rumore di notifiche che porterebbe l'utente a disattivare tutte le push | 🟢 MUST |
 | F-CLI-305 | Centro notifiche in-app | Elenco di tutte le notifiche ricevute, filtrabili per tipo | 🟡 SHOULD |
-| F-CLI-306 | Scadenze personali | Il cliente crea e gestisce scadenze personali sui propri veicoli (assicurazione, bollo, revisione, ecc.) con reminder configurabili via push ed email, indipendenti dall'officina e privati (l'officina non le vede). Rinnovo guidato per scadenze ricorrenti. | 🟢 MUST |
+| F-CLI-306 | Scadenze personali | Il cliente crea e gestisce scadenze personali sui propri veicoli (assicurazione, bollo, revisione, ecc.) con reminder configurabili via push ed email, indipendenti dall'officina e privati (l'officina non le vede). Rinnovo guidato per scadenze ricorrenti. **✅ IMPLEMENTATO (2026-06-16 — PR1 DB+CRUD #203, PR2 notifiche+cron #204, PR3 mobile #205).** Mobile: tab Scadenze con segmento "Officina \| Personali" (deviazione: tab unica segmentata invece di tab "Le mie scadenze" separata), form crea/modifica, detail screen con rinnovo guidato (BR-296), notifiche push+email con BR-292 channel-AND, cron giornaliero sweep (BR-297 cancel-on-transfer, BR-298 flip overdue). | 🟢 MUST |
 
 #### 3.3.5 Area Passaggio di proprietà
 

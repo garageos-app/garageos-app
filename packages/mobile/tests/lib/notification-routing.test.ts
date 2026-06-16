@@ -3,6 +3,7 @@ import { parseNotificationTarget, resolveNotificationTarget } from '@/lib/notifi
 const INTERVENTION_ID = '3f9c2a1e-8b4d-4c6a-9e2f-1a7b5d3c8e0f';
 const VEHICLE_ID = '7a1d4e9b-2c5f-4a8d-b3e6-9f0c2d5a8b1e';
 const DEADLINE_ID = 'c4e8b2a6-1d3f-4b7c-8a9e-5f2d0b6c3a7d';
+const PERSONAL_DEADLINE_ID = 'abc-123-def-456';
 
 describe('parseNotificationTarget', () => {
   it('maps intervention.created to the intervention detail (BR-157 deep link)', () => {
@@ -66,6 +67,26 @@ describe('parseNotificationTarget', () => {
     );
   });
 
+  // personal_deadline.reminder — F-CLI-306
+  it('maps personal_deadline.reminder to the deadline detail screen', () => {
+    expect(
+      parseNotificationTarget({
+        type: 'personal_deadline.reminder',
+        personalDeadlineId: PERSONAL_DEADLINE_ID,
+      }),
+    ).toBe(`/my-deadlines/${PERSONAL_DEADLINE_ID}`);
+  });
+
+  it('returns null on personal_deadline.reminder without personalDeadlineId', () => {
+    expect(parseNotificationTarget({ type: 'personal_deadline.reminder' })).toBeNull();
+  });
+
+  it('returns null on personal_deadline.reminder with empty personalDeadlineId', () => {
+    expect(
+      parseNotificationTarget({ type: 'personal_deadline.reminder', personalDeadlineId: '' }),
+    ).toBeNull();
+  });
+
   it.each([
     ['missing interventionId', { type: 'intervention.revised' }],
     ['empty interventionId', { type: 'intervention.revised', interventionId: '' }],
@@ -120,6 +141,12 @@ describe('resolveNotificationTarget', () => {
     expect(resolveNotificationTarget(response({ data: { experienceId: '@x/y' } }, trigger))).toBe(
       '/(tabs)',
     );
+  });
+
+  it('resolves personal_deadline.reminder from the killed-state Android fallback payload', () => {
+    const data = { type: 'personal_deadline.reminder', personalDeadlineId: 'xyz' };
+    const trigger = { remoteMessage: { data: { body: JSON.stringify(data) } } };
+    expect(resolveNotificationTarget(response({}, trigger))).toBe('/my-deadlines/xyz');
   });
 
   it('returns null on unparseable remoteMessage body instead of throwing', () => {
