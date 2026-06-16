@@ -227,7 +227,10 @@ describe('Customer transfer transitions (F-CLI-401 PR2)', () => {
     const buyer = await makeCustomer();
     const { vehicleId } = await certifiedVehicleOwnedBy(seller.customerId);
 
-    // Seller's open deadline on the vehicle, with a pending reminder.
+    // Seller's open deadline on the vehicle, with a pending reminder AND a
+    // sent reminder. Only the pending one may be cancelled on transfer — the
+    // sent row is delivery history and must survive (proves the
+    // deliveryStatus:'pending' filter scopes the cancel).
     const { rows: dlRows } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO personal_deadlines
          (id, customer_id, vehicle_id, category, due_date, notify_email, notify_push,
@@ -247,6 +250,30 @@ describe('Customer transfer transitions (F-CLI-401 PR2)', () => {
       [deadlineId, '2099-12-01'],
     );
     const reminderId = remRows[0]!.id;
+    const { rows: sentRemRows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO personal_deadline_reminders
+         (id, personal_deadline_id, scheduled_for, kind, delivery_status, sent_at, created_at)
+       VALUES (gen_random_uuid(), $1, $2::date, 'tail'::"PersonalDeadlineReminderKind",
+          'sent', NOW(), NOW())
+       RETURNING id`,
+      [deadlineId, '2099-11-01'],
+    );
+    const sentReminderId = sentRemRows[0]!.id;
+
+    // The buyer already owns an open personal deadline on a DIFFERENT vehicle.
+    // The transfer cancel is scoped by previousOwnerCustomerId + vehicleId, so
+    // this deadline must be untouched (not vehicle-wide or customer-wide).
+    const { vehicleId: buyerVehicleId } = await certifiedVehicleOwnedBy(buyer.customerId);
+    const { rows: buyerDlRows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO personal_deadlines
+         (id, customer_id, vehicle_id, category, due_date, notify_email, notify_push,
+          status, reminder_lead_days, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, 'road_tax'::"PersonalDeadlineCategory", $3::date,
+          true, true, 'open'::"PersonalDeadlineStatus", '{}', NOW(), NOW())
+       RETURNING id`,
+      [buyer.customerId, buyerVehicleId, '2099-12-31'],
+    );
+    const buyerDeadlineId = buyerDlRows[0]!.id;
 
     const created = await post(seller.token, '/v1/me/transfers', {
       vehicleId,
@@ -275,7 +302,23 @@ describe('Customer transfer transitions (F-CLI-401 PR2)', () => {
     expect(rem.rows[0]!.delivery_status).toBe('cancelled');
     expect(rem.rows[0]!.failure_reason).toBe('ownership_transferred');
 
-    // The buyer owns no personal deadlines on the vehicle.
+    // The already-sent reminder is delivery history — it must NOT be flipped.
+    const sentRem = await pgAdmin.query<{ delivery_status: string; failure_reason: string | null }>(
+      `SELECT delivery_status, failure_reason FROM personal_deadline_reminders WHERE id = $1`,
+      [sentReminderId],
+    );
+    expect(sentRem.rows[0]!.delivery_status).toBe('sent');
+    expect(sentRem.rows[0]!.failure_reason).toBeNull();
+
+    // The buyer's own deadline on a DIFFERENT vehicle is untouched: the cancel
+    // is scoped by previousOwnerCustomerId + vehicleId, not customer-wide.
+    const buyerOwnDeadline = await pgAdmin.query<{ status: string }>(
+      `SELECT status FROM personal_deadlines WHERE id = $1`,
+      [buyerDeadlineId],
+    );
+    expect(buyerOwnDeadline.rows[0]!.status).toBe('open');
+
+    // The buyer owns no personal deadlines on the transferred vehicle.
     const buyerDeadlines = await pgAdmin.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM personal_deadlines
          WHERE vehicle_id = $1 AND customer_id = $2`,

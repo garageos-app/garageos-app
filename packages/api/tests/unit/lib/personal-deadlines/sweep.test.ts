@@ -23,6 +23,7 @@ interface FakePrisma {
   personalDeadlineReminder: {
     updateMany: ReturnType<typeof vi.fn>;
     findMany: ReturnType<typeof vi.fn>;
+    findUnique: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
 }
@@ -49,6 +50,7 @@ function makePrisma(overrides?: {
   pdUpdateMany?: ReturnType<typeof vi.fn>;
   pdrUpdateMany?: ReturnType<typeof vi.fn>;
   pdrFindMany?: ReturnType<typeof vi.fn>;
+  pdrFindUnique?: ReturnType<typeof vi.fn>;
   pdrUpdate?: ReturnType<typeof vi.fn>;
 }): FakePrisma {
   return {
@@ -58,6 +60,10 @@ function makePrisma(overrides?: {
     personalDeadlineReminder: {
       updateMany: overrides?.pdrUpdateMany ?? vi.fn().mockResolvedValue({ count: 0 }),
       findMany: overrides?.pdrFindMany ?? vi.fn().mockResolvedValue([]),
+      // Default: the row is still pending at dispatch time (the common case).
+      // Tests covering the CAS-on-pending re-read override this.
+      findUnique:
+        overrides?.pdrFindUnique ?? vi.fn().mockResolvedValue({ deliveryStatus: 'pending' }),
       update: overrides?.pdrUpdate ?? vi.fn().mockResolvedValue({}),
     },
   };
@@ -69,6 +75,8 @@ function dueReminder(opts: {
   notifyEmail?: boolean;
   notifyPush?: boolean;
   dueDate?: Date;
+  customerStatus?: 'active' | 'pending_verification' | 'deleted';
+  customerEmail?: string;
 }) {
   return {
     id: opts.id ?? 'r1',
@@ -83,13 +91,13 @@ function dueReminder(opts: {
       vehicle: { plate: 'AB123CD', make: 'Fiat', model: 'Panda' },
       customer: {
         id: 'cust1',
-        email: 'owner@example.it',
+        email: opts.customerEmail ?? 'owner@example.it',
         firstName: 'Owner',
         lastName: 'Test',
         isBusiness: false,
         businessName: null,
         notificationPreferences: {},
-        status: 'active',
+        status: opts.customerStatus ?? 'active',
       },
     },
   };
@@ -183,6 +191,48 @@ describe('processPersonalDeadlineSweep', () => {
         data: { deliveryStatus: 'cancelled', failureReason: 'channels_off' },
       }),
     );
+  });
+
+  it('BR-158: deleted recipient -> reminder cancelled recipient_deleted, dispatch NOT called', async () => {
+    const pdrUpdate = vi.fn().mockResolvedValue({});
+    const fake = makePrisma({
+      pdrFindMany: vi
+        .fn()
+        .mockResolvedValue([dueReminder({ id: 'r1', customerStatus: 'deleted' })]),
+      pdrUpdate,
+    });
+    const app = makeFakeApp(fake);
+
+    const result = await processPersonalDeadlineSweep({ app });
+
+    expect(result.channelsOffCancelled).toBe(1);
+    expect(dispatcherMod.dispatchNotification).not.toHaveBeenCalled();
+    expect(pdrUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'r1' },
+        data: { deliveryStatus: 'cancelled', failureReason: 'recipient_deleted' },
+      }),
+    );
+  });
+
+  it('CAS-on-pending: row already cancelled at dispatch -> skip, dispatch NOT called, no overwrite', async () => {
+    // A concurrent ownership-transfer cancel (BR-297) flipped this row to
+    // cancelled between the Step-3 fetch and the per-row dispatch tx. The
+    // re-read inside the tx must short-circuit without dispatching or writing.
+    const pdrUpdate = vi.fn().mockResolvedValue({});
+    const fake = makePrisma({
+      pdrFindMany: vi.fn().mockResolvedValue([dueReminder({ id: 'r1' })]),
+      pdrFindUnique: vi.fn().mockResolvedValue({ deliveryStatus: 'cancelled' }),
+      pdrUpdate,
+    });
+    const app = makeFakeApp(fake);
+
+    const result = await processPersonalDeadlineSweep({ app });
+
+    expect(result.channelsOffCancelled).toBe(1);
+    expect(dispatcherMod.dispatchNotification).not.toHaveBeenCalled();
+    // The status write is NOT touched — the concurrent writer's value stands.
+    expect(pdrUpdate).not.toHaveBeenCalled();
   });
 
   it('single channel: notifyPush false -> mask.push false; email sent -> row sent', async () => {

@@ -4,6 +4,7 @@ import type { PersonalDeadlineCategory, PrismaClient } from '@garageos/database'
 
 import { romeTodayDateOnly } from '../deadlines/compute-reminders.js';
 import { dispatchNotification } from '../notifications/dispatcher.js';
+import { isNotifiableRecipient } from '../notifications/recipient-resolver.js';
 import type { CustomerForNotification, DispatchResult } from '../notifications/types.js';
 
 // AppLike is a structural subset of FastifyInstance — only the two members
@@ -125,10 +126,36 @@ async function processDueReminder(
   const vehicleMakeModel = `${deadline.vehicle.make} ${deadline.vehicle.model}`;
   const recipient = deadline.customer;
 
+  // BR-158: never notify a deleted/anonymized customer (status='deleted' or a
+  // deleted-<hash>@garageos.it placeholder email). Mirrors the guard the
+  // notification recipient-resolver applies; the sweep loads the customer
+  // directly, so it must apply the same check before dispatching. No network
+  // I/O — cancel in its own admin tx, same pre-gate shape as channels_off.
+  if (!isNotifiableRecipient(recipient)) {
+    await app.withContext({ role: 'admin' }, (tx) =>
+      tx.personalDeadlineReminder.update({
+        where: { id: reminder.id },
+        data: { deliveryStatus: 'cancelled', failureReason: 'recipient_deleted' },
+      }),
+    );
+    return 'channelsOffCancelled';
+  }
+
   // One short tx per row: dispatch (email + push network I/O) then the single
   // status write. A throw here loses ONLY this row's status write — rows
   // already committed in prior per-row txs are untouched.
+  // CAS-on-pending re-read: re-checking deliveryStatus inside this tx closes
+  // the cross-feature transfer race (a concurrent ownership-transfer cancel,
+  // BR-297, may have flipped this row between the Step-3 fetch and now).
   return app.withContext({ role: 'admin' }, async (tx) => {
+    const fresh = await tx.personalDeadlineReminder.findUnique({
+      where: { id: reminder.id },
+      select: { deliveryStatus: true },
+    });
+    // A concurrent writer (e.g. ownership-transfer cancel, BR-297) may have
+    // cancelled this row after the Step-3 fetch — do not resurrect it to 'sent'.
+    if (fresh?.deliveryStatus !== 'pending') return 'channelsOffCancelled';
+
     const result = await dispatchNotification({
       event: {
         type: 'personal_deadline.reminder',
