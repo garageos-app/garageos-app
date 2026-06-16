@@ -40,6 +40,7 @@ import meVehicleRoutes from './routes/v1/me-vehicles.js';
 import meVehiclesPendingRoutes from './routes/v1/me-vehicles-pending.js';
 import meVehicleExportPdfRoutes from './routes/v1/me-vehicles-export-pdf.js';
 import meTransfersRoutes from './routes/v1/me-transfers.js';
+import mePersonalDeadlinesRoutes from './routes/v1/me-personal-deadlines.js';
 import meInterventionsRoutes from './routes/v1/me-interventions.js';
 import mePrivateInterventionRoutes from './routes/v1/me-private-interventions.js';
 import meProfileRoutes from './routes/v1/me-profile.js';
@@ -214,6 +215,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(meVehiclesPendingRoutes);
   await app.register(meVehicleExportPdfRoutes);
   await app.register(meTransfersRoutes);
+  await app.register(mePersonalDeadlinesRoutes);
   await app.register(meInterventionsRoutes);
   await app.register(mePrivateInterventionRoutes);
   await app.register(meProfileRoutes);
