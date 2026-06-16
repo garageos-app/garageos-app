@@ -27,9 +27,22 @@ export async function dispatchPush(input: {
   recipient: CustomerForNotification;
   run: AdminRunner;
   logger: FastifyBaseLogger;
+  channels?: { email: boolean; push: boolean };
 }): Promise<PushDispatchResult> {
   const { event, recipient, run, logger } = input;
   const key = preferenceKeyForEvent(event);
+
+  // BR-292: per-event channel mask AND-ed with the customer's global preference.
+  // Absent channels => push enabled (every existing caller unaffected).
+  if (input.channels?.push === false) {
+    return {
+      attempted: 0,
+      sent: 0,
+      skipped: 'channel-off',
+      deactivated: 0,
+      appInstalledCleared: false,
+    };
+  }
 
   if (!isPushEnabled(recipient, key)) {
     return {

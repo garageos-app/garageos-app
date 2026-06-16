@@ -1,3 +1,4 @@
+import { personalDeadlineLabel } from './templates/personal-deadline-reminder.js';
 import type { NotificationEvent } from './types.js';
 
 // Pure title/body/data renderer for Expo push. Italian, short (title ≤ ~40,
@@ -62,5 +63,18 @@ export function renderPushPayload(event: NotificationEvent): PushPayload {
           vehicleId: event.vehicle.id,
         },
       };
+    case 'personal_deadline.reminder': {
+      // Reuse the same label helper as the email template to avoid copy drift.
+      const label = personalDeadlineLabel(event);
+      return {
+        title: event.daysUntilDue === 0 ? 'Scadenza oggi' : 'Scadenza in arrivo',
+        body: `${label} per ${event.vehiclePlate} è in scadenza.`,
+        data: {
+          // The mobile deep-link in PR3 routes by personalDeadlineId (no vehicleId on this event).
+          type: 'personal_deadline.reminder',
+          personalDeadlineId: event.personalDeadlineId,
+        },
+      };
+    }
   }
 }
