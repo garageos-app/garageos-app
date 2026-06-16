@@ -474,9 +474,9 @@ describe('MainStack (integration)', () => {
     });
   });
 
-  it('SchedulerConstruct provisions one ScheduleGroup and two Schedules (warming + transfer-expiry)', () => {
+  it('SchedulerConstruct provisions one ScheduleGroup and three Schedules (warming + transfer-expiry + personal-deadline-sweep)', () => {
     template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
-    template.resourceCountIs('AWS::Scheduler::Schedule', 2);
+    template.resourceCountIs('AWS::Scheduler::Schedule', 3);
   });
 
   it('SchedulerConstruct provisions the daily transfer-expiry Schedule (F-CLI-401 PR3)', () => {
@@ -489,6 +489,21 @@ describe('MainStack (integration)', () => {
         ScheduleExpressionTimezone: 'UTC',
         Target: Match.objectLike({
           Input: JSON.stringify({ source: 'transfer-expiry' }),
+        }),
+      }),
+    );
+  });
+
+  it('SchedulerConstruct provisions the daily personal-deadline-sweep Schedule (F-CLI-306)', () => {
+    template.hasResourceProperties(
+      'AWS::Scheduler::Schedule',
+      Match.objectLike({
+        Name: 'garageos-personal-deadline-sweep',
+        GroupName: 'default',
+        ScheduleExpression: 'cron(0 6 * * ? *)',
+        ScheduleExpressionTimezone: 'UTC',
+        Target: Match.objectLike({
+          Input: JSON.stringify({ source: 'personal-deadline-sweep' }),
         }),
       }),
     );

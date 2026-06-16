@@ -41,6 +41,7 @@ export class SchedulerConstruct extends Construct {
   public readonly scheduleGroup: scheduler.CfnScheduleGroup;
   public readonly warmingSchedule: scheduler.CfnSchedule;
   public readonly transferExpirySchedule: scheduler.CfnSchedule;
+  public readonly personalDeadlineSweepSchedule: scheduler.CfnSchedule;
   public readonly scheduleGroupName: string;
 
   constructor(scope: Construct, id: string, props: SchedulerConstructProps) {
@@ -138,5 +139,36 @@ export class SchedulerConstruct extends Construct {
         },
       },
     });
+
+    // Daily sweep for personal vehicle deadlines: delivers due reminders and
+    // flips open -> overdue for past-due items (F-CLI-306, BR-292/295/298).
+    // Mirrors transferExpirySchedule exactly — same group, same UTC timezone
+    // (timezone-indifferent night work, no DST edge cases), same retry policy.
+    // Fires at 06:00 UTC (~08:00 Europe/Rome; DST drift of ±1h accepted per
+    // spec section 5.1). Gated by warmingEnabled (the single "schedules active
+    // in this env" switch). Idempotent handler: re-running on retry is safe
+    // because state predicates (open/overdue) are checked before any write.
+    this.personalDeadlineSweepSchedule = new scheduler.CfnSchedule(
+      this,
+      'PersonalDeadlineSweepSchedule',
+      {
+        name: 'garageos-personal-deadline-sweep',
+        groupName: 'default',
+        description:
+          'Daily sweep: deliver due personal-deadline reminders and flip open->overdue (F-CLI-306, BR-292/295/298)',
+        state: props.warmingEnabled ? 'ENABLED' : 'DISABLED',
+        scheduleExpression: 'cron(0 6 * * ? *)',
+        scheduleExpressionTimezone: 'UTC',
+        flexibleTimeWindow: { mode: 'OFF' },
+        target: {
+          arn: props.lambdaFunction.functionArn,
+          roleArn: this.schedulerRole.roleArn,
+          input: JSON.stringify({ source: 'personal-deadline-sweep' }),
+          retryPolicy: {
+            maximumRetryAttempts: 2,
+          },
+        },
+      },
+    );
   }
 }
