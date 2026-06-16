@@ -1072,6 +1072,79 @@ Eventi sempre loggati in `audit_logs`:
 
 ---
 
+## 14. Regole sulle scadenze personali del cliente (F-CLI-306)
+
+### BR-290 — Ownership al momento della creazione
+
+Una `PersonalDeadline` può essere creata **solo su un veicolo di cui il cliente è proprietario attivo al momento della creazione** (ownership corrente, coerente con BR-040). La verifica avviene app-layer: si cerca una `VehicleOwnership` con `endedAt = null` il cui `customerId` corrisponde al caller. Se il veicolo non esiste o è posseduto da un altro cliente → `403 personal_deadline.vehicle_not_owned`.
+
+**Riferimento feature:** F-CLI-306
+
+### BR-291 — Privacy assoluta verso l'officina
+
+Le scadenze personali sono **private del cliente**: mai esposte a endpoint officina (pool `officine`), mai incluse in DTO lato tenant. Stile BR-081 per gli interventi privati. Le tabelle `personal_deadlines` e `personal_deadline_reminders` non compaiono in nessuna query o serializzatore dell'area officina.
+
+**Riferimento feature:** F-CLI-306
+
+### BR-292 — Canale di notifica effettivo
+
+Il **canale di notifica effettivo** per un reminder è l'AND di due gate:
+1. Flag per-scadenza: `notify_push` (per push) o `notify_email` (per email).
+2. Preferenza globale del cliente: chiave `personal_deadline_reminder` in `notification_preferences.push` / `notification_preferences.email`.
+
+Se entrambi i canali risultano disattivi per un dato reminder, lo sweep lo marca `cancelled` con motivo `channels_off` anziché inviarlo. Il globale è il master-kill: disattivare la preferenza globale azzera tutti i reminder futuri, anche se i flag per-scadenza sono `true`.
+
+**Riferimento feature:** F-CLI-306
+
+### BR-293 — Cap sui reminder materializzati
+
+Per ogni singola `PersonalDeadline`:
+- `reminder_lead_days`: massimo **10 valori distinti** (anticipi scelti).
+- `reminder_daily_tail_days`: massimo **30 giorni** di coda giornaliera.
+- Righe `PersonalDeadlineReminder` materializate: al più **~40 per scadenza** (10 lead + 30 tail, con deduplicazione per data calendario).
+
+La libreria `build-reminders.ts` applica questi cap in fase di creazione e rigenerazione; un'eventuale violazione del body è rigettata dai validator Zod prima ancora di entrare nella logica di build.
+
+**Riferimento feature:** F-CLI-306
+
+### BR-294 — `customLabel` obbligatoria per la categoria `other`
+
+Quando `category = 'other'`, il campo `custom_label` è **obbligatorio e non vuoto** (max 80 caratteri). In tutti gli altri casi, `custom_label` è ignorato (anche se inviato nel body, non viene scritto in DB per le categorie predefinite). La validazione cross-field avviene nel validator Zod (POST) e in-handler (PATCH, dove categoria e label possono cambiare indipendentemente).
+
+→ Errore: `422 personal_deadline.custom_label_required`
+
+**Riferimento feature:** F-CLI-306
+
+### BR-295 — Ora di invio e DST
+
+I reminder sono **ancorati alle 08:00 ora Europe/Rome**, DST-aware, con skew buffer (riuso del pattern BR-103 / `romeLocalToUtc` in `compute-reminders.ts`). I giorni per cui `scheduledFor <= now + skew` al momento della creazione/rigenerazione vengono scartati (non materializzati come `pending`). La granularità è giornaliera; il drift di 1h su passaggi DST è accettato per coerenza con il resto del sistema (warming, transfer-expiry).
+
+**Riferimento feature:** F-CLI-306
+
+### BR-296 — Rinnovo guidato, senza auto-creazione
+
+Completare una scadenza ricorrente (`recurrence_months != null`) **non crea automaticamente** la scadenza successiva. L'endpoint `POST /v1/me/personal-deadlines/:id/complete` restituisce un blocco opzionale `renewalSuggestion` con la data proposta (`dueDate + recurrenceMonths`) e la stessa configurazione della scadenza completata. Il client mobile usa questo blocco per precompilare il form di creazione; l'utente **conferma o corregge la data reale** e invia un normale `POST /v1/me/personal-deadlines`. Zero creazione automatica con data potenzialmente errata.
+
+**Riferimento feature:** F-CLI-306
+
+### BR-297 — Cancellazione su cambio proprietà veicolo (PR2)
+
+> ⚠️ **Implementato in PR2** — non ancora attivo in PR1.
+
+Quando un veicolo cambia proprietario (passaggio cliente F-CLI-401 o officina-mediato F-OFF-110), **tutte le `PersonalDeadline` `open` o `overdue` del precedente proprietario su quel veicolo passano a `cancelled`** e i loro reminder `pending` vengono marcati `cancelled`. Le scadenze già `completed` o `cancelled` restano invariate (storia immutabile).
+
+**Riferimento feature:** F-CLI-306
+
+### BR-298 — Transizione `open → overdue` (sweep giornaliero) (PR2)
+
+> ⚠️ **Implementato in PR2** — non ancora attivo in PR1.
+
+Lo sweep giornaliero porta a `overdue` ogni `PersonalDeadline` in stato `open` con `due_date < today(Rome)`. Lo stato è **persistito** (non derivato a runtime), così la lista e i filtri per `?status=overdue` restano coerenti senza calcolo extra. Le scadenze `overdue` restano visibili e modificabili finché il cliente non le completa o le elimina.
+
+**Riferimento feature:** F-CLI-306
+
+---
+
 ## Appendice alla Appendice: template test case
 
 Ogni regola business può (e dovrebbe) essere coperta da test. Template:
