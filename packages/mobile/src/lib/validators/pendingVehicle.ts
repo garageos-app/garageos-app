@@ -10,6 +10,10 @@ export const VIN_RE = /^[A-HJ-NPR-Z0-9]{17}$/;
 // Mirror of the API's ItalianPlateSchema (AB123CD).
 export const PLATE_RE = /^[A-Z]{2}[0-9]{3}[A-Z]{2}$/;
 
+// Mirror of the API's date-only format (YYYY-MM-DD). The form feeds this from
+// a date picker, so the regex is a guard, not the primary input control.
+export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export type PendingVehicleFormValues = {
   vin: string;
   plate: string;
@@ -18,6 +22,14 @@ export type PendingVehicleFormValues = {
   year: string;
   vehicleType: string;
   fuelType: string;
+  // Optional owner-declared technical fields. All raw form strings; empty
+  // string means "not provided" and is skipped by both validation and the
+  // request body builder.
+  version: string;
+  registrationDate: string;
+  engineDisplacement: string;
+  powerKw: string;
+  color: string;
 };
 
 export type PendingVehicleFormErrors = Partial<Record<keyof PendingVehicleFormValues, string>>;
@@ -54,6 +66,40 @@ export function validatePendingVehicleForm(
 
   if (!values.vehicleType) errors.vehicleType = REQUIRED;
   if (!values.fuelType) errors.fuelType = REQUIRED;
+
+  // Optional technical fields — validated only when the owner filled them in.
+  // Limits mirror the API's CreatePendingVehicleSchema.
+  if (values.version && values.version.length > 150) {
+    errors.version = 'Massimo 150 caratteri';
+  }
+
+  if (values.registrationDate) {
+    const d = values.registrationDate;
+    const ts = Date.parse(`${d}T00:00:00Z`);
+    if (!DATE_RE.test(d) || Number.isNaN(ts)) {
+      errors.registrationDate = 'Data non valida';
+    } else if (ts > Date.now()) {
+      errors.registrationDate = 'La data non può essere futura';
+    }
+  }
+
+  if (values.engineDisplacement) {
+    const n = Number(values.engineDisplacement);
+    if (!/^\d+$/.test(values.engineDisplacement) || n <= 0) {
+      errors.engineDisplacement = 'Inserisci un numero intero positivo (cc)';
+    }
+  }
+
+  if (values.powerKw) {
+    const n = Number(values.powerKw);
+    if (!/^\d+$/.test(values.powerKw) || n <= 0) {
+      errors.powerKw = 'Inserisci un numero intero positivo (kW)';
+    }
+  }
+
+  if (values.color && values.color.length > 50) {
+    errors.color = 'Massimo 50 caratteri';
+  }
 
   return errors;
 }

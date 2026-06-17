@@ -88,6 +88,11 @@ export type ClaimVehicleResponse = {
 // POST /v1/me/vehicles/pending request/response (F-CLI-104 customer
 // pre-registration). plateCountry is not sent by the client — the API
 // defaults it to 'IT'. Pending vehicles have no garageCode yet.
+//
+// version / registrationDate / engineDisplacement / powerKw / color are
+// optional owner-declared technical fields: a pre-registering owner may copy
+// them off their carta di circolazione. They stay non-authoritative until a
+// workshop certifies the vehicle (BR-003/BR-004). Sent only when non-empty.
 export type CreatePendingVehicleRequest = {
   vin: string;
   plate: string;
@@ -96,6 +101,11 @@ export type CreatePendingVehicleRequest = {
   year: number;
   vehicleType: string;
   fuelType: string;
+  version?: string;
+  registrationDate?: string; // YYYY-MM-DD
+  engineDisplacement?: number;
+  powerKw?: number;
+  color?: string;
 };
 
 export type CreatePendingVehicleResponse = {
