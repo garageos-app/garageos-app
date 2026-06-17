@@ -6,7 +6,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { BadgeContestato } from '@/components/BadgeContestato';
 import { ApiError } from '@/lib/api-error';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
-import { formatDate, formatKm } from '@/lib/format';
+import { formatDate, formatDueUrgency, formatKm } from '@/lib/format';
 import {
   DISPUTE_STATUS_LABELS,
   REASON_CATEGORY_LABELS,
@@ -33,6 +33,11 @@ export default function InterventionDetailScreen() {
 
   const { intervention, disputes } = detail.data;
   const hasActiveDispute = disputes.some((d) => isDisputeActive(d.status));
+  // Default the arrays: a persisted react-query cache from a pre-upgrade app
+  // version may rehydrate an intervention without these newer fields, and
+  // stale-while-revalidate renders it before the refetch lands.
+  const partsReplaced = intervention.partsReplaced ?? [];
+  const generatedDeadlines = intervention.generatedDeadlines ?? [];
 
   return (
     <>
@@ -54,6 +59,44 @@ export default function InterventionDetailScreen() {
             <Text style={styles.description}>{intervention.description}</Text>
           ) : null}
         </View>
+
+        {partsReplaced.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Ricambi sostituiti ({partsReplaced.length})</Text>
+            {partsReplaced.map((p, idx) => (
+              <View key={idx} style={styles.part}>
+                <Text style={styles.partName}>
+                  {p.name}
+                  {p.code ? ` · ${p.code}` : ''} · ×{p.quantity}
+                </Text>
+                {p.notes ? <Text style={styles.partNotes}>{p.notes}</Text> : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {generatedDeadlines.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Prossime scadenze</Text>
+            {generatedDeadlines.map((d) => {
+              const urgency = formatDueUrgency(d.dueDate, d.status);
+              const km =
+                d.dueOdometerKm != null ? `Alla soglia di ${formatKm(d.dueOdometerKm)}` : '';
+              const date = d.dueDate ? `Entro il ${formatDate(d.dueDate)}` : '';
+              const when = [date, km].filter(Boolean).join(' · ');
+              return (
+                <View key={d.id} style={styles.deadline}>
+                  <View style={styles.deadlineHead}>
+                    <Text style={styles.deadlineTitle}>{d.type.name_it}</Text>
+                    <Text style={styles.deadlineBadge}>{urgency.label}</Text>
+                  </View>
+                  {d.description ? <Text style={styles.deadlineDesc}>{d.description}</Text> : null}
+                  {when ? <Text style={styles.deadlineMeta}>{when}</Text> : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
 
         {disputes.length > 0 ? (
           <View style={styles.section}>
@@ -99,6 +142,26 @@ const styles = StyleSheet.create({
   description: { fontSize: 15, color: colors.fg, marginTop: spacing.xs },
   section: { gap: spacing.sm },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.fg },
+  part: {
+    gap: 2,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  partName: { fontSize: 14, color: colors.fg },
+  partNotes: { fontSize: 13, color: colors.muted },
+  deadline: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  deadlineHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  deadlineTitle: { fontSize: 14, fontWeight: '600', color: colors.fg, flexShrink: 1 },
+  deadlineBadge: { fontSize: 12, fontWeight: '600', color: colors.muted },
+  deadlineDesc: { fontSize: 13, color: colors.fg },
+  deadlineMeta: { fontSize: 12, color: colors.muted },
   dispute: {
     gap: spacing.xs,
     padding: spacing.md,

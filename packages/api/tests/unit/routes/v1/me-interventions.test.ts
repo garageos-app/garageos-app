@@ -33,6 +33,7 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
         interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
         tenant: { businessName: 'Officina Rossi' },
         location: { city: 'Milano' },
+        sourceDeadlines: [],
       }),
     },
     vehicleOwnership: { findFirst: vi.fn().mockResolvedValue({ id: 'own-1' }) },
@@ -74,6 +75,57 @@ describe('GET /v1/me/interventions/:id (unit)', () => {
     const body = res.json() as { intervention: { id: string }; disputes: unknown[] };
     expect(body.intervention.id).toBe(INTERVENTION_ID);
     expect(body.disputes).toEqual([]);
+    await app.close();
+  });
+
+  it('returns the parts list and generated deadlines in the body', async () => {
+    const prisma = buildFakePrisma({
+      intervention: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: INTERVENTION_ID,
+          vehicleId: 'veh-1',
+          interventionDate: new Date('2026-05-01T00:00:00.000Z'),
+          odometerKm: 84210,
+          title: 'Tagliando',
+          description: 'desc',
+          partsReplaced: [{ name: 'Olio', code: 'OIL-1', quantity: 1, notes: null }],
+          status: 'active',
+          interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
+          tenant: { businessName: 'Officina Rossi' },
+          location: { city: 'Milano' },
+          sourceDeadlines: [
+            {
+              id: 'dl-1',
+              dueDate: new Date('2027-05-15T00:00:00.000Z'),
+              dueOdometerKm: null,
+              description: 'Prossima revisione',
+              status: 'open',
+              interventionType: { code: 'REVISIONE', nameIt: 'Revisione' },
+            },
+          ],
+        }),
+      },
+    });
+    const app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      intervention: {
+        partsReplaced: Array<{ name: string }>;
+        partsReplacedCount: number;
+        generatedDeadlines: Array<{ id: string; dueDate: string | null }>;
+      };
+    };
+    expect(body.intervention.partsReplaced).toEqual([
+      { name: 'Olio', code: 'OIL-1', quantity: 1, notes: null },
+    ]);
+    expect(body.intervention.partsReplacedCount).toBe(1);
+    expect(body.intervention.generatedDeadlines).toHaveLength(1);
+    expect(body.intervention.generatedDeadlines[0]!.dueDate).toBe('2027-05-15');
     await app.close();
   });
 

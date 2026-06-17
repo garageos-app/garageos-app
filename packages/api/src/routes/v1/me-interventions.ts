@@ -47,6 +47,22 @@ const meInterventionsRoutes: FastifyPluginAsync = async (app) => {
             interventionType: { select: { code: true, nameIt: true } },
             tenant: { select: { businessName: true } },
             location: { select: { city: true } },
+            // Deadlines this intervention generated (BR-067 source link).
+            // Cancelled ones are noise; the customer already sees these shop
+            // deadlines via /v1/me/deadlines, so no extra visibility gate is
+            // needed beyond the BR-120 ownership frontier below.
+            sourceDeadlines: {
+              where: { status: { not: 'cancelled' } },
+              orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
+              select: {
+                id: true,
+                dueDate: true,
+                dueOdometerKm: true,
+                description: true,
+                status: true,
+                interventionType: { select: { code: true, nameIt: true } },
+              },
+            },
           },
         });
         if (!intervention) {

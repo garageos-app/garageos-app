@@ -5,6 +5,20 @@
 // date-only (YYYY-MM-DD), never a full ISO timestamp (see feedback
 // db_date_serialized_as_iso, PR #156).
 
+import { normalizePartsReplaced, type PartReplaced } from './intervention-shared.js';
+
+// A deadline this intervention generated (Deadline.sourceInterventionId).
+// dueDate is @db.Date → emitted date-only; cancelled deadlines are filtered
+// out by the route query, so this only carries actionable/history rows.
+export interface RawSourceDeadlineRow {
+  id: string;
+  dueDate: Date | null;
+  dueOdometerKm: number | null;
+  description: string | null;
+  status: string;
+  interventionType: { code: string; nameIt: string };
+}
+
 export interface RawInterventionRow {
   id: string;
   vehicleId: string;
@@ -17,6 +31,7 @@ export interface RawInterventionRow {
   interventionType: { code: string; nameIt: string };
   tenant: { businessName: string };
   location: { city: string } | null;
+  sourceDeadlines: RawSourceDeadlineRow[];
 }
 
 export interface RawDisputeRow {
@@ -39,11 +54,20 @@ export interface ShopInterventionDetailDto {
     type: { code: string; name_it: string };
     title: string | null;
     description: string;
+    partsReplaced: PartReplaced[];
     partsReplacedCount: number;
     status: string;
     isDisputed: boolean;
     tenant: { businessName: string; locationCity: string | null };
     attachmentsCount: number;
+    generatedDeadlines: Array<{
+      id: string;
+      type: { code: string; name_it: string };
+      dueDate: string | null;
+      dueOdometerKm: number | null;
+      description: string | null;
+      status: string;
+    }>;
   };
   disputes: Array<{
     id: string;
@@ -62,6 +86,7 @@ export function projectShopInterventionDetail(
   disputes: RawDisputeRow[],
   attachmentsCount: number,
 ): ShopInterventionDetailDto {
+  const parts = normalizePartsReplaced(row.partsReplaced);
   return {
     intervention: {
       id: row.id,
@@ -71,11 +96,20 @@ export function projectShopInterventionDetail(
       type: { code: row.interventionType.code, name_it: row.interventionType.nameIt },
       title: row.title,
       description: row.description,
-      partsReplacedCount: Array.isArray(row.partsReplaced) ? row.partsReplaced.length : 0,
+      partsReplaced: parts,
+      partsReplacedCount: parts.length,
       status: row.status,
       isDisputed: row.status === 'disputed',
       tenant: { businessName: row.tenant.businessName, locationCity: row.location?.city ?? null },
       attachmentsCount,
+      generatedDeadlines: row.sourceDeadlines.map((d) => ({
+        id: d.id,
+        type: { code: d.interventionType.code, name_it: d.interventionType.nameIt },
+        dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
+        dueOdometerKm: d.dueOdometerKm,
+        description: d.description,
+        status: d.status,
+      })),
     },
     disputes: disputes.map((d) => ({
       id: d.id,

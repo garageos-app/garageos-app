@@ -18,6 +18,7 @@ const baseRow: RawInterventionRow = {
   interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
   tenant: { businessName: 'Officina Rossi' },
   location: { city: 'Milano' },
+  sourceDeadlines: [],
 };
 
 describe('projectShopInterventionDetail', () => {
@@ -31,13 +32,80 @@ describe('projectShopInterventionDetail', () => {
       type: { code: 'TAGLIANDO', name_it: 'Tagliando' },
       title: 'Tagliando completo',
       description: 'Sostituzione olio e filtri',
+      partsReplaced: [
+        { name: 'Olio', code: null, quantity: 1, notes: null },
+        { name: 'Filtro', code: null, quantity: 1, notes: null },
+        { name: 'Candele', code: null, quantity: 1, notes: null },
+      ],
       partsReplacedCount: 3,
       status: 'disputed',
       isDisputed: true,
       tenant: { businessName: 'Officina Rossi', locationCity: 'Milano' },
       attachmentsCount: 2,
+      generatedDeadlines: [],
     });
     expect(out.disputes).toEqual([]);
+  });
+
+  it('maps generated deadlines with date-only dueDate and snake-case type', () => {
+    const out = projectShopInterventionDetail(
+      {
+        ...baseRow,
+        sourceDeadlines: [
+          {
+            id: 'dl-1',
+            dueDate: new Date('2027-05-15T00:00:00.000Z'),
+            dueOdometerKm: 120000,
+            description: 'Prossima revisione',
+            status: 'open',
+            interventionType: { code: 'REVISIONE', nameIt: 'Revisione' },
+          },
+          {
+            id: 'dl-2',
+            dueDate: null,
+            dueOdometerKm: 150000,
+            description: null,
+            status: 'overdue',
+            interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
+          },
+        ],
+      },
+      [],
+      0,
+    );
+    expect(out.intervention.generatedDeadlines).toEqual([
+      {
+        id: 'dl-1',
+        type: { code: 'REVISIONE', name_it: 'Revisione' },
+        dueDate: '2027-05-15',
+        dueOdometerKm: 120000,
+        description: 'Prossima revisione',
+        status: 'open',
+      },
+      {
+        id: 'dl-2',
+        type: { code: 'TAGLIANDO', name_it: 'Tagliando' },
+        dueDate: null,
+        dueOdometerKm: 150000,
+        description: null,
+        status: 'overdue',
+      },
+    ]);
+  });
+
+  it('normalizes full part records (code, quantity, notes preserved)', () => {
+    const out = projectShopInterventionDetail(
+      {
+        ...baseRow,
+        partsReplaced: [{ name: 'Pastiglie', code: 'BRK-42', quantity: 4, notes: 'Anteriori' }],
+      },
+      [],
+      0,
+    );
+    expect(out.intervention.partsReplaced).toEqual([
+      { name: 'Pastiglie', code: 'BRK-42', quantity: 4, notes: 'Anteriori' },
+    ]);
+    expect(out.intervention.partsReplacedCount).toBe(1);
   });
 
   it('maps the dispute thread and exposes the tenant response', () => {
