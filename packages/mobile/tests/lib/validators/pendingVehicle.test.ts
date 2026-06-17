@@ -80,6 +80,14 @@ describe('validatePendingVehicleForm — optional technical fields', () => {
     ).toBe('Data non valida');
   });
 
+  it('rejects an impossible calendar date that the regex alone would accept', () => {
+    // 2020-02-31 matches /^\d{4}-\d{2}-\d{2}$/ but is not a real date; the
+    // round-trip guard must reject it rather than let new Date() roll it to March.
+    expect(
+      validatePendingVehicleForm(values({ registrationDate: '2020-02-31' })).registrationDate,
+    ).toBe('Data non valida');
+  });
+
   it('rejects a future registration date', () => {
     expect(
       validatePendingVehicleForm(values({ registrationDate: '2999-01-01' })).registrationDate,

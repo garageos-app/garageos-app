@@ -75,10 +75,21 @@ export function validatePendingVehicleForm(
 
   if (values.registrationDate) {
     const d = values.registrationDate;
-    const ts = Date.parse(`${d}T00:00:00Z`);
-    if (!DATE_RE.test(d) || Number.isNaN(ts)) {
+    const [y, mo, day] = d.split('-').map(Number);
+    // Parse as a LOCAL calendar date and round-trip it: a regex match alone
+    // would let new Date() roll an impossible date (e.g. 2020-02-31) forward.
+    // Local (not UTC) keeps the future check consistent with the picker's
+    // local maximumDate, avoiding a false "future" rejection just after
+    // local midnight for users ahead of UTC.
+    const local = DATE_RE.test(d) ? new Date(y!, mo! - 1, day!) : null;
+    const valid =
+      local !== null &&
+      local.getFullYear() === y &&
+      local.getMonth() === mo! - 1 &&
+      local.getDate() === day;
+    if (!valid) {
       errors.registrationDate = 'Data non valida';
-    } else if (ts > Date.now()) {
+    } else if (local!.getTime() > Date.now()) {
       errors.registrationDate = 'La data non può essere futura';
     }
   }
