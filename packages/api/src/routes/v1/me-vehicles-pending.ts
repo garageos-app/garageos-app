@@ -90,9 +90,22 @@ const meVehiclesPendingRoutes: FastifyPluginAsync = async (app) => {
               plateCountry: body.plateCountry,
               make: body.make,
               model: body.model,
+              // Optional owner-declared technical fields (BR-003/BR-004:
+              // non-authoritative until a workshop certifies). Conditional
+              // spreads mirror the workshop create (routes/v1/vehicles.ts) so
+              // an omitted field stays NULL rather than being written empty.
+              ...(body.version ? { version: body.version } : {}),
               year: body.year,
+              ...(body.registrationDate
+                ? { registrationDate: new Date(body.registrationDate) }
+                : {}),
               vehicleType: body.vehicleType,
               fuelType: body.fuelType,
+              ...(body.engineDisplacement !== undefined
+                ? { engineDisplacement: body.engineDisplacement }
+                : {}),
+              ...(body.powerKw !== undefined ? { powerKw: body.powerKw } : {}),
+              ...(body.color ? { color: body.color } : {}),
               status: 'pending',
               createdByCustomerId: customerId,
             },

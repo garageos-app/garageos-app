@@ -1,4 +1,30 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+
+// The native date picker has no JS implementation under jest. Mock it as a
+// Pressable that emits onChange with a fixed PAST date (the registration-date
+// validator rejects future dates).
+jest.mock('@react-native-community/datetimepicker', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const React = require('react');
+  const { Pressable, Text } = require('react-native');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  return {
+    __esModule: true,
+    default: ({
+      testID,
+      onChange,
+    }: {
+      testID?: string;
+      onChange?: (e: unknown, d?: Date) => void;
+    }) =>
+      React.createElement(
+        Pressable,
+        { testID, onPress: () => onChange?.({ type: 'set' }, new Date('2020-06-15T00:00:00')) },
+        React.createElement(Text, null, 'picker'),
+      ),
+  };
+});
+
 import { PendingVehicleForm } from '@/components/PendingVehicleForm';
 
 // Fills every text field with valid values and selects one chip per group.
@@ -123,5 +149,43 @@ describe('PendingVehicleForm', () => {
     render(<PendingVehicleForm onSubmit={jest.fn()} onCancel={onCancel} />);
     fireEvent.press(screen.getByRole('button', { name: 'Annulla' }));
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the optional technical fields collapsed until the header is tapped', () => {
+    render(<PendingVehicleForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
+    expect(screen.queryByTestId('pending-version')).toBeNull();
+    fireEvent.press(screen.getByTestId('optional-tech-toggle'));
+    expect(screen.getByTestId('pending-version')).toBeOnTheScreen();
+    expect(screen.getByTestId('pending-engine-displacement')).toBeOnTheScreen();
+    expect(screen.getByTestId('pending-color')).toBeOnTheScreen();
+  });
+
+  it('includes the filled optional fields (typed values + picked date) in the body', async () => {
+    const onSubmit = jest.fn().mockResolvedValue({ ok: true });
+    render(<PendingVehicleForm onSubmit={onSubmit} onCancel={jest.fn()} />);
+    fillValid();
+    fireEvent.press(screen.getByTestId('optional-tech-toggle'));
+    fireEvent.changeText(screen.getByTestId('pending-version'), ' 1.2 Easy ');
+    fireEvent.changeText(screen.getByTestId('pending-engine-displacement'), '1242');
+    fireEvent.changeText(screen.getByTestId('pending-power-kw'), '51');
+    fireEvent.changeText(screen.getByTestId('pending-color'), ' Bianco ');
+    fireEvent.press(screen.getByTestId('pending-registration-date'));
+    fireEvent.press(screen.getByTestId('pending-registration-date-picker'));
+    fireEvent.press(screen.getByRole('button', { name: 'Pre-registra' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      vin: 'ZFA16900001234567',
+      plate: 'AB123CD',
+      make: 'Fiat',
+      model: 'Panda',
+      year: 2018,
+      vehicleType: 'car',
+      fuelType: 'petrol',
+      version: '1.2 Easy',
+      registrationDate: '2020-06-15',
+      engineDisplacement: 1242,
+      powerKw: 51,
+      color: 'Bianco',
+    });
   });
 });

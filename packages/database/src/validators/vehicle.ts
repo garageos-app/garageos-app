@@ -80,6 +80,13 @@ export const CreateVehicleSchema = z.object({
 // is at route level). vehicleType and fuelType are extra vs BR-006 because
 // the DB columns are NOT NULL with no defaults. forceNonstandardVin is
 // deliberately absent: the BR-001 exception is mechanic-only (workshop flow).
+//
+// version / registrationDate / engineDisplacement / powerKw / color are
+// OPTIONAL owner-declared technical fields (same shape/limits as
+// CreateVehicleSchema). They are NOT authoritative: a workshop verifies and
+// corrects them from the libretto at certification (BR-003 / BR-004). They
+// exist here so a pre-registering owner can fill in what they read off their
+// own carta di circolazione instead of leaving the detail screen half-empty.
 export const CreatePendingVehicleSchema = z
   .object({
     vin: VinSchema,
@@ -87,13 +94,21 @@ export const CreatePendingVehicleSchema = z
     plateCountry: z.string().length(2).default('IT'),
     make: z.string().min(1).max(50),
     model: z.string().min(1).max(100),
+    version: z.string().max(150).optional(),
     year: z
       .number()
       .int()
       .min(1900)
       .max(CURRENT_YEAR + 1),
+    registrationDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
     vehicleType: VehicleTypeEnum,
     fuelType: FuelTypeEnum,
+    engineDisplacement: z.number().int().positive().optional(),
+    powerKw: z.number().int().positive().optional(),
+    color: z.string().max(50).optional(),
   })
   .strict();
 
