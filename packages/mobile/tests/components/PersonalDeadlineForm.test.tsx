@@ -218,4 +218,34 @@ describe('PersonalDeadlineForm', () => {
     // vehicleId must NOT be in the edit body (no vehicle-reassign path).
     expect('vehicleId' in body).toBe(false);
   });
+
+  it('edit mode: shows the read-only vehicle label from the DTO even when the vehicles list is empty', () => {
+    // Regression: the edit form used to highlight a chip matched against
+    // useMeVehiclesList(); when the list was still loading or did not contain
+    // the deadline's vehicle, nothing appeared. The label now comes from the
+    // denormalized DTO and must render regardless of the list.
+    mockVehicles([]);
+    render(
+      <PersonalDeadlineForm
+        mode="edit"
+        submitLabel="Salva"
+        submitting={false}
+        onSubmit={jest.fn()}
+        vehicleLabel="AB123CD — Fiat Panda"
+        initial={{
+          vehicleId: 'veh-1',
+          category: 'insurance',
+          dueDate: '2099-05-10',
+          reminderLeadDays: [7],
+          notifyPush: true,
+          notifyEmail: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('vehicle-readonly')).toBeOnTheScreen();
+    expect(screen.getByText('AB123CD — Fiat Panda')).toBeOnTheScreen();
+    // No selectable chips are rendered in edit mode.
+    expect(screen.queryByTestId('vehicle-chip-veh-1')).toBeNull();
+  });
 });

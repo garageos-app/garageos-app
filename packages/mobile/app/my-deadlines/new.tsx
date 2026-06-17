@@ -121,6 +121,7 @@ export default function NewPersonalDeadlineScreen() {
           <PersonalDeadlineForm
             mode="edit"
             initial={initial}
+            vehicleLabel={`${dto.vehicle.plate} — ${dto.vehicle.make} ${dto.vehicle.model}`}
             submitLabel={submitLabel}
             submitting={submitting}
             serverError={serverError}

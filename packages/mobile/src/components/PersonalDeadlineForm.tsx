@@ -40,6 +40,11 @@ type Props = {
   submitting: boolean;
   serverError?: string;
   mode: Mode;
+  // Read-only vehicle label for edit mode (e.g. "AB123CD — Fiat Panda"). The
+  // vehicle cannot be reassigned, so edit renders this denormalized label from
+  // the deadline DTO instead of matching against the owned-vehicles list (which
+  // may still be loading or not contain the vehicle).
+  vehicleLabel?: string;
   onSubmit: (body: CreatePersonalDeadlineBody | UpdatePersonalDeadlineBody) => void;
 };
 
@@ -68,6 +73,7 @@ export function PersonalDeadlineForm({
   submitting,
   serverError,
   mode,
+  vehicleLabel,
   onSubmit,
 }: Props) {
   const vehicles = useMeVehiclesList();
@@ -182,28 +188,28 @@ export function PersonalDeadlineForm({
       {/* 1. Vehicle */}
       <View style={styles.field}>
         <Text style={styles.label}>Veicolo</Text>
-        {vehicles.isLoading ? (
+        {mode === 'edit' ? (
+          // The vehicle is fixed in edit mode (no reassign path). Render the
+          // denormalized label from the DTO — independent of the vehicles list.
+          <View
+            testID="vehicle-readonly"
+            style={[styles.chip, styles.chipDisabled, styles.alignStart]}
+          >
+            <Text style={styles.chipText}>{vehicleLabel ?? '—'}</Text>
+          </View>
+        ) : vehicles.isLoading ? (
           <Text style={styles.loadingText}>Caricamento veicoli…</Text>
         ) : (
           <View style={styles.chipRow}>
             {vehicleList.map((v) => {
               const selected = v.id === effectiveVehicleId;
-              // In edit mode the API has no vehicle-reassign path, so vehicle
-              // chips are rendered read-only to avoid a misleading affordance.
-              const vehicleDisabled = mode === 'edit';
               return (
                 <Pressable
                   key={v.id}
                   testID={`vehicle-chip-${v.id}`}
                   accessibilityRole="button"
-                  accessibilityState={{ disabled: vehicleDisabled }}
-                  disabled={vehicleDisabled}
                   onPress={() => setVehicleId(v.id)}
-                  style={[
-                    styles.chip,
-                    selected && styles.chipSelected,
-                    vehicleDisabled && styles.chipDisabled,
-                  ]}
+                  style={[styles.chip, selected && styles.chipSelected]}
                 >
                   <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
                     {`${v.plate} — ${v.make} ${v.model}`}
@@ -484,6 +490,7 @@ const styles = StyleSheet.create({
   chipIcon: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipDisabled: { backgroundColor: colors.mutedBg, borderColor: colors.border, opacity: 0.6 },
+  alignStart: { alignSelf: 'flex-start' },
   chipText: { fontSize: 14, color: colors.fg },
   chipTextSelected: { color: colors.primaryFg, fontWeight: '600' },
   switchRow: {
