@@ -183,6 +183,57 @@ describe('POST /v1/me/vehicles/pending', () => {
     );
   });
 
+  it('forwards the optional technical fields to vehicle.create, converting the date', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/pending',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: {
+        ...VALID_BODY,
+        version: '1.2 Easy',
+        registrationDate: '2020-06-15',
+        engineDisplacement: 1242,
+        powerKw: 51,
+        color: 'Bianco',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const createData = (
+      prisma.vehicle.create.mock.calls[0]?.[0] as { data: Record<string, unknown> }
+    ).data;
+    expect(createData.version).toBe('1.2 Easy');
+    expect(createData.registrationDate).toBeInstanceOf(Date);
+    expect((createData.registrationDate as Date).toISOString().slice(0, 10)).toBe('2020-06-15');
+    expect(createData.engineDisplacement).toBe(1242);
+    expect(createData.powerKw).toBe(51);
+    expect(createData.color).toBe('Bianco');
+  });
+
+  it('omits absent optional technical fields from vehicle.create (no empty writes)', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+
+    await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/pending',
+      headers: { authorization: 'Bearer valid.jwt' },
+      payload: VALID_BODY,
+    });
+
+    const createData = (
+      prisma.vehicle.create.mock.calls[0]?.[0] as { data: Record<string, unknown> }
+    ).data;
+    expect(createData).not.toHaveProperty('version');
+    expect(createData).not.toHaveProperty('registrationDate');
+    expect(createData).not.toHaveProperty('engineDisplacement');
+    expect(createData).not.toHaveProperty('powerKw');
+    expect(createData).not.toHaveProperty('color');
+  });
+
   it('invokes withContext with customerId + role: user', async () => {
     const withContext = vi.fn(async (_ctx, fn) => fn(buildFakePrisma()));
     app = await buildApp({ withContext });

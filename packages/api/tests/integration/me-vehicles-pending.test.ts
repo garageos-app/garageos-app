@@ -153,6 +153,93 @@ describe('POST /v1/me/vehicles/pending (integration)', () => {
     expect(listBody.data[0]!.currentOwnership.id).toBe(body.ownership.id);
   });
 
+  it('persists the optional owner-declared technical fields when provided', async () => {
+    const { token } = await customer('pend-tech');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/pending',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        ...BASE_BODY,
+        vin: VIN_HAPPY,
+        plate: 'PD006FF',
+        version: '1.2 Easy',
+        registrationDate: '2020-06-15',
+        engineDisplacement: 1242,
+        powerKw: 51,
+        color: 'Bianco',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const vehicleId = (res.json() as { vehicle: { id: string } }).vehicle.id;
+
+    // The 201 envelope intentionally does NOT echo these fields; they are
+    // verified at the DB layer (the mobile detail GET re-projects them).
+    // registration_date is @db.Date → DATE column; assert the bare date.
+    const { rows } = await pgAdmin.query<{
+      version: string | null;
+      registration_date: Date | null;
+      engine_displacement: number | null;
+      power_kw: number | null;
+      color: string | null;
+    }>(
+      `SELECT version, registration_date, engine_displacement, power_kw, color
+         FROM vehicles WHERE id = $1`,
+      [vehicleId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.version).toBe('1.2 Easy');
+    expect(rows[0]!.registration_date?.toISOString().slice(0, 10)).toBe('2020-06-15');
+    expect(rows[0]!.engine_displacement).toBe(1242);
+    expect(rows[0]!.power_kw).toBe(51);
+    expect(rows[0]!.color).toBe('Bianco');
+  });
+
+  it('still creates the vehicle when the optional technical fields are omitted', async () => {
+    const { token } = await customer('pend-no-tech');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/pending',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...BASE_BODY, vin: VIN_HAPPY, plate: 'PD007GG' },
+    });
+    expect(res.statusCode).toBe(201);
+    const vehicleId = (res.json() as { vehicle: { id: string } }).vehicle.id;
+
+    const { rows } = await pgAdmin.query<{
+      version: string | null;
+      registration_date: Date | null;
+      engine_displacement: number | null;
+      power_kw: number | null;
+      color: string | null;
+    }>(
+      `SELECT version, registration_date, engine_displacement, power_kw, color
+         FROM vehicles WHERE id = $1`,
+      [vehicleId],
+    );
+    expect(rows[0]).toEqual({
+      version: null,
+      registration_date: null,
+      engine_displacement: null,
+      power_kw: null,
+      color: null,
+    });
+  });
+
+  it('returns 400 for an invalid optional technical field (negative displacement)', async () => {
+    const { token } = await customer('pend-bad-tech');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/pending',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...BASE_BODY, vin: VIN_HAPPY, plate: 'PD008HH', engineDisplacement: -1 },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('returns 409 duplicate_vin_certified when the VIN belongs to a certified vehicle', async () => {
     const { token } = await customer('pend-dup-cert');
     const { tenantId } = await createTenantWithLocation('pend-dup-cert');

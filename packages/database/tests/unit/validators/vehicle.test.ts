@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CertifyVehicleSchema,
   ClaimVehicleSchema,
+  CreatePendingVehicleSchema,
   CreateVehicleSchema,
   FuelTypeEnum,
   UpdateVehicleSchema,
@@ -229,6 +230,89 @@ describe('UpdateVehicleSchema', () => {
       force: true,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('CreatePendingVehicleSchema', () => {
+  const BASE_PENDING = {
+    vin: 'ZFA16900000512345',
+    plate: 'AB123CD',
+    make: 'Fiat',
+    model: 'Panda',
+    year: 2021,
+    vehicleType: 'car' as const,
+    fuelType: 'petrol' as const,
+  };
+
+  it('accepts a minimal body and defaults plateCountry to IT', () => {
+    const parsed = CreatePendingVehicleSchema.parse({ ...BASE_PENDING });
+    expect(parsed.plateCountry).toBe('IT');
+    // Optional technical fields stay absent (not coerced to null/empty).
+    expect(parsed.version).toBeUndefined();
+    expect(parsed.registrationDate).toBeUndefined();
+    expect(parsed.engineDisplacement).toBeUndefined();
+    expect(parsed.powerKw).toBeUndefined();
+    expect(parsed.color).toBeUndefined();
+  });
+
+  it('accepts the optional owner-declared technical fields', () => {
+    const parsed = CreatePendingVehicleSchema.parse({
+      ...BASE_PENDING,
+      version: '1.2 Easy',
+      registrationDate: '2021-03-15',
+      engineDisplacement: 1242,
+      powerKw: 51,
+      color: 'Bianco',
+    });
+    expect(parsed.version).toBe('1.2 Easy');
+    expect(parsed.registrationDate).toBe('2021-03-15');
+    expect(parsed.engineDisplacement).toBe(1242);
+    expect(parsed.powerKw).toBe(51);
+    expect(parsed.color).toBe('Bianco');
+  });
+
+  it('rejects unknown fields (strict) — e.g. odometerKm is workshop-only', () => {
+    const result = CreatePendingVehicleSchema.safeParse({ ...BASE_PENDING, odometerKm: 1000 });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects forceNonstandardVin (mechanic-only bypass is absent here)', () => {
+    const result = CreatePendingVehicleSchema.safeParse({
+      ...BASE_PENDING,
+      forceNonstandardVin: true,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-positive engineDisplacement', () => {
+    expect(
+      CreatePendingVehicleSchema.safeParse({ ...BASE_PENDING, engineDisplacement: 0 }).success,
+    ).toBe(false);
+    expect(
+      CreatePendingVehicleSchema.safeParse({ ...BASE_PENDING, engineDisplacement: -1 }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a non-positive powerKw', () => {
+    expect(CreatePendingVehicleSchema.safeParse({ ...BASE_PENDING, powerKw: 0 }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects a malformed registrationDate', () => {
+    expect(
+      CreatePendingVehicleSchema.safeParse({ ...BASE_PENDING, registrationDate: '15/03/2021' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('rejects version longer than 150 chars and color longer than 50', () => {
+    expect(
+      CreatePendingVehicleSchema.safeParse({ ...BASE_PENDING, version: 'x'.repeat(151) }).success,
+    ).toBe(false);
+    expect(
+      CreatePendingVehicleSchema.safeParse({ ...BASE_PENDING, color: 'x'.repeat(51) }).success,
+    ).toBe(false);
   });
 });
 
