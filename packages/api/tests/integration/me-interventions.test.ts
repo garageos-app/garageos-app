@@ -202,7 +202,7 @@ describe('GET /v1/me/interventions/:id (integration)', () => {
         partsReplaced: Array<{ name: string; quantity: number }>;
         partsReplacedCount: number;
         generatedDeadlines: Array<{
-          type: { name_it: string };
+          type: { code: string };
           dueDate: string | null;
           dueOdometerKm: number | null;
           status: string;
@@ -214,7 +214,7 @@ describe('GET /v1/me/interventions/:id (integration)', () => {
     expect(body.intervention.partsReplaced.map((p) => p.name)).toEqual(['Olio', 'Filtro']);
     expect(body.intervention.generatedDeadlines).toHaveLength(1);
     expect(body.intervention.generatedDeadlines[0]).toMatchObject({
-      type: { name_it: 'Revisione' },
+      type: { code: 'REVISIONE' },
       dueDate: '2027-05-15',
       dueOdometerKm: 120000,
       status: 'open',
