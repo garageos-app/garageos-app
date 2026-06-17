@@ -33,6 +33,11 @@ export default function InterventionDetailScreen() {
 
   const { intervention, disputes } = detail.data;
   const hasActiveDispute = disputes.some((d) => isDisputeActive(d.status));
+  // Default the arrays: a persisted react-query cache from a pre-upgrade app
+  // version may rehydrate an intervention without these newer fields, and
+  // stale-while-revalidate renders it before the refetch lands.
+  const partsReplaced = intervention.partsReplaced ?? [];
+  const generatedDeadlines = intervention.generatedDeadlines ?? [];
 
   return (
     <>
@@ -55,12 +60,10 @@ export default function InterventionDetailScreen() {
           ) : null}
         </View>
 
-        {intervention.partsReplaced.length > 0 ? (
+        {partsReplaced.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Ricambi sostituiti ({intervention.partsReplaced.length})
-            </Text>
-            {intervention.partsReplaced.map((p, idx) => (
+            <Text style={styles.sectionTitle}>Ricambi sostituiti ({partsReplaced.length})</Text>
+            {partsReplaced.map((p, idx) => (
               <View key={idx} style={styles.part}>
                 <Text style={styles.partName}>
                   {p.name}
@@ -72,10 +75,10 @@ export default function InterventionDetailScreen() {
           </View>
         ) : null}
 
-        {intervention.generatedDeadlines.length > 0 ? (
+        {generatedDeadlines.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Prossime scadenze</Text>
-            {intervention.generatedDeadlines.map((d) => {
+            {generatedDeadlines.map((d) => {
               const urgency = formatDueUrgency(d.dueDate, d.status);
               const km =
                 d.dueOdometerKm != null ? `Alla soglia di ${formatKm(d.dueOdometerKm)}` : '';

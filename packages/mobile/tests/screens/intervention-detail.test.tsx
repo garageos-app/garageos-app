@@ -117,6 +117,19 @@ describe('InterventionDetailScreen', () => {
     expect(screen.getByText('Prossima revisione')).toBeTruthy();
   });
 
+  it('does not crash on a stale cached detail missing the new array fields', () => {
+    // A persisted react-query cache from a pre-upgrade app version has no
+    // partsReplaced / generatedDeadlines keys; the screen must default them.
+    const stale = baseData();
+    delete (stale.intervention as Record<string, unknown>).partsReplaced;
+    delete (stale.intervention as Record<string, unknown>).generatedDeadlines;
+    mockDetail.data = stale;
+    render(<InterventionDetailScreen />);
+    expect(screen.getByText('Contesta intervento')).toBeTruthy();
+    expect(screen.queryByText(/Ricambi sostituiti/)).toBeNull();
+    expect(screen.queryByText('Prossime scadenze')).toBeNull();
+  });
+
   it('renders without crashing while pending without data (offline-paused safe)', () => {
     mockDetail.data = undefined;
     mockDetail.isLoading = false;
