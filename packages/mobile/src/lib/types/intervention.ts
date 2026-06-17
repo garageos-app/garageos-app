@@ -18,6 +18,22 @@ export type Dispute = {
   resolvedAt: string | null;
 };
 
+export type PartReplaced = {
+  name: string;
+  code: string | null;
+  quantity: number;
+  notes: string | null;
+};
+
+export type GeneratedDeadline = {
+  id: string;
+  type: { code: string; name_it: string };
+  dueDate: string | null;
+  dueOdometerKm: number | null;
+  description: string | null;
+  status: string;
+};
+
 export type ShopInterventionDetail = {
   intervention: {
     id: string;
@@ -27,11 +43,13 @@ export type ShopInterventionDetail = {
     type: { code: string; name_it: string };
     title: string | null;
     description: string;
+    partsReplaced: PartReplaced[];
     partsReplacedCount: number;
     status: string;
     isDisputed: boolean;
     tenant: { businessName: string; locationCity: string | null };
     attachmentsCount: number;
+    generatedDeadlines: GeneratedDeadline[];
   };
   disputes: Dispute[];
 };

@@ -30,11 +30,13 @@ function baseData(overrides: Record<string, unknown> = {}) {
       type: { code: 'TAGLIANDO', name_it: 'Tagliando' },
       title: 'Tagliando completo',
       description: 'desc',
-      partsReplacedCount: 2,
+      partsReplaced: [],
+      partsReplacedCount: 0,
       status: 'active',
       isDisputed: false,
       tenant: { businessName: 'Officina Rossi', locationCity: 'Milano' },
       attachmentsCount: 0,
+      generatedDeadlines: [],
     },
     disputes: [],
     ...overrides,
@@ -74,6 +76,45 @@ describe('InterventionDetailScreen', () => {
     expect(screen.queryByText('Contesta intervento')).toBeNull();
     expect(screen.getByText('Risposta ricevuta')).toBeTruthy();
     expect(screen.getByText('Verificato')).toBeTruthy();
+  });
+
+  it('renders the parts replaced list when present', () => {
+    mockDetail.data = baseData({
+      intervention: {
+        ...baseData().intervention,
+        partsReplaced: [
+          { name: 'Pastiglie freni', code: 'BRK-42', quantity: 4, notes: 'Anteriori' },
+          { name: 'Olio motore', code: null, quantity: 1, notes: null },
+        ],
+        partsReplacedCount: 2,
+      },
+    });
+    render(<InterventionDetailScreen />);
+    expect(screen.getByText('Ricambi sostituiti (2)')).toBeTruthy();
+    expect(screen.getByText('Pastiglie freni · BRK-42 · ×4')).toBeTruthy();
+    expect(screen.getByText('Anteriori')).toBeTruthy();
+  });
+
+  it('renders the generated deadline when present', () => {
+    mockDetail.data = baseData({
+      intervention: {
+        ...baseData().intervention,
+        generatedDeadlines: [
+          {
+            id: 'dl-1',
+            type: { code: 'REVISIONE', name_it: 'Revisione' },
+            dueDate: '2027-05-15',
+            dueOdometerKm: 120000,
+            description: 'Prossima revisione',
+            status: 'open',
+          },
+        ],
+      },
+    });
+    render(<InterventionDetailScreen />);
+    expect(screen.getByText('Prossime scadenze')).toBeTruthy();
+    expect(screen.getByText('Revisione')).toBeTruthy();
+    expect(screen.getByText('Prossima revisione')).toBeTruthy();
   });
 
   it('renders without crashing while pending without data (offline-paused safe)', () => {
