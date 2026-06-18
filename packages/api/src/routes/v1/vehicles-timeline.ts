@@ -61,6 +61,7 @@ function buildVehicleDateCursorWhere(vehicleId: string, opts: DateWindow): Recor
 
 const shopRowSelect = {
   id: true,
+  tenantId: true,
   interventionDate: true,
   odometerKm: true,
   title: true,
@@ -265,6 +266,13 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         // wiki_window_open in the same response.
         const now = new Date();
 
+        // BR-150/BR-153: the timeline is cross-tenant for officine, but edit
+        // and dispute-response are owner-only mutations. Surface per-row
+        // ownership so the web client renders other tenants' interventions
+        // read-only. For clienti there is no owning tenant (editing is
+        // officina-only), so it is always false.
+        const callerTenantId = isOfficine ? request.tenantId! : null;
+
         const data = page.map((item) => {
           if (item.kind === 'shop') {
             const r = item.row;
@@ -294,6 +302,7 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
                 business_name: r.tenant.businessName,
                 location_city: r.location.city,
               },
+              viewer_is_owner: r.tenantId === callerTenantId,
               has_attachments: attachments > 0,
               attachments_count: attachments,
             };
