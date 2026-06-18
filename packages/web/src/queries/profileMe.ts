@@ -14,6 +14,10 @@ export interface ProfileMeDto {
   phone: string | null;
   status: string;
   createdAt: string;
+  // Names for the brand strip (officina + assigned sede). location is null
+  // when the user has no sede assigned.
+  tenant: { businessName: string };
+  location: { name: string; city: string } | null;
 }
 
 export function useProfileMe() {

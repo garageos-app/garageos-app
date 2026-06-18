@@ -35,6 +35,10 @@ export function TopBar() {
   const profile = profileQuery.data;
   const avatarUrl = profile?.avatarUrl ?? null;
   const initials = profile ? getInitials(profile.firstName, profile.lastName) : '?';
+  // Brand strip: officina business name + the user's assigned sede.
+  // Falls back to a neutral label until the profile query resolves.
+  const officinaName = profile ? `Officina ${profile.tenant.businessName}` : 'GarageOS';
+  const sedeName = profile?.location?.name ?? null;
 
   function onSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,8 +54,9 @@ export function TopBar() {
 
   return (
     <header className="bg-card border-b border-border px-6 py-3 flex items-center gap-4">
-      <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-        Officina Bootstrap
+      <div className="text-xs font-medium uppercase tracking-wider shrink-0">
+        <span className="text-foreground">{officinaName}</span>
+        {sedeName && <span className="text-muted-foreground"> · {sedeName}</span>}
       </div>
       <form onSubmit={onSearchSubmit} className="flex-1 max-w-xl mx-auto" role="search">
         <div className="relative">

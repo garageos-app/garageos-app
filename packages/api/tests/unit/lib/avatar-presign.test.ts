@@ -58,6 +58,8 @@ describe('serializeUserMe', () => {
     phone: null,
     status: 'active' as const,
     createdAt: new Date(),
+    tenant: { businessName: 'Matula' },
+    location: null,
   };
 
   it('returns avatarUrl=null when DB field is null', async () => {
