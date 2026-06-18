@@ -6,7 +6,11 @@ import type { ReactNode } from 'react';
 
 import { VehicleDetail } from './VehicleDetail';
 import { ApiError } from '@/lib/api-client';
-import type { TimelineResponse, VehicleDetailResponse } from '@/queries/types';
+import type {
+  TimelineOfficineResponse,
+  TimelineResponse,
+  VehicleDetailResponse,
+} from '@/queries/types';
 
 const { apiFetchMock, navigateMock, toastErrorMock } = vi.hoisted(() => ({
   apiFetchMock: vi.fn(),
@@ -73,7 +77,7 @@ const TIMELINE_FIXTURE: TimelineResponse = {
       status: 'active',
       is_disputed: false,
       wiki_window_open: true,
-      tenant: { business_name: 'Officina Rossi', location_city: 'Milano' },
+      tenant: { id: 'tenant-rossi', business_name: 'Officina Rossi', location_city: 'Milano' },
       viewer_is_owner: true,
       has_attachments: true,
       attachments_count: 2,
@@ -95,6 +99,7 @@ const TIMELINE_FIXTURE: TimelineResponse = {
 function setupApiFetch(opts: {
   detail?: VehicleDetailResponse | ApiError;
   timeline?: TimelineResponse;
+  officine?: TimelineOfficineResponse;
 }) {
   apiFetchMock.mockReset();
   apiFetchMock.mockImplementation(async (path: string) => {
@@ -102,6 +107,10 @@ function setupApiFetch(opts: {
       if (opts.detail instanceof ApiError) throw opts.detail;
       if (opts.detail) return opts.detail;
       throw new Error(`unexpected: ${path}`);
+    }
+    // Must precede the generic /timeline branch (it is a prefix match).
+    if (path.startsWith(`/v1/vehicles/${VEHICLE_ID}/timeline/officine`)) {
+      return opts.officine ?? { data: [] };
     }
     if (path.startsWith(`/v1/vehicles/${VEHICLE_ID}/timeline`)) {
       if (opts.timeline) return opts.timeline;
@@ -168,6 +177,30 @@ describe('VehicleDetail', () => {
     await waitFor(() => expect(screen.getByText(/Fiat Panda/)).toBeInTheDocument());
     expect(screen.getByText('Tagliando 30000 km')).toBeInTheDocument();
     expect(screen.getByText('Cambio gomme')).toBeInTheDocument();
+  });
+
+  it('shows the officina filter only when the vehicle has >1 officina', async () => {
+    const officine: TimelineOfficineResponse = {
+      data: [
+        { tenant_id: 't-matula', business_name: 'Matula', viewer_is_owner: true },
+        { tenant_id: 't-soriente', business_name: 'Soriente', viewer_is_owner: false },
+      ],
+    };
+    setupApiFetch({ detail: VEHICLE_DETAIL_FIXTURE, timeline: TIMELINE_FIXTURE, officine });
+    render(wrap({ children: <VehicleDetail /> }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Tutte le officine/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('hides the officina filter when there is a single officina', async () => {
+    const officine: TimelineOfficineResponse = {
+      data: [{ tenant_id: 't-matula', business_name: 'Matula', viewer_is_owner: true }],
+    };
+    setupApiFetch({ detail: VEHICLE_DETAIL_FIXTURE, timeline: TIMELINE_FIXTURE, officine });
+    render(wrap({ children: <VehicleDetail /> }));
+    await waitFor(() => expect(screen.getByText(/Fiat Panda/)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /Tutte le officine/i })).not.toBeInTheDocument();
   });
 
   it('disables "Registra intervento" when vehicle is archived', async () => {

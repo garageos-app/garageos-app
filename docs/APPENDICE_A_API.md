@@ -971,6 +971,7 @@ Authorization: Bearer <any_user_jwt>
 | `type` | enum | `all` | `all` \| `shop_only` \| `private_only` |
 | `from_date` | date | - | Filtra da data |
 | `to_date` | date | - | Filtra fino a data |
+| `tenant_ids` | string | - | UUID officine separati da virgola; filtra gli interventi officina a quelle officine (assente ⇒ tutte). UUID malformato ⇒ `400`. La lista delle officine presenti è in `GET …/timeline/officine`. |
 
 #### Response `200 OK`
 
@@ -989,7 +990,9 @@ Authorization: Bearer <any_user_jwt>
       "status": "active",
       "is_disputed": false,
       "wiki_window_open": true,
+      "viewer_is_owner": true,
       "tenant": {
+        "id": "01HKXL0...",
         "business_name": "Officina Rossi S.r.l.",
         "location_city": "Milano"
       },
@@ -1024,6 +1027,23 @@ Authorization: Bearer <any_user_jwt>
 | `type.code` | string | Codice mnemonico (es. `TAGLIANDO`). |
 | `type.name_it` | string | Nome localizzato italiano. |
 | `wiki_window_open` | boolean | Server-computed BR-062 predicate. `true` = free edits, no revision row created. `false` = audit active; subsequent PATCH requires `reason` ≥10 chars per BR-064. Computed from `wikiLockedAt IS NULL AND firstSeenByCustomerAt IS NULL AND now() - createdAt < 48h`. |
+| `tenant.id` | string (uuid) | UUID dell'officina autrice. Chiave per il colore per-officina e il filtro `tenant_ids` lato client. |
+| `viewer_is_owner` | boolean | `true` se l'officina chiamante ha creato l'intervento. `false` cross-tenant (BR-150/BR-153) e sempre `false` per il pool clienti. Il client lo usa per la sola-lettura (niente Modifica/risposta-dispute) sulle righe di altre officine. |
+
+#### `GET /v1/vehicles/:id/timeline/officine` — Officine presenti nella timeline
+
+**Auth:** Tenant User (pool `officine`). Restituisce la lista **distinta** delle officine con ≥1 intervento officina sul veicolo, ordinata per `business_name`. Alimenta il filtro multiselect e l'assegnazione colori stabile (indipendente dalla paginazione).
+
+```json
+{
+  "data": [
+    { "tenant_id": "01HKXL0...", "business_name": "Officina Matula", "viewer_is_owner": true },
+    { "tenant_id": "01HKXM2...", "business_name": "Officina Soriente", "viewer_is_owner": false }
+  ]
+}
+```
+
+Errori: `400` UUID veicolo malformato · `404` veicolo inesistente · `403` pool clienti.
 
 #### Regole di visibilità
 

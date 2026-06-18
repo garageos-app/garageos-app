@@ -1,17 +1,19 @@
 // IT-strings — hardcoded
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useVehicleDetail } from '@/queries/vehicleDetail';
-import { useVehicleTimeline } from '@/queries/vehicleTimeline';
+import { useTimelineOfficine, useVehicleTimeline } from '@/queries/vehicleTimeline';
 import { ApiError } from '@/lib/api-client';
 import { fallback } from '@/lib/format';
+import { buildOfficinaColorMap, officinaColor } from '@/lib/officinaColors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TimelineRow } from '@/components/TimelineRow';
+import { TimelineOfficinaFilter } from '@/components/TimelineOfficinaFilter';
 import { CertifyVehicleDialog } from '@/components/CertifyVehicleDialog';
 import { OwnershipTransferDialog } from '@/components/OwnershipTransferDialog';
 import { VehicleTagPrintButton } from '@/components/VehicleTagPrintButton';
@@ -38,9 +40,31 @@ export function VehicleDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const detail = useVehicleDetail(id);
-  const timeline = useVehicleTimeline(id);
+  // Officina filter: `selectedOfficine` is the explicit set of officine to
+  // show; empty == all (the default). The timeline query receives the
+  // tenant_ids derived below (empty ⇒ no server-side filter).
+  const [selectedOfficine, setSelectedOfficine] = useState<Set<string>>(new Set());
+  const officineQ = useTimelineOfficine(id);
+  const officine = useMemo(() => officineQ.data?.data ?? [], [officineQ.data]);
+  const colorMap = useMemo(() => buildOfficinaColorMap(officine), [officine]);
+  const tenantIds = selectedOfficine.size === 0 ? [] : [...selectedOfficine];
+  const timeline = useVehicleTimeline(id, tenantIds);
   const [transferOpen, setTransferOpen] = useState(false);
   const [certifyOpen, setCertifyOpen] = useState(false);
+
+  // Toggle an officina in the filter. Materializes the implicit "all" into a
+  // concrete set on first toggle, and collapses back to "all" (empty) once
+  // every officina is selected again.
+  const toggleOfficina = (tenantId: string) => {
+    setSelectedOfficine((prev) => {
+      const allIds = officine.map((o) => o.tenant_id);
+      const base = prev.size === 0 ? new Set(allIds) : new Set(prev);
+      if (base.has(tenantId)) base.delete(tenantId);
+      else base.add(tenantId);
+      if (base.size === allIds.length) return new Set();
+      return base;
+    });
+  };
 
   useEffect(() => {
     if (detail.isError && detail.error instanceof ApiError && detail.error.status === 404) {
@@ -167,9 +191,21 @@ export function VehicleDetail() {
       </div>
 
       <section>
-        <h2 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-3">
-          Timeline interventi
-        </h2>
+        <div className="flex items-center justify-between gap-4 mb-3">
+          <h2 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">
+            Timeline interventi
+          </h2>
+          {/* Officina filter — only useful when the vehicle has interventions
+              from more than one officina. */}
+          {officine.length > 1 && (
+            <TimelineOfficinaFilter
+              officine={officine}
+              colorMap={colorMap}
+              selected={selectedOfficine}
+              onToggle={toggleOfficina}
+            />
+          )}
+        </div>
 
         {timeline.isPending && (
           <div className="space-y-2">
@@ -191,7 +227,9 @@ export function VehicleDetail() {
 
         {timeline.isSuccess && timelineItems.length === 0 && (
           <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground">
-            Nessun intervento registrato per questo veicolo.
+            {tenantIds.length > 0
+              ? 'Nessun intervento per le officine selezionate.'
+              : 'Nessun intervento registrato per questo veicolo.'}
           </div>
         )}
 
@@ -199,7 +237,16 @@ export function VehicleDetail() {
           <>
             <div className="bg-card border border-border rounded-lg divide-y divide-border">
               {timelineItems.map((item) => (
-                <TimelineRow key={item.id} item={item} vehicleId={id!} />
+                <TimelineRow
+                  key={item.id}
+                  item={item}
+                  vehicleId={id!}
+                  color={
+                    item.kind === 'shop_intervention'
+                      ? officinaColor(colorMap, item.tenant.id)
+                      : undefined
+                  }
+                />
               ))}
             </div>
             {timeline.hasNextPage && (

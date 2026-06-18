@@ -48,6 +48,7 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
     is_disputed: d.is_disputed,
     wiki_window_open: d.wiki_window_open,
     tenant: {
+      id: d.tenant.id,
       business_name: d.tenant.business_name,
       // location.city is non-nullable in the InterventionDetail DTO
       // (queries/types.ts). EditInterventionDialog does not render this
