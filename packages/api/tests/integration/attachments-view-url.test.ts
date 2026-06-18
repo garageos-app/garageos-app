@@ -122,9 +122,11 @@ describe('GET /v1/attachments/:id/view-url', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Scenario 3: 404 wrong tenant (cross-tenant isolation)
+  // Scenario 3: cross-tenant read of an `intervention` attachment is now
+  // ALLOWED (BR-150/BR-153 shared logbook). A different officina may presign
+  // the shop-record attachment of another tenant's intervention.
   // -----------------------------------------------------------------------
-  it('returns 404 when attachment belongs to a different tenant', async () => {
+  it('returns 200 for a cross-tenant intervention attachment (BR-153)', async () => {
     const { tenantId: tenantA } = await setupCaller('vu-xA');
     const { attachmentId } = await insertAttachment({ tenantId: tenantA });
 
@@ -137,8 +139,49 @@ describe('GET /v1/attachments/:id/view-url', () => {
       headers: { authorization: `Bearer ${tokenB}`, 'x-forwarded-for': TEST_IP },
     });
 
-    expect(res.statusCode).toBe(404);
-    expect(res.json().code).toBe('attachment.not_found');
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as Record<string, unknown>).url).toBe('https://s3.example/signed-url');
+  });
+
+  // -----------------------------------------------------------------------
+  // Scenario 3b: cross-tenant read of a reserved (`intervention_dispute`)
+  // attachment stays blocked — the ownerType gate rejects with 422 even
+  // though RLS now surfaces the row cross-tenant. No dispute evidence leaks.
+  // -----------------------------------------------------------------------
+  it('returns 422 (not 200) for a cross-tenant intervention_dispute attachment', async () => {
+    const { tenantId: tenantA } = await setupCaller('vu-disp-xA');
+    const { rows: callerUserRows } = await pgAdmin.query<{ id: string }>(
+      `SELECT id FROM users WHERE tenant_id = $1 LIMIT 1`,
+      [tenantA],
+    );
+    const uploaderId = callerUserRows[0]!.id;
+    const { rows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO attachments
+         (id, owner_type, owner_id, tenant_id, customer_id,
+          uploaded_by_user_id, uploaded_by_customer_id,
+          file_name, mime_type, size_bytes, s3_key, s3_bucket,
+          processed, deleted_at, created_at)
+       VALUES (gen_random_uuid(), 'intervention_dispute'::"AttachmentOwnerType",
+          gen_random_uuid(), $1, NULL, $2, NULL,
+          'evidence.pdf', 'application/pdf', 12345,
+          'attachments/dispute/test.pdf', 'garageos-dev',
+          TRUE, NULL, NOW())
+       RETURNING id`,
+      [tenantA, uploaderId],
+    );
+    const attachmentId = rows[0]!.id;
+
+    // Caller is tenantB
+    const { token: tokenB } = await setupCaller('vu-disp-xB');
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/attachments/${attachmentId}/view-url`,
+      headers: { authorization: `Bearer ${tokenB}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('attachment.owner_not_supported');
   });
 
   // Scenario 4 removed: the old `403 clienti pool` test asserted the now-
@@ -166,11 +209,10 @@ describe('GET /v1/attachments/:id/view-url', () => {
   // -----------------------------------------------------------------------
   // Scenario 6: 422 owner type unsupported
   //
-  // Only `intervention_dispute` (officina-variant) can reach the 422
-  // branch — the route filters by tenantId, but `private_intervention`
-  // attachments have tenant_id IS NULL per chk_attachment_owner_consistent,
-  // so they would always 404 first. Insert directly (the shared helper
-  // assumes the 'intervention' owner shape).
+  // The officine lookup is no longer tenant-scoped (BR-153 cross-tenant
+  // read), so any non-`intervention` ownerType reaches the 422 gate. Use
+  // `intervention_dispute` here. Insert directly (the shared helper assumes
+  // the 'intervention' owner shape).
   // -----------------------------------------------------------------------
   it('returns 422 when attachment ownerType is not intervention', async () => {
     const { tenantId, token } = await setupCaller('vu-422');

@@ -1355,14 +1355,14 @@ Authorization: Bearer <officina_user_jwt>
 | 400 | `VALIDATION_ERROR` | `id` non è un UUID v4 valido |
 | 401 | (auth middleware) | Authorization header mancante o JWT non valido |
 | 403 | `FORBIDDEN` | JWT proviene dal pool `clienti` invece di `officine` |
-| 404 | `attachment.not_found` | Allegato non trovato, non `processed`, `deletedAt != null`, o appartenente a un altro tenant |
+| 404 | `attachment.not_found` | Allegato inesistente, non `processed`, o `deletedAt != null` |
 | 422 | `attachment.owner_not_supported` | `ownerType != 'intervention'` (es. `intervention_dispute`, `private_intervention`) |
 | 502 | `attachment.view_url.s3_unavailable` | AWS SDK presign fail (passthrough da `S3UnavailableError`) |
 
 #### Note
 
 - **Lazy presign**: l'URL non è precalcolato nel DTO del dettaglio intervento (§2.12). Il client deve chiamare questo endpoint separatamente per ogni allegato che vuole aprire o scaricare.
-- **Tenant scoping**: il filtro `attachment.tenantId` è enforced application-layer. `attachments_read` RLS è permissivo cross-tenant (stessa topologia di `interventions_read`); il guard esplicito `{id, tenantId}` è la linea di difesa principale.
+- **Visibilità cross-tenant (BR-150 / BR-153)**: gli allegati di tipo `intervention` sono parte dello storico officina condiviso, quindi sono presignabili da **qualsiasi** officina — stesso modello di visibilità del dettaglio intervento (§2.12). Il lookup officine **non** è tenant-scoped; il gate `ownerType === 'intervention'` è ciò che mantiene privati gli allegati riservati: `intervention_dispute` (prove di disputa) e `private_intervention` (lato cliente) restano `422` e non trapelano cross-tenant. `attachments_read` RLS è `USING (true)`; l'enforcement è application-layer.
 - **Processed-only**: allegati in stato `processed=false` (upload pendente) o `deletedAt != null` (soft-deleted) ritornano `404 attachment.not_found` — non vengono distinti per evitare information leakage.
 
 ---
@@ -1713,7 +1713,7 @@ Authorization: Bearer <tenant_user_jwt>
 **Feature:** F-OFF-301
 **Auth:** Tenant User (officina pool — tutti i ruoli: `super_admin`, `admin`, `mechanic`, `receptionist`)
 **Rate limit:** standard utente
-**Business rules:** BR-062, BR-064, BR-065, BR-066, BR-128, BR-130, BR-150, BR-151
+**Business rules:** BR-062, BR-064, BR-065, BR-066, BR-128, BR-130, BR-150, BR-151, BR-153
 
 #### Descrizione
 
@@ -1749,7 +1749,8 @@ Authorization: Bearer <officina_user_jwt>
   "cancelled_reason": null,                // string | null (BR-130)
   "title": "Tagliando completo",
   "description": "Sostituzione olio motore...",
-  "internal_notes": "Cliente segnala rumore...",  // string | null
+  "internal_notes": "Cliente segnala rumore...",  // string | null — null se il viewer non è il tenant proprietario (BR-153)
+  "viewer_is_owner": true,                 // true se il tenant chiamante ha creato l'intervento; false = vista cross-tenant sola lettura
   "parts_replaced": [                      // array; empty array if none
     { "name": "Olio motore Selenia 5W30", "code": "SEL-5W30-4L", "quantity": 4, "notes": "Litri" }
   ],
@@ -1775,7 +1776,7 @@ Authorization: Bearer <officina_user_jwt>
     "make": "Fiat",
     "model": "Panda"
   },
-  "created_by": {                          // null se l'utente è stato cancellato (SetNull FK)
+  "created_by": {                          // null se l'utente è stato cancellato (SetNull FK) o se il viewer non è il tenant proprietario (BR-151)
     "id": "01HKXP8...",
     "first_name": "Giuseppe",
     "last_name": "Ferrari"
@@ -1807,13 +1808,14 @@ Authorization: Bearer <officina_user_jwt>
 | `cancelled_reason` | string | sì | Motivazione annullamento (BR-130) |
 | `title` | string | no | |
 | `description` | string | sì | |
-| `internal_notes` | string | sì | Visibile solo a Tenant User (BR-150/BR-151) |
+| `internal_notes` | string | sì | `null` se il viewer non è il tenant proprietario (BR-153 — note riservate nascoste cross-tenant) |
+| `viewer_is_owner` | boolean | no | `true` se il tenant chiamante è proprietario dell'intervento. `false` = vista cross-tenant in sola lettura (edit/dispute non disponibili) |
 | `parts_replaced` | array | no | Array vuoto se nessun ricambio |
 | `type` | object | no | Tipo intervento (`id`, `code`, `name_it`) |
 | `tenant` | object | no | Tenant owner (`id`, `business_name`) |
 | `location` | object | no | Location di esecuzione |
 | `vehicle` | object | no | Veicolo target |
-| `created_by` | object | sì | `null` se l'utente è stato cancellato (FK `SetNull` on delete) |
+| `created_by` | object | sì | `null` se l'utente è stato cancellato (FK `SetNull` on delete) **oppure** se il viewer non è il tenant proprietario (BR-151) |
 | `attachments` | array | no | Solo `processed=true` e `deletedAt=null`. Upload pendenti e soft-deleted sono nascosti. |
 
 Per ottenere l'URL di accesso a un allegato, chiamare `GET /v1/attachments/:id/view-url` (§2.7.1) con l'`id` di ogni elemento dell'array `attachments`.
@@ -1825,13 +1827,14 @@ Per ottenere l'URL di accesso a un allegato, chiamare `GET /v1/attachments/:id/v
 | 400 | `VALIDATION_ERROR` | `id` non è un UUID v4 valido |
 | 401 | (auth middleware) | Authorization header mancante o JWT non valido |
 | 403 | `FORBIDDEN` | JWT proviene dal pool `clienti` invece di `officine` |
-| 404 | `intervention.not_found` | Intervento non trovato o non accessibile da questa officina |
+| 404 | `intervention.not_found` | Intervento inesistente (UUID valido ma nessuna riga) |
 
 #### Note
 
-- **RLS topology**: `interventions_read` è permissivo cross-tenant (post migration 0003). Il lookup usa `findFirst({id, tenantId})` + null check manuale → `404`. Non usare `findUniqueOrThrow` che lascerebbe filtrare righe cross-tenant. Stesso pattern di §2.11 disputes list.
-- **`internal_notes` visibility**: esposto solo al Tenant User (BR-150). Il pool clienti non ha accesso a questo endpoint (403), quindi BR-151 è soddisfatto by-construction.
-- **`created_by` null**: quando l'utente che ha creato l'intervento è stato rimosso (soft-delete con `SetNull` sulla FK `userId`). Il client deve gestire il caso null nella UI.
+- **Visibilità cross-tenant (BR-150 / BR-153)**: lo storico interventi officina è leggibile cross-tenant — una qualsiasi officina può aprire l'intervento di un altro tenant in **sola lettura** (libretto di manutenzione condiviso). `interventions_read` è permissivo cross-tenant (post migration 0003), quindi il lookup usa `findFirst({id})` + null check → `404` **solo** quando la riga non esiste. La proprietà è calcolata app-side (`row.tenantId === request.tenantId`) e pilota la redazione.
+- **Redazione per non proprietari**: quando il viewer non è il tenant proprietario, `internal_notes` e `created_by` sono restituiti `null` (BR-153 note riservate; BR-151 identità meccanico). Tutti gli altri campi (incluso `attachments`) restano visibili. `viewer_is_owner=false` segnala al client la modalità sola lettura: PATCH/cancel/dispute restano comunque bloccati lato server al solo tenant proprietario.
+- **`internal_notes` visibility**: esposto al solo Tenant User proprietario (BR-153). Il pool clienti non ha accesso a questo endpoint (403).
+- **`created_by` null**: quando l'utente che ha creato l'intervento è stato rimosso (soft-delete con `SetNull` sulla FK `userId`) **oppure** quando il viewer è un tenant non proprietario (BR-151). Il client deve gestire il caso null nella UI.
 - **Attachments fetch**: gli allegati sono caricati con una seconda query separata dopo il guard di esistenza dell'intervento (`attachments` non ha una Prisma relation diretta su `Intervention`). Solo `processed=true` e `deletedAt=null` sono inclusi.
 
 ---

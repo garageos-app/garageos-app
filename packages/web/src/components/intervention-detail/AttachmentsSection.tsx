@@ -18,6 +18,11 @@ import type { InterventionAttachment } from '@/queries/types';
 interface Props {
   attachments: InterventionAttachment[];
   interventionId: string;
+  // BR-150/BR-153: a non-owning tenant views the shop record read-only —
+  // the upload affordance is hidden. The attachment list + "Mostra" stay
+  // visible (attachments are part of the cross-tenant-visible shop history).
+  // Defaults to true (owner view) so existing call sites stay unchanged.
+  canUpload?: boolean;
 }
 
 function formatValidationMessage(err: ValidationError): string {
@@ -45,7 +50,7 @@ function formatValidationMessage(err: ValidationError): string {
  * `interventionId` is a required prop because the upload hook needs to
  * invalidate `['intervention-detail', id]` on success.
  */
-export function AttachmentsSection({ attachments, interventionId }: Props) {
+export function AttachmentsSection({ attachments, interventionId, canUpload = true }: Props) {
   const viewUrl = useAttachmentViewUrl();
   const upload = useAttachmentUpload(interventionId);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -128,7 +133,7 @@ export function AttachmentsSection({ attachments, interventionId }: Props) {
     // Keep selectedFile so user can retry with the same file in one click.
   };
 
-  const showDropzone = attachments.length < MAX_ATTACHMENTS_PER_INTERVENTION;
+  const showDropzone = canUpload && attachments.length < MAX_ATTACHMENTS_PER_INTERVENTION;
 
   return (
     <Card>
@@ -138,7 +143,7 @@ export function AttachmentsSection({ attachments, interventionId }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {showDropzone ? (
+        {!canUpload ? null : showDropzone ? (
           <AttachmentDropzone
             state={upload.state}
             selectedFile={selectedFile}

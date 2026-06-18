@@ -159,9 +159,76 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     expect(body.meta.has_more).toBe(false);
   });
 
-  it('200 officina cross-tenant: tenant A reads revisions on intervention of tenant B (BR-150)', async () => {
+  it('200 officina cross-tenant: REDACTED — internalNotes stripped, operator identity hidden (BR-153/BR-151)', async () => {
     const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('rev-off-A');
     const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('rev-off-B');
+    const subA = `office-${randomUUID().slice(0, 8)}`;
+    const subB = `office-${randomUUID().slice(0, 8)}`;
+    await createUser({ tenantId: tenantA, cognitoSub: subA, locationId: locA });
+    const { userId: userB } = await createUser({
+      tenantId: tenantB,
+      cognitoSub: subB,
+      locationId: locB,
+      firstName: 'Bruno',
+      lastName: 'Bianchi',
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantB });
+    const { interventionId } = await createIntervention({
+      tenantId: tenantB,
+      locationId: locB,
+      userId: userB,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    // A revision touching BOTH a public field and the reserved internalNotes.
+    await createRevision({
+      interventionId,
+      userId: userB,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: {
+        title: { from: 'A', to: 'B' },
+        internalNotes: { from: 'priv old', to: 'priv new' },
+      },
+      reason: 'cross-tenant visible',
+    });
+
+    const tokenA = await signTestToken({
+      pool: 'officine',
+      sub: subA,
+      tenantId: tenantA,
+      role: 'mechanic',
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{
+        reason: string | null;
+        changes: Record<string, unknown>;
+        user?: unknown;
+        tenant?: { business_name: string };
+      }>;
+    };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.reason).toBe('cross-tenant visible');
+    // Public field survives; reserved internalNotes is stripped (BR-153).
+    expect(body.data[0]!.changes).toEqual({ title: { from: 'A', to: 'B' } });
+    expect('internalNotes' in body.data[0]!.changes).toBe(false);
+    // Operator identity hidden cross-tenant (BR-151): tenant shape, no user.
+    expect(body.data[0]!.user).toBeUndefined();
+    expect(body.data[0]!.tenant?.business_name).toBeTruthy();
+  });
+
+  it('200 officina cross-tenant: revision with ONLY internalNotes is dropped (BR-153)', async () => {
+    const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('rev-offx-A');
+    const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('rev-offx-B');
     const subA = `office-${randomUUID().slice(0, 8)}`;
     const subB = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId: tenantA, cognitoSub: subA, locationId: locA });
@@ -185,8 +252,15 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       interventionId,
       userId: userB,
       revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: { internalNotes: { from: 'X', to: 'Y' } },
+      reason: 'internal-only',
+    });
+    await createRevision({
+      interventionId,
+      userId: userB,
+      revisedAt: new Date('2026-04-26T11:00:00Z'),
       changes: { title: { from: 'A', to: 'B' } },
-      reason: 'cross-tenant visible',
+      reason: 'title-only',
     });
 
     const tokenA = await signTestToken({
@@ -203,8 +277,62 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { data: Array<{ reason: string | null }> };
+    // The internalNotes-only revision is dropped; only the public one remains.
     expect(body.data).toHaveLength(1);
-    expect(body.data[0]!.reason).toBe('cross-tenant visible');
+    expect(body.data[0]!.reason).toBe('title-only');
+  });
+
+  it('200 officina OWNER: full audit trail with user identity (not redacted)', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('rev-owner-full');
+    const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
+    const { userId } = await createUser({
+      tenantId,
+      cognitoSub,
+      locationId,
+      firstName: 'Mario',
+      lastName: 'Rossi',
+    });
+    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const { interventionId } = await createIntervention({
+      tenantId,
+      locationId,
+      userId,
+      vehicleId,
+      interventionTypeId: type.id,
+      interventionDate: '2026-04-25',
+      odometerKm: 50000,
+    });
+    await createRevision({
+      interventionId,
+      userId,
+      revisedAt: new Date('2026-04-26T10:00:00Z'),
+      changes: { internalNotes: { from: 'a', to: 'b' } },
+      reason: 'owner sees internal',
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/revisions`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{
+        changes: Record<string, unknown>;
+        user?: { first_name: string };
+      }>;
+    };
+    // Owner sees the internalNotes diff AND the operator identity.
+    expect(body.data).toHaveLength(1);
+    expect('internalNotes' in body.data[0]!.changes).toBe(true);
+    expect(body.data[0]!.user?.first_name).toBe('Mario');
   });
 
   it('200 officina with no revisions: empty data array', async () => {
