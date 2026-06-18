@@ -94,6 +94,13 @@ export interface ShopTimelineItem {
    */
   wiki_window_open: boolean;
   tenant: { business_name: string; location_city: string };
+  /**
+   * false when the caller's tenant did not create this intervention. The
+   * timeline is cross-tenant for officine (BR-150/BR-153), but edit and
+   * dispute-response are owner-only mutations, so those affordances are
+   * hidden on other tenants' rows. Always false for the clienti pool.
+   */
+  viewer_is_owner: boolean;
   has_attachments: boolean;
   attachments_count: number;
 }

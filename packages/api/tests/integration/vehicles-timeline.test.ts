@@ -101,6 +101,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
         title?: string;
         tenant?: { business_name: string };
         wiki_window_open?: boolean;
+        viewer_is_owner?: boolean;
         type?: { id: string; code: string; name_it: string };
       }>;
       meta: { shop_count: number; private_count: number };
@@ -111,6 +112,11 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const titles = body.data.map((d) => d.title ?? '');
     expect(titles).toContain('Tagliando A');
     expect(titles).toContain('Tagliando B');
+    // BR-150/BR-153: caller is tenant A → own row owner, tenant B row read-only.
+    const rowA = body.data.find((d) => d.title === 'Tagliando A')!;
+    const rowB = body.data.find((d) => d.title === 'Tagliando B')!;
+    expect(rowA.viewer_is_owner).toBe(true);
+    expect(rowB.viewer_is_owner).toBe(false);
     const row = body.data[0]!;
     expect(row.kind).toBe('shop_intervention');
     // Interventions created in this test are < 48h old, never seen,

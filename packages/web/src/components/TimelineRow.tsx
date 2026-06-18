@@ -34,7 +34,10 @@ export function TimelineRow({ item, vehicleId }: Props) {
   const panelId = useId();
 
   const isShop = item.kind === 'shop_intervention';
-  const isEditable = isShop && item.status === 'active';
+  // BR-150/BR-153: other tenants' interventions are read-only — only the
+  // owning officina may edit or respond to disputes. viewer_is_owner gates
+  // both mutating affordances.
+  const isEditable = isShop && item.status === 'active' && item.viewer_is_owner;
   const title = isShop
     ? (item.title ?? item.type.name_it)
     : (item.custom_type ?? 'Intervento privato');
@@ -42,6 +45,9 @@ export function TimelineRow({ item, vehicleId }: Props) {
     ? `${item.tenant.business_name}${item.tenant.location_city ? ' · ' + item.tenant.location_city : ''}`
     : 'Cliente';
   const isDisputed = isShop && item.is_disputed;
+  // The "Disputa" badge stays visible cross-tenant (status transparency),
+  // but only the owner may open the response dialog.
+  const canRespondToDispute = isDisputed && isShop && item.viewer_is_owner;
 
   return (
     <div className="px-4 py-3">
@@ -64,21 +70,27 @@ export function TimelineRow({ item, vehicleId }: Props) {
           </div>
         </button>
 
-        {isDisputed && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDisputeDialogOpen(true);
-            }}
-            aria-label={`Apri contestazione dell'intervento del ${formatDate(item.intervention_date)}`}
-            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-          >
-            <Badge variant="destructive" className="text-[10px] cursor-pointer">
+        {isDisputed &&
+          (canRespondToDispute ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDisputeDialogOpen(true);
+              }}
+              aria-label={`Apri contestazione dell'intervento del ${formatDate(item.intervention_date)}`}
+              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            >
+              <Badge variant="destructive" className="text-[10px] cursor-pointer">
+                Disputa
+              </Badge>
+            </button>
+          ) : (
+            // Cross-tenant viewer: status-only badge, no response affordance.
+            <Badge variant="destructive" className="text-[10px]">
               Disputa
             </Badge>
-          </button>
-        )}
+          ))}
         <Badge variant="outline" className="text-[10px]">
           {isShop ? 'Officina' : 'Privato'}
         </Badge>
@@ -114,7 +126,7 @@ export function TimelineRow({ item, vehicleId }: Props) {
         </div>
       </div>
 
-      {isShop && isDisputed && (
+      {canRespondToDispute && (
         <DisputeResponseDialog
           interventionId={item.id}
           vehicleId={vehicleId}

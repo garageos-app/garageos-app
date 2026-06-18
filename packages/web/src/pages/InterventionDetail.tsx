@@ -55,6 +55,7 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
       // here for the slice contract.
       location_city: d.location.city,
     },
+    viewer_is_owner: d.viewer_is_owner,
     has_attachments: d.attachments.length > 0,
     attachments_count: d.attachments.length,
   };
