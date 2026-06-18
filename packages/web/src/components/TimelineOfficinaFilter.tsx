@@ -26,8 +26,9 @@ interface Props {
 // interventions to show. Each entry carries its stable color dot (shared with
 // the timeline rows). Hidden by the parent when there is only one officina.
 export function TimelineOfficinaFilter({ officine, colorMap, selected, onToggle }: Props) {
-  const allSelected = selected.size === 0 || selected.size === officine.length;
-  const label = allSelected ? 'Tutte le officine' : `${selected.size} officine`;
+  // Empty selection is the "all" sentinel (the parent never stores a full set
+  // — it collapses back to empty), so size 0 ⇒ all.
+  const label = selected.size === 0 ? 'Tutte le officine' : `${selected.size} officine`;
 
   return (
     <DropdownMenu>

@@ -8,6 +8,7 @@ import { useTimelineOfficine, useVehicleTimeline } from '@/queries/vehicleTimeli
 import { ApiError } from '@/lib/api-client';
 import { fallback } from '@/lib/format';
 import { buildOfficinaColorMap, officinaColor } from '@/lib/officinaColors';
+import { selectionToTenantIds, toggleOfficinaSelection } from '@/lib/officinaFilter';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -47,23 +48,19 @@ export function VehicleDetail() {
   const officineQ = useTimelineOfficine(id);
   const officine = useMemo(() => officineQ.data?.data ?? [], [officineQ.data]);
   const colorMap = useMemo(() => buildOfficinaColorMap(officine), [officine]);
-  const tenantIds = selectedOfficine.size === 0 ? [] : [...selectedOfficine];
+  const tenantIds = selectionToTenantIds(selectedOfficine);
   const timeline = useVehicleTimeline(id, tenantIds);
   const [transferOpen, setTransferOpen] = useState(false);
   const [certifyOpen, setCertifyOpen] = useState(false);
 
-  // Toggle an officina in the filter. Materializes the implicit "all" into a
-  // concrete set on first toggle, and collapses back to "all" (empty) once
-  // every officina is selected again.
   const toggleOfficina = (tenantId: string) => {
-    setSelectedOfficine((prev) => {
-      const allIds = officine.map((o) => o.tenant_id);
-      const base = prev.size === 0 ? new Set(allIds) : new Set(prev);
-      if (base.has(tenantId)) base.delete(tenantId);
-      else base.add(tenantId);
-      if (base.size === allIds.length) return new Set();
-      return base;
-    });
+    setSelectedOfficine((prev) =>
+      toggleOfficinaSelection(
+        prev,
+        officine.map((o) => o.tenant_id),
+        tenantId,
+      ),
+    );
   };
 
   useEffect(() => {
