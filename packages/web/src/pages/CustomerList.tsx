@@ -24,7 +24,7 @@ export function CustomerList() {
   const items: CustomerListItem[] = query.data?.pages.flatMap((p) => p.data) ?? [];
 
   return (
-    <div className="p-8 space-y-6 max-w-5xl">
+    <div className="p-4 md:p-8 space-y-6 max-w-5xl">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Users size={24} className="text-muted-foreground" />
@@ -69,35 +69,37 @@ export function CustomerList() {
       )}
 
       {query.isSuccess && items.length > 0 && (
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
-                <th className="px-4 py-3 font-semibold">Nome</th>
-                <th className="px-4 py-3 font-semibold">Telefono</th>
-                <th className="px-4 py-3 font-semibold text-right">Veicoli</th>
-                <th className="px-4 py-3 font-semibold">Ultimo intervento</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {items.map((c) => (
-                <tr
-                  key={c.id}
-                  onClick={() => navigate(`/customers/${c.id}`)}
-                  className="cursor-pointer hover:bg-muted/50 transition"
-                >
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    {customerDisplayName(c)}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{c.phone ?? '—'}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{c.vehicleCount}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {c.lastInterventionAt ? formatDate(c.lastInterventionAt) : 'Nessuno'}
-                  </td>
+        <div className="overflow-x-auto">
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
+                  <th className="px-4 py-3 font-semibold">Nome</th>
+                  <th className="px-4 py-3 font-semibold">Telefono</th>
+                  <th className="px-4 py-3 font-semibold text-right">Veicoli</th>
+                  <th className="px-4 py-3 font-semibold">Ultimo intervento</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {items.map((c) => (
+                  <tr
+                    key={c.id}
+                    onClick={() => navigate(`/customers/${c.id}`)}
+                    className="cursor-pointer hover:bg-muted/50 transition"
+                  >
+                    <td className="px-4 py-3 font-medium text-foreground">
+                      {customerDisplayName(c)}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{c.phone ?? '—'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{c.vehicleCount}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {c.lastInterventionAt ? formatDate(c.lastInterventionAt) : 'Nessuno'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

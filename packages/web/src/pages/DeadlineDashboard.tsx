@@ -37,7 +37,7 @@ export function DeadlineDashboard() {
   const buckets = groupByDueBucket(items, today);
 
   return (
-    <div className="p-8 space-y-6 max-w-5xl">
+    <div className="p-4 md:p-8 space-y-6 max-w-5xl">
       <div className="flex items-center gap-3">
         <Calendar size={24} className="text-muted-foreground" />
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Scadenze in arrivo</h1>

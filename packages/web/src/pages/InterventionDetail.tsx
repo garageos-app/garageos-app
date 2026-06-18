@@ -124,7 +124,7 @@ export function InterventionDetail() {
   // --- Loading state ---
   if (detail.isPending) {
     return (
-      <div className="p-8 space-y-6" data-testid="detail-skeleton">
+      <div className="p-4 md:p-8 space-y-6" data-testid="detail-skeleton">
         <Skeleton className="h-32" />
         <Skeleton className="h-24" />
         <Skeleton className="h-64" />
@@ -135,7 +135,7 @@ export function InterventionDetail() {
   // --- Non-404 error state (404 already redirected above) ---
   if (detail.isError) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <Alert variant="destructive">
           <AlertDescription className="flex items-center justify-between gap-4">
             <span>
@@ -156,7 +156,7 @@ export function InterventionDetail() {
   const revisionList = revisions.data?.data ?? [];
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       {/* BR-150/BR-153: cross-tenant read-only notice. Shown when the
           intervention belongs to another officina — note interne e identità
           operatore sono nascoste, e le azioni di modifica non disponibili. */}
@@ -180,7 +180,7 @@ export function InterventionDetail() {
       />
 
       {/* 4-tile stats grid */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Tile label="Officina" value={i.tenant.business_name} />
         <Tile
           label="Sede"
