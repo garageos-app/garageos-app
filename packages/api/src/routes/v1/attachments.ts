@@ -707,8 +707,16 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
   // intervention_dispute view for clienti is deferred to a later UI slice.
   //
   // attachments_read RLS is permissive cross-tenant (same topology as
-  // interventions_read), so the explicit tenantId/customerId filter is the
+  // interventions_read), so the explicit ownerType / customerId filter is the
   // application-layer enforcement.
+  //
+  // Cross-tenant (BR-150 / BR-153): shop-record attachments (ownerType
+  // 'intervention') are viewable by any officina — same shared-logbook
+  // visibility as the intervention detail (§2.12). The officine lookup is
+  // therefore NOT tenant-scoped; the `ownerType === 'intervention'` gate is
+  // what keeps reserved attachments private: 'intervention_dispute' (dispute
+  // evidence) and 'private_intervention' (customer-side) stay 422-rejected
+  // here and never leak cross-tenant.
   const ViewUrlParamsSchema = z.object({ id: z.string().uuid() });
   app.get(
     '/v1/attachments/:id/view-url',
@@ -722,7 +730,7 @@ const attachmentsRoutes: FastifyPluginAsync = async (app) => {
         const tenantId = request.tenantId!;
         return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
           const att = await tx.attachment.findFirst({
-            where: { id, tenantId, processed: true, deletedAt: null },
+            where: { id, processed: true, deletedAt: null },
             select: { id: true, s3Key: true, s3Bucket: true, ownerType: true },
           });
           if (!att) {

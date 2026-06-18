@@ -159,20 +159,44 @@ describe('GET /v1/interventions/:id (officina)', () => {
     expect(createdBy.first_name).toBe('Giuseppe');
     expect(createdBy.last_name).toBe('Verdi');
 
+    // The owning tenant is the viewer → full visibility flag
+    expect(body.viewer_is_owner).toBe(true);
+
     // Attachments (empty by default)
     expect(body.attachments).toEqual([]);
   });
 
   // -----------------------------------------------------------------------
-  // Scenario 2: 404 cross-tenant
+  // Scenario 2: cross-tenant read is permitted but redacted (BR-150/BR-153)
+  //
+  // A different officina may open another tenant's intervention in read-only
+  // mode (shared maintenance logbook). Reserved fields are redacted:
+  //   - internal_notes → null  (BR-153 "note riservate di altri tenant")
+  //   - created_by     → null  (mechanic identity gated by BR-151)
+  //   - viewer_is_owner → false (drives read-only UI on the client)
+  // Public shop-record fields (title, description, parts, type, tenant,
+  // location, vehicle, attachments) stay visible.
   // -----------------------------------------------------------------------
-  it('returns 404 when intervention belongs to a different tenant (RLS-as-404)', async () => {
+  it('allows cross-tenant read but redacts internal_notes and created_by (BR-153)', async () => {
     const { tenantId: tenantA, locationId: locA, userId: userA } = await setupCaller('det-xA');
     const { interventionId } = await setupIntervention({
       tenantId: tenantA,
       locationId: locA,
       userId: userA,
     });
+
+    // A processed attachment owned by tenantA — must stay visible cross-tenant.
+    const { rows } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO attachments
+         (id, owner_type, owner_id, tenant_id, file_name, mime_type,
+          size_bytes, s3_key, s3_bucket, processed, deleted_at, created_at)
+       VALUES (gen_random_uuid(), 'intervention'::"AttachmentOwnerType", $1, $2,
+          'ricevuta.pdf', 'application/pdf', 67890,
+          'uploads/ricevuta.pdf', 'garageos-dev', true, NULL, NOW())
+       RETURNING id`,
+      [interventionId, tenantA],
+    );
+    const attachmentId = rows[0]!.id;
 
     // Caller is tenantB
     const { token: tokenB } = await setupCaller('det-xB');
@@ -183,8 +207,26 @@ describe('GET /v1/interventions/:id (officina)', () => {
       headers: { authorization: `Bearer ${tokenB}`, 'x-forwarded-for': TEST_IP },
     });
 
-    expect(res.statusCode).toBe(404);
-    expect(res.json().code).toBe('intervention.not_found');
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Record<string, unknown>;
+
+    // Redacted reserved fields
+    expect(body.internal_notes).toBeNull();
+    expect(body.created_by).toBeNull();
+    expect(body.viewer_is_owner).toBe(false);
+
+    // Public shop-record fields remain visible
+    expect(body.id).toBe(interventionId);
+    expect(body.title).toBe('Tagliando completo');
+    expect(body.description).toBe('Cambio olio e filtri completi');
+    expect(body.parts_replaced).toHaveLength(1);
+    expect((body.tenant as Record<string, unknown>).id).toBe(tenantA);
+    expect(typeof (body.vehicle as Record<string, unknown>).plate).toBe('string');
+
+    // Attachments of the owning tenant are visible cross-tenant
+    const attachments = body.attachments as Array<Record<string, unknown>>;
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]!.id).toBe(attachmentId);
   });
 
   // -----------------------------------------------------------------------

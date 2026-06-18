@@ -9,18 +9,26 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 
 // GET /v1/interventions/:id — officina-pool detail endpoint (F-OFF-301).
 //
-// RLS topology: interventions SELECT is permissive cross-tenant since
-// migration 0003 (split SELECT/WRITE). Use findFirst with explicit
-// {id, tenantId} + null check → 404. Do NOT use findUniqueOrThrow:
-// it would surface cross-tenant rows then trip our null check with the
-// wrong code shape, leaking existence. Same pattern as
-// interventions-disputes-list.ts.
+// Visibility (BR-150 / BR-153): the shop intervention history is readable
+// cross-tenant — any officina can open another tenant's intervention in
+// read-only mode (shared maintenance logbook). RLS `interventions_read` is
+// permissive cross-tenant since migration 0003, so the lookup is a plain
+// findFirst({id}) + null check → 404 only when the row truly does not exist.
+//
+// Reserved fields are redacted when the requesting tenant is NOT the owner:
+//   - internal_notes → null  (BR-153 "note riservate di altri tenant")
+//   - created_by     → null  (mechanic identity gated by BR-151; the
+//                             timeline never exposes it cross-tenant either)
+// `viewer_is_owner` is surfaced so the web client can hide edit/dispute
+// affordances (those mutations remain owner-only) and show a read-only
+// banner. This aligns §2.12 of APPENDICE_A with BR-153.
 //
 // wiki_window_open is server-computed (BR-062 composite predicate with
 // time component — see feedback_compute_composite_br_predicates_server_side.md).
 
 const interventionDetailSelect = {
   id: true,
+  tenantId: true,
   status: true,
   interventionDate: true,
   odometerKm: true,
@@ -57,33 +65,30 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
 
       return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
         const row = await tx.intervention.findFirst({
-          where: { id, tenantId },
+          where: { id },
           select: interventionDetailSelect,
         });
 
         if (!row) {
-          throw businessError(
-            'intervention.not_found',
-            404,
-            'Intervento non trovato o non accessibile da questa officina.',
-          );
+          throw businessError('intervention.not_found', 404, 'Intervento non trovato.');
         }
+
+        // BR-150 / BR-153: an officina that did not create the intervention
+        // gets a read-only, redacted view. Drives the redaction below.
+        const isOwner = row.tenantId === tenantId;
 
         // Attachments use the polymorphic ownerType/ownerId pattern — the
         // Intervention model has no direct Prisma relation to Attachment.
-        // Fetch separately after the tenant-scoped intervention lookup so
-        // the intervention-not-found guard runs first.
-        //
-        // tenantId guard is redundant with the intervention-existence check
-        // above (the intervention id was already verified tenant-scoped), but
-        // added explicitly for defense-in-depth: attachments_read RLS is
-        // permissive cross-tenant, and a future refactor could change the
-        // query order or introduce an early-return path.
+        // Fetch separately after the intervention lookup so the not-found
+        // guard runs first. Scope to the *owning* tenant (row.tenantId), not
+        // the caller: attachments belong to the intervention's tenant and
+        // stay visible cross-tenant (part of the shared shop record), while
+        // the explicit tenant scope still bounds the polymorphic query.
         const attachments = await tx.attachment.findMany({
           where: {
             ownerType: 'intervention',
             ownerId: id,
-            tenantId,
+            tenantId: row.tenantId,
             processed: true,
             deletedAt: null,
           },
@@ -114,7 +119,9 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
           cancelled_reason: row.cancelledReason,
           title: row.title,
           description: row.description,
-          internal_notes: row.internalNotes,
+          // BR-153: reserved notes are hidden from non-owning tenants.
+          internal_notes: isOwner ? row.internalNotes : null,
+          viewer_is_owner: isOwner,
           parts_replaced: normalizePartsReplaced(row.partsReplaced),
           type: {
             id: row.interventionType.id,
@@ -135,13 +142,16 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
             make: row.vehicle.make,
             model: row.vehicle.model,
           },
-          created_by: row.user
-            ? {
-                id: row.user.id,
-                first_name: row.user.firstName,
-                last_name: row.user.lastName,
-              }
-            : null,
+          // BR-151: mechanic identity is gated by the tenant relation, so
+          // non-owning tenants never see who created the record.
+          created_by:
+            isOwner && row.user
+              ? {
+                  id: row.user.id,
+                  first_name: row.user.firstName,
+                  last_name: row.user.lastName,
+                }
+              : null,
           attachments: attachments.map((a) => ({
             id: a.id,
             file_name: a.fileName,

@@ -215,3 +215,25 @@ describe('AttachmentsSection — upload composition', () => {
     expect(mockToastSuccess).toHaveBeenCalledWith('Allegato caricato');
   });
 });
+
+describe('AttachmentsSection — cross-tenant read-only (canUpload=false, BR-153)', () => {
+  it('hides the dropzone and limit message but keeps the attachment list + Mostra', () => {
+    render(
+      <AttachmentsSection
+        attachments={[ATT_1, ATT_2]}
+        interventionId={INTERVENTION_ID}
+        canUpload={false}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    // No upload affordance at all
+    expect(screen.queryByRole('button', { name: /trascina/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/limite di 10 allegati raggiunto/i)).not.toBeInTheDocument();
+
+    // The shop-record attachments remain visible with their "Mostra" action
+    expect(screen.getByText('fattura-2025-06.pdf')).toBeInTheDocument();
+    expect(screen.getByText('foto-motore.jpg')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Mostra' })).toHaveLength(2);
+  });
+});

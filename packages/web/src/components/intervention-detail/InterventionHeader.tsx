@@ -29,6 +29,9 @@ interface Props {
  */
 export function InterventionHeader({ intervention: i, onEditClick, onCancelClick }: Props) {
   const isActive = i.status === 'active';
+  // BR-150/BR-153: a non-owning tenant sees the intervention read-only —
+  // edit/cancel are owner-only mutations, hidden cross-tenant.
+  const isOwner = i.viewer_is_owner;
   const canCancel = useHasRole('super_admin'); // BR-066
   const title = i.title ?? i.type.name_it;
   const vehicleHref = `/vehicles/${i.vehicle.id}`;
@@ -57,7 +60,8 @@ export function InterventionHeader({ intervention: i, onEditClick, onCancelClick
         <div className="flex items-center gap-2 flex-wrap">
           {i.status === 'cancelled' && <Badge variant="outline">Cancellato</Badge>}
           {i.is_disputed && <Badge variant="destructive">Disputa</Badge>}
-          {isActive && (
+          {!isOwner && <Badge variant="outline">Sola lettura</Badge>}
+          {isActive && isOwner && (
             <>
               <Button variant="outline" size="sm" onClick={onEditClick}>
                 Modifica

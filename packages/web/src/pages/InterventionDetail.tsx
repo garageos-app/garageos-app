@@ -152,6 +152,19 @@ export function InterventionDetail() {
 
   return (
     <div className="p-8 space-y-6">
+      {/* BR-150/BR-153: cross-tenant read-only notice. Shown when the
+          intervention belongs to another officina — note interne e identità
+          operatore sono nascoste, e le azioni di modifica non disponibili. */}
+      {!i.viewer_is_owner && (
+        <Alert>
+          <AlertDescription>
+            <strong>Sola lettura</strong> · questo intervento è stato registrato da{' '}
+            {i.tenant.business_name}. Note interne e dati operatore non sono visibili e non è
+            possibile modificarlo.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Header: back link, title, type subtitle, date/km, badges, action
           buttons (Modifica + Annulla are gated to status==='active' inside
           InterventionHeader — BR-066/BR-128). */}
@@ -181,6 +194,7 @@ export function InterventionDetail() {
           first-seen + explicit lock). Lesson: never re-derive this
           client-side (feedback_compute_composite_br_predicates_server_side.md). */}
       {i.status === 'active' &&
+        i.viewer_is_owner &&
         (i.wiki_window_open ? (
           <Alert>
             <AlertDescription>
@@ -245,8 +259,12 @@ export function InterventionDetail() {
         </Card>
       )}
 
-      {/* Allegati — always visible to surface the upload affordance */}
-      <AttachmentsSection attachments={i.attachments} interventionId={i.id} />
+      {/* Allegati — list visible to all; upload affordance owner-only */}
+      <AttachmentsSection
+        attachments={i.attachments}
+        interventionId={i.id}
+        canUpload={i.viewer_is_owner}
+      />
 
       {/* Contestazione thread — DisputeThreadSection returns null when empty */}
       <DisputeThreadSection

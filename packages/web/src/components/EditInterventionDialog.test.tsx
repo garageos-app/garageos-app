@@ -117,6 +117,7 @@ function makeDetail(overrides: Partial<InterventionDetail> = {}): InterventionDe
     title: 'Tagliando 50k',
     description: 'Olio motore + filtri',
     internal_notes: null,
+    viewer_is_owner: true,
     parts_replaced: [],
     type: { id: '11111111-1111-4111-8111-111111111111', code: 'tagliando', name_it: 'Tagliando' },
     tenant: { id: 't-1', business_name: 'Garage Acme' },

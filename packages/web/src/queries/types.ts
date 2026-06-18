@@ -410,6 +410,13 @@ export interface InterventionDetail {
   title: string | null;
   description: string;
   internal_notes: string | null;
+  /**
+   * false when the caller's tenant did not create this intervention: the
+   * detail is a cross-tenant read-only view (shared logbook, BR-150/BR-153).
+   * The page hides edit/cancel/upload affordances; `internal_notes` and
+   * `created_by` are also null in that case (BR-153 / BR-151).
+   */
+  viewer_is_owner: boolean;
   parts_replaced: InterventionPartReplaced[];
   type: { id: string; code: string; name_it: string };
   tenant: { id: string; business_name: string };

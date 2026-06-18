@@ -85,6 +85,7 @@ const BASE_DETAIL: InterventionDetailDto = {
   title: 'Tagliando 30000 km',
   description: 'Cambio olio e filtri.',
   internal_notes: null,
+  viewer_is_owner: true,
   parts_replaced: [],
   type: { id: 'type-tagliando', code: 'TAGLIANDO', name_it: 'Tagliando' },
   tenant: { id: TENANT_ID, business_name: 'Officina Rossi' },
