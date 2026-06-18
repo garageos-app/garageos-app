@@ -73,7 +73,9 @@ export function InterventionHeader({ intervention: i, onEditClick, onCancelClick
               )}
             </>
           )}
-          <InterventionExportPdfButton interventionId={i.id} />
+          {/* PDF export is tenant-scoped server-side (404 cross-tenant), so
+              the affordance is owner-only too. */}
+          {isOwner && <InterventionExportPdfButton interventionId={i.id} />}
         </div>
       </div>
     </div>

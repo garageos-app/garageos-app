@@ -102,6 +102,9 @@ export function InterventionDetail() {
   const detail = useInterventionDetail(id);
   // Preloaded on mount (not lazy) — detail page shows disputes inline,
   // unlike the timeline row which loads them only when the dialog opens.
+  // Both are owner-only surfaces (BR-151/BR-153) and are gated out of the
+  // render tree below when viewer_is_owner is false; the server also redacts
+  // revisions and tenant-scopes disputes, so a cross-tenant fetch is harmless.
   const disputes = useInterventionDisputes(id);
   const revisions = useInterventionRevisions(id);
 
@@ -266,16 +269,22 @@ export function InterventionDetail() {
         canUpload={i.viewer_is_owner}
       />
 
-      {/* Contestazione thread — DisputeThreadSection returns null when empty */}
-      <DisputeThreadSection
-        interventionId={i.id}
-        vehicleId={i.vehicle.id}
-        interventionTitle={i.title ?? i.type.name_it}
-        disputes={disputeList}
-      />
-
-      {/* Cronologia modifiche — RevisionHistorySection returns null when empty */}
-      <RevisionHistorySection revisions={revisionList} />
+      {/* Contestazione thread + cronologia modifiche — owner-only surfaces
+          (BR-151/BR-153). Hidden in the cross-tenant read-only view: the
+          dispute response is an owner mutation and the revision audit trail
+          carries operator identity + internalNotes diffs. */}
+      {i.viewer_is_owner && (
+        <>
+          {/* DisputeThreadSection / RevisionHistorySection return null when empty */}
+          <DisputeThreadSection
+            interventionId={i.id}
+            vehicleId={i.vehicle.id}
+            interventionTitle={i.title ?? i.type.name_it}
+            disputes={disputeList}
+          />
+          <RevisionHistorySection revisions={revisionList} />
+        </>
+      )}
 
       {/* Annullamento card — shown only when intervention is cancelled */}
       {i.status === 'cancelled' && (

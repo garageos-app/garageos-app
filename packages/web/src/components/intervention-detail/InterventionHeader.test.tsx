@@ -188,8 +188,8 @@ describe('InterventionHeader', () => {
     expect(screen.getByText('Sola lettura')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
-    // The read-only export PDF affordance remains.
-    expect(screen.getByTestId('export-pdf-stub')).toBeInTheDocument();
+    // PDF export is owner-only (endpoint is tenant-scoped), so it's hidden too.
+    expect(screen.queryByTestId('export-pdf-stub')).not.toBeInTheDocument();
   });
 
   it('shows the export PDF button even when the intervention is cancelled', () => {

@@ -10,9 +10,16 @@ import { requireAuth } from '../../middleware/require-auth.js';
 
 // GET /v1/interventions/:id/revisions — APPENDICE_A §3.6 (F-OFF-304
 // lato lettura). Visibilità Any User: officina cross-tenant
-// (BR-150), cliente owner-only (mirror timeline §2.5). Cliente vede
-// `changes` con `internalNotes` strippato (BR-065); revisioni
-// `internalNotes`-only droppate dalla response.
+// (BR-150), cliente owner-only (mirror timeline §2.5).
+//
+// Reserved-field redaction (BR-153 / BR-151): the customer AND any
+// non-owning officina see `changes` with `internalNotes` stripped
+// (revisioni `internalNotes`-only droppate) and the operator identity
+// hidden (response carries `tenant` instead of `user`). Only the owning
+// tenant sees the full audit trail with mechanic identity. This mirrors
+// the cross-tenant redaction on the detail endpoint (§2.12) — without it
+// the revision history would re-leak the internal notes the detail DTO
+// redacts.
 //
 // `intervention_revisions` ha RLS dal migration 0004:
 // SELECT cross-tenant permissive (BR-150 audit chain), INSERT
@@ -89,9 +96,10 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
 
       return app.withContext(ctx, async (tx) => {
         // 1. Intervention existence — 404 P2025 cross-pool consistente.
+        // tenantId drives the owner-vs-redacted decision for officine.
         const intervention = await tx.intervention.findUniqueOrThrow({
           where: { id: interventionId },
-          select: { id: true, vehicleId: true },
+          select: { id: true, vehicleId: true, tenantId: true },
         });
 
         // 2. Cliente: ownership attiva sul vehicle (mirror timeline 403).
@@ -145,8 +153,13 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
             ? encodeCompoundCursor('ra', lastFetched.revisedAt.toISOString(), lastFetched.id)
             : undefined;
 
-        // 5. Filter cliente (sezione 4 spec) + map response shape.
-        const visible = isClienti ? filterRevisionsForCustomer(fetched) : fetched;
+        // 5. Redaction + map response shape. The full audit trail (with
+        // `user` identity and unredacted `changes`) goes ONLY to the owning
+        // tenant. Customers and cross-tenant officine get internalNotes
+        // stripped (BR-153) and the `tenant` shape instead of `user`
+        // (BR-151 operator identity hidden).
+        const isOwnerOfficine = isOfficine && intervention.tenantId === request.tenantId;
+        const visible = isOwnerOfficine ? fetched : filterRevisionsForCustomer(fetched);
 
         const data = visible.map((row) => {
           const base = {
@@ -155,7 +168,7 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
             reason: row.reason,
             changes: row.changes,
           };
-          if (isOfficine) {
+          if (isOwnerOfficine) {
             return {
               ...base,
               user: {
