@@ -26,12 +26,13 @@ describe('GET /v1/users/me (integration)', () => {
     await resetDb();
   });
 
-  it('returns the caller user for the matching tenant', async () => {
-    const { tenantId } = await createTenantWithLocation('users-me-ok');
+  it('returns the caller user with tenant + location names for the matching tenant', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('users-me-ok');
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
+      locationId,
       email: 'mechanic@tenant-a.test',
       firstName: 'Gianni',
       lastName: 'Bianchi',
@@ -59,7 +60,33 @@ describe('GET /v1/users/me (integration)', () => {
       lastName: 'Bianchi',
       role: 'mechanic',
       status: 'active',
+      // Brand-strip names (F-OFF-007 follow-up).
+      tenant: { businessName: 'Test Tenant users-me-ok' },
+      location: { name: 'Sede', city: 'Milano' },
     });
+  });
+
+  it('returns location: null when the user has no assigned sede', async () => {
+    const { tenantId } = await createTenantWithLocation('users-me-nosede');
+    const cognitoSub = '66666666-6666-4666-8666-666666666666';
+    await createUser({ tenantId, cognitoSub }); // no locationId
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/users/me',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { location: unknown; tenant: { businessName: string } };
+    expect(body.location).toBeNull();
+    expect(body.tenant.businessName).toBe('Test Tenant users-me-nosede');
   });
 
   it('returns 401 when no user row matches the JWT cognito_sub (T7 middleware short-circuit)', async () => {

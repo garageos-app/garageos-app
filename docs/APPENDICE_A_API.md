@@ -2124,6 +2124,10 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 
 **200 response:** same shape as `GET /v1/users/me`.
 
+**`GET /v1/users/me` / `PATCH /v1/users/me` response shape** (camelCase wire): `id`, `email`, `firstName`, `lastName`, `role`, `tenantId`, `locationId`, `avatarUrl` (presigned URL or `null`), `phone`, `status`, `createdAt`, plus the brand-strip names:
+- `tenant`: `{ "businessName": "Officina Matula" }` — nome dell'officina del chiamante.
+- `location`: `{ "name": "Sede Milano", "city": "Milano" }` o `null` se l'utente non ha una sede assegnata.
+
 **Errors:**
 - `400 VALIDATION_ERROR` — field validation failure
 - `422 users.me.update.empty_body` — body has no editable fields

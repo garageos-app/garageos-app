@@ -104,6 +104,8 @@ const profile: ProfileMeDto = {
   phone: null,
   status: 'active',
   createdAt: '2026-05-15T00:00:00Z',
+  tenant: { businessName: 'Matula' },
+  location: null,
 };
 
 const tenant: TenantMeDto = {

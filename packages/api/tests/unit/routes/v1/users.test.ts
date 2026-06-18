@@ -109,7 +109,7 @@ describe('GET /v1/users/me', () => {
       headers: { authorization: 'Bearer valid.jwt' },
     });
 
-    const call = findFirstOrThrow.mock.calls[0]?.[0] as { select: Record<string, boolean> };
+    const call = findFirstOrThrow.mock.calls[0]?.[0] as { select: Record<string, unknown> };
     expect(call.select).toEqual({
       id: true,
       email: true,
@@ -122,6 +122,9 @@ describe('GET /v1/users/me', () => {
       phone: true,
       status: true,
       createdAt: true,
+      // Brand-strip names for the top bar (F-OFF-007 follow-up).
+      tenant: { select: { businessName: true } },
+      location: { select: { name: true, city: true } },
     });
     // Must NOT expose these fields
     expect(call.select).not.toHaveProperty('cognitoSub');

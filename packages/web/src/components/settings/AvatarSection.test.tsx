@@ -47,6 +47,8 @@ const baseProfile: ProfileMeDto = {
   phone: null,
   status: 'active',
   createdAt: '2026-01-01T00:00:00Z',
+  tenant: { businessName: 'Matula' },
+  location: null,
 };
 
 function wrapper({ children }: { children: React.ReactNode }) {

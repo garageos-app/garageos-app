@@ -48,6 +48,8 @@ describe('TopBar', () => {
         firstName: 'Mario',
         lastName: 'Rossi',
         avatarUrl: 'https://signed-url',
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar />, { wrapper });
@@ -56,9 +58,45 @@ describe('TopBar', () => {
     expect(img.src).toBe('https://signed-url/');
   });
 
+  it('renders officina business name and assigned sede in the brand strip', () => {
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
+    };
+    render(<TopBar />, { wrapper });
+    expect(screen.getByText('Officina Matula')).toBeInTheDocument();
+    expect(screen.getByText(/Sede Milano/)).toBeInTheDocument();
+  });
+
+  it('shows only the officina name when the user has no assigned sede', () => {
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: null,
+      },
+    };
+    render(<TopBar />, { wrapper });
+    expect(screen.getByText('Officina Matula')).toBeInTheDocument();
+    expect(screen.queryByText(/Sede/)).not.toBeInTheDocument();
+  });
+
   it('renders initials fallback when avatarUrl is null', () => {
     profileQueryRef.current = {
-      data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null },
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
     };
     render(<TopBar />, { wrapper });
     expect(screen.getByTestId('topbar-avatar-initials')).toHaveTextContent('MR');
@@ -72,7 +110,13 @@ describe('TopBar', () => {
 
   it('renders email next to avatar', () => {
     profileQueryRef.current = {
-      data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null },
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
     };
     render(<TopBar />, { wrapper });
     expect(screen.getByText('mario@officina.it')).toBeInTheDocument();
@@ -103,7 +147,15 @@ function makeWrapperWithLocation(locationRef: { current: string }) {
 
 describe('<TopBar /> global search', () => {
   it('renders a search input with Italian placeholder', () => {
-    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
+    };
     render(<TopBar />, { wrapper });
     expect(screen.getByPlaceholderText('Cerca veicolo o cliente…')).toBeInTheDocument();
   });
@@ -111,7 +163,15 @@ describe('<TopBar /> global search', () => {
   it('navigates to /search?q=<raw> for a vehicle identifier (no t param)', async () => {
     const user = userEvent.setup();
     const loc = { current: '/' };
-    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
+    };
     render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
@@ -124,7 +184,15 @@ describe('<TopBar /> global search', () => {
   it('navigates to /search?q=<raw> for a free-text customer query', async () => {
     const user = userEvent.setup();
     const loc = { current: '/' };
-    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
+    };
     render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
@@ -137,7 +205,15 @@ describe('<TopBar /> global search', () => {
   it('navigates for a phone-like query', async () => {
     const user = userEvent.setup();
     const loc = { current: '/' };
-    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
+    };
     render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
@@ -150,7 +226,15 @@ describe('<TopBar /> global search', () => {
   it('trims whitespace before navigating', async () => {
     const user = userEvent.setup();
     const loc = { current: '/' };
-    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
+    };
     render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
@@ -163,7 +247,15 @@ describe('<TopBar /> global search', () => {
   it('does not navigate on empty submit', async () => {
     const user = userEvent.setup();
     const loc = { current: '/' };
-    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
+    };
     render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
@@ -176,7 +268,15 @@ describe('<TopBar /> global search', () => {
   it('shows a hint and does not navigate for a 1-char query', async () => {
     const user = userEvent.setup();
     const loc = { current: '/' };
-    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
+    };
     render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
@@ -191,7 +291,15 @@ describe('<TopBar /> global search', () => {
   it('clears the hint as soon as the user edits the input again', async () => {
     const user = userEvent.setup();
     const loc = { current: '/' };
-    profileQueryRef.current = { data: { firstName: 'Mario', lastName: 'Rossi', avatarUrl: null } };
+    profileQueryRef.current = {
+      data: {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        avatarUrl: null,
+        tenant: { businessName: 'Matula' },
+        location: { name: 'Sede Milano', city: 'Milano' },
+      },
+    };
     render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
