@@ -125,6 +125,145 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     expect(row.type!.id).toBe(tagliando.id);
   });
 
+  it('GET /timeline/officine returns distinct officine with viewer_is_owner', async () => {
+    const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('tl-off-A');
+    const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('tl-off-B');
+    const subA = '31111111-1111-4111-8111-aaaaaaaaaaaa';
+    const subB = '32222222-2222-4222-8222-bbbbbbbbbbbb';
+    const { userId: userA } = await createUser({
+      tenantId: tenantA,
+      cognitoSub: subA,
+      locationId: locA,
+    });
+    const { userId: userB } = await createUser({
+      tenantId: tenantB,
+      cognitoSub: subB,
+      locationId: locB,
+    });
+    const { customerId } = await createCustomer({});
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
+    await createOwnership({ vehicleId, customerId });
+    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    // Two interventions by A (must be DISTINCT-collapsed to one officina) + one by B.
+    for (const date of ['2026-04-15', '2026-02-01']) {
+      await createIntervention({
+        tenantId: tenantA,
+        locationId: locA,
+        userId: userA,
+        vehicleId,
+        interventionTypeId: tagliando.id,
+        interventionDate: date,
+        odometerKm: 45000,
+      });
+    }
+    await createIntervention({
+      tenantId: tenantB,
+      locationId: locB,
+      userId: userB,
+      vehicleId,
+      interventionTypeId: tagliando.id,
+      interventionDate: '2026-03-10',
+      odometerKm: 42000,
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: subA,
+      tenantId: tenantA,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${vehicleId}/timeline/officine`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{ tenant_id: string; business_name: string; viewer_is_owner: boolean }>;
+    };
+    // DISTINCT on tenantId → A appears once despite 2 interventions.
+    expect(body.data).toHaveLength(2);
+    const byId = new Map(body.data.map((o) => [o.tenant_id, o]));
+    expect(byId.get(tenantA)!.viewer_is_owner).toBe(true);
+    expect(byId.get(tenantB)!.viewer_is_owner).toBe(false);
+  });
+
+  it('filters shop interventions by tenant_ids', async () => {
+    const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('tl-filt-A');
+    const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('tl-filt-B');
+    const subA = '41111111-1111-4111-8111-aaaaaaaaaaaa';
+    const subB = '42222222-2222-4222-8222-bbbbbbbbbbbb';
+    const { userId: userA } = await createUser({
+      tenantId: tenantA,
+      cognitoSub: subA,
+      locationId: locA,
+    });
+    const { userId: userB } = await createUser({
+      tenantId: tenantB,
+      cognitoSub: subB,
+      locationId: locB,
+    });
+    const { customerId } = await createCustomer({});
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
+    await createOwnership({ vehicleId, customerId });
+    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    await createIntervention({
+      tenantId: tenantA,
+      locationId: locA,
+      userId: userA,
+      vehicleId,
+      interventionTypeId: tagliando.id,
+      interventionDate: '2026-04-15',
+      odometerKm: 45000,
+      title: 'Solo A',
+    });
+    await createIntervention({
+      tenantId: tenantB,
+      locationId: locB,
+      userId: userB,
+      vehicleId,
+      interventionTypeId: tagliando.id,
+      interventionDate: '2026-03-10',
+      odometerKm: 42000,
+      title: 'Solo B',
+    });
+
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: subA,
+      tenantId: tenantA,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${vehicleId}/timeline?tenant_ids=${tenantB}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: Array<{ title?: string }>; meta: { shop_count: number } };
+    expect(body.meta.shop_count).toBe(1);
+    expect(body.data.map((d) => d.title)).toEqual(['Solo B']);
+  });
+
+  it('returns 400 for a malformed tenant_ids value', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('tl-filt-bad');
+    const cognitoSub = '43333333-3333-4333-8333-cccccccccccc';
+    await createUser({ tenantId, cognitoSub, locationId });
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${vehicleId}/timeline?tenant_ids=not-a-uuid`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('computes wiki_window_open=false when wikiLockedAt is set', async () => {
     const { tenantId, locationId } = await createTenantWithLocation('tl-wiki-lock');
     const cognitoSub = 'eeeeeeee-5555-4555-8555-555555555555';

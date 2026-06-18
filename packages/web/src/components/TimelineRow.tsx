@@ -7,6 +7,7 @@ import { formatDate, formatKm } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { DisputeResponseDialog } from '@/components/DisputeResponseDialog';
 import { EditInterventionDialog } from '@/components/EditInterventionDialog';
+import type { OfficinaColor } from '@/lib/officinaColors';
 import type { TimelineItem } from '@/queries/types';
 
 // Timeline row con expand/collapse inline. Surfacia description,
@@ -25,9 +26,12 @@ import type { TimelineItem } from '@/queries/types';
 interface Props {
   item: TimelineItem;
   vehicleId: string;
+  // Per-officina color for shop rows (BR-150/BR-153 visual distinction).
+  // Undefined for private rows.
+  color?: OfficinaColor;
 }
 
-export function TimelineRow({ item, vehicleId }: Props) {
+export function TimelineRow({ item, vehicleId, color }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -48,9 +52,17 @@ export function TimelineRow({ item, vehicleId }: Props) {
   // The "Disputa" badge stays visible cross-tenant (status transparency),
   // but only the owner may open the response dialog.
   const canRespondToDispute = isDisputed && isShop && item.viewer_is_owner;
+  // A coloured left border marks interventions from ANOTHER officina; own
+  // rows keep a transparent border so the column stays aligned.
+  const showAccentBorder = isShop && !item.viewer_is_owner && color;
 
   return (
-    <div className="px-4 py-3">
+    <div
+      className={cn(
+        'px-4 py-3 border-l-2',
+        showAccentBorder ? color.border : 'border-l-transparent',
+      )}
+    >
       <div className="flex items-center gap-4">
         <button
           type="button"
@@ -59,7 +71,13 @@ export function TimelineRow({ item, vehicleId }: Props) {
           onClick={() => setExpanded((v) => !v)}
           className="flex-1 flex items-center gap-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm min-w-0"
         >
-          <div className="text-xs text-muted-foreground w-24 shrink-0">
+          <div className="text-xs text-muted-foreground w-24 shrink-0 flex items-center gap-2">
+            {color && (
+              <span
+                className={cn('inline-block h-2 w-2 rounded-full shrink-0', color.dot)}
+                aria-hidden="true"
+              />
+            )}
             {formatDate(item.intervention_date)}
           </div>
           <div className="flex-1 min-w-0">

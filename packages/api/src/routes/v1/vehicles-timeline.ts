@@ -7,6 +7,8 @@ import { isWikiWindowOpen } from '../../lib/intervention-shared.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
+import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
+import { tenantContext } from '../../middleware/tenant-context.js';
 
 // GET /v1/vehicles/:id/timeline — APPENDICE_A §2.5 (F-OFF-105 /
 // F-CLI-201 / F-CLI-205). Visibility per spec §2.5:
@@ -27,6 +29,22 @@ const timelineQuerySchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'to_date must be YYYY-MM-DD')
     .optional(),
+  // Filter shop interventions to the given officine (BR-150/BR-153 shared
+  // logbook). Comma-separated tenant UUIDs; absent ⇒ no filter (all
+  // officine). Validated as UUIDs so a malformed value is a 400, not a
+  // Postgres cast error.
+  tenant_ids: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v
+        ? v
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
+    )
+    .pipe(z.array(z.string().uuid())),
 });
 
 // Build a Prisma where clause that respects:
@@ -169,30 +187,26 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         // "client.query() … already executing" warning — see PR #95. The
         // two findMany calls cost ~250 ms each at Supabase; sequential
         // execution adds ~250 ms vs the (illusory) parallel plan.
+        // Shop where: date/cursor window + optional officina filter
+        // (tenant_ids). Identical for both pools — built once.
+        const shopWhere = {
+          ...buildVehicleDateCursorWhere(vehicleId, {
+            ...(fromDateUtc ? { fromDateUtc } : {}),
+            ...(toDateUtc ? { toDateUtc } : {}),
+            ...(cursor ? { cursor } : {}),
+          }),
+          ...(query.tenant_ids.length > 0 ? { tenantId: { in: query.tenant_ids } } : {}),
+        };
+
         const shopRows =
-          isOfficine && wantShop
+          (isOfficine || isClienti) && wantShop
             ? await tx.intervention.findMany({
-                where: buildVehicleDateCursorWhere(vehicleId, {
-                  ...(fromDateUtc ? { fromDateUtc } : {}),
-                  ...(toDateUtc ? { toDateUtc } : {}),
-                  ...(cursor ? { cursor } : {}),
-                }),
+                where: shopWhere,
                 select: shopRowSelect,
                 orderBy: [{ interventionDate: 'desc' }, { id: 'desc' }],
                 take: query.limit + 1,
               })
-            : isClienti && wantShop
-              ? await tx.intervention.findMany({
-                  where: buildVehicleDateCursorWhere(vehicleId, {
-                    ...(fromDateUtc ? { fromDateUtc } : {}),
-                    ...(toDateUtc ? { toDateUtc } : {}),
-                    ...(cursor ? { cursor } : {}),
-                  }),
-                  select: shopRowSelect,
-                  orderBy: [{ interventionDate: 'desc' }, { id: 'desc' }],
-                  take: query.limit + 1,
-                })
-              : [];
+            : [];
 
         const privateRows =
           isClienti && wantPrivate
@@ -299,6 +313,7 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
                 now,
               ),
               tenant: {
+                id: r.tenantId,
                 business_name: r.tenant.businessName,
                 location_city: r.location.city,
               },
@@ -344,6 +359,49 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
             private_count: privateCount,
           },
         };
+      });
+    },
+  );
+
+  // GET /v1/vehicles/:id/timeline/officine — distinct list of officine that
+  // have at least one shop intervention on this vehicle. Feeds the web
+  // timeline officina filter + stable per-officina color assignment (the
+  // list is independent of pagination, so colors don't shift as pages load).
+  //
+  // Officine-only: the filter UI lives in the workshop web app. RLS
+  // `interventions_read` is permissive cross-tenant, so the distinct query
+  // sees every tenant's interventions on the vehicle (BR-150).
+  app.get(
+    '/v1/vehicles/:id/timeline/officine',
+    {
+      preHandler: [requireAuth, requireOfficinaPool, tenantContext],
+    },
+    async (request) => {
+      const { id: vehicleId } = idParamSchema.parse(request.params);
+      const tenantId = request.tenantId!;
+
+      return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
+        // Vehicle existence first — 404 mirrors the timeline endpoint.
+        await tx.vehicle.findUniqueOrThrow({
+          where: { id: vehicleId },
+          select: { id: true },
+        });
+
+        const rows = await tx.intervention.findMany({
+          where: { vehicleId },
+          distinct: ['tenantId'],
+          select: { tenantId: true, tenant: { select: { businessName: true } } },
+        });
+
+        const officine = rows
+          .map((r) => ({
+            tenant_id: r.tenantId,
+            business_name: r.tenant.businessName,
+            viewer_is_owner: r.tenantId === tenantId,
+          }))
+          .sort((a, b) => a.business_name.localeCompare(b.business_name, 'it'));
+
+        return { data: officine };
       });
     },
   );

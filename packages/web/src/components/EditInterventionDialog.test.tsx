@@ -96,7 +96,7 @@ function makeShopItem(overrides: Partial<ShopTimelineItem> = {}): ShopTimelineIt
     status: 'active',
     is_disputed: false,
     wiki_window_open: true,
-    tenant: { business_name: 'Garage Acme', location_city: 'Milano' },
+    tenant: { id: 'tenant-acme', business_name: 'Garage Acme', location_city: 'Milano' },
     viewer_is_owner: true,
     has_attachments: false,
     attachments_count: 0,
