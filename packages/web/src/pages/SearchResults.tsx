@@ -45,7 +45,7 @@ function SearchResultsByCustomer({ customerId }: { customerId: string | null }) 
 
   if (!queryParams) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <Alert variant="destructive">
           <AlertDescription>Parametri di ricerca mancanti o invalidi.</AlertDescription>
         </Alert>
@@ -60,7 +60,7 @@ function SearchResultsByCustomer({ customerId }: { customerId: string | null }) 
       : `${customer.data.firstName} ${customer.data.lastName}`);
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       <div>
         <div className="text-sm text-muted-foreground mb-2">
           Veicoli del <Badge variant="outline">cliente</Badge>
@@ -93,7 +93,7 @@ function GlobalSearchResults({ q }: { q: string }) {
 
   if (q.length < 2) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <Alert variant="destructive">
           <AlertDescription>Inserisci almeno 2 caratteri per cercare.</AlertDescription>
         </Alert>
@@ -110,7 +110,7 @@ function GlobalSearchResults({ q }: { q: string }) {
   const allEmpty = vehiclesEmptyDone && customersEmptyDone && noErrors;
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-8">
       <div>
         <div className="text-sm text-muted-foreground mb-2">Risultati per</div>
         <div className="text-lg font-semibold text-foreground">«{q}»</div>

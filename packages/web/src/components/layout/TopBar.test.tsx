@@ -41,6 +41,9 @@ function wrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
+// onMenuClick is required by TopBar; supply a no-op in all render calls.
+const noop = vi.fn();
+
 describe('TopBar', () => {
   it('renders avatar img when profile.avatarUrl present', () => {
     profileQueryRef.current = {
@@ -52,7 +55,7 @@ describe('TopBar', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper });
+    render(<TopBar onMenuClick={noop} />, { wrapper });
     const img = screen.getByTestId('topbar-avatar-img') as HTMLImageElement;
     expect(img).toBeInTheDocument();
     expect(img.src).toBe('https://signed-url/');
@@ -68,7 +71,7 @@ describe('TopBar', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper });
+    render(<TopBar onMenuClick={noop} />, { wrapper });
     expect(screen.getByText('Officina Matula')).toBeInTheDocument();
     expect(screen.getByText(/Sede Milano/)).toBeInTheDocument();
   });
@@ -83,7 +86,7 @@ describe('TopBar', () => {
         location: null,
       },
     };
-    render(<TopBar />, { wrapper });
+    render(<TopBar onMenuClick={noop} />, { wrapper });
     expect(screen.getByText('Officina Matula')).toBeInTheDocument();
     expect(screen.queryByText(/Sede/)).not.toBeInTheDocument();
   });
@@ -98,13 +101,13 @@ describe('TopBar', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper });
+    render(<TopBar onMenuClick={noop} />, { wrapper });
     expect(screen.getByTestId('topbar-avatar-initials')).toHaveTextContent('MR');
   });
 
   it('renders ? initials when profile not yet loaded', () => {
     profileQueryRef.current = { data: undefined };
-    render(<TopBar />, { wrapper });
+    render(<TopBar onMenuClick={noop} />, { wrapper });
     expect(screen.getByTestId('topbar-avatar-initials')).toHaveTextContent('?');
   });
 
@@ -118,8 +121,16 @@ describe('TopBar', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper });
+    render(<TopBar onMenuClick={noop} />, { wrapper });
     expect(screen.getByText('mario@officina.it')).toBeInTheDocument();
+  });
+
+  it('calls onMenuClick when the hamburger is pressed', async () => {
+    const onMenuClick = vi.fn();
+    profileQueryRef.current = { data: undefined };
+    render(<TopBar onMenuClick={onMenuClick} />, { wrapper });
+    await userEvent.click(screen.getByRole('button', { name: /apri menu/i }));
+    expect(onMenuClick).toHaveBeenCalledOnce();
   });
 });
 
@@ -156,7 +167,7 @@ describe('<TopBar /> global search', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper });
+    render(<TopBar onMenuClick={noop} />, { wrapper });
     expect(screen.getByPlaceholderText('Cerca veicolo o cliente…')).toBeInTheDocument();
   });
 
@@ -172,7 +183,7 @@ describe('<TopBar /> global search', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+    render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
     await user.type(input, 'AB123CD');
@@ -193,7 +204,7 @@ describe('<TopBar /> global search', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+    render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
     await user.type(input, 'Mario Rossi');
@@ -214,7 +225,7 @@ describe('<TopBar /> global search', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+    render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
     await user.type(input, '3331234567');
@@ -235,7 +246,7 @@ describe('<TopBar /> global search', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+    render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
     await user.type(input, '   AB123CD   ');
@@ -256,7 +267,7 @@ describe('<TopBar /> global search', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+    render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
     await user.click(input);
@@ -277,7 +288,7 @@ describe('<TopBar /> global search', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+    render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
     await user.type(input, 'a');
@@ -300,7 +311,7 @@ describe('<TopBar /> global search', () => {
         location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
-    render(<TopBar />, { wrapper: makeWrapperWithLocation(loc) });
+    render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
 
     const input = screen.getByPlaceholderText('Cerca veicolo o cliente…');
     await user.type(input, 'a');

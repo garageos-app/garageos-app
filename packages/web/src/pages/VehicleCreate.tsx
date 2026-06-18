@@ -72,7 +72,7 @@ export function VehicleCreate() {
 
   if (profile.isPending) {
     return (
-      <div className="p-8 space-y-3">
+      <div className="p-4 md:p-8 space-y-3">
         <Skeleton className="h-24" />
         <Skeleton className="h-64" />
       </div>
@@ -80,7 +80,7 @@ export function VehicleCreate() {
   }
   if (profile.isError || !profile.data) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <Alert variant="destructive">
           <AlertDescription>Errore caricamento profilo.</AlertDescription>
         </Alert>
@@ -102,7 +102,7 @@ export function VehicleCreate() {
     const own = profile.data.locationId;
     if (!own) {
       return (
-        <div className="p-8">
+        <div className="p-4 md:p-8">
           <Alert variant="destructive">
             <AlertDescription>
               Il tuo account non è associato a una sede. Contatta l&apos;amministratore.
@@ -232,7 +232,7 @@ function VehicleCreateForm({ locationOptions, lockedLocationId, defaultLocationI
   }
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl">
       <div className="mb-6">
         <button
           type="button"
@@ -397,7 +397,7 @@ function VehicleCreateForm({ locationOptions, lockedLocationId, defaultLocationI
               {err('model')}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <Label htmlFor="vc-year">Anno</Label>
               <Input id="vc-year" inputMode="numeric" {...register('year')} />
@@ -459,7 +459,7 @@ function VehicleCreateForm({ locationOptions, lockedLocationId, defaultLocationI
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <Label htmlFor="vc-registrationDate">Immatricolazione (opzionale)</Label>
               <Input id="vc-registrationDate" type="date" {...register('registrationDate')} />

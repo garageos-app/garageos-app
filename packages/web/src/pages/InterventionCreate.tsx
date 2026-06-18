@@ -30,7 +30,7 @@ export function InterventionCreate() {
 
   if (detail.isPending || types.isPending) {
     return (
-      <div className="p-8 space-y-3">
+      <div className="p-4 md:p-8 space-y-3">
         <Skeleton className="h-32" />
         <Skeleton className="h-64" />
       </div>
@@ -38,7 +38,7 @@ export function InterventionCreate() {
   }
   if (detail.isError) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <Alert variant="destructive">
           <AlertDescription>Errore caricamento veicolo.</AlertDescription>
         </Alert>
@@ -47,7 +47,7 @@ export function InterventionCreate() {
   }
   if (types.isError) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <Alert variant="destructive">
           <AlertDescription>Errore caricamento tipi intervento.</AlertDescription>
         </Alert>
@@ -60,7 +60,7 @@ export function InterventionCreate() {
   if (v.status === 'archived') {
     // Shouldn't reach here if CTA disabled on VehicleDetail, but defensive
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <Alert variant="destructive">
           <AlertDescription>{translateError('vehicle.modification.archived', '')}</AlertDescription>
         </Alert>
@@ -100,7 +100,7 @@ export function InterventionCreate() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-6">
         <button
           type="button"

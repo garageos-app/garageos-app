@@ -72,7 +72,7 @@ export function VehicleDetail() {
 
   if (detail.isPending) {
     return (
-      <div className="p-8 space-y-6">
+      <div className="p-4 md:p-8 space-y-6">
         <Skeleton className="h-32" />
         <Skeleton className="h-64" />
       </div>
@@ -81,7 +81,7 @@ export function VehicleDetail() {
 
   if (detail.isError) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <Alert variant="destructive">
           <AlertDescription className="flex items-center justify-between gap-4">
             <span>
@@ -107,12 +107,12 @@ export function VehicleDetail() {
   const timelineItems = timeline.data?.pages.flatMap((p) => p.data) ?? [];
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-6 md:space-y-8">
       <div>
         <div className="font-mono text-xs text-muted-foreground tracking-wider mb-1">
           {v.garageCode}
         </div>
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               {v.make} {v.model}{' '}
@@ -123,7 +123,7 @@ export function VehicleDetail() {
               <span className="font-mono">{v.plate}</span> · {v.year} · {v.fuelType}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className={sb.cls}>
               <sb.Icon size={14} className="mr-1" /> {sb.label}
             </Badge>
@@ -162,7 +162,7 @@ export function VehicleDetail() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-card border border-border rounded-lg p-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
             Cilindrata

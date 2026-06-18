@@ -53,6 +53,12 @@
   * {
     @apply border-border;
   }
+  html {
+    /* Fluid base size: 16px floor (mobile stays readable), grows with the
+       viewport on laptops, capped at 18px so large monitors don't blow up.
+       Tailwind v3 breakpoints are px-based, so this does not shift them. */
+    font-size: clamp(16px, 0.6vw + 13.5px, 18px);
+  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings:

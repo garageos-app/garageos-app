@@ -93,7 +93,7 @@ export function CustomerDetail() {
 
   if (detail.isPending) {
     return (
-      <div className="p-8 space-y-6" data-testid="customer-detail-skeleton">
+      <div className="p-4 md:p-8 space-y-6" data-testid="customer-detail-skeleton">
         <Skeleton className="h-20" />
         <Skeleton className="h-64" />
         <Skeleton className="h-48" />
@@ -104,7 +104,7 @@ export function CustomerDetail() {
   if (detail.isError) {
     // 404 already redirected above; this branch covers other 4xx/5xx.
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <Alert variant="destructive">
           <AlertDescription className="flex items-center justify-between gap-4">
             <span>
@@ -187,10 +187,10 @@ function EditMode({
   });
 
   return (
-    <form onSubmit={onSubmit} className="p-8 space-y-8">
-      <header className="flex items-center justify-between gap-4">
+    <form onSubmit={onSubmit} className="p-4 md:p-8 space-y-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Modifica cliente</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={onCancel} disabled={update.isPending}>
             Annulla
           </Button>
@@ -285,7 +285,7 @@ function EditMode({
           >
             <Input id="addressLine" {...form.register('addressLine')} />
           </Labelled>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Labelled id="postalCode" label="CAP" error={form.formState.errors.postalCode?.message}>
               <Input id="postalCode" {...form.register('postalCode')} />
             </Labelled>
@@ -329,8 +329,8 @@ function ViewMode({ dto, onEdit }: { dto: CustomerDetailDto; onEdit: () => void 
     .join(', ');
 
   return (
-    <div className="p-8 space-y-8">
-      <header className="flex items-start justify-between gap-4">
+    <div className="p-4 md:p-8 space-y-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">{displayName}</h1>
           <div className="text-sm text-muted-foreground mt-1">
@@ -338,7 +338,7 @@ function ViewMode({ dto, onEdit }: { dto: CustomerDetailDto; onEdit: () => void 
             {dto.phone ? <> · {dto.phone}</> : null}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {dto.isBusiness && <Badge variant="secondary">B2B</Badge>}
           <Button onClick={onEdit}>Modifica</Button>
         </div>
