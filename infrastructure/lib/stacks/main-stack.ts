@@ -3,6 +3,7 @@ import { Construct } from 'constructs';
 
 import { ApiGatewayConstruct } from '../constructs/api-gateway.js';
 import { CognitoConstruct } from '../constructs/cognito.js';
+import { CognitoTriggerLambdaConstruct } from '../constructs/cognito-trigger-lambda.js';
 import { DnsConstruct } from '../constructs/dns.js';
 import { LAMBDA_FUNCTION_NAME, LambdaApiConstruct } from '../constructs/lambda-api.js';
 import { MonitoringConstruct } from '../constructs/monitoring.js';
@@ -50,12 +51,21 @@ export class MainStack extends cdk.Stack {
       environment: config.environment,
     });
 
+    const cognitoTriggers = new CognitoTriggerLambdaConstruct(this, 'CognitoTriggers', {
+      environment: config.environment,
+      appSecret: secrets.appSecret,
+      architecture: config.lambda.architecture,
+      memoryMb: config.lambda.memoryMb,
+      timeoutSec: config.lambda.timeoutSec,
+      logRetentionDays: config.logRetentionDays,
+    });
+
     const cognito = new CognitoConstruct(this, 'Cognito', {
       environment: config.environment,
       mfaTotpEnabled: config.cognito.mfaTotpEnabled,
-      // TODO(task-5): replace stubs with config.cognito.clientiCallbackUrls / clientiLogoutUrls
-      clientiCallbackUrls: [],
-      clientiLogoutUrls: [],
+      clientiCallbackUrls: config.cognito.clientiCallbackUrls,
+      clientiLogoutUrls: config.cognito.clientiLogoutUrls,
+      clientiTriggerFunction: cognitoTriggers.function,
     });
 
     // Storage construct ships PRIMA del LambdaApi perché LambdaApi
@@ -166,6 +176,10 @@ export class MainStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'CognitoClientiClientId', {
       value: cognito.clientiClient.userPoolClientId,
       description: 'Populate into garageos/production/app secret as COGNITO_CLIENTI_CLIENT_ID',
+    });
+    new cdk.CfnOutput(this, 'CognitoClientiHostedUiDomain', {
+      value: `https://${config.cognito.clientiHostedUiDomainPrefix}.auth.${this.region}.amazoncognito.com`,
+      description: 'Hosted UI base URL — feed into mobile EXPO_PUBLIC_COGNITO_HOSTED_UI (PR 3)',
     });
     new cdk.CfnOutput(this, 'AttachmentsBucketName', {
       value: storage.attachmentsBucket.bucketName,
