@@ -462,6 +462,28 @@ export async function findNativeClientiUserByEmail(args: {
   }
 }
 
+// Updates a single attribute on an existing clienti Cognito user by username.
+// Used by the Pre-Token-Generation trigger to persist `custom:customer_id`
+// after the first federated sign-in so subsequent token refreshes hit the
+// fast pass-through path.
+//
+// Mirrors markCustomerEmailVerified — same SDK command, same failure surface.
+export async function updateClientiUserAttribute(args: {
+  poolId: string;
+  username: string;
+  name: string;
+  value: string;
+}): Promise<void> {
+  const client = getCognitoClient();
+  await client.send(
+    new AdminUpdateUserAttributesCommand({
+      UserPoolId: args.poolId,
+      Username: args.username,
+      UserAttributes: [{ Name: args.name, Value: args.value }],
+    }),
+  );
+}
+
 // Links a Google federated identity onto an existing native clienti Cognito
 // user. This is the account-merge step inside the PreSignUp trigger: after
 // confirming the native user exists, we bind the Google sub so subsequent
