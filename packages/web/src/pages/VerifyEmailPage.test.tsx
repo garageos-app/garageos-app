@@ -42,6 +42,9 @@ describe('VerifyEmailPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/Email verificata/i)).toBeInTheDocument();
     });
+    // Page is reached only by mobile customers — no web/officine login link.
+    expect(screen.queryByText(/Vai al login/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/app GarageOS/i)).toBeInTheDocument();
   });
 
   it('shows error state on 410 expired', async () => {
@@ -60,5 +63,6 @@ describe('VerifyEmailPage', () => {
   it('shows missing-token error when no ?token param', () => {
     renderAt('/verify-email');
     expect(screen.getByText(/Link non valido/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Vai al login/i)).not.toBeInTheDocument();
   });
 });
