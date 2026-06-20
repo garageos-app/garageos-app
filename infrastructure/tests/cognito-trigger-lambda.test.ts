@@ -105,9 +105,12 @@ describe('CognitoTriggerLambdaConstruct', () => {
               'cognito-idp:ListUsers',
               'cognito-idp:AdminUpdateUserAttributes',
             ]),
-            Resource: Match.arrayWith([
-              Match.stringLikeRegexp('arn:aws:cognito-idp:eu-central-1:111122223333:userpool/\\*'),
-            ]),
+            // A PolicyStatement with a single resource renders Resource as a
+            // scalar string in CloudFormation (not a one-element array), so
+            // match the string directly rather than wrapping in arrayWith.
+            Resource: Match.stringLikeRegexp(
+              'arn:aws:cognito-idp:eu-central-1:111122223333:userpool/\\*',
+            ),
           }),
         ]),
       }),
