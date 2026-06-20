@@ -4,11 +4,14 @@ import {
   AdminDisableUserCommand,
   AdminEnableUserCommand,
   AdminGetUserCommand,
+  AdminLinkProviderForUserCommand,
   AdminSetUserPasswordCommand,
   AdminUpdateUserAttributesCommand,
   AdminUserGlobalSignOutCommand,
+  AliasExistsException,
   CognitoIdentityProviderClient,
   InvalidPasswordException,
+  ListUsersCommand,
   UsernameExistsException,
   UserNotFoundException,
 } from '@aws-sdk/client-cognito-identity-provider';
@@ -414,6 +417,89 @@ export async function getOfficineUserByEmail(args: {
   } catch (err) {
     if (err instanceof UserNotFoundException) return { exists: false };
     if (err instanceof CognitoUnavailableError) throw err;
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+}
+
+// Looks up a native (password-origin) Cognito user in the clienti pool by
+// email address. Google federated users have a Username prefixed with
+// "Google_" — we skip those and return only the native one.
+//
+// Returns {exists:false} when no native user is found (pool is empty for
+// this email, or only a federated record exists).
+//
+// Used by the PreSignUp Lambda trigger to decide whether to call
+// AdminLinkProviderForUser or let Cognito create a brand-new native user.
+//
+// Throws CognitoUnavailableError on SDK errors.
+export async function findNativeClientiUserByEmail(args: {
+  poolId: string;
+  email: string;
+}): Promise<{ exists: false } | { exists: true; username: string }> {
+  const client = getCognitoClient();
+  try {
+    const resp = await client.send(
+      new ListUsersCommand({
+        UserPoolId: args.poolId,
+        Filter: `email = "${args.email}"`,
+      }),
+    );
+    // Google federated identities have Username starting with "Google_".
+    // Native (password-origin) users use the email address as their username.
+    const nativeUser = (resp.Users ?? []).find(
+      (u) => u.Username !== undefined && !u.Username.startsWith('Google_'),
+    );
+    if (!nativeUser?.Username) return { exists: false };
+    return { exists: true, username: nativeUser.Username };
+  } catch (err) {
+    throw new CognitoUnavailableError(
+      err instanceof Error ? err.message : 'Cognito SDK error',
+      err,
+    );
+  }
+}
+
+// Links a Google federated identity onto an existing native clienti Cognito
+// user. This is the account-merge step inside the PreSignUp trigger: after
+// confirming the native user exists, we bind the Google sub so subsequent
+// Google sign-ins land on the same Cognito record.
+//
+// DestinationUser: the native Cognito user (ProviderName='Cognito').
+// SourceUser:      the Google identity (ProviderName='Google', attribute
+//                  name='Cognito_Subject', value=<google sub>).
+//
+// Idempotent: AliasExistsException means the link already exists — swallow
+// it so re-runs (e.g. Lambda retries) are safe.
+//
+// Throws CognitoUnavailableError on any other SDK error.
+export async function linkGoogleIdentityToClientiUser(args: {
+  poolId: string;
+  destinationUsername: string;
+  googleSub: string;
+}): Promise<void> {
+  const client = getCognitoClient();
+  try {
+    await client.send(
+      new AdminLinkProviderForUserCommand({
+        UserPoolId: args.poolId,
+        DestinationUser: {
+          ProviderName: 'Cognito',
+          ProviderAttributeValue: args.destinationUsername,
+        },
+        SourceUser: {
+          ProviderName: 'Google',
+          ProviderAttributeName: 'Cognito_Subject',
+          ProviderAttributeValue: args.googleSub,
+        },
+      }),
+    );
+  } catch (err) {
+    // AliasExistsException: the Google identity is already linked to this
+    // user — treat as success so trigger retries are idempotent.
+    if (err instanceof AliasExistsException) return;
     throw new CognitoUnavailableError(
       err instanceof Error ? err.message : 'Cognito SDK error',
       err,
