@@ -141,6 +141,8 @@ describe('LambdaApiConstruct', () => {
   const cognito = new CognitoConstruct(stack, 'Cognito', {
     environment: 'production',
     mfaTotpEnabled: true,
+    clientiCallbackUrls: ['garageos://auth/callback'],
+    clientiLogoutUrls: ['garageos://auth/logout'],
   });
   const storage = new StorageConstruct(stack, 'Storage', {
     environment: 'production',
@@ -324,6 +326,8 @@ describe('ApiGatewayConstruct', () => {
     const cognito = new CognitoConstruct(stack, 'Cognito', {
       environment: 'production',
       mfaTotpEnabled: true,
+      clientiCallbackUrls: ['garageos://auth/callback'],
+      clientiLogoutUrls: ['garageos://auth/logout'],
     });
     const storage = new StorageConstruct(stack, 'Storage', {
       environment: 'production',
@@ -427,13 +431,15 @@ describe('MainStack (integration)', () => {
     template.hasOutput('CognitoOfficineClientId', {});
     template.hasOutput('CognitoClientiUserPoolId', {});
     template.hasOutput('CognitoClientiClientId', {});
+    template.hasOutput('CognitoClientiHostedUiDomain', {});
     template.hasOutput('AttachmentsBucketName', {});
     template.hasOutput('SesEmailIdentityArn', {});
     template.hasOutput('SesConfigurationSetName', {});
   });
 
   it('combined resource counts match scope', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 1);
+    // API Lambda (garageos-api) + Cognito trigger Lambda (garageos-cognito-clienti-triggers).
+    template.resourceCountIs('AWS::Lambda::Function', 2);
     template.resourceCountIs('AWS::ApiGatewayV2::Api', 1);
     template.resourceCountIs('AWS::ApiGatewayV2::DomainName', 1);
     // appSecret only (G2 eventbridgeHmacSecret removed in H3 cleanup).
@@ -447,6 +453,9 @@ describe('MainStack (integration)', () => {
     // one UserPoolClient).
     template.resourceCountIs('AWS::Cognito::UserPool', 2);
     template.resourceCountIs('AWS::Cognito::UserPoolClient', 2);
+    // Google IdP on the clienti pool; Hosted UI domain for OAuth PKCE flow.
+    template.resourceCountIs('AWS::Cognito::UserPoolIdentityProvider', 1);
+    template.resourceCountIs('AWS::Cognito::UserPoolDomain', 1);
     // PR 23: S3 attachments bucket. WAF deferred a PR 25 (CloudFront
     // + WAF CLOUDFRONT scope) — WAFv2 REGIONAL non supporta API
     // Gateway HTTP API v2.

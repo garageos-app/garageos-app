@@ -33,6 +33,12 @@ export interface EnvironmentConfig {
   };
   readonly cognito: {
     readonly mfaTotpEnabled: boolean;
+    // Mobile deep-link redirect URIs for the clienti Hosted UI OAuth flow.
+    // PR 3 may append the Expo dev-build URI; callback URLs are mutable
+    // post-deploy (no pool replacement required).
+    readonly clientiHostedUiDomainPrefix: string;
+    readonly clientiCallbackUrls: string[];
+    readonly clientiLogoutUrls: string[];
   };
   readonly waf: {
     readonly ipRequestRateLimit: number;
@@ -68,6 +74,9 @@ export const productionConfig: EnvironmentConfig = {
   },
   cognito: {
     mfaTotpEnabled: true,
+    clientiHostedUiDomainPrefix: 'garageos-production-clienti',
+    clientiCallbackUrls: ['garageos://auth/callback'],
+    clientiLogoutUrls: ['garageos://auth/logout'],
   },
   waf: {
     ipRequestRateLimit: 2000,

@@ -1,8 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 
 import { CognitoConstruct } from '../lib/constructs/cognito.js';
+
+const STUB_CALLBACK_URLS = ['garageos://auth/callback', 'https://example.com/callback'];
+const STUB_LOGOUT_URLS = ['garageos://auth/logout', 'https://example.com/logout'];
 
 // CognitoConstruct is stateless w.r.t. environment beyond the prop bag,
 // so we synth once per describe block. CDK Templates are immutable
@@ -13,9 +17,18 @@ describe('CognitoConstruct (mfaTotpEnabled=true)', () => {
     const stack = new cdk.Stack(app, 'TestCognitoStack', {
       env: { account: '123456789012', region: 'eu-central-1' },
     });
+    // Stub Lambda function so triggers and OAuth paths are fully exercised during synth.
+    const stubTrigger = new lambda.Function(stack, 'StubTrigger', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromInline('exports.handler=async()=>{}'),
+    });
     new CognitoConstruct(stack, 'Cognito', {
       environment: 'production',
       mfaTotpEnabled: true,
+      clientiTriggerFunction: stubTrigger,
+      clientiCallbackUrls: STUB_CALLBACK_URLS,
+      clientiLogoutUrls: STUB_LOGOUT_URLS,
     });
     return Template.fromStack(stack);
   }
@@ -139,6 +152,68 @@ describe('CognitoConstruct (mfaTotpEnabled=true)', () => {
       expect(pool.Properties.AutoVerifiedAttributes).toEqual(['email']);
     }
   });
+
+  // --- Google IdP assertions ---
+
+  it('provisions exactly one Google IdP on the clienti pool', () => {
+    template.resourceCountIs('AWS::Cognito::UserPoolIdentityProvider', 1);
+    template.hasResourceProperties('AWS::Cognito::UserPoolIdentityProvider', {
+      ProviderName: 'Google',
+      ProviderType: 'Google',
+      ProviderDetails: Match.objectLike({
+        authorize_scopes: 'openid email profile',
+        // client_id and client_secret are CFN dynamic references resolved at deploy time —
+        // the synthesised template contains {{resolve:secretsmanager:...}} tokens, not plaintext.
+        client_id: Match.stringLikeRegexp('\\{\\{resolve:secretsmanager:'),
+        client_secret: Match.stringLikeRegexp('\\{\\{resolve:secretsmanager:'),
+      }),
+      AttributeMapping: {
+        email: 'email',
+        given_name: 'given_name',
+        family_name: 'family_name',
+        email_verified: 'email_verified',
+      },
+    });
+  });
+
+  // --- Hosted UI domain assertion ---
+
+  it('provisions a Cognito hosted-UI domain for the clienti pool', () => {
+    template.resourceCountIs('AWS::Cognito::UserPoolDomain', 1);
+    template.hasResourceProperties('AWS::Cognito::UserPoolDomain', {
+      Domain: 'garageos-production-clienti',
+    });
+  });
+
+  // --- Clienti client OAuth assertions ---
+
+  it('clienti app client has OAuth Authorization Code flow, scopes, IdPs, callback/logout URLs', () => {
+    const clients = template.findResources('AWS::Cognito::UserPoolClient');
+    const clientiClient = Object.values(clients).find(
+      (c) => c.Properties?.ClientName === 'garageos-clienti-client',
+    );
+    expect(clientiClient).toBeDefined();
+    expect(clientiClient?.Properties?.AllowedOAuthFlows).toContain('code');
+    expect(clientiClient?.Properties?.AllowedOAuthScopes).toEqual(
+      expect.arrayContaining(['openid', 'email', 'profile']),
+    );
+    expect(clientiClient?.Properties?.SupportedIdentityProviders).toContain('Google');
+    expect(clientiClient?.Properties?.SupportedIdentityProviders).toContain('COGNITO');
+    expect(clientiClient?.Properties?.CallbackURLs).toEqual(STUB_CALLBACK_URLS);
+    expect(clientiClient?.Properties?.LogoutURLs).toEqual(STUB_LOGOUT_URLS);
+  });
+
+  // --- Lambda trigger assertions ---
+
+  it('clienti user pool has PreSignUp and PreTokenGeneration triggers set', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPool', {
+      UserPoolName: 'garageos-production-clienti',
+      LambdaConfig: Match.objectLike({
+        PreSignUp: Match.anyValue(),
+        PreTokenGeneration: Match.anyValue(),
+      }),
+    });
+  });
 });
 
 describe('CognitoConstruct (mfaTotpEnabled=false)', () => {
@@ -150,6 +225,8 @@ describe('CognitoConstruct (mfaTotpEnabled=false)', () => {
     new CognitoConstruct(stack, 'Cognito', {
       environment: 'production',
       mfaTotpEnabled: false,
+      clientiCallbackUrls: STUB_CALLBACK_URLS,
+      clientiLogoutUrls: STUB_LOGOUT_URLS,
     });
     const template = Template.fromStack(stack);
     template.hasResourceProperties('AWS::Cognito::UserPool', {
