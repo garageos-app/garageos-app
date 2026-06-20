@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
 
@@ -13,13 +13,13 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 function errorMessage(err: ApiError | null): string {
   if (!err) return 'Si è verificato un errore. Riprova più tardi.';
   if (err.type?.includes('verify_email.token_expired')) {
-    return 'Il link è scaduto. Richiedi un nuovo link via "Invia di nuovo" nella pagina di login.';
+    return 'Il link è scaduto. Apri l\'app GarageOS e richiedi un nuovo link con "Invia di nuovo".';
   }
   if (err.type?.includes('verify_email.token_consumed')) {
-    return 'Questo link è già stato utilizzato. Effettua il login.';
+    return "Questo link è già stato utilizzato. Apri l'app GarageOS ed effettua l'accesso.";
   }
   if (err.type?.includes('verify_email.token_not_found')) {
-    return 'Link non valido. Richiedi un nuovo link via "Invia di nuovo" nella pagina di login.';
+    return 'Link non valido. Apri l\'app GarageOS e richiedi un nuovo link con "Invia di nuovo".';
   }
   return err.detail ?? 'Si è verificato un errore. Riprova più tardi.';
 }
@@ -58,15 +58,10 @@ export default function VerifyEmailPage() {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="max-w-md w-full bg-card rounded-xl p-8 shadow-lg">
           <h1 className="text-2xl font-semibold text-foreground mb-2">Link non valido</h1>
-          <p className="text-muted-foreground mb-6">
-            Il link di verifica è incompleto. Richiedi un nuovo link dalla pagina di login.
+          <p className="text-muted-foreground">
+            Il link di verifica è incompleto. Apri l&apos;app GarageOS sul tuo telefono e richiedi
+            un nuovo link con &laquo;Invia di nuovo&raquo;.
           </p>
-          <Link
-            to="/login"
-            className="inline-block px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium"
-          >
-            Vai al login
-          </Link>
         </div>
       </div>
     );
@@ -84,27 +79,16 @@ export default function VerifyEmailPage() {
         {status === 'success' && (
           <>
             <h1 className="text-2xl font-semibold text-foreground mb-2">Email verificata</h1>
-            <p className="text-muted-foreground mb-6">
-              Il tuo account è ora attivo. Effettua il login per iniziare.
+            <p className="text-muted-foreground">
+              Il tuo account è ora attivo. Torna all&apos;app GarageOS sul tuo telefono ed effettua
+              l&apos;accesso.
             </p>
-            <Link
-              to="/login"
-              className="inline-block px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium"
-            >
-              Vai al login
-            </Link>
           </>
         )}
         {status === 'error' && (
           <>
             <h1 className="text-2xl font-semibold text-foreground mb-2">Verifica fallita</h1>
-            <p className="text-muted-foreground mb-6">{errorMessage(error)}</p>
-            <Link
-              to="/login"
-              className="inline-block px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium"
-            >
-              Vai al login
-            </Link>
+            <p className="text-muted-foreground">{errorMessage(error)}</p>
           </>
         )}
       </div>
