@@ -1,7 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
-import { Prisma } from '@garageos/database';
 import { env } from '../../config/env.js';
 import { businessError } from '../../lib/business-error.js';
 import {
@@ -11,8 +10,8 @@ import {
   deleteCognitoUser,
   setCustomerCognitoPassword,
 } from '../../lib/cognito.js';
-import { customerSelfSelect, projectCustomerSelf } from '../../lib/customer-shared.js';
-import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../lib/notification-preferences.js';
+import { provisionCustomer } from '../../lib/customer-provisioning.js';
+import { projectCustomerSelf } from '../../lib/customer-shared.js';
 import {
   generateVerificationToken,
   buildVerificationUrl,
@@ -116,51 +115,32 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
       const poolId = env.COGNITO_CLIENTI_POOL_ID;
 
       // ─── Phase 1 — DB transaction ───────────────────────────────────────────
-      // withContext signature is { tenantId?: string; customerId?: string;
-      // role?: 'admin' | 'user' } — 'system' is not a supported role.
-      // Signup is a cross-tenant public endpoint with no JWT → no tenantId
-      // to scope to. We use role: 'admin' to bypass the customers RLS
-      // _write policy (USING is_admin_role() OR EXISTS related-tenant), which
-      // would otherwise deny PROMOTE and the Phase 3 cognito_sub update for
-      // brand-new customers (no customer_tenant_relations row yet).
-      // The privacy boundary for the customer write here is application-level:
-      // the body is Zod-validated and only writes to the row identified by
-      // the unique email lookup. Mirror of the admin-role usage in
-      // routes/v1/interventions-dispute.ts for the same class of unauthenticated
-      // cross-tenant write. See spec §8.1 in
-      // docs/superpowers/specs/2026-05-04-api-customer-signup-design.md.
+      // role:'admin' bypasses the customers _write RLS policy (needed for a
+      // brand-new customer with no customer_tenant_relations row yet) — same
+      // rationale as before; the privacy boundary is application-level (Zod-
+      // validated body, single email-keyed row). The provisioning mechanics
+      // (advisory lock, find/promote/create, audit log) live in
+      // provisionCustomer so the Google-federation trigger reuses them.
       const { customer, promoted, verifyToken } = await app.withContext(
         { role: 'admin' as const },
         async (tx) => {
-          // BR-220 race serialization: hold an xact-scoped advisory lock keyed
-          // on `signup:<email>`. Concurrent signup tx for the same email block
-          // here until COMMIT/ROLLBACK; serializes both CREATE-CREATE and
-          // PROMOTE-PROMOTE timings. hashtext collisions (32-bit space) only
-          // cause brief contention between unrelated emails — never correctness
-          // loss; customers.email unique index remains the source of truth.
-          // See APPENDICE_F BR-220 + spec 2026-05-06-fix-auth-signup-br220-race.
-          // Cast `void` → `text` because Prisma 7 + @prisma/adapter-pg cannot
-          // deserialize a `void` column ("Unsupported native data type"). The
-          // cast yields an empty string which we discard. See
-          // feedback_pg_void_return_prisma_adapter (post-CI hotfix).
-          await tx.$queryRawUnsafe<unknown[]>(
-            `SELECT pg_advisory_xact_lock(hashtext($1))::text`,
-            `signup:${body.email}`,
+          const result = await provisionCustomer(
+            tx,
+            {
+              email: body.email,
+              firstName: body.firstName,
+              lastName: body.lastName,
+              ...(body.phone ? { phone: body.phone } : {}),
+            },
+            { ip: request.ip },
           );
 
-          const existing = await tx.customer.findUnique({
-            where: { email: body.email },
-            select: { ...customerSelfSelect, cognitoSub: true, appInstalled: true },
-          });
-
-          // BR-224 alignment: a row is "promotable shadow" iff cognito_sub IS
-          // NULL AND app_installed = false. The pre-fix predicate (cognitoSub
-          // IS NULL only) misclassified an in-flight or post-rollback signup
-          // (cognito_sub=NULL, app_installed=true) as shadow → BR-220 race bug.
-          // NOTE: race-loss audit emission is deliberately deferred — emitting
-          // inside this $transaction would be rolled back by the throw below.
-          // See project_tech_debt.md for the proper out-of-tx wiring follow-up.
-          if (existing && (existing.cognitoSub !== null || existing.appInstalled === true)) {
+          // For the password signup endpoint an already-active row means the
+          // email is taken → 409. (The Google-federation trigger instead
+          // treats 'already_active' as the account-merge case — see
+          // provisionCustomer.) NOTE: race-loss audit emission stays deferred
+          // (see project_tech_debt.md).
+          if (result.outcome === 'already_active') {
             throw businessError(
               'auth.signup.email_already_active',
               409,
@@ -168,83 +148,23 @@ export const authSignupRoutes: FastifyPluginAsync = async (app) => {
             );
           }
 
-          let row;
-          let didPromote: boolean;
-          if (existing) {
-            // PROMOTE branch: shadow customer becomes claimed — see BR-221.
-            didPromote = true;
-            row = await tx.customer.update({
-              where: { id: existing.id },
-              data: {
-                firstName: body.firstName,
-                lastName: body.lastName,
-                ...(body.phone ? { phone: body.phone } : {}),
-                appInstalled: true,
-                // BR-226: apply default notification preferences on promote,
-                // not just on CREATE — shadow rows seeded by an officina carry
-                // an empty {} prefs object and would never get the defaults
-                // otherwise.
-                notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
-              },
-              select: customerSelfSelect,
-            });
-          } else {
-            // CREATE branch — see BR-220.
-            didPromote = false;
-            try {
-              row = await tx.customer.create({
-                data: {
-                  email: body.email,
-                  firstName: body.firstName,
-                  lastName: body.lastName,
-                  ...(body.phone ? { phone: body.phone } : {}),
-                  status: 'active',
-                  appInstalled: true,
-                  notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
-                },
-                select: customerSelfSelect,
-              });
-            } catch (err) {
-              if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-                // Race with concurrent signup — we cannot know whether the
-                // racing request is mid-Phase-2, so the safest response is
-                // 409 (client should redirect to login).
-                throw businessError(
-                  'auth.signup.email_already_active',
-                  409,
-                  'Un account con questa email è già registrato. Effettua il login.',
-                );
-              }
-              throw err;
-            }
-          }
-
-          await tx.auditLog.create({
-            data: {
-              tenantId: null,
-              actorType: 'customer',
-              actorId: row.id,
-              action: 'customer_signup',
-              entityType: 'customer',
-              entityId: row.id,
-              metadata: { promoted: didPromote, ip: request.ip },
-              ipAddress: request.ip,
-            },
-          });
-
-          // Generate verify-email token + persist hash. Plaintext is held in
-          // a closure variable to be sent via SES post-commit. Single-use,
-          // 24h TTL, hash-only storage. See spec §4.2 + §6.1.
+          // Signup-specific: generate the verify-email token + persist its
+          // hash. Plaintext is held in a closure variable to be sent via SES
+          // post-commit. Single-use, 24h TTL, hash-only storage.
           const { plaintext: verifyToken, hash: verifyTokenHash } = generateVerificationToken();
           await tx.emailVerification.create({
             data: {
-              customerId: row.id,
+              customerId: result.customer.id,
               tokenHash: verifyTokenHash,
               expiresAt: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
             },
           });
 
-          return { customer: row, promoted: didPromote, verifyToken };
+          return {
+            customer: result.customer,
+            promoted: result.outcome === 'promoted',
+            verifyToken,
+          };
         },
       );
 
