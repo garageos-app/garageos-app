@@ -92,6 +92,13 @@ describe('provisionCustomer — promoted', () => {
     expect(rows[0]!.last_name).toBe('Rossi'); // overwritten by promote
     expect(rows[0]!.app_installed).toBe(true);
     expect(rows[0]!.notification_preferences.email.marketing).toBe(false);
+
+    const { rows: audit } = await pgAdmin.query<{ metadata: { promoted: boolean } }>(
+      `SELECT metadata FROM audit_logs WHERE action = 'customer_signup' AND entity_id = $1`,
+      [shadowId],
+    );
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.metadata.promoted).toBe(true);
   });
 });
 
