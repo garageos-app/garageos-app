@@ -180,6 +180,23 @@ describe('handlePreSignUp', () => {
     // response unchanged
     expect(result.response).toEqual(originalResponse);
   });
+
+  it('email normalization — uppercase + whitespace in Google attribute is lowercased + trimmed before lookup', async () => {
+    vi.mocked(findNativeClientiUserByEmail).mockResolvedValue({ exists: false });
+
+    const event = makePreSignUpEvent({
+      emailVerified: 'true',
+      email: '  Mario@Example.IT  ',
+    });
+
+    await handlePreSignUp(event as never);
+
+    // provisionCustomer contract: email must be trimmed + lowercased
+    expect(findNativeClientiUserByEmail).toHaveBeenCalledWith({
+      poolId: POOL_ID,
+      email: 'mario@example.it',
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -285,6 +302,37 @@ describe('handlePreTokenGeneration', () => {
     await handlePreTokenGeneration(event2 as never);
     expect(provisionCustomer).not.toHaveBeenCalled();
     expect(withContext).not.toHaveBeenCalled();
+  });
+
+  it('email normalization — uppercase + whitespace in Google attribute is lowercased + trimmed before provisionCustomer', async () => {
+    const newCustomerId = 'b2c3d4e5-0000-4000-8000-f1a2b3c4d5e6';
+    vi.mocked(provisionCustomer).mockResolvedValue({
+      customer: {
+        id: newCustomerId,
+        email: 'mario@example.it',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        phone: null,
+        cognitoSub: null,
+        appInstalled: false,
+        notificationPreferences: [],
+      } as never,
+      outcome: 'created',
+    });
+    vi.mocked(updateClientiUserAttribute).mockResolvedValue(undefined);
+
+    const event = makeTokenGenEvent({
+      customerId: '', // cold path
+      email: '  Mario@Example.IT  ',
+      given_name: 'Mario',
+      family_name: 'Rossi',
+    });
+
+    await handlePreTokenGeneration(event as never);
+
+    // provisionCustomer contract: email must be trimmed + lowercased
+    const [, input] = vi.mocked(provisionCustomer).mock.calls[0]!;
+    expect((input as { email: string }).email).toBe('mario@example.it');
   });
 
   it('persist failure is logged but not fatal — claim is still injected', async () => {

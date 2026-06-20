@@ -83,7 +83,13 @@ export async function handlePreSignUp(event: PreSignUpEvent): Promise<PreSignUpE
     return event;
   }
 
-  const email = event.request.userAttributes['email'] ?? '';
+  // Normalise email: provisionCustomer contract requires trimmed + lowercased
+  // (see packages/api/src/lib/customer-provisioning.ts — "Caller normalises").
+  // Google-asserted emails may contain uppercase or surrounding whitespace;
+  // failing to normalise here would break the BR-220 advisory-lock key
+  // (keyed on "signup:<email>"), create duplicate Customer rows, and miss
+  // the native-account merge.
+  const email = (event.request.userAttributes['email'] ?? '').trim().toLowerCase();
   const emailVerified = event.request.userAttributes['email_verified'];
 
   // Always auto-confirm Google federated users.
@@ -152,7 +158,10 @@ export async function handlePreTokenGeneration(
   }
 
   // Cold path: first federated issuance — provision the customer row.
-  const email = attrs['email'] ?? '';
+  // Normalise email: provisionCustomer contract requires trimmed + lowercased
+  // (see packages/api/src/lib/customer-provisioning.ts — "Caller normalises").
+  // Google-asserted emails may contain uppercase or surrounding whitespace.
+  const email = (attrs['email'] ?? '').trim().toLowerCase();
   const firstName = attrs['given_name'] ?? '';
   const lastName = attrs['family_name'] ?? '';
 
