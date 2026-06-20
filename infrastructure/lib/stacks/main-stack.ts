@@ -53,6 +53,9 @@ export class MainStack extends cdk.Stack {
     const cognito = new CognitoConstruct(this, 'Cognito', {
       environment: config.environment,
       mfaTotpEnabled: config.cognito.mfaTotpEnabled,
+      // TODO(task-5): replace stubs with config.cognito.clientiCallbackUrls / clientiLogoutUrls
+      clientiCallbackUrls: [],
+      clientiLogoutUrls: [],
     });
 
     // Storage construct ships PRIMA del LambdaApi perché LambdaApi

@@ -141,6 +141,9 @@ describe('LambdaApiConstruct', () => {
   const cognito = new CognitoConstruct(stack, 'Cognito', {
     environment: 'production',
     mfaTotpEnabled: true,
+    // TODO(task-5): replace stubs with real config values
+    clientiCallbackUrls: [],
+    clientiLogoutUrls: [],
   });
   const storage = new StorageConstruct(stack, 'Storage', {
     environment: 'production',
@@ -324,6 +327,9 @@ describe('ApiGatewayConstruct', () => {
     const cognito = new CognitoConstruct(stack, 'Cognito', {
       environment: 'production',
       mfaTotpEnabled: true,
+      // TODO(task-5): replace stubs with real config values
+      clientiCallbackUrls: [],
+      clientiLogoutUrls: [],
     });
     const storage = new StorageConstruct(stack, 'Storage', {
       environment: 'production',
