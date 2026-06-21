@@ -155,4 +155,64 @@ describe('Login screen', () => {
     await renderLogin();
     expect(screen.queryByText(/Password aggiornata/)).toBeNull();
   });
+
+  // Google sign-in tests
+  it('renders the "Accedi con Google" button', async () => {
+    await renderLogin();
+    expect(screen.getByRole('button', { name: 'Accedi con Google' })).toBeOnTheScreen();
+  });
+
+  it('calls cognito.signInWithGoogle and redirects to /(tabs) on success', async () => {
+    const replace = jest.fn();
+    mockedRouter.mockReturnValue({ replace, push: jest.fn() });
+    mockedCognito.signInWithGoogle.mockResolvedValue({
+      idToken: 'id',
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      customerId: 'cust',
+      email: 'u@example.com',
+    });
+    await renderLogin();
+    fireEvent.press(screen.getByRole('button', { name: 'Accedi con Google' }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/(tabs)'));
+    expect(mockedCognito.signInWithGoogle).toHaveBeenCalledTimes(1);
+  });
+
+  it('redirects to /claim-vehicle?code=... when ?claimCode is present on Google success', async () => {
+    const replace = jest.fn();
+    mockedRouter.mockReturnValue({ replace, push: jest.fn() });
+    mockedParams.mockReturnValue({ claimCode: 'GO-482-KXRT' });
+    mockedCognito.signInWithGoogle.mockResolvedValue({
+      idToken: 'id',
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      customerId: 'cust',
+      email: 'u@example.com',
+    });
+    await renderLogin();
+    fireEvent.press(screen.getByRole('button', { name: 'Accedi con Google' }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/claim-vehicle?code=GO-482-KXRT'));
+  });
+
+  it('shows IT banner on auth.google.exchange_failed', async () => {
+    mockedCognito.signInWithGoogle.mockRejectedValue(
+      Object.assign(new Error('exchange failed'), { code: 'auth.google.exchange_failed' }),
+    );
+    await renderLogin();
+    fireEvent.press(screen.getByRole('button', { name: 'Accedi con Google' }));
+    await waitFor(() => {
+      expect(screen.getByText('Accesso con Google non riuscito. Riprova.')).toBeOnTheScreen();
+    });
+  });
+
+  it('shows NO banner on auth.google.cancelled', async () => {
+    mockedCognito.signInWithGoogle.mockRejectedValue(
+      Object.assign(new Error('cancelled'), { code: 'auth.google.cancelled' }),
+    );
+    await renderLogin();
+    fireEvent.press(screen.getByRole('button', { name: 'Accedi con Google' }));
+    // Wait a tick so the async handler settles
+    await waitFor(() => expect(mockedCognito.signInWithGoogle).toHaveBeenCalled());
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });

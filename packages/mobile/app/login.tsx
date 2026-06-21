@@ -12,19 +12,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/useAuth';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import { colors, spacing } from '@/theme/colors';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ reset?: string; claimCode?: string }>();
   const justReset = params.reset === '1';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validation, setValidation] = useState<{ email?: string; password?: string }>({});
 
@@ -48,6 +50,23 @@ export default function Login() {
       setError(mapErrorToUserMessage(code));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleGoogle() {
+    if (googleSubmitting || submitting) return;
+    setError(null);
+    setGoogleSubmitting(true);
+    try {
+      await signInWithGoogle();
+      // A deep-link claim deferred through login carries the code in ?claimCode;
+      // use the same navigation logic as the password submit. See handleSubmit above.
+      router.replace(params.claimCode ? `/claim-vehicle?code=${params.claimCode}` : '/(tabs)');
+    } catch (e) {
+      const code = (e as { code?: string } | null)?.code;
+      if (code !== 'auth.google.cancelled') setError(mapErrorToUserMessage(code));
+    } finally {
+      setGoogleSubmitting(false);
     }
   }
 
@@ -108,11 +127,11 @@ export default function Login() {
         <Pressable
           onPress={handleSubmit}
           accessibilityRole="button"
-          disabled={submitting}
+          disabled={submitting || googleSubmitting}
           style={({ pressed }) => [
             styles.submit,
             pressed && styles.submitPressed,
-            submitting && styles.submitDisabled,
+            (submitting || googleSubmitting) && styles.submitDisabled,
           ]}
         >
           {submitting ? (
@@ -121,6 +140,17 @@ export default function Login() {
             <Text style={styles.submitText}>Accedi</Text>
           )}
         </Pressable>
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>oppure</Text>
+          <View style={styles.dividerLine} />
+        </View>
+        <GoogleSignInButton
+          label="Accedi con Google"
+          loading={googleSubmitting}
+          disabled={submitting}
+          onPress={handleGoogle}
+        />
         <Pressable
           onPress={() => router.push('/forgot-password')}
           style={styles.linkRow}
@@ -195,6 +225,14 @@ const styles = StyleSheet.create({
   submitPressed: { opacity: 0.8 },
   submitDisabled: { backgroundColor: colors.muted },
   submitText: { color: colors.primaryFg, fontSize: 16, fontWeight: '600' },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: { color: colors.muted, fontSize: 13 },
   linkRow: { alignItems: 'center', padding: spacing.sm },
   linkText: { color: colors.primary, fontSize: 14 },
 });

@@ -21,6 +21,9 @@ const MESSAGES: Record<string, string> = {
   'auth.session_expired': "Sessione scaduta. Effettua di nuovo l'accesso.",
   'network.unreachable': 'Connessione assente. Controlla la rete.',
 
+  // Google sign-in error codes
+  'auth.google.exchange_failed': 'Accesso con Google non riuscito. Riprova.',
+
   // Signup domain codes (F-CLI-001)
   'auth.signup.email_already_active':
     'Un account con questa email è già registrato. Effettua il login.',
