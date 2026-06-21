@@ -10,12 +10,20 @@ import {
   CognitoUserSession,
   type CognitoRefreshToken,
 } from 'amazon-cognito-identity-js';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+
+// Required to close the in-app browser when the redirect lands back in the app
+// (expo-web-browser keeps the browser open until this is called on iOS/Android).
+WebBrowser.maybeCompleteAuthSession();
 
 const poolId = process.env.EXPO_PUBLIC_COGNITO_CLIENTI_POOL_ID;
 const clientId = process.env.EXPO_PUBLIC_COGNITO_CLIENTI_CLIENT_ID;
+const hostedUi = process.env.EXPO_PUBLIC_COGNITO_HOSTED_UI;
 
 if (!poolId) throw new Error('EXPO_PUBLIC_COGNITO_CLIENTI_POOL_ID not set');
 if (!clientId) throw new Error('EXPO_PUBLIC_COGNITO_CLIENTI_CLIENT_ID not set');
+if (!hostedUi) throw new Error('EXPO_PUBLIC_COGNITO_HOSTED_UI not set');
 
 export const clientiUserPool = new CognitoUserPool({
   UserPoolId: poolId,
@@ -146,4 +154,97 @@ export function confirmForgotPassword(
       onFailure: (err: unknown) => resolve({ ok: false, code: extractErrorCode(err) }),
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Google Sign-In — OAuth Authorization Code + PKCE via Cognito Hosted UI
+// ---------------------------------------------------------------------------
+
+/**
+ * Decode the payload segment (middle part) of a JWT without re-verifying the
+ * signature. Used to extract claims from Cognito-issued tokens on the client
+ * after the server has already validated them.
+ *
+ * Handles base64url encoding (RFC 4648 §5): replaces `-` → `+` and `_` → `/`
+ * before decoding. Works on both Hermes (RN 0.76) and Node (jest) which both
+ * expose `atob` as a global.
+ */
+export function decodeJwtPayload(jwt: string): Record<string, unknown> {
+  const seg = jwt.split('.')[1];
+  if (!seg) throw new Error('malformed jwt: missing payload segment');
+  // Normalise base64url → base64 before feeding to atob.
+  const b64 = seg.replace(/-/g, '+').replace(/_/g, '/');
+  // escape/decodeURIComponent round-trip handles multi-byte UTF-8 without
+  // requiring Buffer (which is absent in Hermes on device).
+  return JSON.parse(decodeURIComponent(escape(atob(b64)))) as Record<string, unknown>;
+}
+
+/**
+ * Open the Cognito Hosted UI in an in-app browser, perform the OAuth
+ * Authorization Code + PKCE exchange, and return a `SignInResult`.
+ *
+ * Error contract:
+ * - User cancels / dismisses / browser is locked → throws Error with
+ *   `.code === 'auth.google.cancelled'` (exchange is NOT called).
+ * - Any other failure (network, token endpoint error) → throws Error with
+ *   `.code === 'auth.google.exchange_failed'`.
+ */
+export async function signInWithGoogle(): Promise<SignInResult> {
+  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'garageos', path: 'auth/callback' });
+
+  const discovery = {
+    authorizationEndpoint: `${hostedUi}/oauth2/authorize`,
+    tokenEndpoint: `${hostedUi}/oauth2/token`,
+  };
+
+  const request = new AuthSession.AuthRequest({
+    clientId: clientId!,
+    redirectUri,
+    responseType: AuthSession.ResponseType.Code,
+    scopes: ['openid', 'email', 'profile'],
+    usePKCE: true,
+    extraParams: { identity_provider: 'Google' },
+  });
+
+  const result = await request.promptAsync(discovery);
+
+  if (result.type !== 'success') {
+    throw Object.assign(new Error('Google sign-in cancelled by user'), {
+      code: 'auth.google.cancelled',
+    });
+  }
+
+  try {
+    // noUncheckedIndexedAccess: params is Record<string,string> but indexed
+    // access returns string|undefined. The code param is guaranteed by the
+    // OAuth success response — non-null assert is correct here.
+
+    const authCode = result.params.code!;
+    const tokenResult = await AuthSession.exchangeCodeAsync(
+      {
+        clientId: clientId!,
+        code: authCode,
+        redirectUri,
+        extraParams: { code_verifier: request.codeVerifier ?? '' },
+      },
+      discovery,
+    );
+
+    const payload = decodeJwtPayload(tokenResult.idToken ?? '');
+    const customerId = String(payload['custom:customer_id'] ?? '');
+    const email = String(payload.email ?? '');
+
+    return {
+      idToken: tokenResult.idToken ?? '',
+      accessToken: tokenResult.accessToken,
+      refreshToken: tokenResult.refreshToken ?? '',
+      customerId,
+      email,
+    };
+  } catch (err) {
+    throw Object.assign(new Error('Google sign-in token exchange failed'), {
+      code: 'auth.google.exchange_failed',
+      cause: err,
+    });
+  }
 }

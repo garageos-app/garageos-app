@@ -73,3 +73,21 @@ jest.mock('expo-notifications', () => ({
 
 // expo-device: stable device name for BR-254 upsert fixtures.
 jest.mock('expo-device', () => ({ deviceName: 'Jest Device' }));
+
+// expo-web-browser: maybeCompleteAuthSession is a no-op in jest; the OAuth flow
+// is exercised on-device (smoke). Namespace import → namespace mock.
+jest.mock('expo-web-browser', () => ({
+  maybeCompleteAuthSession: jest.fn(),
+}));
+
+// expo-auth-session: default stubs so cognito.ts imports cleanly. Individual
+// tests override AuthRequest/exchangeCodeAsync via the mocked fns below.
+jest.mock('expo-auth-session', () => ({
+  makeRedirectUri: jest.fn(() => 'garageos://auth/callback'),
+  exchangeCodeAsync: jest.fn(),
+  ResponseType: { Code: 'code' },
+  AuthRequest: jest.fn().mockImplementation(() => ({
+    codeVerifier: 'test-verifier',
+    promptAsync: jest.fn(),
+  })),
+}));
