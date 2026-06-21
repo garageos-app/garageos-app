@@ -7,7 +7,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { signInSrp, refreshSession } from '@/lib/cognito';
+import {
+  signInSrp,
+  signInWithGoogle as cognitoSignInWithGoogle,
+  refreshSession,
+} from '@/lib/cognito';
 import { clearTokens, readTokens, writeTokens, type StoredTokens } from '@/lib/secure-storage';
 
 type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated';
@@ -24,6 +28,7 @@ export type AuthContextValue = {
   customerId: string | null;
   email: string | null;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   getIdToken: () => string | null;
   refresh: () => Promise<string>; // returns new idToken
@@ -61,24 +66,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string): Promise<void> => {
-    const result = await signInSrp(email, password);
-    const payload: StoredTokens = {
-      idToken: result.idToken,
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      customerId: result.customerId,
-      email: result.email,
-    };
-    await writeTokens(payload);
-    tokensRef.current = {
-      idToken: result.idToken,
-      refreshToken: result.refreshToken,
-      customerId: result.customerId,
-      email: result.email,
-    };
+  // Shared persistence helper: writes tokens to secure storage and updates the
+  // in-memory ref. Does NOT touch auth status — callers decide that separately.
+  // Used by signIn, signInWithGoogle, and refresh to avoid duplicating the
+  // StoredTokens build + writeTokens + tokensRef update pattern.
+  const applySignInResult = useCallback(
+    async (result: {
+      idToken: string;
+      accessToken: string;
+      refreshToken: string;
+      customerId: string;
+      email: string;
+    }): Promise<void> => {
+      const payload: StoredTokens = {
+        idToken: result.idToken,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        customerId: result.customerId,
+        email: result.email,
+      };
+      await writeTokens(payload);
+      tokensRef.current = {
+        idToken: result.idToken,
+        refreshToken: result.refreshToken,
+        customerId: result.customerId,
+        email: result.email,
+      };
+    },
+    [],
+  );
+
+  const signIn = useCallback(
+    async (email: string, password: string): Promise<void> => {
+      const result = await signInSrp(email, password);
+      await applySignInResult(result);
+      setStatus('authenticated');
+    },
+    [applySignInResult],
+  );
+
+  const signInWithGoogle = useCallback(async (): Promise<void> => {
+    const result = await cognitoSignInWithGoogle();
+    await applySignInResult(result);
     setStatus('authenticated');
-  }, []);
+  }, [applySignInResult]);
 
   const signOut = useCallback(async (): Promise<void> => {
     await clearTokens();
@@ -92,22 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const current = tokensRef.current;
     if (!current) throw new Error('refresh called without active session');
     const result = await refreshSession(current.email, current.refreshToken);
-    const payload: StoredTokens = {
-      idToken: result.idToken,
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      customerId: result.customerId,
-      email: result.email,
-    };
-    await writeTokens(payload);
-    tokensRef.current = {
-      idToken: result.idToken,
-      refreshToken: result.refreshToken,
-      customerId: result.customerId,
-      email: result.email,
-    };
+    await applySignInResult(result);
     return result.idToken;
-  }, []);
+  }, [applySignInResult]);
 
   // value depends only on `status` (refs don't trigger re-renders); customerId
   // and email read from tokensRef inside the factory so they're fresh whenever
@@ -121,11 +139,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       customerId: tokensRef.current?.customerId ?? null,
       email: tokensRef.current?.email ?? null,
       signIn,
+      signInWithGoogle,
       signOut,
       getIdToken,
       refresh,
     }),
-    [status, signIn, signOut, getIdToken, refresh],
+    [status, signIn, signInWithGoogle, signOut, getIdToken, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
