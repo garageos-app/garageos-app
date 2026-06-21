@@ -19,6 +19,15 @@ const mockedCognito = cognito as jest.Mocked<typeof cognito>;
 const mockedStorage = storage as jest.Mocked<typeof storage>;
 const mockedRouter = useRouter as jest.Mock;
 
+// Shared fake token result for Google sign-in (mirrors AuthContext.signInWithGoogle shape)
+const GOOGLE_TOKEN_RESULT: cognito.SignInResult = {
+  idToken: 'google-id',
+  accessToken: 'google-access',
+  refreshToken: 'google-refresh',
+  customerId: 'cust-google',
+  email: 'google@example.com',
+};
+
 function fillForm() {
   fireEvent.changeText(screen.getByPlaceholderText('Email'), 'mario.rossi@example.com');
   fireEvent.changeText(screen.getByPlaceholderText('Password'), 'miapassword1');
@@ -118,5 +127,51 @@ describe('Signup screen', () => {
     fillForm();
     fireEvent.press(screen.getByRole('button', { name: 'Registrati' }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/login'));
+  });
+
+  describe('Google sign-up button', () => {
+    it('renders "Registrati con Google" button', async () => {
+      await renderSignup();
+      expect(screen.getByRole('button', { name: 'Registrati con Google' })).toBeOnTheScreen();
+    });
+
+    it('on success: calls signInWithGoogle + navigates to /(tabs) (no verify-email screen)', async () => {
+      const replace = jest.fn();
+      mockedRouter.mockReturnValue({ replace, push: jest.fn(), back: jest.fn() });
+      // signInWithGoogle in AuthContext calls cognito.signInWithGoogle then writeTokens
+      mockedCognito.signInWithGoogle.mockResolvedValue(GOOGLE_TOKEN_RESULT);
+      mockedStorage.writeTokens.mockResolvedValue();
+      await renderSignup();
+      fireEvent.press(screen.getByRole('button', { name: 'Registrati con Google' }));
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/(tabs)'));
+      expect(mockedCognito.signInWithGoogle).toHaveBeenCalledTimes(1);
+      // Must NOT route to verify-email-sent (Google = already verified)
+      expect(replace).not.toHaveBeenCalledWith(
+        expect.objectContaining({ pathname: '/verify-email-sent' }),
+      );
+    });
+
+    it('on auth.google.exchange_failed: shows Italian error banner', async () => {
+      mockedCognito.signInWithGoogle.mockRejectedValue(
+        Object.assign(new Error('exchange failed'), { code: 'auth.google.exchange_failed' }),
+      );
+      await renderSignup();
+      fireEvent.press(screen.getByRole('button', { name: 'Registrati con Google' }));
+      await waitFor(() => {
+        expect(screen.getByText('Accesso con Google non riuscito. Riprova.')).toBeOnTheScreen();
+      });
+    });
+
+    it('on auth.google.cancelled: no banner shown', async () => {
+      mockedCognito.signInWithGoogle.mockRejectedValue(
+        Object.assign(new Error('cancelled'), { code: 'auth.google.cancelled' }),
+      );
+      await renderSignup();
+      fireEvent.press(screen.getByRole('button', { name: 'Registrati con Google' }));
+      // Wait a tick for async handler to settle
+      await waitFor(() => expect(mockedCognito.signInWithGoogle).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText('Accesso con Google non riuscito. Riprova.')).toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
   });
 });
