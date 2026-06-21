@@ -6,6 +6,8 @@
 process.env.EXPO_PUBLIC_API_URL ??= 'https://api.test.example.com';
 process.env.EXPO_PUBLIC_COGNITO_CLIENTI_POOL_ID ??= 'eu-west-1_TestPool';
 process.env.EXPO_PUBLIC_COGNITO_CLIENTI_CLIENT_ID ??= 'testclientid';
+process.env.EXPO_PUBLIC_COGNITO_HOSTED_UI ??=
+  'https://test-clienti.auth.eu-central-1.amazoncognito.com';
 
 module.exports = {
   preset: 'jest-expo',
