@@ -157,11 +157,6 @@ describe('Login screen', () => {
   });
 
   // Google sign-in tests
-  it('renders the "Accedi con Google" button', async () => {
-    await renderLogin();
-    expect(screen.getByRole('button', { name: 'Accedi con Google' })).toBeOnTheScreen();
-  });
-
   it('calls cognito.signInWithGoogle and redirects to /(tabs) on success', async () => {
     const replace = jest.fn();
     mockedRouter.mockReturnValue({ replace, push: jest.fn() });

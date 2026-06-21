@@ -49,7 +49,7 @@ Il bundle punta a produzione:
 
 ### 3. Stato Cognito / backend
 
-- PR2 già deployata su `main` (stack `CognitoClientiIdpStack`): Google IdP
+- PR2 già deployata su `main` (il main stack, construct Cognito in `infrastructure/lib/constructs/cognito.ts`): Google IdP
   attivo, PreSignUp e PreTokenGeneration lambda wired.
 - Secret `garageos/production/google-oauth` presente in Secrets Manager.
 - Verificare:

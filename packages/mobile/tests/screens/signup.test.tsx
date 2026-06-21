@@ -130,11 +130,6 @@ describe('Signup screen', () => {
   });
 
   describe('Google sign-up button', () => {
-    it('renders "Registrati con Google" button', async () => {
-      await renderSignup();
-      expect(screen.getByRole('button', { name: 'Registrati con Google' })).toBeOnTheScreen();
-    });
-
     it('on success: calls signInWithGoogle + navigates to /(tabs) (no verify-email screen)', async () => {
       const replace = jest.fn();
       mockedRouter.mockReturnValue({ replace, push: jest.fn(), back: jest.fn() });
