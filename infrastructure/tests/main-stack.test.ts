@@ -437,6 +437,24 @@ describe('MainStack (integration)', () => {
     template.hasOutput('SesConfigurationSetName', {});
   });
 
+  it('Cognito trigger Lambda env includes S3_ATTACHMENTS_BUCKET (shared parseEnv schema requires it)', () => {
+    // Regression for the prod sign-up failure: the trigger Lambda reuses the
+    // API's parseEnv schema, which requires S3_ATTACHMENTS_BUCKET. Without it
+    // PreSignUp crashed with a Zod invalid_type and Cognito returned
+    // invalid_request, blocking every Google sign-in. The trigger never calls
+    // S3 (no IAM grant) — the var only satisfies the shared env validation.
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'garageos-cognito-clienti-triggers',
+      Environment: {
+        Variables: Match.objectLike({
+          APP_SECRETS_ARN: Match.anyValue(),
+          NODE_EXTRA_CA_CERTS: '/var/task/supabase-ca.crt',
+          S3_ATTACHMENTS_BUCKET: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
   it('combined resource counts match scope', () => {
     // API Lambda (garageos-api) + Cognito trigger Lambda (garageos-cognito-clienti-triggers).
     template.resourceCountIs('AWS::Lambda::Function', 2);

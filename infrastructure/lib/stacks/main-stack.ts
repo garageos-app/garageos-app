@@ -78,6 +78,18 @@ export class MainStack extends cdk.Stack {
       ],
     });
 
+    // The Cognito trigger Lambda reuses the API's env schema (parseEnv), which
+    // requires S3_ATTACHMENTS_BUCKET even though the trigger never touches S3.
+    // Wire it post-construction (the bucket is created after the trigger) so the
+    // shared env validation passes at cold start; no S3 IAM grant is added since
+    // the trigger makes no S3 calls. Same addEnvironment pattern as the scheduler
+    // env vars below. (Cleaner fix — a trigger-specific env schema — tracked as
+    // follow-up tech debt.)
+    cognitoTriggers.function.addEnvironment(
+      'S3_ATTACHMENTS_BUCKET',
+      storage.attachmentsBucket.bucketName,
+    );
+
     // SES domain identity + config set + IAM grant. Operator post-merge
     // submits AWS production-access ticket (sandbox is account-level).
     const sesConstruct = new SesConstruct(this, 'Ses', {
