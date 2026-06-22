@@ -21,7 +21,11 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function Login() {
   const { signIn, signInWithGoogle } = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams<{ reset?: string; claimCode?: string }>();
+  const params = useLocalSearchParams<{
+    reset?: string;
+    claimCode?: string;
+    googleError?: string;
+  }>();
   const justReset = params.reset === '1';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,6 +33,13 @@ export default function Login() {
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validation, setValidation] = useState<{ email?: string; password?: string }>({});
+
+  // A failed Google sign-in redirects back here with ?googleError=1 (the error
+  // surfaces via param because the OAuth redirect lands on /auth/callback, not on
+  // this screen's state). Native-login errors use the `error` state directly.
+  const googleErrorMsg =
+    params.googleError === '1' ? mapErrorToUserMessage('auth.google.exchange_failed') : null;
+  const displayError = error ?? googleErrorMsg;
 
   async function handleSubmit() {
     if (submitting) return;
@@ -64,7 +75,13 @@ export default function Login() {
       router.replace(params.claimCode ? `/claim-vehicle?code=${params.claimCode}` : '/(tabs)');
     } catch (e) {
       const code = (e as { code?: string } | null)?.code;
-      if (code !== 'auth.google.cancelled') setError(mapErrorToUserMessage(code));
+      if (code !== 'auth.google.cancelled') {
+        // The OAuth redirect lands on /auth/callback; navigate back to login with
+        // a param-driven banner so the error is visible (setError on this screen
+        // would stay hidden behind the callback route).
+        const claimQs = params.claimCode ? `&claimCode=${params.claimCode}` : '';
+        router.replace(`/login?googleError=1${claimQs}`);
+      }
     } finally {
       setGoogleSubmitting(false);
     }
@@ -82,16 +99,16 @@ export default function Login() {
           </View>
           <Text style={styles.wordmark}>GarageOS</Text>
         </View>
-        {justReset && !error ? (
+        {justReset && !displayError ? (
           <View style={styles.successBanner} accessibilityRole="alert">
             <Text style={styles.successText}>
               Password aggiornata. Effettua l&apos;accesso con la nuova password.
             </Text>
           </View>
         ) : null}
-        {error ? (
+        {displayError ? (
           <View style={styles.errorBanner} accessibilityRole="alert">
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{displayError}</Text>
           </View>
         ) : null}
         <View style={styles.field}>

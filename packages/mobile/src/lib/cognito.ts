@@ -208,6 +208,17 @@ export async function signInWithGoogle(): Promise<SignInResult> {
 
   const result = await request.promptAsync(discovery);
 
+  // An OAuth/IdP error (e.g. a failing Cognito trigger) comes back as type
+  // 'error' with details in result.error/params — surface it to the user
+  // rather than silently swallowing it as a cancellation.
+  if (result.type === 'error') {
+    throw Object.assign(new Error('Google sign-in returned an error'), {
+      code: 'auth.google.exchange_failed',
+      cause: result.error ?? result.params,
+    });
+  }
+
+  // cancel / dismiss / locked → user aborted; silent (no banner).
   if (result.type !== 'success') {
     throw Object.assign(new Error('Google sign-in cancelled by user'), {
       code: 'auth.google.cancelled',
