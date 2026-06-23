@@ -98,4 +98,40 @@ describe('AuthContext', () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.status).toBe('unauthenticated'));
   });
+
+  it('signInWithGoogle success persists tokens and transitions to authenticated', async () => {
+    mockedStorage.readTokens.mockResolvedValue(null);
+    mockedCognito.signInWithGoogle.mockResolvedValue({
+      idToken: 'google-id',
+      accessToken: 'google-access',
+      refreshToken: 'google-refresh',
+      customerId: 'cust-google',
+      email: 'google@example.com',
+    });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('unauthenticated'));
+    await act(async () => {
+      await result.current.signInWithGoogle();
+    });
+    expect(result.current.status).toBe('authenticated');
+    expect(mockedStorage.writeTokens).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: 'cust-google' }),
+    );
+  });
+
+  it('signInWithGoogle failure leaves state unauthenticated and propagates error', async () => {
+    mockedStorage.readTokens.mockResolvedValue(null);
+    const err = Object.assign(new Error('Google sign-in cancelled by user'), {
+      code: 'auth.google.cancelled',
+    });
+    mockedCognito.signInWithGoogle.mockRejectedValue(err);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('unauthenticated'));
+    await expect(
+      act(async () => {
+        await result.current.signInWithGoogle();
+      }),
+    ).rejects.toThrow();
+    expect(result.current.status).toBe('unauthenticated');
+  });
 });

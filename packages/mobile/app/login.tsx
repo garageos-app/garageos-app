@@ -12,21 +12,34 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/useAuth';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import { colors, spacing } from '@/theme/colors';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams<{ reset?: string; claimCode?: string }>();
+  const params = useLocalSearchParams<{
+    reset?: string;
+    claimCode?: string;
+    googleError?: string;
+  }>();
   const justReset = params.reset === '1';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validation, setValidation] = useState<{ email?: string; password?: string }>({});
+
+  // A failed Google sign-in redirects back here with ?googleError=1 (the error
+  // surfaces via param because the OAuth redirect lands on /auth/callback, not on
+  // this screen's state). Native-login errors use the `error` state directly.
+  const googleErrorMsg =
+    params.googleError === '1' ? mapErrorToUserMessage('auth.google.exchange_failed') : null;
+  const displayError = error ?? googleErrorMsg;
 
   async function handleSubmit() {
     if (submitting) return;
@@ -51,6 +64,29 @@ export default function Login() {
     }
   }
 
+  async function handleGoogle() {
+    if (googleSubmitting || submitting) return;
+    setError(null);
+    setGoogleSubmitting(true);
+    try {
+      await signInWithGoogle();
+      // A deep-link claim deferred through login carries the code in ?claimCode;
+      // use the same navigation logic as the password submit. See handleSubmit above.
+      router.replace(params.claimCode ? `/claim-vehicle?code=${params.claimCode}` : '/(tabs)');
+    } catch (e) {
+      const code = (e as { code?: string } | null)?.code;
+      if (code !== 'auth.google.cancelled') {
+        // The OAuth redirect lands on /auth/callback; navigate back to login with
+        // a param-driven banner so the error is visible (setError on this screen
+        // would stay hidden behind the callback route).
+        const claimQs = params.claimCode ? `&claimCode=${params.claimCode}` : '';
+        router.replace(`/login?googleError=1${claimQs}`);
+      }
+    } finally {
+      setGoogleSubmitting(false);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
@@ -63,16 +99,16 @@ export default function Login() {
           </View>
           <Text style={styles.wordmark}>GarageOS</Text>
         </View>
-        {justReset && !error ? (
+        {justReset && !displayError ? (
           <View style={styles.successBanner} accessibilityRole="alert">
             <Text style={styles.successText}>
               Password aggiornata. Effettua l&apos;accesso con la nuova password.
             </Text>
           </View>
         ) : null}
-        {error ? (
+        {displayError ? (
           <View style={styles.errorBanner} accessibilityRole="alert">
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{displayError}</Text>
           </View>
         ) : null}
         <View style={styles.field}>
@@ -108,11 +144,11 @@ export default function Login() {
         <Pressable
           onPress={handleSubmit}
           accessibilityRole="button"
-          disabled={submitting}
+          disabled={submitting || googleSubmitting}
           style={({ pressed }) => [
             styles.submit,
             pressed && styles.submitPressed,
-            submitting && styles.submitDisabled,
+            (submitting || googleSubmitting) && styles.submitDisabled,
           ]}
         >
           {submitting ? (
@@ -121,6 +157,17 @@ export default function Login() {
             <Text style={styles.submitText}>Accedi</Text>
           )}
         </Pressable>
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>oppure</Text>
+          <View style={styles.dividerLine} />
+        </View>
+        <GoogleSignInButton
+          label="Accedi con Google"
+          loading={googleSubmitting}
+          disabled={submitting}
+          onPress={handleGoogle}
+        />
         <Pressable
           onPress={() => router.push('/forgot-password')}
           style={styles.linkRow}
@@ -195,6 +242,14 @@ const styles = StyleSheet.create({
   submitPressed: { opacity: 0.8 },
   submitDisabled: { backgroundColor: colors.muted },
   submitText: { color: colors.primaryFg, fontSize: 16, fontWeight: '600' },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: { color: colors.muted, fontSize: 13 },
   linkRow: { alignItems: 'center', padding: spacing.sm },
   linkText: { color: colors.primary, fontSize: 14 },
 });

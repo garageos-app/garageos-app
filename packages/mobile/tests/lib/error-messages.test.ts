@@ -131,4 +131,11 @@ describe('mapErrorToUserMessage', () => {
       'Si è verificato un errore. Riprova più tardi.',
     );
   });
+
+  // Google sign-in error codes
+  it('maps auth.google.exchange_failed to Italian copy', () => {
+    expect(mapErrorToUserMessage('auth.google.exchange_failed')).toBe(
+      'Accesso con Google non riuscito. Riprova.',
+    );
+  });
 });
