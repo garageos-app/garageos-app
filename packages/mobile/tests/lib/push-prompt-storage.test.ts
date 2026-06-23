@@ -30,4 +30,9 @@ describe('push-prompt-storage', () => {
     (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error('storage unavailable'));
     await expect(readSoftAskSeen()).resolves.toBe(false);
   });
+
+  it('markSoftAskSeen resolves (does not throw) when setItem rejects', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(markSoftAskSeen()).resolves.toBeUndefined();
+  });
 });

@@ -18,5 +18,9 @@ export async function readSoftAskSeen(): Promise<boolean> {
 
 /** Persists the flag so the soft-ask modal is not shown again. */
 export async function markSoftAskSeen(): Promise<void> {
-  await AsyncStorage.setItem(KEY, '1');
+  try {
+    await AsyncStorage.setItem(KEY, '1');
+  } catch {
+    // Best-effort: a write failure must not block the UI — the modal still closes.
+  }
 }

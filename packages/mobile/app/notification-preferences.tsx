@@ -57,9 +57,9 @@ export default function NotificationPreferencesScreen() {
   const [pushOn, setPushOn] = useState(false);
   const [blocked, setBlocked] = useState(false);
 
-  // Derive toggle state from the reactive permission query. This replaces the
-  // old mount useEffect + interacted ref pattern: react-query is the source of
-  // truth and there is no async-mount-clobber race to guard against.
+  // Derive toggle state from the reactive permission query. react-query is the
+  // source of truth for permission status, and the async token-id read is guarded
+  // by a cancelled flag so a permission change mid-read cannot clobber the toggle.
   useEffect(() => {
     if (permissionData === undefined) return;
     setBlocked(permissionData === 'blocked');
@@ -68,9 +68,13 @@ export default function NotificationPreferencesScreen() {
       return;
     }
     // When granted, check whether we hold a stored token id to seed the ON state.
+    let cancelled = false;
     void readPushTokenId().then((id) => {
-      setPushOn(!!id);
+      if (!cancelled) setPushOn(!!id);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [permissionData]);
 
   const onTogglePush = async (next: boolean) => {

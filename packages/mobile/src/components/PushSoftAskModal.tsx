@@ -52,7 +52,12 @@ export function PushSoftAskModal(): React.JSX.Element | null {
   };
 
   return (
-    <Modal transparent animationType="fade" visible={visible}>
+    <Modal
+      transparent
+      animationType="fade"
+      visible={visible}
+      onRequestClose={() => void handleDismiss()}
+    >
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <Text style={styles.title}>Attiva le notifiche</Text>
