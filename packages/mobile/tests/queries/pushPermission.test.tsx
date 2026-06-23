@@ -1,6 +1,7 @@
 import { renderHook, waitFor, act } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppState } from 'react-native';
+import type { AppStateEvent, AppStateStatus } from 'react-native';
 import type { ReactNode } from 'react';
 
 import { usePushPermissionStatus, useInvalidatePushPermission } from '@/queries/pushPermission';
@@ -23,7 +24,7 @@ function newClient() {
 }
 
 // Capture the handler passed to AppState.addEventListener so tests can fire 'active'.
-let capturedAppStateHandler: ((state: string) => void) | null = null;
+let capturedAppStateHandler: ((state: AppStateStatus) => void) | null = null;
 let addEventListenerSpy: jest.SpyInstance;
 
 beforeEach(() => {
@@ -31,7 +32,7 @@ beforeEach(() => {
   capturedAppStateHandler = null;
   addEventListenerSpy = jest
     .spyOn(AppState, 'addEventListener')
-    .mockImplementation((_event: string, handler: (state: string) => void) => {
+    .mockImplementation((_event: AppStateEvent, handler: (state: AppStateStatus) => void) => {
       capturedAppStateHandler = handler;
       return { remove: jest.fn() };
     });
