@@ -92,6 +92,9 @@ export default function Login() {
   }
 
   return (
+    // Unlike the sibling auth screens (signup/forgot/reset), this screen does
+    // NOT use <SafeAreaView edges={['top']}>: the blue hero band must bleed into
+    // the status-bar area, so the top inset is applied manually as hero padding.
     <View style={styles.root}>
       <StatusBar style="light" />
       <KeyboardAvoidingView
