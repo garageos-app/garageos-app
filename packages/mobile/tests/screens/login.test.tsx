@@ -189,15 +189,38 @@ describe('Login screen', () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/claim-vehicle?code=GO-482-KXRT'));
   });
 
-  it('shows IT banner on auth.google.exchange_failed', async () => {
+  // The OAuth redirect lands on /auth/callback, so a Google failure surfaces by
+  // navigating back to /login with ?googleError=1 (the banner reads the param),
+  // not via inline state on this screen.
+  it('on auth.google.exchange_failed: redirects to /login?googleError=1', async () => {
+    const replace = jest.fn();
+    mockedRouter.mockReturnValue({ replace, push: jest.fn() });
     mockedCognito.signInWithGoogle.mockRejectedValue(
       Object.assign(new Error('exchange failed'), { code: 'auth.google.exchange_failed' }),
     );
     await renderLogin();
     fireEvent.press(screen.getByRole('button', { name: 'Accedi con Google' }));
-    await waitFor(() => {
-      expect(screen.getByText('Accesso con Google non riuscito. Riprova.')).toBeOnTheScreen();
-    });
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login?googleError=1'));
+  });
+
+  it('preserves ?claimCode when redirecting on Google failure', async () => {
+    const replace = jest.fn();
+    mockedRouter.mockReturnValue({ replace, push: jest.fn() });
+    mockedParams.mockReturnValue({ claimCode: 'GO-482-KXRT' });
+    mockedCognito.signInWithGoogle.mockRejectedValue(
+      Object.assign(new Error('exchange failed'), { code: 'auth.google.exchange_failed' }),
+    );
+    await renderLogin();
+    fireEvent.press(screen.getByRole('button', { name: 'Accedi con Google' }));
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith('/login?googleError=1&claimCode=GO-482-KXRT'),
+    );
+  });
+
+  it('shows IT banner when ?googleError=1 param is present', async () => {
+    mockedParams.mockReturnValue({ googleError: '1' });
+    await renderLogin();
+    expect(screen.getByText('Accesso con Google non riuscito. Riprova.')).toBeOnTheScreen();
   });
 
   it('shows NO banner on auth.google.cancelled', async () => {

@@ -81,6 +81,21 @@ describe('signInWithGoogle', () => {
     expect(exchangeCodeAsync).not.toHaveBeenCalled();
   });
 
+  it('throws auth.google.exchange_failed when the IdP returns type:error (not swallowed as cancel)', async () => {
+    // A failing Cognito trigger surfaces as an OAuth error redirect → type 'error'.
+    // It must NOT be treated as a silent user cancellation.
+    (AuthRequest as jest.Mock).mockImplementation(() => ({
+      codeVerifier: 'v',
+      promptAsync: jest
+        .fn()
+        .mockResolvedValue({ type: 'error', error: { message: 'idp failure' } }),
+    }));
+    await expect(signInWithGoogle()).rejects.toMatchObject({
+      code: 'auth.google.exchange_failed',
+    });
+    expect(exchangeCodeAsync).not.toHaveBeenCalled();
+  });
+
   it('throws auth.google.exchange_failed when token exchange rejects', async () => {
     (AuthRequest as jest.Mock).mockImplementation(() => ({
       codeVerifier: 'v',

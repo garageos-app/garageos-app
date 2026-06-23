@@ -4,13 +4,14 @@ import { renderWithAuth } from '../helpers/renderWithAuth';
 import * as signupQuery from '@/queries/signup';
 import * as cognito from '@/lib/cognito';
 import * as storage from '@/lib/secure-storage';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 jest.mock('@/queries/signup');
 jest.mock('@/lib/cognito');
 jest.mock('@/lib/secure-storage');
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(),
+  useLocalSearchParams: jest.fn(),
   Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
@@ -18,6 +19,7 @@ const mockedSignup = signupQuery as jest.Mocked<typeof signupQuery>;
 const mockedCognito = cognito as jest.Mocked<typeof cognito>;
 const mockedStorage = storage as jest.Mocked<typeof storage>;
 const mockedRouter = useRouter as jest.Mock;
+const mockedParams = useLocalSearchParams as jest.Mock;
 
 // Shared fake token result for Google sign-in (mirrors AuthContext.signInWithGoogle shape)
 const GOOGLE_TOKEN_RESULT: cognito.SignInResult = {
@@ -46,6 +48,7 @@ describe('Signup screen', () => {
     mockedStorage.readTokens.mockResolvedValue(null);
     mockedStorage.writeTokens.mockResolvedValue();
     mockedRouter.mockReturnValue({ replace: jest.fn(), push: jest.fn(), back: jest.fn() });
+    mockedParams.mockReturnValue({});
   });
 
   it('renders the SignupForm', async () => {
@@ -146,15 +149,24 @@ describe('Signup screen', () => {
       );
     });
 
-    it('on auth.google.exchange_failed: shows Italian error banner', async () => {
+    // The OAuth redirect lands on /auth/callback, so a Google failure surfaces by
+    // navigating back to /signup with ?googleError=1 (the banner reads the param),
+    // not via inline state on this screen.
+    it('on auth.google.exchange_failed: redirects to /signup?googleError=1', async () => {
+      const replace = jest.fn();
+      mockedRouter.mockReturnValue({ replace, push: jest.fn(), back: jest.fn() });
       mockedCognito.signInWithGoogle.mockRejectedValue(
         Object.assign(new Error('exchange failed'), { code: 'auth.google.exchange_failed' }),
       );
       await renderSignup();
       fireEvent.press(screen.getByRole('button', { name: 'Registrati con Google' }));
-      await waitFor(() => {
-        expect(screen.getByText('Accesso con Google non riuscito. Riprova.')).toBeOnTheScreen();
-      });
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/signup?googleError=1'));
+    });
+
+    it('shows Italian error banner when ?googleError=1 param is present', async () => {
+      mockedParams.mockReturnValue({ googleError: '1' });
+      await renderSignup();
+      expect(screen.getByText('Accesso con Google non riuscito. Riprova.')).toBeOnTheScreen();
     });
 
     it('on auth.google.cancelled: no banner shown', async () => {
