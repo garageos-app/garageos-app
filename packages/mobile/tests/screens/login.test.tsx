@@ -30,6 +30,12 @@ describe('Login screen', () => {
     mockedParams.mockReturnValue({});
   });
 
+  it('renders the brand lockup and tagline', async () => {
+    await renderLogin();
+    expect(screen.getByText('GarageOS')).toBeOnTheScreen();
+    expect(screen.getByText('Il libretto digitale del tuo veicolo')).toBeOnTheScreen();
+  });
+
   it('shows validation when email empty', async () => {
     await renderLogin();
     fireEvent.press(screen.getByRole('button', { name: 'Accedi' }));

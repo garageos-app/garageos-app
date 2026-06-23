@@ -4,14 +4,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/useAuth';
+import { BrandLogo } from '@/components/BrandLogo';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import { colors, spacing } from '@/theme/colors';
@@ -21,6 +24,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function Login() {
   const { signIn, signInWithGoogle } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     reset?: string;
     claimCode?: string;
@@ -88,119 +92,128 @@ export default function Login() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <View style={styles.root}>
+      <StatusBar style="light" />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
       >
-        <View style={styles.brand}>
-          <View style={styles.logo}>
-            <Text style={styles.logoText}>G</Text>
-          </View>
-          <Text style={styles.wordmark}>GarageOS</Text>
-        </View>
-        {justReset && !displayError ? (
-          <View style={styles.successBanner} accessibilityRole="alert">
-            <Text style={styles.successText}>
-              Password aggiornata. Effettua l&apos;accesso con la nuova password.
-            </Text>
-          </View>
-        ) : null}
-        {displayError ? (
-          <View style={styles.errorBanner} accessibilityRole="alert">
-            <Text style={styles.errorText}>{displayError}</Text>
-          </View>
-        ) : null}
-        <View style={styles.field}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Email"
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            editable={!submitting}
+        <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+          <BrandLogo
+            tone="onDark"
+            orientation="vertical"
+            size={76}
+            tagline="Il libretto digitale del tuo veicolo"
           />
-          {validation.email ? <Text style={styles.fieldError}>{validation.email}</Text> : null}
         </View>
-        <View style={styles.field}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Password"
-            secureTextEntry
-            autoCapitalize="none"
-            autoComplete="password"
-            editable={!submitting}
-          />
-          {validation.password ? (
-            <Text style={styles.fieldError}>{validation.password}</Text>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={[styles.form, { paddingBottom: insets.bottom + spacing.lg }]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {justReset && !displayError ? (
+            <View style={styles.successBanner} accessibilityRole="alert">
+              <Text style={styles.successText}>
+                Password aggiornata. Effettua l&apos;accesso con la nuova password.
+              </Text>
+            </View>
           ) : null}
-        </View>
-        <Pressable
-          onPress={handleSubmit}
-          accessibilityRole="button"
-          disabled={submitting || googleSubmitting}
-          style={({ pressed }) => [
-            styles.submit,
-            pressed && styles.submitPressed,
-            (submitting || googleSubmitting) && styles.submitDisabled,
-          ]}
-        >
-          {submitting ? (
-            <ActivityIndicator color={colors.primaryFg} />
-          ) : (
-            <Text style={styles.submitText}>Accedi</Text>
-          )}
-        </Pressable>
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>oppure</Text>
-          <View style={styles.dividerLine} />
-        </View>
-        <GoogleSignInButton
-          label="Accedi con Google"
-          loading={googleSubmitting}
-          disabled={submitting}
-          onPress={handleGoogle}
-        />
-        <Pressable
-          onPress={() => router.push('/forgot-password')}
-          style={styles.linkRow}
-          accessibilityRole="link"
-        >
-          <Text style={styles.linkText}>Hai dimenticato la password?</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/signup')}
-          style={styles.linkRow}
-          accessibilityRole="link"
-        >
-          <Text style={styles.linkText}>Non hai un account? Registrati</Text>
-        </Pressable>
+          {displayError ? (
+            <View style={styles.errorBanner} accessibilityRole="alert">
+              <Text style={styles.errorText}>{displayError}</Text>
+            </View>
+          ) : null}
+          <View style={styles.field}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Email"
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              editable={!submitting}
+            />
+            {validation.email ? <Text style={styles.fieldError}>{validation.email}</Text> : null}
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Password"
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete="password"
+              editable={!submitting}
+            />
+            {validation.password ? (
+              <Text style={styles.fieldError}>{validation.password}</Text>
+            ) : null}
+          </View>
+          <Pressable
+            onPress={handleSubmit}
+            accessibilityRole="button"
+            disabled={submitting || googleSubmitting}
+            style={({ pressed }) => [
+              styles.submit,
+              pressed && styles.submitPressed,
+              (submitting || googleSubmitting) && styles.submitDisabled,
+            ]}
+          >
+            {submitting ? (
+              <ActivityIndicator color={colors.primaryFg} />
+            ) : (
+              <Text style={styles.submitText}>Accedi</Text>
+            )}
+          </Pressable>
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>oppure</Text>
+            <View style={styles.dividerLine} />
+          </View>
+          <GoogleSignInButton
+            label="Accedi con Google"
+            loading={googleSubmitting}
+            disabled={submitting}
+            onPress={handleGoogle}
+          />
+          <Pressable
+            onPress={() => router.push('/forgot-password')}
+            style={styles.linkRow}
+            accessibilityRole="link"
+          >
+            <Text style={styles.linkText}>Hai dimenticato la password?</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/signup')}
+            style={styles.linkRow}
+            accessibilityRole="link"
+          >
+            <Text style={styles.linkText}>Non hai un account? Registrati</Text>
+          </Pressable>
+        </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  container: { flex: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
-  brand: { alignItems: 'center', marginBottom: spacing.xl, gap: spacing.sm },
-  logo: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
+  root: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  // Brand zone: full-bleed blue band carrying the gauge mark + wordmark, with a
+  // softly rounded bottom so the form below reads as nestled beneath it.
+  hero: {
+    backgroundColor: colors.brand,
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
   },
-  logoText: { color: colors.primaryFg, fontSize: 28, fontWeight: 'bold' },
-  wordmark: { fontSize: 24, fontWeight: '700', color: colors.fg, letterSpacing: -0.5 },
+  form: { padding: spacing.lg, gap: spacing.md },
   field: { gap: spacing.xs },
   label: { fontSize: 13, fontWeight: '500', color: colors.muted },
   input: {
