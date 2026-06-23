@@ -1,18 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import {
   useNotificationPreferences,
   useUpdateNotificationPreference,
 } from '@/queries/notificationPreferences';
-import { useRegisterPushToken, useDeletePushToken } from '@/queries/pushTokens';
-import {
-  ensurePushPermission,
-  getPushPermissionStatus,
-  getDevicePushToken,
-  buildRegistrationPayload,
-} from '@/lib/push';
+import { useDeletePushToken } from '@/queries/pushTokens';
+import { usePushPermissionStatus } from '@/queries/pushPermission';
 import { readPushTokenId } from '@/lib/push-token-storage';
+import { useEnablePush } from '@/lib/useEnablePush';
 import {
   EDITABLE_EMAIL_KEYS,
   EDITABLE_PUSH_KEYS,
@@ -49,44 +45,39 @@ export default function NotificationPreferencesScreen() {
 
   // Device-level push opt-in (F-CLI-302). Declared before the early returns
   // below so hook order stays stable across loading/error renders.
-  const register = useRegisterPushToken();
   const del = useDeletePushToken();
+  const { enable } = useEnablePush();
+
+  // react-query is the source of truth for OS permission status.
+  // usePushPermissionStatus also re-checks when the app comes to the foreground
+  // (AppState 'active'), so returning from Settings automatically updates the UI.
+  const permissionQuery = usePushPermissionStatus();
+  const permissionData = permissionQuery.data;
+
   const [pushOn, setPushOn] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  // Once the user toggles, the async mount refresh must not clobber the
-  // resulting state (its later-resolving setState would otherwise win).
-  const interacted = useRef(false);
 
-  // Initial state: ON only when OS permission is granted AND we hold a stored
-  // token id. When granted, silently refresh the token (idempotent upsert;
-  // absorbs rotation). Best-effort — a failed refresh never surfaces an error.
+  // Derive toggle state from the reactive permission query. This replaces the
+  // old mount useEffect + interacted ref pattern: react-query is the source of
+  // truth and there is no async-mount-clobber race to guard against.
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const status = await getPushPermissionStatus();
-      const id = await readPushTokenId();
-      if (cancelled || interacted.current) return;
-      setBlocked(status === 'blocked');
-      setPushOn(status === 'granted' && !!id);
-      if (status === 'granted') {
-        try {
-          const token = await getDevicePushToken();
-          await register.mutateAsync(buildRegistrationPayload(token));
-          if (!cancelled && !interacted.current) setPushOn(true);
-        } catch {
-          // ignore — best-effort refresh
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (permissionData === undefined) return;
+    setBlocked(permissionData === 'blocked');
+    if (permissionData !== 'granted') {
+      setPushOn(false);
+      return;
+    }
+    // When granted, check whether we hold a stored token id to seed the ON state.
+    void readPushTokenId().then((id) => {
+      setPushOn(!!id);
+    });
+  }, [permissionData]);
 
   const onTogglePush = async (next: boolean) => {
-    interacted.current = true;
     if (next) {
-      const perm = await ensurePushPermission();
+      // Delegate the full enable flow (ensurePushPermission + register + invalidate)
+      // to the extracted hook. The returned PushPermission drives local UI state.
+      const perm = await enable();
       if (perm === 'blocked') {
         setBlocked(true);
         setPushOn(false);
@@ -97,14 +88,9 @@ export default function NotificationPreferencesScreen() {
         return;
       }
       setBlocked(false);
-      try {
-        const token = await getDevicePushToken();
-        await register.mutateAsync(buildRegistrationPayload(token));
-        setPushOn(true);
-      } catch {
-        setPushOn(false);
-      }
+      setPushOn(true);
     } else {
+      // Toggle-OFF: deregister the stored token id (best-effort).
       const id = await readPushTokenId();
       if (id) {
         try {
