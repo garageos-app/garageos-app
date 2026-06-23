@@ -2,9 +2,15 @@ import { Tabs, Redirect, useRouter } from 'expo-router';
 import { Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/useAuth';
+import { BrandLogo } from '@/components/BrandLogo';
 import { LoadingState } from '@/components/LoadingState';
 import { PushSoftAskModal } from '@/components/PushSoftAskModal';
 import { colors } from '@/theme/colors';
+
+// Brand lockup shown in the primary tab headers. Detail screens keep their own
+// contextual titles (e.g. the vehicle name), so this is wired per-screen rather
+// than in screenOptions.
+const renderBrandTitle = () => <BrandLogo tone="onLight" size={24} showWordmark />;
 
 export default function TabsLayout() {
   const { status } = useAuth();
@@ -27,6 +33,7 @@ export default function TabsLayout() {
           options={{
             title: 'I miei veicoli',
             tabBarLabel: 'Veicoli',
+            headerTitle: renderBrandTitle,
             tabBarIcon: ({ color, size, focused }) => (
               <Ionicons
                 name={focused ? 'car-sport' : 'car-sport-outline'}
@@ -52,6 +59,7 @@ export default function TabsLayout() {
           options={{
             title: 'Scadenze',
             tabBarLabel: 'Scadenze',
+            headerTitle: renderBrandTitle,
             tabBarIcon: ({ color, size, focused }) => (
               <Ionicons
                 name={focused ? 'calendar' : 'calendar-outline'}
@@ -66,6 +74,7 @@ export default function TabsLayout() {
           options={{
             title: 'Profilo',
             tabBarLabel: 'Profilo',
+            headerTitle: renderBrandTitle,
             tabBarIcon: ({ color, size, focused }) => (
               <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
             ),
