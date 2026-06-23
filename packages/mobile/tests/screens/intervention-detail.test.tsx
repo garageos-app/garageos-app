@@ -18,6 +18,15 @@ jest.mock('@/queries/meShopInterventionDetail', () => ({
   useMeShopInterventionDetail: () => mockDetail,
 }));
 
+// PushReminderBanner is mounted in this screen; mock its deps so it renders
+// null (status undefined = loading) and does not affect the existing assertions.
+jest.mock('@/queries/pushPermission', () => ({
+  usePushPermissionStatus: () => ({ data: undefined }),
+}));
+jest.mock('@/lib/useEnablePush', () => ({
+  useEnablePush: () => ({ enable: jest.fn() }),
+}));
+
 import InterventionDetailScreen from '../../app/interventions/[id]';
 
 function baseData(overrides: Record<string, unknown> = {}) {

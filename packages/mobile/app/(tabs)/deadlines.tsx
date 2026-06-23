@@ -12,6 +12,7 @@ import { PersonalDeadlineList } from '@/components/PersonalDeadlineList';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import { ApiError } from '@/lib/api-error';
 import { colors } from '@/theme/colors';
+import { PushReminderBanner } from '@/components/PushReminderBanner';
 
 type Segment = 'officina' | 'personali';
 
@@ -45,6 +46,7 @@ export default function DeadlinesScreen() {
 
   return (
     <View style={styles.container}>
+      <PushReminderBanner />
       <SegmentedControl options={SEGMENT_OPTIONS} value={segment} onChange={setSegment} />
       <View style={styles.body}>
         {segment === 'officina' ? (

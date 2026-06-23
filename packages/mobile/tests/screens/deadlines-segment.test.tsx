@@ -53,6 +53,15 @@ jest.mock('@/queries/personalDeadlines', () => ({
   }),
 }));
 
+// PushReminderBanner is mounted in DeadlinesScreen; mock its deps so it renders
+// null (status undefined = loading) and does not affect the segment assertions.
+jest.mock('@/queries/pushPermission', () => ({
+  usePushPermissionStatus: () => ({ data: undefined }),
+}));
+jest.mock('@/lib/useEnablePush', () => ({
+  useEnablePush: () => ({ enable: jest.fn() }),
+}));
+
 import DeadlinesScreen from '../../app/(tabs)/deadlines';
 
 describe('DeadlinesScreen segment sync from deep-link params', () => {
