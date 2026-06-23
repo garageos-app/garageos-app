@@ -74,6 +74,14 @@ jest.mock('expo-notifications', () => ({
 // expo-device: stable device name for BR-254 upsert fixtures.
 jest.mock('expo-device', () => ({ deviceName: 'Jest Device' }));
 
+// react-native-safe-area-context: keep the real module (SafeAreaView etc.)
+// but stub useSafeAreaInsets — it throws without a <SafeAreaProvider>, which
+// screen tests render screens without. Zero insets are correct for JSDOM.
+jest.mock('react-native-safe-area-context', () => ({
+  ...jest.requireActual('react-native-safe-area-context'),
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
+
 // expo-web-browser: maybeCompleteAuthSession is a no-op in jest; the OAuth flow
 // is exercised on-device (smoke). Namespace import → namespace mock.
 jest.mock('expo-web-browser', () => ({

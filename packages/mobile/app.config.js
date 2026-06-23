@@ -12,6 +12,7 @@ module.exports = {
     scheme: 'garageos',
     userInterfaceStyle: 'light',
     newArchEnabled: true,
+    icon: './assets/icon.png',
     ios: {
       bundleIdentifier: 'com.garageos.mobile',
       supportsTablet: false,
@@ -20,6 +21,12 @@ module.exports = {
       package: 'it.garageos.mobile',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       permissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO'],
+      // Adaptive icon: white gauge mark on the brand-blue background. The
+      // foreground PNG keeps the mark inside the Android safe zone.
+      adaptiveIcon: {
+        foregroundImage: './assets/icon-mark-white.png',
+        backgroundColor: '#1d4ed8',
+      },
     },
     plugins: [
       'expo-router',
@@ -32,6 +39,15 @@ module.exports = {
         },
       ],
       'expo-notifications',
+      // Branded splash: white gauge mark centered on the brand-blue background.
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/icon-mark-white.png',
+          backgroundColor: '#1d4ed8',
+          imageWidth: 200,
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,

@@ -1,6 +1,9 @@
 export const colors = {
   primary: '#0066CC',
   primaryFg: '#FFFFFF',
+  // Brand-surface color (hero band, splash, adaptive icon). Matches the logo
+  // PNGs; distinct from `primary`, which stays the interactive/control color.
+  brand: '#1d4ed8',
   bg: '#FFFFFF',
   fg: '#0F172A',
   muted: '#64748B',
