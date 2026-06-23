@@ -36,19 +36,19 @@ jest.mock('@/queries/notificationPreferences', () => ({
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
 }));
-// The screen also renders the F-CLI-302 device-push section, which pulls in
-// react-query mutations + native push modules. Stub them so this email-prefs
-// suite renders without a QueryClient/Auth provider. Permission 'denied' +
-// no stored id → the push toggle stays off and never calls register.
-jest.mock('@/queries/pushTokens', () => ({
-  useRegisterPushToken: () => ({ mutateAsync: jest.fn() }),
-  useDeletePushToken: () => ({ mutateAsync: jest.fn() }),
+// The screen renders the F-CLI-302 device-push section. After the refactor it
+// consumes useEnablePush and usePushPermissionStatus instead of the raw push
+// lib. Stub them so this email-prefs suite renders without native modules.
+// Permission 'denied' + no stored id → the push toggle stays off.
+jest.mock('@/lib/useEnablePush', () => ({
+  useEnablePush: () => ({ enable: jest.fn() }),
 }));
-jest.mock('@/lib/push', () => ({
-  ensurePushPermission: jest.fn().mockResolvedValue('denied'),
-  getPushPermissionStatus: jest.fn().mockResolvedValue('denied'),
-  getDevicePushToken: jest.fn(),
-  buildRegistrationPayload: jest.fn(),
+jest.mock('@/queries/pushPermission', () => ({
+  usePushPermissionStatus: () => ({ data: 'denied' }),
+  useInvalidatePushPermission: () => jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('@/queries/pushTokens', () => ({
+  useDeletePushToken: () => ({ mutateAsync: jest.fn() }),
 }));
 jest.mock('@/lib/push-token-storage', () => ({
   readPushTokenId: jest.fn().mockResolvedValue(null),

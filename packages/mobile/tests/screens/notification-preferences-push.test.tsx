@@ -29,20 +29,22 @@ jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
 }));
 
-const mockRegister = jest.fn().mockResolvedValue({ id: 'x' });
-const mockDelete = jest.fn().mockResolvedValue(undefined);
 jest.mock('@/queries/pushTokens', () => ({
-  useRegisterPushToken: () => ({ mutateAsync: mockRegister, isPending: false }),
-  useDeletePushToken: () => ({ mutateAsync: mockDelete, isPending: false }),
+  useDeletePushToken: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 
-const mockEnsure = jest.fn();
-jest.mock('@/lib/push', () => ({
-  ensurePushPermission: (...a: unknown[]) => mockEnsure(...a),
-  getPushPermissionStatus: jest.fn().mockResolvedValue('denied'),
-  getDevicePushToken: jest.fn().mockResolvedValue('ExpoPushToken[scr]'),
-  buildRegistrationPayload: (t: string) => ({ expoPushToken: t, platform: 'android' }),
+// The screen now delegates enable to useEnablePush and reads permission from
+// usePushPermissionStatus. Mock at that seam instead of the raw push lib.
+const mockEnable = jest.fn();
+jest.mock('@/lib/useEnablePush', () => ({
+  useEnablePush: () => ({ enable: mockEnable }),
 }));
+
+jest.mock('@/queries/pushPermission', () => ({
+  usePushPermissionStatus: () => ({ data: 'denied' }),
+  useInvalidatePushPermission: () => jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('@/lib/push-token-storage', () => ({
   readPushTokenId: jest.fn().mockResolvedValue(null),
   writePushTokenId: jest.fn(),
@@ -53,22 +55,24 @@ describe('device push toggle', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('registers when permission is granted', async () => {
-    mockEnsure.mockResolvedValueOnce('granted');
+    // Arrange: enable() resolves 'granted' — the hook internally calls register.
+    // At the screen seam, all we verify is that enable() was called and the
+    // toggle flips ON (which indicates the screen's granted branch ran).
+    mockEnable.mockResolvedValueOnce('granted');
     const { getByTestId } = render(<NotificationPreferencesScreen />);
     fireEvent(getByTestId('toggle-device-push'), 'valueChange', true);
-    await waitFor(() =>
-      expect(mockRegister).toHaveBeenCalledWith({
-        expoPushToken: 'ExpoPushToken[scr]',
-        platform: 'android',
-      }),
-    );
+    await waitFor(() => expect(mockEnable).toHaveBeenCalledTimes(1));
+    // Toggle must end up ON after a 'granted' result.
+    await waitFor(() => expect(getByTestId('toggle-device-push').props.value).toBe(true));
   });
 
   it('shows the settings hint when blocked and does not register', async () => {
-    mockEnsure.mockResolvedValueOnce('blocked');
+    mockEnable.mockResolvedValueOnce('blocked');
     const { getByTestId, findByText } = render(<NotificationPreferencesScreen />);
     fireEvent(getByTestId('toggle-device-push'), 'valueChange', true);
     await findByText(/impostazioni/i);
-    expect(mockRegister).not.toHaveBeenCalled();
+    // enable() was called once — it is the hook's responsibility to skip
+    // registration internally; from the screen's perspective enable() resolved.
+    expect(mockEnable).toHaveBeenCalledTimes(1);
   });
 });

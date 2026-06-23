@@ -44,6 +44,15 @@ jest.mock('@/queries/meDeadlines', () => ({
   }),
 }));
 
+// PushReminderBanner is mounted in DeadlinesScreen; mock its deps so it renders
+// null (status undefined = loading) and does not affect the highlight assertions.
+jest.mock('@/queries/pushPermission', () => ({
+  usePushPermissionStatus: () => ({ data: undefined }),
+}));
+jest.mock('@/lib/useEnablePush', () => ({
+  useEnablePush: () => ({ enable: jest.fn() }),
+}));
+
 import DeadlinesScreen from '../../app/(tabs)/deadlines';
 
 function rowBackgrounds(): (string | undefined)[] {

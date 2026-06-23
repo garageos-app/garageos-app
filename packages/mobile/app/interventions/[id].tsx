@@ -13,6 +13,7 @@ import {
   isDisputeActive,
 } from '@/lib/dispute-labels';
 import { colors, spacing } from '@/theme/colors';
+import { PushReminderBanner } from '@/components/PushReminderBanner';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -43,6 +44,7 @@ export default function InterventionDetailScreen() {
     <>
       <Stack.Screen options={{ headerShown: true, title: 'Intervento' }} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <PushReminderBanner />
         <View style={styles.card}>
           <View style={styles.badgeRow}>
             {intervention.isDisputed ? <BadgeContestato /> : null}
