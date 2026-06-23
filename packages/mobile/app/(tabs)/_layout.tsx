@@ -3,6 +3,7 @@ import { Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/useAuth';
 import { LoadingState } from '@/components/LoadingState';
+import { PushSoftAskModal } from '@/components/PushSoftAskModal';
 import { colors } from '@/theme/colors';
 
 export default function TabsLayout() {
@@ -12,62 +13,69 @@ export default function TabsLayout() {
   if (status === 'unauthenticated') return <Redirect href="/login" />;
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.muted,
-        headerShown: true,
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'I miei veicoli',
-          tabBarLabel: 'Veicoli',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'car-sport' : 'car-sport-outline'}
-              size={size}
-              color={color}
-            />
-          ),
-          headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Aggiungi veicolo"
-              onPress={() => router.push('/claim-vehicle')}
-              hitSlop={12}
-              style={{ paddingHorizontal: 16 }}
-            >
-              <Ionicons name="add" size={26} color={colors.primary} />
-            </Pressable>
-          ),
+    <>
+      <PushSoftAskModal />
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.muted,
+          headerShown: true,
         }}
-      />
-      <Tabs.Screen
-        name="deadlines"
-        options={{
-          title: 'Scadenze',
-          tabBarLabel: 'Scadenze',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profilo',
-          tabBarLabel: 'Profilo',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
-          ),
-        }}
-      />
-      {/* #5: il dettaglio veicolo è sotto (tabs) → Expo Router lo registra come
-          tab ("Fiat Panda"). href:null lo rimuove dalla bar, resta navigabile
-          via router.push dalla lista veicoli. */}
-      <Tabs.Screen name="vehicles/[id]" options={{ href: null }} />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'I miei veicoli',
+            tabBarLabel: 'Veicoli',
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons
+                name={focused ? 'car-sport' : 'car-sport-outline'}
+                size={size}
+                color={color}
+              />
+            ),
+            headerRight: () => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Aggiungi veicolo"
+                onPress={() => router.push('/claim-vehicle')}
+                hitSlop={12}
+                style={{ paddingHorizontal: 16 }}
+              >
+                <Ionicons name="add" size={26} color={colors.primary} />
+              </Pressable>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="deadlines"
+          options={{
+            title: 'Scadenze',
+            tabBarLabel: 'Scadenze',
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons
+                name={focused ? 'calendar' : 'calendar-outline'}
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profilo',
+            tabBarLabel: 'Profilo',
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
+            ),
+          }}
+        />
+        {/* #5: il dettaglio veicolo è sotto (tabs) → Expo Router lo registra come
+            tab ("Fiat Panda"). href:null lo rimuove dalla bar, resta navigabile
+            via router.push dalla lista veicoli. */}
+        <Tabs.Screen name="vehicles/[id]" options={{ href: null }} />
+      </Tabs>
+    </>
   );
 }
