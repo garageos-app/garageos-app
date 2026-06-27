@@ -22,4 +22,5 @@ export const PROBLEM_JSON_CONTENT_TYPE = 'application/problem+json';
 export const ALLOWED_ORIGINS = [
   'https://app.garageos.aifollyadvisor.com',
   'https://garageos.aifollyadvisor.com',
+  'https://admin.garageos.aifollyadvisor.com',
 ] as const;
