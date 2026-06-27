@@ -13,6 +13,7 @@ async function registerWithTestKeys(app: FastifyInstance): Promise<void> {
   await app.register(authPlugin, {
     officineJwks: [getTestKey('officine').publicJwk],
     clientiJwks: [getTestKey('clienti').publicJwk],
+    platformAdminsJwks: [getTestKey('platform-admins').publicJwk],
   });
 }
 
@@ -106,5 +107,46 @@ describe('authPlugin (in-memory verifier path)', () => {
     expect(buildIssuer('eu-central-1_ABC', 'eu-central-1')).toBe(
       'https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_ABC',
     );
+  });
+
+  // --- platform-admins pool (Slice 0) ---
+  // The verifier is built conditionally: only when both
+  // COGNITO_PLATFORM_ADMINS_POOL_ID and _CLIENT_ID are set in env.
+  // setup.ts supplies those placeholders so the in-memory verifier path
+  // is exercised here without any real Cognito call.
+
+  it('verifies a platform-admins ID token and returns pool=platform-admins', async () => {
+    await registerWithTestKeys(app);
+    const token = await signTestToken({ pool: 'platform-admins' });
+
+    const result = await app.jwtVerifier.verify(token);
+
+    expect(result.pool).toBe('platform-admins');
+    expect(result.payload.sub).toBeDefined();
+    expect(result.payload.token_use).toBe('id');
+  });
+
+  it('still routes an officine token to pool=officine when platform-admins is also configured', async () => {
+    await registerWithTestKeys(app);
+    const token = await signTestToken({
+      pool: 'officine',
+      tenantId: '22222222-2222-4222-8222-222222222222',
+      role: 'mechanic',
+    });
+
+    const result = await app.jwtVerifier.verify(token);
+
+    expect(result.pool).toBe('officine');
+    expect(result.payload['custom:tenant_id']).toBe('22222222-2222-4222-8222-222222222222');
+  });
+
+  it('rejects a platform-admins token signed by the wrong pool key (cross-pool replay)', async () => {
+    await registerWithTestKeys(app);
+    // Sign with the officine private key but claim to be from the platform-admins issuer.
+    const token = await signTestToken({
+      pool: 'platform-admins',
+      signingKey: getTestKey('officine'),
+    });
+    await expect(app.jwtVerifier.verify(token)).rejects.toThrow();
   });
 });

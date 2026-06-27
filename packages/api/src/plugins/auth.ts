@@ -7,7 +7,7 @@ import type { JWK, JWTPayload } from 'jose';
 
 import { env } from '../config/env.js';
 
-export type AuthPool = 'officine' | 'clienti';
+export type AuthPool = 'officine' | 'clienti' | 'platform-admins';
 
 export interface CognitoIdTokenPayload extends JWTPayload {
   token_use?: 'id' | 'access';
@@ -33,12 +33,17 @@ export interface AuthPluginOptions {
   // integration tests where the signing key pair is generated in
   // process (see tests/helpers/jwt.ts).
   //
-  // Production leaves both undefined: the verifier lazily fetches the
+  // Production leaves all three undefined: the verifier lazily fetches the
   // real JWKS from AWS on the first request. aws-jwt-verify's HTTP
   // client only supports https, so this option — not a local mock
   // server — is the right escape hatch for tests.
   officineJwks?: JWK[];
   clientiJwks?: JWK[];
+  // Only relevant when COGNITO_PLATFORM_ADMINS_POOL_ID and _CLIENT_ID are
+  // set in env (see platformAdminsConfigured in buildVerifier). When those
+  // vars are absent the platform-admins verifier is not built and this
+  // option has no effect.
+  platformAdminsJwks?: JWK[];
 }
 
 function cognitoIssuer(poolId: string, region: string = env.AWS_REGION): string {
@@ -109,8 +114,32 @@ function buildVerifier(opts: AuthPluginOptions): JwtVerifier {
     clientiVerifier.cacheJwks({ keys: opts.clientiJwks } as never);
   }
 
+  // --- platform-admins pool (Slice 0) ---
+  // Build the third verifier ONLY when both pool ID and client ID are
+  // configured. This is the deploy-safety gate: operators can deploy the
+  // new binary without touching Cognito or Secrets Manager; until both
+  // vars are present, platform-admins tokens fall through to the existing
+  // "Unknown issuer" throw, which require-auth.ts maps to 401.
+  const platformAdminsConfigured =
+    !!env.COGNITO_PLATFORM_ADMINS_POOL_ID && !!env.COGNITO_PLATFORM_ADMINS_CLIENT_ID;
+
+  const platformAdminsVerifier = platformAdminsConfigured
+    ? makePoolVerifier(
+        env.COGNITO_PLATFORM_ADMINS_POOL_ID!,
+        env.COGNITO_PLATFORM_ADMINS_CLIENT_ID!,
+        env.COGNITO_PLATFORM_ADMINS_JWKS_URL_OVERRIDE,
+      )
+    : undefined;
+
+  if (platformAdminsVerifier && opts.platformAdminsJwks?.length) {
+    platformAdminsVerifier.cacheJwks({ keys: opts.platformAdminsJwks } as never);
+  }
+
   const officineIss = cognitoIssuer(env.COGNITO_OFFICINE_POOL_ID);
   const clientiIss = cognitoIssuer(env.COGNITO_CLIENTI_POOL_ID);
+  const platformAdminsIss = platformAdminsConfigured
+    ? cognitoIssuer(env.COGNITO_PLATFORM_ADMINS_POOL_ID!)
+    : undefined;
 
   return {
     async verify(token) {
@@ -122,6 +151,10 @@ function buildVerifier(opts: AuthPluginOptions): JwtVerifier {
       if (iss === clientiIss) {
         const payload = (await clientiVerifier.verify(token)) as CognitoIdTokenPayload;
         return { pool: 'clienti', payload };
+      }
+      if (platformAdminsVerifier && iss === platformAdminsIss) {
+        const payload = (await platformAdminsVerifier.verify(token)) as CognitoIdTokenPayload;
+        return { pool: 'platform-admins', payload };
       }
       throw new Error(`Unknown issuer: ${iss}`);
     },
