@@ -67,6 +67,7 @@ export class ApiGatewayConstruct extends Construct {
         allowOrigins: [
           'https://app.garageos.aifollyadvisor.com',
           'https://garageos.aifollyadvisor.com',
+          'https://admin.garageos.aifollyadvisor.com',
         ],
         allowMethods: [
           apigw.CorsHttpMethod.GET,

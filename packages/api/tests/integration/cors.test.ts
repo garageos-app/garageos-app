@@ -33,6 +33,25 @@ describe('CORS integration', () => {
     expect(allowMethods).toContain('POST');
   });
 
+  it('preflight from admin.<domain> is allowed (echoes Origin, allows GET)', async () => {
+    const res = await app.inject({
+      method: 'OPTIONS',
+      url: '/v1/admin/me',
+      headers: {
+        origin: 'https://admin.garageos.aifollyadvisor.com',
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'authorization',
+      },
+    });
+
+    expect(res.statusCode).toBe(204);
+    expect(res.headers['access-control-allow-origin']).toBe(
+      'https://admin.garageos.aifollyadvisor.com',
+    );
+    const allowMethods = String(res.headers['access-control-allow-methods'] ?? '');
+    expect(allowMethods).toContain('GET');
+  });
+
   it('preflight from a disallowed origin is not echoed back', async () => {
     const res = await app.inject({
       method: 'OPTIONS',
