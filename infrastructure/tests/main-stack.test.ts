@@ -116,6 +116,12 @@ describe('SecretsConstruct', () => {
     template.resourceCountIs('AWS::SecretsManager::Secret', 1);
     template.hasResourceProperties('AWS::SecretsManager::Secret', {
       Name: 'garageos/production/app',
+      // Regression guard for the #221 outage: the template must ship ONLY
+      // the constant placeholder, never the field object. If a field object
+      // is reintroduced (secretObjectValue), SecretString becomes a CFN
+      // intrinsic (Fn::Join over the JSON) rather than this literal string,
+      // so this exact-match assertion fails — which is the whole point.
+      SecretString: '{}',
     });
   });
 
