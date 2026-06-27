@@ -1,4 +1,41 @@
-// Placeholder — real router and pages are added in Tasks 9-10.
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AuthProvider } from '@/auth/AuthContext';
+import { ProtectedRoute } from '@/auth/ProtectedRoute';
+import { Login } from '@/pages/Login';
+import { SetPassword } from '@/pages/SetPassword';
+import { PlatformConsole } from '@/pages/PlatformConsole';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000,
+    },
+  },
+});
+
 export function App() {
-  return <div>GarageOS Console</div>;
+  return (
+    <BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/set-password" element={<SetPassword />} />
+
+            {/* Protected routes — ProtectedRoute guards unauthenticated access */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/" element={<PlatformConsole />} />
+            </Route>
+
+            {/* Fallback redirect */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </QueryClientProvider>
+    </BrowserRouter>
+  );
 }
