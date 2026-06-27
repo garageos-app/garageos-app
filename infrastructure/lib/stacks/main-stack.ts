@@ -189,6 +189,16 @@ export class MainStack extends cdk.Stack {
       value: cognito.clientiClient.userPoolClientId,
       description: 'Populate into garageos/production/app secret as COGNITO_CLIENTI_CLIENT_ID',
     });
+    new cdk.CfnOutput(this, 'CognitoPlatformAdminsUserPoolId', {
+      value: cognito.platformAdminsUserPool.userPoolId,
+      description:
+        'Populate into garageos/production/app secret as COGNITO_PLATFORM_ADMINS_POOL_ID',
+    });
+    new cdk.CfnOutput(this, 'CognitoPlatformAdminsClientId', {
+      value: cognito.platformAdminsClient.userPoolClientId,
+      description:
+        'Populate into garageos/production/app secret as COGNITO_PLATFORM_ADMINS_CLIENT_ID',
+    });
     new cdk.CfnOutput(this, 'CognitoClientiHostedUiDomain', {
       value: `https://${config.cognito.clientiHostedUiDomainPrefix}.auth.${this.region}.amazoncognito.com`,
       description: 'Hosted UI base URL — feed into mobile EXPO_PUBLIC_COGNITO_HOSTED_UI (PR 3)',

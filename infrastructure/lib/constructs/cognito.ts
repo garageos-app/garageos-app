@@ -3,21 +3,23 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
-// Two Cognito user pools (officine + clienti) feeding the API JWT
+// Three Cognito user pools (officine + clienti + platform-admins) feeding the API JWT
 // verifier (packages/api/src/plugins/auth.ts). Custom attributes match
 // the claim shape the api consumes:
-//   - officine: tenant_id, location_id, role (all string mutable)
-//   - clienti:  customer_id (string mutable, UUID validated app-side)
+//   - officine:        tenant_id, location_id, role (all string mutable)
+//   - clienti:         customer_id (string mutable, UUID validated app-side)
+//   - platform-admins: no custom attributes (platform admins belong to no tenant)
 //
-// selfSignUpEnabled is FALSE on both pools — divergence from APPENDICE_C
+// selfSignUpEnabled is FALSE on all pools — divergence from APPENDICE_C
 // §5.5 documented in docs/superpowers/specs/2026-04-28-cognito-construct-design.md
 // §4.1. Officine onboarding is server-driven via a future
 // POST /v1/onboarding/officina; clienti signup is server-driven by a
 // future POST /v1/auth/signup that calls AdminCreateUser with
 // custom:customer_id pre-populated (clienti-context middleware requires
 // this claim — packages/api/src/middleware/clienti-context.ts:18).
+// Platform-admin accounts are provisioned operator-side (AdminCreateUser).
 //
-// removalPolicy is RETAIN — losing a user pool means losing every
+// removalPolicy is RETAIN on all pools — losing a user pool means losing every
 // account in that pool, irreversibly.
 
 export interface CognitoConstructProps {
@@ -37,6 +39,8 @@ export class CognitoConstruct extends Construct {
   public readonly clientiUserPool: cognito.UserPool;
   public readonly clientiClient: cognito.UserPoolClient;
   public readonly clientiUserPoolDomain: cognito.UserPoolDomain;
+  public readonly platformAdminsUserPool: cognito.UserPool;
+  public readonly platformAdminsClient: cognito.UserPoolClient;
 
   constructor(scope: Construct, id: string, props: CognitoConstructProps) {
     super(scope, id);
@@ -171,5 +175,43 @@ export class CognitoConstruct extends Construct {
         props.clientiTriggerFunction,
       );
     }
+
+    // Platform-admins pool — internal console only. No custom attributes:
+    // platform admins belong to no tenant and carry no tenant_id/role claims.
+    // MFA is OFF for bootstrap simplicity; a later slice adds TOTP enforcement.
+    // Accounts are provisioned operator-side (AdminCreateUser) — selfSignUp=false.
+    this.platformAdminsUserPool = new cognito.UserPool(this, 'PlatformAdminsUserPool', {
+      userPoolName: `garageos-${props.environment}-platform-admins`,
+      selfSignUpEnabled: false,
+      signInAliases: { email: true },
+      autoVerify: { email: true },
+      standardAttributes: {
+        email: { required: true, mutable: true },
+        givenName: { required: true, mutable: true },
+        familyName: { required: true, mutable: true },
+      },
+      passwordPolicy: {
+        minLength: 10,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: false,
+      },
+      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      mfa: cognito.Mfa.OFF,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    this.platformAdminsClient = this.platformAdminsUserPool.addClient('PlatformAdminsClient', {
+      userPoolClientName: 'garageos-platform-admins-client',
+      authFlows: { userSrp: true, userPassword: true },
+      accessTokenValidity: cdk.Duration.hours(1),
+      idTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.days(30),
+      preventUserExistenceErrors: true,
+      // No OAuth flows or hosted-UI redirect — internal console uses direct
+      // SRP/USER_PASSWORD auth only; no IdP federation needed.
+      disableOAuth: true,
+    });
   }
 }

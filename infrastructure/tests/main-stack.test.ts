@@ -432,6 +432,8 @@ describe('MainStack (integration)', () => {
     template.hasOutput('CognitoClientiUserPoolId', {});
     template.hasOutput('CognitoClientiClientId', {});
     template.hasOutput('CognitoClientiHostedUiDomain', {});
+    template.hasOutput('CognitoPlatformAdminsUserPoolId', {});
+    template.hasOutput('CognitoPlatformAdminsClientId', {});
     template.hasOutput('AttachmentsBucketName', {});
     template.hasOutput('SesEmailIdentityArn', {});
     template.hasOutput('SesConfigurationSetName', {});
@@ -467,10 +469,10 @@ describe('MainStack (integration)', () => {
     // which auto-publishes 3 RSA_2048 EASY_DKIM CNAMEs into the hosted zone.
     // Total Route53 records: 1 API alias + 3 SES DKIM CNAMEs = 4.
     template.resourceCountIs('AWS::Route53::RecordSet', 4);
-    // PR 22: Cognito officine + clienti pools (each pool also produces
-    // one UserPoolClient).
-    template.resourceCountIs('AWS::Cognito::UserPool', 2);
-    template.resourceCountIs('AWS::Cognito::UserPoolClient', 2);
+    // PR 22: Cognito officine + clienti pools + platform-admins pool (each pool
+    // also produces one UserPoolClient).
+    template.resourceCountIs('AWS::Cognito::UserPool', 3);
+    template.resourceCountIs('AWS::Cognito::UserPoolClient', 3);
     // Google IdP on the clienti pool; Hosted UI domain for OAuth PKCE flow.
     template.resourceCountIs('AWS::Cognito::UserPoolIdentityProvider', 1);
     template.resourceCountIs('AWS::Cognito::UserPoolDomain', 1);
