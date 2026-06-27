@@ -14,7 +14,7 @@ export default {
     'scope-enum': [
       2,
       'always',
-      ['api', 'web', 'mobile', 'database', 'infra', 'shared', 'e2e', 'deps'],
+      ['api', 'web', 'admin-web', 'mobile', 'database', 'infra', 'shared', 'e2e', 'deps'],
     ],
     // Scope is optional: empty scope emits a warning but does not fail the commit.
     'scope-empty': [1, 'never'],
