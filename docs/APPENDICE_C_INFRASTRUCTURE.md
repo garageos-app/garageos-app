@@ -56,7 +56,7 @@ Dalla Sezione 5 del documento master:
 |---|---|---|
 | **Lambda Functions** | Backend Fastify (via `@fastify/aws-lambda` adapter — see [ADR-0002](./adr/ADR-0002-replace-lwa-with-fastify-aws-lambda-adapter.md)) | Main stack |
 | **API Gateway (HTTP API v2)** | Ingress HTTPS verso Lambda | Main stack |
-| **Cognito** | Two User Pool (officine, clienti) | Main stack |
+| **Cognito** | Three User Pool (officine, clienti, platform-admins) | Main stack |
 | **S3** | Allegati + Tag PDF | Main stack |
 | **CloudFront** | CDN asset web app | Main stack |
 | **Route 53** | DNS + registrar dominio | Main stack |
@@ -788,6 +788,17 @@ export class CognitoConstruct extends Construct {
 ```
 
 **`selfSignUpEnabled: false`** (decisione intenzionale, 2026-05-04). Il flusso di registrazione customer è server-driven via `POST /v1/auth/signup` per garantire che `custom:customer_id` sia popolato in modo trusted al momento della creazione del Cognito user (la middleware `clientiContext` valida il claim come PK tabella `customers`). Self-signup nativo Cognito non avrebbe modo di settare `customer_id` senza un PreSignUp lambda trigger separato — costo ingegneristico più alto rispetto al beneficio. Vedi `docs/superpowers/specs/2026-05-04-api-customer-signup-design.md` §3.1.
+
+#### Pool `platform-admins` (Slice 0, PR-B)
+
+Terzo Cognito User Pool, dedicato agli operatori interni GarageOS che accedono alla console di piattaforma (`admin.` subdomain). Caratteristiche:
+
+- `selfSignUpEnabled: false` — nessuna auto-registrazione; gli account sono creati esclusivamente tramite il CLI di bootstrap (`scripts/admin/create-platform-admin.ts`)
+- **Zero custom attributes** — gli admin di piattaforma non hanno claims tenant o customer; l'identità è estratta dai soli standard claims Cognito (`sub`, `email`, `given_name`, `family_name`)
+- **Nessun identity provider esterno** — solo email/password (SRP)
+- Middleware dedicato `requirePlatformAdminsPool` guarda tutti i route `/v1/admin/*`; verifica `request.authPool === 'platform-admins'` dopo `requireAuth`
+- Pool ID e Client ID sono letti dalla Lambda via Secrets Manager (`garageos/production/app`) come `COGNITO_PLATFORM_ADMINS_POOL_ID` e `COGNITO_PLATFORM_ADMINS_CLIENT_ID`
+- Outputs CDK: `CognitoPlatformAdminsUserPoolId`, `CognitoPlatformAdminsUserPoolClientId`
 
 ### 5.6 Construct: Secrets Manager
 
@@ -1615,7 +1626,9 @@ export class OidcStack extends cdk.Stack {
 
 ### 5.13 Web hosting
 
-Le risorse di hosting sono in due stack dedicati:
+Le risorse di hosting sono in stack dedicati per subdomain.
+
+#### App web officine (`app.` subdomain)
 
 - **`GarageosWebCertStack`** (us-east-1): un singolo certificato ACM
   per `app.garageos.aifollyadvisor.com`, validato via DNS contro la
@@ -1631,14 +1644,28 @@ Le risorse di hosting sono in due stack dedicati:
   PriceClass_100 (Europe + Nord America). Route 53 espone i record
   alias A + AAAA che puntano alla distribuzione.
 
-WAF CLOUDFRONT è **deferred** — vedi `memory/project_waf_cloudfront_deferred.md`
-per i trigger di attivazione (pilot beta 10+ officine, compliance
-review, attacco rilevato, customer ask). Il `WafConstruct` esistente
+#### Admin console (`admin.` subdomain) — Slice 0
+
+- **`GarageosAdminWebCertStack`** (us-east-1): certificato ACM per
+  `admin.garageos.aifollyadvisor.com`, stesso pattern cross-region
+  di `GarageosWebCertStack`.
+- **`GarageosAdminWebStack`** (eu-central-1): riutilizza la classe
+  generica `WebStack` con props `subdomain: 'admin'` e
+  `bucketName: 'garageos-production-admin-web'`. Identica architettura
+  S3 + CloudFront + Route 53 dell'app officine. I CloudFormation
+  outputs esposti sono **identici** a quelli di `GarageosWebStack`
+  (`WebBucketName`, `CloudFrontDistributionId`) perché riusano la
+  stessa classe — il workflow GitHub Actions li risolve interrogando
+  `GarageosAdminWebStack` (non `GarageosWebStack`).
+
+WAF CLOUDFRONT è **deferred** per entrambi gli stack — vedi
+`memory/project_waf_cloudfront_deferred.md` per i trigger di
+attivazione. Il `WafConstruct` esistente
 (`infrastructure/lib/constructs/waf.ts`) sarà istanziato in PR
 dedicata con scope `CLOUDFRONT` e cross-region us-east-1.
 
-Cognito Hosted UI **non** è in roadmap — l'app web userà direttamente
-gli SDK Cognito client-side per il flusso di login.
+Cognito Hosted UI **non** è in roadmap — le app web useranno
+direttamente gli SDK Cognito client-side per il flusso di login.
 
 ---
 
@@ -1737,6 +1764,7 @@ Attendere 15-30 min per attivazione. Viene creata automaticamente una Hosted Zon
 ```
 garageos.it              → landing page marketing (separata, v1.1)
 app.garageos.it          → web app officine
+admin.garageos.it        → console di piattaforma (platform admin, Slice 0)
 api.garageos.it          → backend API
 mail.garageos.it         → mail-from SES (record DKIM)
 ```
@@ -1777,9 +1805,11 @@ CDK può creare questi record automaticamente nel `DnsConstruct`.
 
 | Secret name | Contenuto | Quando si popola |
 |---|---|---|
-| `garageos/production/app` | DATABASE_URL, DIRECT_URL, SENTRY_DSN, EXPO_ACCESS_TOKEN | Post setup Supabase + Sentry + Expo |
+| `garageos/production/app` | DATABASE_URL, DIRECT_URL, SENTRY_DSN, EXPO_ACCESS_TOKEN, COGNITO_PLATFORM_ADMINS_POOL_ID, COGNITO_PLATFORM_ADMINS_CLIENT_ID | Post setup Supabase + Sentry + Expo; ID Cognito `platform-admins` dopo `cdk deploy GarageosMainStack` |
 | `garageos/production/eventbridge-hmac` | Random 64-char HMAC key | Auto-generato da CDK |
 | `garageos/production/ses-smtp` | SES SMTP credentials (se servono) | Solo se non usiamo SDK |
+
+> **Nota `COGNITO_PLATFORM_ADMINS_*`**: i due nuovi campi (`COGNITO_PLATFORM_ADMINS_POOL_ID`, `COGNITO_PLATFORM_ADMINS_CLIENT_ID`) sono letti dalla Lambda API per configurare il terzo verifier JWT (`requirePlatformAdminsPool`). Fino a quando non vengono popolati, `/v1/admin/*` risponde `401` — comportamento atteso (Deviation 1 Slice 0). Popolarli tramite `aws secretsmanager update-secret` dopo il primo `cdk deploy GarageosMainStack` leggendo gli output `CognitoPlatformAdminsUserPoolId` e `CognitoPlatformAdminsUserPoolClientId`.
 
 ### 8.2 Secret rotation
 
@@ -1995,6 +2025,23 @@ jobs:
         run: eas build --platform android --profile production --non-interactive
 ```
 
+### 9.3 Deploy admin web — `.github/workflows/deploy-admin-web.yml`
+
+Workflow dedicato per l'app `packages/admin-web` (console di piattaforma). Si attiva su push a `main` che toccano `packages/admin-web/**` o il file stesso; supporta anche `workflow_dispatch`.
+
+**Differenze rispetto a `deploy-web.yml`:**
+
+- Build: `pnpm --filter @garageos/admin-web build` con tre variabili env lette da `vars.*`:
+  - `VITE_COGNITO_PLATFORM_ADMINS_POOL_ID`
+  - `VITE_COGNITO_PLATFORM_ADMINS_CLIENT_ID`
+  - `VITE_API_BASE_URL`
+- Stack CloudFormation: `GarageosAdminWebStack` (invece di `GarageosWebStack`)
+- Output keys: identici (`WebBucketName`, `CloudFrontDistributionId`) — la classe `WebStack` è condivisa
+- Path sync: `packages/admin-web/dist/`
+- Concurrency group: `deploy-admin-web-asset`
+
+Non include il placeholder directory di DR (`infrastructure/assets/web-placeholder/`) perché `admin-web` non ha una directory di questo tipo.
+
 ---
 
 ## 10. Procedure operative
@@ -2052,6 +2099,54 @@ Post setup iniziale, il flusso standard è:
 Tempo totale: ~5-10 min (30-60s il bundling esbuild vs 3-5 min del vecchio docker build).
 
 **Nota aggiornamenti solo-codice applicativo**: se è cambiato solo il contenuto di `packages/api/src/` senza modifiche infrastrutturali, CDK rileva il diff e aggiorna **solo la Lambda** (~10-20s). La blue/green deployment non serve: Lambda usa versions + aliases per rollback istantaneo.
+
+### 10.3 Deploy platform-admin console (Slice 0, una tantum)
+
+Runbook operativo per attivare la console di piattaforma in produzione. Da eseguire in ordine.
+
+1. **Deploy stack principale** (crea il pool `platform-admins`):
+   ```bash
+   pnpm --filter infrastructure exec cdk deploy GarageosMainStack
+   ```
+   Leggere gli output CDK: `CognitoPlatformAdminsUserPoolId` e `CognitoPlatformAdminsUserPoolClientId`.
+
+2. **Popolare i secret Cognito** in Secrets Manager (fino a questo punto `/v1/admin/*` risponde `401` — previsto, Deviation 1):
+   ```bash
+   aws secretsmanager update-secret \
+     --secret-id garageos/production/app \
+     --secret-string "$(aws secretsmanager get-secret-value \
+       --secret-id garageos/production/app \
+       --query SecretString --output text | \
+       jq '.COGNITO_PLATFORM_ADMINS_POOL_ID = "<pool-id>" |
+           .COGNITO_PLATFORM_ADMINS_CLIENT_ID = "<client-id>"')"
+   ```
+
+3. **Deploy stack admin web** (crea bucket S3 + CloudFront + Route 53 per `admin.` subdomain):
+   ```bash
+   pnpm --filter infrastructure exec cdk deploy GarageosAdminWebCertStack GarageosAdminWebStack
+   ```
+   Leggere gli output: `WebBucketName` e `CloudFrontDistributionId` per `GarageosAdminWebStack`.
+
+4. **Configurare GitHub repo vars** e lanciare il workflow di deploy:
+   ```
+   GitHub → Settings → Variables (Actions):
+     VITE_COGNITO_PLATFORM_ADMINS_POOL_ID  = <pool-id>
+     VITE_COGNITO_PLATFORM_ADMINS_CLIENT_ID = <client-id>
+     VITE_API_BASE_URL                      = https://api.garageos.aifollyadvisor.com
+   ```
+   Poi: `gh workflow run deploy-admin-web.yml` oppure primo sync manuale:
+   ```bash
+   aws s3 sync packages/admin-web/dist/ s3://<bucket-name>/ --delete
+   aws cloudfront create-invalidation --distribution-id <dist-id> --paths '/*'
+   ```
+
+5. **Creare gli account admin** (eseguire per ogni operatore):
+   ```bash
+   pnpm tsx scripts/admin/create-platform-admin.ts <email> <nome> <cognome>
+   ```
+   Consegnare la password temporanea all'operatore fuori banda (email sicura / password manager condiviso). Al primo login sarà richiesto di cambiarla.
+
+6. **Smoke test**: aprire `https://admin.garageos.aifollyadvisor.com`, effettuare il login, completare il cambio password forzato, verificare che la console mostri la label "Console piattaforma" con nome e cognome dell'operatore (prova che `GET /v1/admin/me` risponde correttamente).
 
 ---
 

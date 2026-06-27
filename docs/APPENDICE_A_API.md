@@ -37,6 +37,7 @@ Ogni endpoint è descritto con:
 - `Customer`: richiede JWT da pool Cognito "clienti"
 - `Any User`: accetta JWT da entrambi i pool
 - `Admin`: richiede JWT con claim admin (team GarageOS)
+- `Platform Admin`: richiede JWT da pool Cognito `platform-admins` (console di piattaforma GarageOS); preHandler `requirePlatformAdminsPool`
 
 ### 1.3 Header comuni
 
@@ -2895,6 +2896,7 @@ L'`owner_type=intervention` resta officina-only.
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
+| GET | `/v1/admin/me` | Slice 0 | Platform Admin | **[DETTAGLIATO §3.12.1]** Identità admin autenticato (JWT claims, no DB) |
 | GET | `/admin/tenants` | F-ADM-001 | Admin | Lista tutti i tenant |
 | POST | `/admin/tenants/:id/suspend` | F-ADM-002 | Admin | Sospendi tenant |
 | POST | `/admin/tenants/:id/activate` | F-ADM-002 | Admin | Riattiva tenant |
@@ -2907,6 +2909,39 @@ L'`owner_type=intervention` resta officina-only.
 | POST | `/admin/pending-vehicles/:id/approve` | F-ADM-006 | Admin | Approva validazione libretto |
 | POST | `/admin/pending-vehicles/:id/reject` | F-ADM-006 | Admin | Rifiuta validazione |
 | GET | `/admin/metrics` | F-ADM-008 | Admin | Dashboard KPI |
+
+#### 3.12.1 `GET /v1/admin/me` — Identità platform admin
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** standard
+**Shipped:** Slice 0 PR-B
+
+Restituisce i campi di identità estratti direttamente dal JWT verificato, senza alcuna lettura dal database. Usato dalla console di piattaforma per mostrare l'operatore autenticato. I campi `firstName`/`lastName` corrispondono agli standard claims Cognito `given_name`/`family_name`.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Se il JWT appartiene al pool `officine` o `clienti`, il middleware risponde `403 FORBIDDEN`.
+
+**Response `200 OK`:**
+
+```json
+{
+  "sub": "cognito-uuid",
+  "email": "admin@garageos.it",
+  "firstName": "Nome",
+  "lastName": "Cognome"
+}
+```
+
+| Campo | Tipo | Fonte |
+|---|---|---|
+| `sub` | `string` | JWT claim `sub` |
+| `email` | `string` | JWT claim `email` |
+| `firstName` | `string` | JWT claim `given_name` |
+| `lastName` | `string` | JWT claim `family_name` |
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
 
 ### 3.13 Public
 
