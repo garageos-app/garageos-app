@@ -26,10 +26,19 @@ import { Construct } from 'constructs';
 // NEVER reintroduce a field object / secretObjectValue here. New runtime
 // credentials are added to the live secret by the operator only. The
 // regression test in infrastructure/tests/main-stack.test.ts locks this.
+//
+// ONE-TIME RESET ON THIS MIGRATION: the deploy that first introduces this
+// constant changes the template SecretString (was the field object), so
+// CloudFormation rewrites the live secret once. The operator must
+// re-populate immediately after — see the runbook in README.md F7.
 
 // Constant placeholder emitted into the CloudFormation template. It must
 // never change — changing it is the one thing that resets the live secret.
-const APP_SECRET_PLACEHOLDER = 'REPLACE_AFTER_DEPLOY';
+// Kept as valid JSON (empty object) so the consumer's JSON.parse
+// (packages/api/src/config/secrets.ts) succeeds on an unpopulated/fresh/DR
+// stack and env.ts reports the missing fields cleanly, instead of crashing
+// the Lambda with an opaque SyntaxError before any validation runs.
+const APP_SECRET_PLACEHOLDER = '{}';
 
 export interface SecretsConstructProps {
   readonly environment: string;

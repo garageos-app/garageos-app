@@ -116,31 +116,13 @@ describe('SecretsConstruct', () => {
     template.resourceCountIs('AWS::SecretsManager::Secret', 1);
     template.hasResourceProperties('AWS::SecretsManager::Secret', {
       Name: 'garageos/production/app',
-      // The template ships ONLY a constant placeholder, never the field
-      // object. Asserting the exact constant locks the invariant.
-      SecretString: 'REPLACE_AFTER_DEPLOY',
+      // Regression guard for the #221 outage: the template must ship ONLY
+      // the constant placeholder, never the field object. If a field object
+      // is reintroduced (secretObjectValue), SecretString becomes a CFN
+      // intrinsic (Fn::Join over the JSON) rather than this literal string,
+      // so this exact-match assertion fails — which is the whole point.
+      SecretString: '{}',
     });
-  });
-
-  it('does not embed credential field names in the template (no atomic-reset regression)', () => {
-    // Regression guard for the #221 outage: embedding the field object via
-    // secretObjectValue serializes every key into the template SecretString,
-    // so adding/removing a field resets the entire live secret to
-    // placeholders on the next deploy. The template must stay decoupled from
-    // the field list — if this fails, someone reintroduced a field object.
-    const template = buildTemplate();
-    const secrets = template.findResources('AWS::SecretsManager::Secret');
-    const secretString = Object.values(secrets)[0]?.Properties?.SecretString;
-    expect(secretString).toBe('REPLACE_AFTER_DEPLOY');
-    for (const key of [
-      'DATABASE_URL',
-      'DIRECT_URL',
-      'COGNITO_OFFICINE_POOL_ID',
-      'COGNITO_PLATFORM_ADMINS_POOL_ID',
-      'SENTRY_DSN',
-    ]) {
-      expect(JSON.stringify(secretString)).not.toContain(key);
-    }
   });
 
   it('secret retains on stack deletion', () => {

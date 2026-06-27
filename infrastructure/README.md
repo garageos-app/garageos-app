@@ -108,9 +108,11 @@ GarageosMainStack.LambdaFunctionArn = arn:aws:lambda:eu-central-1:...
 GarageosMainStack.AppSecretsArn = arn:aws:secretsmanager:eu-central-1:...:secret:garageos/production/app-XXXXX
 ```
 
-A questo punto la Lambda esiste, ma ogni request fallisce: il secret contiene il solo placeholder costante `REPLACE_AFTER_DEPLOY` (non un JSON valido).
+A questo punto la Lambda esiste, ma ogni request fallisce: il secret contiene il solo placeholder costante `{}` (JSON vuoto valido). La Lambda booterà ma `env.ts` fallirà la validazione elencando i campi mancanti — errore diagnosticabile, non un crash opaco.
 
-> **Il valore del secret è gestito interamente fuori da CDK (operator-managed).** Il template CloudFormation ship SOLO il placeholder costante: `secrets.ts` non enumera più i campi. Motivo: CloudFormation riscrive il `SecretString` live ogni volta che il valore nel template cambia, quindi un tempo aggiungere un campo a `secretObjectValue` resettava l'INTERO secret ai placeholder al deploy successivo (outage #221). Con il placeholder costante, aggiungere/cambiare una credenziale non tocca mai il template. La **source of truth dell'elenco chiavi** è `packages/api/src/config/env.ts`; i 9 campi attuali sono nel JSON sotto.
+> **Il valore del secret è gestito interamente fuori da CDK (operator-managed).** Il template CloudFormation ship SOLO il placeholder costante `{}`: `secrets.ts` non enumera più i campi. Motivo: CloudFormation riscrive il `SecretString` live ogni volta che il valore nel template cambia, quindi un tempo aggiungere un campo a `secretObjectValue` resettava l'INTERO secret ai placeholder al deploy successivo (outage #221). Con il placeholder costante, aggiungere/cambiare una credenziale non tocca mai il template. La **source of truth dell'elenco chiavi** è `packages/api/src/config/env.ts`; i 9 campi attuali sono nel JSON sotto.
+>
+> ⚠️ **Reset one-time alla migrazione verso il placeholder costante.** Il deploy che introduce per la prima volta il placeholder `{}` cambia il `SecretString` del template (prima era l'oggetto a 9 campi) → CloudFormation riscrive il secret live UNA volta. Su uno stack già popolato (prod) questo azzera i valori reali finché l'operatore non ri-esegue `put-secret-value`. Procedura: (1) `get-secret-value … --query SecretString --output text > good.json` PRIMA del deploy; (2) deploy; (3) `put-secret-value … --secret-string file://good.json`; (4) force cold-start (`aws lambda update-function-configuration --function-name garageos-api --description "repopulate"`); (5) verificare `/health` → `database: ok`. Se il deploy è già passato, recuperare da `--version-stage AWSPREVIOUS`. (Pinnare `AWS_REGION=eu-central-1`.)
 
 ### F7. Step 6 — Popolare Secrets Manager con valori reali
 
