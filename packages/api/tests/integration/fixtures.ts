@@ -23,6 +23,12 @@ export async function buildTestServer(): Promise<FastifyInstance> {
     auth: {
       officineJwks: [getTestKey('officine').publicJwk],
       clientiJwks: [getTestKey('clienti').publicJwk],
+      // Slice 0: pre-seed the platform-admins verifier cache so the test
+      // app validates platform-admins tokens without hitting AWS.
+      // COGNITO_PLATFORM_ADMINS_POOL_ID / _CLIENT_ID must already be set in
+      // the env (globalSetup.ts) for buildVerifier to construct the verifier;
+      // this option then seeds its JWKS cache.
+      platformAdminsJwks: [getTestKey('platform-admins').publicJwk],
     },
   });
 }

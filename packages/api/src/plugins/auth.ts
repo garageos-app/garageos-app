@@ -12,6 +12,9 @@ export type AuthPool = 'officine' | 'clienti' | 'platform-admins';
 export interface CognitoIdTokenPayload extends JWTPayload {
   token_use?: 'id' | 'access';
   email?: string;
+  // Standard Cognito attributes used by the platform-admins pool (Slice 0).
+  given_name?: string;
+  family_name?: string;
   'custom:tenant_id'?: string;
   'custom:role'?: string;
   'custom:location_id'?: string;
