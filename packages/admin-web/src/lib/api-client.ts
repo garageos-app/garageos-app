@@ -24,6 +24,11 @@ export function createApiFetch(deps: ApiClientDeps) {
   return async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const token = await deps.getIdToken();
     if (!token) {
+      // Mirror the 401-response branch: signal auth expiry so the caller can
+      // sign the user out rather than wedging them on a permanent error.
+      // NOTE: this file intentionally diverges from packages/web/src/lib/api-client.ts
+      // after this fix. Shared-module extraction is logged as tech debt.
+      deps.onAuthExpired();
       throw new ApiError('auth.no_token', 401, 'Non sei autenticato');
     }
 

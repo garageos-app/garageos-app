@@ -45,16 +45,19 @@ beforeEach(() => {
 
 describe('PlatformConsole page', () => {
   it('renders admin identity from mocked GET /v1/admin/me', async () => {
+    // Fixture uses the real backend DTO shape: { sub, email, firstName, lastName }.
+    // Using the old wrong shape ({ id, givenName, familyName }) would cause
+    // displayName to fall back to the email, which would make this assertion fail.
     mockApiFetch.mockResolvedValueOnce({
-      id: 'admin-id',
+      sub: 'sub-abc123',
       email: 'admin@garageos.it',
-      givenName: 'Mario',
-      familyName: 'Rossi',
+      firstName: 'Mario',
+      lastName: 'Rossi',
     });
 
     render(<PlatformConsole />, { wrapper: makeWrapper() });
 
-    // Display name composed from given + family name
+    // Display name composed from firstName + lastName
     expect(await screen.findByText('Mario Rossi')).toBeInTheDocument();
     // Email shown in the card body
     expect(await screen.findByText('admin@garageos.it')).toBeInTheDocument();
@@ -66,5 +69,25 @@ describe('PlatformConsole page', () => {
     render(<PlatformConsole />, { wrapper: makeWrapper() });
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
+  });
+
+  it('calls signOut when the Esci button is clicked', async () => {
+    mockApiFetch.mockResolvedValueOnce({
+      sub: 'sub-abc123',
+      email: 'admin@garageos.it',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+    });
+
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+
+    render(<PlatformConsole />, { wrapper: makeWrapper() });
+
+    // Wait for the page to settle before clicking Esci
+    await screen.findByText('Mario Rossi');
+    await user.click(screen.getByRole('button', { name: /esci/i }));
+
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
 });

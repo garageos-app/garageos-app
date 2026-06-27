@@ -4,11 +4,12 @@ import { useAuth } from '@/auth/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
+// Shape returned by GET /v1/admin/me — all fields are always present (default '').
 interface AdminMe {
-  id: string;
+  sub: string;
   email: string;
-  givenName?: string;
-  familyName?: string;
+  firstName: string;
+  lastName: string;
 }
 
 export function PlatformConsole() {
@@ -22,7 +23,7 @@ export function PlatformConsole() {
 
   // Compose display name from name parts; fall back to email.
   const displayName = data
-    ? [data.givenName, data.familyName].filter(Boolean).join(' ') || data.email
+    ? [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email
     : undefined;
 
   return (

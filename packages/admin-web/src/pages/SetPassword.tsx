@@ -8,9 +8,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
+// Mirrors the platform-admins Cognito pool policy: minLength 10, lowercase,
+// uppercase, digit required; symbols NOT required.
 const setPasswordSchema = z
   .object({
-    newPassword: z.string().min(8, 'La password deve avere almeno 8 caratteri'),
+    newPassword: z
+      .string()
+      .min(10, 'La password deve avere almeno 10 caratteri')
+      .regex(/[a-z]/, 'Includi almeno una lettera minuscola')
+      .regex(/[A-Z]/, 'Includi almeno una lettera maiuscola')
+      .regex(/[0-9]/, 'Includi almeno un numero'),
     confirmPassword: z.string().min(1, 'Conferma la password'),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {

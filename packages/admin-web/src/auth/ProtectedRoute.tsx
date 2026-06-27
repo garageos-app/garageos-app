@@ -19,8 +19,10 @@ export function ProtectedRoute() {
     return <FullPageSpinner />;
   }
   if (state.status === 'unauthenticated') return <Navigate to="/login" replace />;
-  // Both 'authenticated' and 'new_password_required' fall through to Outlet.
-  // The router (Task 10) will redirect new_password_required to the change-
-  // password page; at this layer any non-unauthenticated admin passes.
+  // An admin mid-challenge (NEW_PASSWORD_REQUIRED) must not access protected
+  // routes — redirect them to the set-password page. The set-password route is
+  // public so there is no redirect loop.
+  if (state.status === 'new_password_required') return <Navigate to="/set-password" replace />;
+  // Only 'authenticated' falls through to the Outlet.
   return <Outlet />;
 }
