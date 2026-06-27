@@ -70,6 +70,21 @@ const envSchema = z.object({
   COGNITO_OFFICINE_JWKS_URL_OVERRIDE: z.string().url().optional(),
   COGNITO_CLIENTI_JWKS_URL_OVERRIDE: z.string().url().optional(),
 
+  // --- Platform-admins Cognito pool (Slice 0) ---
+  // Optional so the cognito-trigger Lambda (which reuses parseEnv) does not
+  // crash on cold start before the operator populates the secret — the
+  // documented #217 failure mode. A later task builds the JWT verifier for
+  // this pool conditionally on these three being present.
+  COGNITO_PLATFORM_ADMINS_POOL_ID: z
+    .string()
+    .regex(
+      /^[a-z]{2}-[a-z]+-\d_[A-Za-z0-9]+$/,
+      'COGNITO_PLATFORM_ADMINS_POOL_ID must match `<region>_<id>` (e.g. eu-central-1_PLT999)',
+    )
+    .optional(),
+  COGNITO_PLATFORM_ADMINS_CLIENT_ID: z.string().min(1).optional(),
+  COGNITO_PLATFORM_ADMINS_JWKS_URL_OVERRIDE: z.string().url().optional(),
+
   // --- S3 (F-OFF-305 attachments) ---
   // The bucket that stores workshop attachment uploads. Name is injected
   // from AWS Secrets Manager / environment at Lambda cold start.
