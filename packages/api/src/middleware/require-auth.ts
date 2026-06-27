@@ -15,7 +15,7 @@ function unauthorizedError(detail: string): FastifyError {
 // preHandler that enforces a verified Cognito ID token is present on
 // the request. On success it decorates:
 //   - request.jwt       ← verified CognitoIdTokenPayload
-//   - request.authPool  ← 'officine' | 'clienti'
+//   - request.authPool  ← AuthPool ('officine' | 'clienti' | 'platform-admins')
 // downstream handlers (tenantContext, requireOfficinaPool, routes) rely
 // on these being set, so requireAuth must run before them in the
 // preHandler chain.

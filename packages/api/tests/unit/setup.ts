@@ -19,6 +19,14 @@ process.env.COGNITO_OFFICINE_CLIENT_ID ??= 'test-officine-client';
 process.env.COGNITO_CLIENTI_POOL_ID ??= 'eu-central-1_TESTCLIENTI';
 process.env.COGNITO_CLIENTI_CLIENT_ID ??= 'test-clienti-client';
 
+// Slice 0: platform-admins Cognito pool. These are optional in env.ts (so
+// Lambda triggers that reuse parseEnv don't crash without them), but the
+// auth plugin unit tests need them set so buildVerifier creates the third
+// verifier. Values are placeholders — the in-memory JWK path is used, no
+// real Cognito is called.
+process.env.COGNITO_PLATFORM_ADMINS_POOL_ID ??= 'eu-central-1_TESTPLATFORMADMINS';
+process.env.COGNITO_PLATFORM_ADMINS_CLIENT_ID ??= 'test-platform-admins-client';
+
 // F-OFF-305: S3 attachments bucket. Unit tests mock the S3Client via
 // aws-sdk-client-mock; this placeholder only needs to satisfy the Zod
 // schema parse at module load — no real S3 call is ever made.

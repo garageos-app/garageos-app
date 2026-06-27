@@ -13,6 +13,7 @@ export interface EnvironmentConfig {
   readonly domainName: string;
   readonly apiSubdomain: string;
   readonly appSubdomain: string;
+  readonly adminSubdomain: string;
   readonly emailFromDomain: string;
   readonly emailFromAddress: string;
   // Backend email transport selector (packages/api/src/lib/email/transport.ts).
@@ -21,6 +22,7 @@ export interface EnvironmentConfig {
   readonly emailProvider: 'ses' | 'resend';
   readonly sesConfigurationSetName: string;
   readonly webBucketName: string;
+  readonly adminBucketName: string;
   readonly lambda: {
     readonly memoryMb: number;
     readonly architecture: 'arm64' | 'x86_64';
@@ -57,11 +59,13 @@ export const productionConfig: EnvironmentConfig = {
   domainName: 'garageos.aifollyadvisor.com',
   apiSubdomain: 'api',
   appSubdomain: 'app',
+  adminSubdomain: 'admin',
   emailFromDomain: 'garageos.aifollyadvisor.com',
   emailFromAddress: 'noreply@garageos.aifollyadvisor.com',
   emailProvider: 'resend',
   sesConfigurationSetName: 'garageos-production',
   webBucketName: 'garageos-production-web',
+  adminBucketName: 'garageos-production-web-admin',
   lambda: {
     memoryMb: 1024,
     architecture: 'arm64',

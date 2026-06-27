@@ -14,7 +14,7 @@ import * as s3Module from '../../../../src/lib/s3.js';
 import { _resetS3ClientForTests, S3UnavailableError } from '../../../../src/lib/s3.js';
 import databasePlugin from '../../../../src/plugins/database.js';
 import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
-import type { JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js';
+import type { AuthPool, JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js';
 import attachmentsRoutes from '../../../../src/routes/v1/attachments.js';
 
 const s3Mock = mockClient(S3Client);
@@ -86,7 +86,7 @@ function buildMockTx(overrides: Partial<MockTx> = {}): MockTx {
   };
 }
 
-function buildVerifier(pool: 'officine' | 'clienti' = 'officine'): JwtVerifier {
+function buildVerifier(pool: AuthPool = 'officine'): JwtVerifier {
   return {
     verify: async (): Promise<VerifyResult> => ({
       pool,
@@ -109,7 +109,7 @@ function buildVerifier(pool: 'officine' | 'clienti' = 'officine'): JwtVerifier {
 
 async function buildApp(
   overrides: Partial<MockTx> = {},
-  pool: 'officine' | 'clienti' = 'officine',
+  pool: AuthPool = 'officine',
 ): Promise<{
   app: FastifyInstance;
   mockTx: MockTx;

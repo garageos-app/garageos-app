@@ -26,6 +26,8 @@ describe('WebStack', () => {
       env: { account: '123456789012', region: 'eu-central-1' },
       crossRegionReferences: true,
       config: { ...productionConfig, synthMock: true },
+      subdomain: productionConfig.appSubdomain,
+      bucketName: productionConfig.webBucketName,
       appCertificate: cert,
     });
   }

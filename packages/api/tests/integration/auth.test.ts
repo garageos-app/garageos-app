@@ -121,6 +121,25 @@ describe('Cognito auth chain (integration)', () => {
     });
   });
 
+  it('returns 403 when a valid platform-admins token hits an officine-only endpoint', async () => {
+    // The token is cryptographically valid (signed with the correct platform-admins
+    // key, accepted by the platform-admins verifier). The 403 comes from
+    // requireOfficinaPool rejecting a JWT whose issuer is the platform-admins
+    // pool — not from a 401 verify failure. This is the mirror of the clienti
+    // test above and covers the second direction of pool isolation (Slice 0).
+    const token = await signTestToken({ pool: 'platform-admins' });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/users/me',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({
+      type: 'https://api.garageos.it/errors/FORBIDDEN',
+      status: 403,
+    });
+  });
+
   it('returns 200 for a valid officine token (user exists in DB)', async () => {
     const { tenantId } = await createTenantWithLocation('auth-ok');
     const cognitoSub = '33333333-3333-4333-8333-333333333333';

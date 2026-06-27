@@ -92,4 +92,42 @@ describe('parseEnv', () => {
     expect(parsed.COGNITO_OFFICINE_JWKS_URL_OVERRIDE).toBeUndefined();
     expect(parsed.COGNITO_CLIENTI_JWKS_URL_OVERRIDE).toBeUndefined();
   });
+
+  // --- platform-admins Cognito pool (Slice 0, Task 4) ---
+  // All three are optional so that the cognito-trigger Lambda (which reuses
+  // parseEnv) does not crash on cold start before the operator populates the
+  // secret — the documented #217 failure mode.
+
+  it('accepts a valid env with NO platform-admins vars set', () => {
+    // Proves optionality: if any of the three were required this would throw.
+    const parsed = parseEnv(valid);
+    expect(parsed.COGNITO_PLATFORM_ADMINS_POOL_ID).toBeUndefined();
+    expect(parsed.COGNITO_PLATFORM_ADMINS_CLIENT_ID).toBeUndefined();
+    expect(parsed.COGNITO_PLATFORM_ADMINS_JWKS_URL_OVERRIDE).toBeUndefined();
+  });
+
+  it('surfaces platform-admins vars when all three are provided', () => {
+    const parsed = parseEnv({
+      ...valid,
+      COGNITO_PLATFORM_ADMINS_POOL_ID: 'eu-central-1_PLT999',
+      COGNITO_PLATFORM_ADMINS_CLIENT_ID: 'client-plt',
+      COGNITO_PLATFORM_ADMINS_JWKS_URL_OVERRIDE:
+        'http://127.0.0.1:9001/platform/.well-known/jwks.json',
+    });
+    expect(parsed.COGNITO_PLATFORM_ADMINS_POOL_ID).toBe('eu-central-1_PLT999');
+    expect(parsed.COGNITO_PLATFORM_ADMINS_CLIENT_ID).toBe('client-plt');
+    expect(parsed.COGNITO_PLATFORM_ADMINS_JWKS_URL_OVERRIDE).toMatch(/127\.0\.0\.1/);
+  });
+
+  it('rejects a malformed COGNITO_PLATFORM_ADMINS_POOL_ID when set', () => {
+    expect(() => parseEnv({ ...valid, COGNITO_PLATFORM_ADMINS_POOL_ID: 'wrong_pool_id' })).toThrow(
+      /COGNITO_PLATFORM_ADMINS_POOL_ID/,
+    );
+  });
+
+  it('rejects a non-URL COGNITO_PLATFORM_ADMINS_JWKS_URL_OVERRIDE when set', () => {
+    expect(() =>
+      parseEnv({ ...valid, COGNITO_PLATFORM_ADMINS_JWKS_URL_OVERRIDE: 'not-a-url' }),
+    ).toThrow(/COGNITO_PLATFORM_ADMINS_JWKS_URL_OVERRIDE/);
+  });
 });

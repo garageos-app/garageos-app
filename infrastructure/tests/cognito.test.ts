@@ -34,8 +34,8 @@ describe('CognitoConstruct (mfaTotpEnabled=true)', () => {
   }
   const template = buildTemplate();
 
-  it('provisions exactly two user pools', () => {
-    template.resourceCountIs('AWS::Cognito::UserPool', 2);
+  it('provisions exactly three user pools', () => {
+    template.resourceCountIs('AWS::Cognito::UserPool', 3);
   });
 
   it('officine user pool has correct name, custom attributes, password policy', () => {
@@ -97,17 +97,17 @@ describe('CognitoConstruct (mfaTotpEnabled=true)', () => {
     });
   });
 
-  it('both user pools retain on stack deletion', () => {
+  it('all user pools retain on stack deletion', () => {
     const pools = template.findResources('AWS::Cognito::UserPool');
-    expect(Object.keys(pools)).toHaveLength(2);
+    expect(Object.keys(pools)).toHaveLength(3);
     for (const pool of Object.values(pools)) {
       expect(pool.DeletionPolicy).toBe('Retain');
       expect(pool.UpdateReplacePolicy).toBe('Retain');
     }
   });
 
-  it('provisions exactly two app clients with no client secret', () => {
-    template.resourceCountIs('AWS::Cognito::UserPoolClient', 2);
+  it('provisions exactly three app clients with no client secret', () => {
+    template.resourceCountIs('AWS::Cognito::UserPoolClient', 3);
     const clients = template.findResources('AWS::Cognito::UserPoolClient');
     for (const client of Object.values(clients)) {
       expect(client.Properties.GenerateSecret).toBeUndefined();
@@ -144,13 +144,72 @@ describe('CognitoConstruct (mfaTotpEnabled=true)', () => {
     expect(clientiClient?.Properties?.PreventUserExistenceErrors).toBe('ENABLED');
   });
 
-  it('email is the sign-in alias on both pools (UsernameAttributes=email)', () => {
+  it('email is the sign-in alias on all pools (UsernameAttributes=email)', () => {
     const pools = template.findResources('AWS::Cognito::UserPool');
-    expect(Object.keys(pools)).toHaveLength(2);
+    expect(Object.keys(pools)).toHaveLength(3);
     for (const pool of Object.values(pools)) {
       expect(pool.Properties.UsernameAttributes).toEqual(['email']);
       expect(pool.Properties.AutoVerifiedAttributes).toEqual(['email']);
     }
+  });
+
+  it('platform-admins user pool has correct name, admin-create-only, and matching password policy', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPool', {
+      UserPoolName: 'garageos-production-platform-admins',
+      AdminCreateUserConfig: Match.objectLike({
+        AllowAdminCreateUserOnly: true,
+      }),
+      Policies: Match.objectLike({
+        PasswordPolicy: Match.objectLike({
+          MinimumLength: 10,
+          RequireLowercase: true,
+          RequireUppercase: true,
+          RequireNumbers: true,
+          RequireSymbols: false,
+        }),
+      }),
+    });
+  });
+
+  it('platform-admins user pool has MFA OFF', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPool', {
+      UserPoolName: 'garageos-production-platform-admins',
+      MfaConfiguration: 'OFF',
+    });
+  });
+
+  it('platform-admins user pool has no tenant_id or role custom attributes in its Schema', () => {
+    const pools = template.findResources('AWS::Cognito::UserPool');
+    const platformAdminsPool = Object.values(pools).find(
+      (p) => p.Properties?.UserPoolName === 'garageos-production-platform-admins',
+    );
+    expect(platformAdminsPool).toBeDefined();
+    const schema: Array<{ Name?: string }> = platformAdminsPool?.Properties?.Schema ?? [];
+    const customAttrNames = schema.map((attr) => attr.Name).filter(Boolean);
+    expect(customAttrNames).not.toContain('tenant_id');
+    expect(customAttrNames).not.toContain('role');
+  });
+
+  it('platform-admins app client uses SRP + USER_PASSWORD flows with 30-day refresh, no oAuth', () => {
+    const clients = template.findResources('AWS::Cognito::UserPoolClient');
+    const platformAdminsClient = Object.values(clients).find(
+      (c) => c.Properties?.ClientName === 'garageos-platform-admins-client',
+    );
+    expect(platformAdminsClient).toBeDefined();
+    expect(platformAdminsClient?.Properties?.ExplicitAuthFlows).toContain('ALLOW_USER_SRP_AUTH');
+    expect(platformAdminsClient?.Properties?.ExplicitAuthFlows).toContain(
+      'ALLOW_USER_PASSWORD_AUTH',
+    );
+    expect(platformAdminsClient?.Properties?.ExplicitAuthFlows).toContain(
+      'ALLOW_REFRESH_TOKEN_AUTH',
+    );
+    expect(platformAdminsClient?.Properties?.AccessTokenValidity).toBe(60);
+    expect(platformAdminsClient?.Properties?.IdTokenValidity).toBe(60);
+    expect(platformAdminsClient?.Properties?.RefreshTokenValidity).toBe(30 * 24 * 60);
+    expect(platformAdminsClient?.Properties?.PreventUserExistenceErrors).toBe('ENABLED');
+    // No oAuth — no AllowedOAuthFlows, no CallbackURLs
+    expect(platformAdminsClient?.Properties?.AllowedOAuthFlows).toBeUndefined();
+    expect(platformAdminsClient?.Properties?.CallbackURLs).toBeUndefined();
   });
 
   // --- Google IdP assertions ---

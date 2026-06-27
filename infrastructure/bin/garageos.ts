@@ -43,7 +43,7 @@ const webCertStack = new WebCertStack(app, 'GarageosWebCertStack', {
   env: { account, region: 'us-east-1' },
   crossRegionReferences: true,
   domainName: productionConfig.domainName,
-  appSubdomain: productionConfig.appSubdomain,
+  subdomain: productionConfig.appSubdomain,
   synthMock: productionConfig.synthMock,
   description: 'GarageOS ACM cert for web app (us-east-1, required by CloudFront)',
   tags: {
@@ -57,8 +57,39 @@ new WebStack(app, 'GarageosWebStack', {
   env: { account, region },
   crossRegionReferences: true,
   config: productionConfig,
+  subdomain: productionConfig.appSubdomain,
+  bucketName: productionConfig.webBucketName,
   appCertificate: webCertStack.appCertificate,
   description: 'GarageOS web hosting (S3 + CloudFront + Route53 alias for app subdomain)',
+  tags: {
+    Environment: 'production',
+    Project: 'garageos',
+    ManagedBy: 'cdk',
+  },
+});
+
+const adminWebCertStack = new WebCertStack(app, 'GarageosAdminWebCertStack', {
+  env: { account, region: 'us-east-1' },
+  crossRegionReferences: true,
+  domainName: productionConfig.domainName,
+  subdomain: productionConfig.adminSubdomain,
+  synthMock: productionConfig.synthMock,
+  description: 'GarageOS ACM cert for admin web app (us-east-1, required by CloudFront)',
+  tags: {
+    Environment: 'production',
+    Project: 'garageos',
+    ManagedBy: 'cdk',
+  },
+});
+
+new WebStack(app, 'GarageosAdminWebStack', {
+  env: { account, region },
+  crossRegionReferences: true,
+  config: productionConfig,
+  subdomain: productionConfig.adminSubdomain,
+  bucketName: productionConfig.adminBucketName,
+  appCertificate: adminWebCertStack.appCertificate,
+  description: 'GarageOS admin web hosting (S3 + CloudFront + Route53 alias for admin subdomain)',
   tags: {
     Environment: 'production',
     Project: 'garageos',
