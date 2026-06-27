@@ -149,4 +149,13 @@ describe('authPlugin (in-memory verifier path)', () => {
     });
     await expect(app.jwtVerifier.verify(token)).rejects.toThrow();
   });
+
+  // Finding 3 (Minor): customJwtCheck enforces id-token on the platform-admins
+  // verifier the same way it does on officine / clienti. Verify an access token
+  // for the platform-admins pool is rejected when the pool IS configured.
+  it('rejects a platform-admins access token (token_use must be id)', async () => {
+    await registerWithTestKeys(app);
+    const token = await signTestToken({ pool: 'platform-admins', tokenUse: 'access' });
+    await expect(app.jwtVerifier.verify(token)).rejects.toThrow();
+  });
 });
