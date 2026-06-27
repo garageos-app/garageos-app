@@ -17,6 +17,12 @@ import { type EnvironmentConfig } from '../config/production.js';
 
 export interface WebStackProps extends cdk.StackProps {
   readonly config: EnvironmentConfig;
+  // Explicit subdomain for this hosting instance (e.g. 'app' or 'admin').
+  // Allows the same stack class to back multiple subdomains without
+  // reading from config internally.
+  readonly subdomain: string;
+  // Explicit S3 bucket name for this hosting instance.
+  readonly bucketName: string;
   readonly appCertificate: acm.ICertificate;
 }
 
@@ -25,7 +31,7 @@ export class WebStack extends cdk.Stack {
     super(scope, id, props);
 
     const { config } = props;
-    const appDomain = `${config.appSubdomain}.${config.domainName}`;
+    const appDomain = `${props.subdomain}.${config.domainName}`;
 
     const hostedZone: route53.IHostedZone = config.synthMock
       ? route53.HostedZone.fromHostedZoneAttributes(this, 'HostedZone', {
@@ -37,7 +43,7 @@ export class WebStack extends cdk.Stack {
         });
 
     const webHosting = new WebHostingConstruct(this, 'WebHosting', {
-      bucketName: config.webBucketName,
+      bucketName: props.bucketName,
       hostedZone,
       appCertificate: props.appCertificate,
       appDomain,
@@ -45,11 +51,11 @@ export class WebStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'WebBucketName', {
       value: webHosting.webBucket.bucketName,
-      description: 'S3 bucket name (consumed by deploy-web.yml asset sync)',
+      description: 'S3 bucket name (consumed by deploy workflow asset sync)',
     });
     new cdk.CfnOutput(this, 'CloudFrontDistributionId', {
       value: webHosting.distribution.distributionId,
-      description: 'Distribution id (consumed by deploy-web.yml invalidation)',
+      description: 'Distribution id (consumed by deploy workflow invalidation)',
     });
     new cdk.CfnOutput(this, 'CloudFrontDomainName', {
       value: webHosting.distribution.distributionDomainName,

@@ -13,7 +13,9 @@ import { Construct } from 'constructs';
 
 export interface WebCertStackProps extends cdk.StackProps {
   readonly domainName: string;
-  readonly appSubdomain: string;
+  // Generic subdomain (e.g. 'app' or 'admin'). The certificate covers
+  // `<subdomain>.<domainName>`.
+  readonly subdomain: string;
   readonly synthMock: boolean;
 }
 
@@ -33,7 +35,7 @@ export class WebCertStack extends cdk.Stack {
         });
 
     this.appCertificate = new acm.Certificate(this, 'AppCert', {
-      domainName: `${props.appSubdomain}.${props.domainName}`,
+      domainName: `${props.subdomain}.${props.domainName}`,
       validation: acm.CertificateValidation.fromDns(hostedZone),
     });
   }

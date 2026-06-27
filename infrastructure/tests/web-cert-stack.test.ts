@@ -11,7 +11,7 @@ describe('WebCertStack', () => {
       env: { account: '123456789012', region: 'us-east-1' },
       crossRegionReferences: true,
       domainName: 'example.com',
-      appSubdomain: 'app',
+      subdomain: 'app',
       synthMock: true,
     });
   }
