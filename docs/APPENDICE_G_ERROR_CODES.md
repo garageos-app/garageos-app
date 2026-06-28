@@ -216,6 +216,7 @@ Per fornire dati utili al client per gestire l'errore:
 | `tenant.vat_number_duplicate` | 409 | info | P.IVA già registrata | VAT duplicata in creazione | |
 | `tenant.vat_number_invalid` | 400 | info | P.IVA non valida | Checksum P.IVA IT fallito | |
 | `tenant.billing.past_due` | 402 | warning | Pagamento in sospeso | Solo v1.1+ | |
+| `tenant.invalid_status` | 409 | info | Operazione non consentita per lo stato attuale dell'officina | POST /v1/admin/tenants/:id/suspend|reactivate|regenerate-invitation — transizione di stato illegale | Slice 2 |
 | `location.not_found` | 404 | info | Location non trovata | | |
 | `location.not_in_tenant` | 422 | warning | Location non appartiene al tenant | Tentativo cross-tenant | |
 | `tenants.me.locations.not_found` | 404 | info | Sede non trovata | PATCH/DELETE /v1/tenants/me/locations/:id con id non del tenant o gia disattivato | F-OFF-003 |
@@ -991,6 +992,7 @@ system.push.send_failed
 system.s3.upload_failed
 system.scheduler.schedule_failed
 tenant.billing.past_due
+tenant.invalid_status
 tenants.me.update.empty_body
 tenants.me.update.unknown_field
 tenant.not_found
