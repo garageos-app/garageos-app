@@ -375,6 +375,15 @@ describe('POST /v1/admin/tenants — business cases (integration)', () => {
     );
     expect(invRows[0]!.c).toBe('0');
 
+    // No location row either (no DB tx was entered).
+    const { rows: locRows } = await pgAdmin.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM locations WHERE tenant_id IN (
+         SELECT id FROM tenants WHERE vat_number = $1
+       )`,
+      [VALID_BODY.vatNumber],
+    );
+    expect(locRows[0]!.c).toBe('0');
+
     // SES must not have been invoked — the handler short-circuits before email send.
     expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
   });
