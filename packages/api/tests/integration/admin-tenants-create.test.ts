@@ -406,11 +406,11 @@ describe('POST /v1/admin/tenants — business cases (integration)', () => {
     await pgAdmin.query(
       `INSERT INTO invitations
          (id, tenant_id, invitation_type, target_email, first_name, last_name,
-          role, token_hash, expires_at, created_at, updated_at)
+          role, token_hash, expires_at, created_at)
        VALUES
          (gen_random_uuid(), $1, 'internal_user', $2, 'Mario', 'Rossi', 'super_admin',
           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          NOW() + INTERVAL '7 days', NOW(), NOW())`,
+          NOW() + INTERVAL '7 days', NOW())`,
       [otherTenantId, VALID_BODY.ownerEmail],
     );
 
