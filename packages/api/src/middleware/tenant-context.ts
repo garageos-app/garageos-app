@@ -88,6 +88,12 @@ export async function tenantContext(request: FastifyRequest, reply: FastifyReply
       tenantId: parsed.data['custom:tenant_id'],
       status: 'active',
       deletedAt: null,
+      // BR-210: a suspended tenant must block all officine logins in a single
+      // joined query with no extra round-trip. The null result from this filter
+      // produces the same generic 401 as a disabled user (anti-enumeration:
+      // the officine client must not distinguish "user disabled" from
+      // "tenant suspended").
+      tenant: { is: { status: 'active' } },
     },
     select: { id: true },
   });

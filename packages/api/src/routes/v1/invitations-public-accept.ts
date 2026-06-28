@@ -76,6 +76,8 @@ export const invitationsPublicAcceptRoutes: FastifyPluginAsync = async (app) => 
             locationId: true,
             acceptedAt: true,
             expiresAt: true,
+            // BR-210: load tenant status so we can block accept for suspended tenants.
+            tenant: { select: { status: true } },
           },
         });
 
@@ -86,6 +88,19 @@ export const invitationsPublicAcceptRoutes: FastifyPluginAsync = async (app) => 
           inv.expiresAt < new Date()
         ) {
           throw businessError('user.invitation.not_found', 404, 'Invito non trovato.');
+        }
+
+        // BR-210: reject accept when the tenant is suspended. This guard
+        // lands AFTER the not-found/expired/consumed check so that an
+        // invalid token still returns 404 (no tenant-state information
+        // is leaked for unrecognised tokens). A re-activated tenant
+        // with a still-valid link can accept normally.
+        if (inv.tenant.status !== 'active') {
+          throw businessError(
+            'auth.tenant.suspended',
+            403,
+            'Officina sospesa. Contatta il supporto.',
+          );
         }
 
         // Email collision pre-check — best-effort, not race-proof. The User
