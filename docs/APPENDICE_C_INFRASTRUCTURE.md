@@ -157,6 +157,8 @@ Step importante, richiede 1-3 giorni lavorativi di review:
 
 **In attesa dell'approvazione:** verificare manualmente le email dei primi tenant pilota per test.
 
+> **Nota (Slice 1):** Le email transazionali applicative (magic-link inviti officine, onboarding nuovi tenant) sono gestite da **Resend** (API key `RESEND_API_KEY` nel secret `garageos/production/app`), non da SES direttamente. SES rimane in infrastruttura per le email di autenticazione Cognito (verifica account, reset password) e come eventuale fallback. La production access SES è comunque raccomandata per il dominio `mail.garageos.it` (DKIM, SPF — vedi §7.4).
+
 ---
 
 ## 3. Setup GitHub organization
@@ -2147,6 +2149,8 @@ Runbook operativo per attivare la console di piattaforma in produzione. Da esegu
    Consegnare la password temporanea all'operatore fuori banda (email sicura / password manager condiviso). Al primo login sarà richiesto di cambiarla.
 
 6. **Smoke test**: aprire `https://admin.garageos.aifollyadvisor.com`, effettuare il login, completare il cambio password forzato, verificare che la console mostri la label "Console piattaforma" con nome e cognome dell'operatore (prova che `GET /v1/admin/me` risponde correttamente).
+
+7. **Creare nuovi tenant (Slice 1+):** i tenant di produzione vengono creati tramite la console di piattaforma (`POST /v1/admin/tenants`, vedi APPENDICE_A §3.12.2) — non più tramite SQL diretto o script. Lo script `scripts/rebuild-tenants.mjs` è riservato al disaster recovery (ripristino DB da snapshot) e non deve essere usato per il normale onboarding. Il form "Crea officina" nella console invia automaticamente il magic-link all'owner via Resend.
 
 ---
 

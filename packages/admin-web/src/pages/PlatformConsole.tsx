@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useApiFetch } from '@/lib/api-client';
 import { useAuth } from '@/auth/useAuth';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ interface AdminMe {
 
 export function PlatformConsole() {
   const { signOut } = useAuth();
+  const navigate = useNavigate();
   const apiFetch = useApiFetch();
 
   const { data, isLoading, error } = useQuery<AdminMe>({
@@ -31,9 +33,12 @@ export function PlatformConsole() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">Console piattaforma</h1>
-          <Button variant="outline" onClick={signOut}>
-            Esci
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button onClick={() => navigate('/officine/nuova')}>Crea officina</Button>
+            <Button variant="outline" onClick={signOut}>
+              Esci
+            </Button>
+          </div>
         </div>
 
         {isLoading && <p className="text-muted-foreground">Caricamento...</p>}

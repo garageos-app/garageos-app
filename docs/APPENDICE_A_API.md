@@ -2292,7 +2292,7 @@ Restituisce tutti gli utenti del tenant del chiamante (attivi, inattivi e soft-d
 
 #### POST /v1/users/invitations — Crea invito utente
 
-Crea un `invitation` row di tipo `internal_user` e invia email magic-link via SES (best-effort). Il token plaintext non viene mai restituito nella risposta.
+Crea un `invitation` row di tipo `internal_user` e invia email magic-link via Resend (best-effort). Il token plaintext non viene mai restituito nella risposta.
 
 **Auth:** Super Admin.
 
@@ -2897,6 +2897,7 @@ L'`owner_type=intervention` resta officina-only.
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | GET | `/v1/admin/me` | Slice 0 | Platform Admin | **[DETTAGLIATO §3.12.1]** Identità admin autenticato (JWT claims, no DB) |
+| POST | `/v1/admin/tenants` | Slice 1 | Platform Admin | **[DETTAGLIATO §3.12.2]** Crea nuovo tenant (officina), location primaria e invito owner |
 | GET | `/admin/tenants` | F-ADM-001 | Admin | Lista tutti i tenant |
 | POST | `/admin/tenants/:id/suspend` | F-ADM-002 | Admin | Sospendi tenant |
 | POST | `/admin/tenants/:id/activate` | F-ADM-002 | Admin | Riattiva tenant |
@@ -2942,6 +2943,67 @@ Restituisce i campi di identità estratti direttamente dal JWT verificato, senza
 
 - `401` — token mancante o non valido (`requireAuth`)
 - `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+
+#### 3.12.2 `POST /v1/admin/tenants` — Crea nuovo tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** standard
+**Shipped:** Slice 1
+
+Crea un nuovo tenant (officina) con location primaria (placeholder indirizzo) e un invito `super_admin` (tipo `internal_user`, scadenza 7 giorni). Invia il magic-link di onboarding all'`ownerEmail` via Resend. Sostituisce `scripts/rebuild-tenants.mjs` per i nuovi tenant in produzione.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant — l'endpoint opera a livello piattaforma.
+
+**Request body:**
+
+```json
+{
+  "businessName": "Officina Rossi SRL",
+  "vatNumber": "12345678901",
+  "email": "info@officinarossi.it",
+  "ownerFirstName": "Giuseppe",
+  "ownerLastName": "Rossi",
+  "ownerEmail": "giuseppe.rossi@officinarossi.it"
+}
+```
+
+| Campo | Tipo | Obbligatorio | Note |
+|---|---|---|---|
+| `businessName` | string | sì | Max 200 caratteri |
+| `vatNumber` | string | sì | 11 cifre esatte, univoco tra i tenant |
+| `email` | string | sì | Email di contatto del tenant |
+| `ownerFirstName` | string | sì | Nome del primo super_admin |
+| `ownerLastName` | string | sì | Cognome del primo super_admin |
+| `ownerEmail` | string | sì | Email del primo super_admin; riceve il magic-link di onboarding |
+
+**Response `201 Created`:**
+
+```json
+{
+  "tenant": {
+    "id": "uuid",
+    "businessName": "Officina Rossi SRL",
+    "vatNumber": "12345678901",
+    "status": "active"
+  },
+  "invitation": {
+    "ownerEmail": "giuseppe.rossi@officinarossi.it",
+    "expiresAt": "2026-07-05T10:00:00Z",
+    "emailSent": true
+  }
+}
+```
+
+Nessun token di invito viene restituito nella risposta — la consegna è esclusivamente via email (Resend).
+
+**Errori:**
+
+- `400 tenant.vat_number_invalid` — `vatNumber` non è composto da 11 cifre
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `409 tenant.vat_number_duplicate` — partita IVA già registrata in un tenant esistente
+- `409 user.invitation.email_in_other_tenant` — `ownerEmail` già registrata in un altro tenant (Cognito hit)
+- `502 auth.cognito_unavailable` — Cognito `AdminGetUser` lookup fallito durante il pre-check email
 
 ### 3.13 Public
 

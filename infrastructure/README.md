@@ -145,11 +145,12 @@ aws secretsmanager put-secret-value \
     "COGNITO_CLIENTI_CLIENT_ID": "<CognitoClientiClientId>",
     "COGNITO_PLATFORM_ADMINS_POOL_ID": "<CognitoPlatformAdminsUserPoolId>",
     "COGNITO_PLATFORM_ADMINS_CLIENT_ID": "<CognitoPlatformAdminsClientId>",
+    "RESEND_API_KEY": "<chiave API Resend — provider email transazionali per inviti officine e onboarding tenant>",
     "SENTRY_DSN": "https://placeholder@sentry.io/0"
   }'
 ```
 
-> Includere SEMPRE tutti i 9 campi: `put-secret-value` (come `update-secret --secret-string`) sostituisce l'INTERO valore, non fa merge. Per recuperare i valori reali dopo un reset, leggere l'ultima versione buona con `aws secretsmanager get-secret-value --secret-id garageos/production/app --version-stage AWSPREVIOUS` (o `--version-id <id>` dalla version-history).
+> Includere SEMPRE tutti i 10 campi: `put-secret-value` (come `update-secret --secret-string`) sostituisce l'INTERO valore, non fa merge. Per recuperare i valori reali dopo un reset, leggere l'ultima versione buona con `aws secretsmanager get-secret-value --secret-id garageos/production/app --version-stage AWSPREVIOUS` (o `--version-id <id>` dalla version-history).
 
 > Pre-PR-22 fallback: usare placeholder `eu-central-1_PLACEHOLDER` / `PLACEHOLDER` per i 4 ID Cognito. Soddisfano il regex di `env.ts` ma puntano a pool inesistenti — la Lambda booterà ma le route auth-protected falliranno con `5xx`. Solo `/health` (auth-free) funzionerà. NON usare questo path se PR 22 è già in main.
 
