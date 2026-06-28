@@ -87,8 +87,8 @@ export function CreateTenant() {
               </p>
               {invitation.emailSent === false && (
                 <p className="text-amber-700">
-                  ⚠ Email non inviata. Il re-invio del link sarà disponibile a breve (Slice 2); nel
-                  frattempo contatta il supporto.
+                  Attenzione: Email non inviata. Il re-invio del link sarà disponibile a breve
+                  (Slice 2); nel frattempo contatta il supporto.
                 </p>
               )}
               <Button onClick={resetForm}>Crea un&apos;altra officina</Button>

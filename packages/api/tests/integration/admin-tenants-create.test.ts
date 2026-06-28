@@ -388,6 +388,54 @@ describe('POST /v1/admin/tenants — business cases (integration)', () => {
     expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
   });
 
+  // ── 4b. Pending invite in another tenant (F1) ─────────────────────────────────
+  // Cognito returns "not found" (default mock) — the Cognito check would pass.
+  // The NEW DB pre-check must catch the cross-tenant collision and return 409
+  // before any creation rows are written.
+  it('returns 409 user.invitation.email_in_other_tenant when a pending internal_user invite exists in another tenant; no new tenant row', async () => {
+    // Seed: a different tenant + a non-expired pending internal_user invitation
+    // for the same ownerEmail. Insert via pgAdmin (BYPASSRLS) to bypass RLS.
+    const otherTenantId = '00000000-0000-4000-8000-000000000099';
+    await pgAdmin.query(
+      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
+       VALUES ($1, 'Altra Officina SRL', '99999999999', 'altra@test.it', NOW(), NOW())`,
+      [otherTenantId],
+    );
+    // Insert a pending invitation for ownerEmail in the other tenant.
+    // location_id is nullable; token_hash is a fixed 64-char hex string.
+    await pgAdmin.query(
+      `INSERT INTO invitations
+         (id, tenant_id, invitation_type, target_email, first_name, last_name,
+          role, token_hash, expires_at, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, 'internal_user', $2, 'Mario', 'Rossi', 'super_admin',
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          NOW() + INTERVAL '7 days', NOW(), NOW())`,
+      [otherTenantId, VALID_BODY.ownerEmail],
+    );
+
+    const token = await signTestToken({ pool: 'platform-admins' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/tenants',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      payload: VALID_BODY,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { code: string }).code).toBe('user.invitation.email_in_other_tenant');
+
+    // No new tenant row for the requested VAT.
+    const { rows } = await pgAdmin.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM tenants WHERE vat_number = $1`,
+      [VALID_BODY.vatNumber],
+    );
+    expect(rows[0]!.c).toBe('0');
+  });
+
   // ── 5. VAT invalid format ─────────────────────────────────────────────────────
   it('returns 400 tenant.vat_number_invalid when VAT is not 11 digits', async () => {
     const token = await signTestToken({ pool: 'platform-admins' });

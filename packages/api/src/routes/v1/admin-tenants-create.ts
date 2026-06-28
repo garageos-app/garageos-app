@@ -18,7 +18,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
-import { Prisma } from '@garageos/database';
+import { Prisma, VatNumberSchema } from '@garageos/database';
 import { businessError } from '../../lib/business-error.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requirePlatformAdminsPool } from '../../middleware/require-platform-admins-pool.js';
@@ -32,37 +32,15 @@ const WEB_BASE_URL = process.env.WEB_BASE_URL ?? 'https://app.garageos.aifollyad
 
 // Presence / type / length validation only. Domain checks (VAT format,
 // cross-tenant email collision) are done manually for precise error codes.
+// Trim is applied BEFORE min(1) so that whitespace-only values are rejected
+// rather than silently becoming empty strings after transformation.
 const BodySchema = z.object({
-  businessName: z
-    .string()
-    .min(1)
-    .max(200)
-    .transform((s) => s.trim()),
-  vatNumber: z
-    .string()
-    .min(1)
-    .max(20)
-    .transform((s) => s.trim()),
-  email: z
-    .string()
-    .email()
-    .max(255)
-    .transform((s) => s.trim().toLowerCase()),
-  ownerFirstName: z
-    .string()
-    .min(1)
-    .max(100)
-    .transform((s) => s.trim()),
-  ownerLastName: z
-    .string()
-    .min(1)
-    .max(100)
-    .transform((s) => s.trim()),
-  ownerEmail: z
-    .string()
-    .email()
-    .max(255)
-    .transform((s) => s.trim().toLowerCase()),
+  businessName: z.string().trim().min(1).max(200),
+  vatNumber: z.string().trim().min(1).max(20),
+  email: z.string().trim().toLowerCase().email().max(255),
+  ownerFirstName: z.string().trim().min(1).max(100),
+  ownerLastName: z.string().trim().min(1).max(100),
+  ownerEmail: z.string().trim().toLowerCase().email().max(255),
 });
 
 export const adminTenantsCreateRoutes: FastifyPluginAsync = async (app) => {
@@ -76,9 +54,9 @@ export const adminTenantsCreateRoutes: FastifyPluginAsync = async (app) => {
       if (!parsed.success) throw parsed.error;
       const body = parsed.data;
 
-      // Manual VAT format check — inline regex mirrors the canonical validator.
-      // See packages/database/src/validators/common.ts:41 for the source format.
-      if (!/^[0-9]{11}$/.test(body.vatNumber)) {
+      // Manual VAT format check using the canonical VatNumberSchema from the
+      // database package (packages/database/src/validators/common.ts).
+      if (!VatNumberSchema.safeParse(body.vatNumber).success) {
         throw businessError(
           'tenant.vat_number_invalid',
           400,
@@ -111,6 +89,35 @@ export const adminTenantsCreateRoutes: FastifyPluginAsync = async (app) => {
           'user.invitation.email_in_other_tenant',
           409,
           "Questa email è già registrata in un'altra officina. Usa un altro indirizzo o contatta il supporto.",
+        );
+      }
+
+      // ─── DB pre-check: pending invitation in another tenant (OUTSIDE tx) ────
+      // The Cognito check above catches emails that already ACCEPTED an invitation
+      // (Cognito user exists). However, a PENDING (unaccepted) internal_user
+      // invitation in ANOTHER tenant has no Cognito user yet — AdminCreateUser runs
+      // only at acceptance time. The per-tenant partial unique index
+      // uq_invitations_pending_internal never fires for a brand-new tenant, so
+      // without this check two tenants can be provisioned for the same ownerEmail.
+      // The second owner's magic-link acceptance would fail at AdminCreateUser,
+      // orphaning that tenant. A residual concurrent TOCTOU window is accepted here
+      // (same policy as the sibling invite endpoint) — no locking added by design.
+      const pendingElsewhere = await app.withContext({ role: 'admin' as const }, (tx) =>
+        tx.invitation.findFirst({
+          where: {
+            targetEmail: body.ownerEmail,
+            invitationType: 'internal_user',
+            acceptedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          select: { id: true },
+        }),
+      );
+      if (pendingElsewhere) {
+        throw businessError(
+          'user.invitation.email_in_other_tenant',
+          409,
+          'Questa email ha già un invito officina in sospeso. Usa un altro indirizzo o contatta il supporto.',
         );
       }
 

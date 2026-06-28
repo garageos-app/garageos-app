@@ -56,7 +56,7 @@ const INVITATION_ID = '33333333-3333-4333-8333-333333333333';
 interface FakePrisma {
   tenant: { create: ReturnType<typeof vi.fn> };
   location: { create: ReturnType<typeof vi.fn> };
-  invitation: { create: ReturnType<typeof vi.fn> };
+  invitation: { findFirst: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
   auditLog: { create: ReturnType<typeof vi.fn> };
 }
 
@@ -74,6 +74,8 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
       create: vi.fn().mockResolvedValue({ id: LOCATION_ID }),
     },
     invitation: {
+      // Default: no pending cross-tenant invitation — happy path proceeds.
+      findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({
         id: INVITATION_ID,
         expiresAt: new Date('2026-07-05T00:00:00.000Z'),
@@ -339,5 +341,24 @@ describe('POST /v1/admin/tenants — business logic', () => {
     const body = res.json() as { invitation: { emailSent: boolean } };
     expect(body.invitation.emailSent).toBe(false);
     expect(prisma.tenant.create).toHaveBeenCalledTimes(1);
+  });
+
+  // Case 11 — F1: cross-tenant pending-invitation collision
+  it('returns 409 user.invitation.email_in_other_tenant when a pending internal_user invite exists in another tenant; tenant.create NOT called', async () => {
+    // DB pre-check finds a non-null pending invite → 409 before the creation tx.
+    prisma.invitation.findFirst.mockResolvedValueOnce({ id: 'existing-pending-invite-id' });
+    app = await buildApp({ prisma });
+    const res = await post(app, VALID_BODY);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('user.invitation.email_in_other_tenant');
+    expect(prisma.tenant.create).not.toHaveBeenCalled();
+  });
+
+  // Case 12 — F3: whitespace-only string must be rejected by server Zod validation
+  it('returns 400 when businessName is whitespace-only (trim then min(1)); tenant.create NOT called', async () => {
+    app = await buildApp({ prisma });
+    const res = await post(app, { ...VALID_BODY, businessName: '   ' });
+    expect(res.statusCode).toBe(400);
+    expect(prisma.tenant.create).not.toHaveBeenCalled();
   });
 });
