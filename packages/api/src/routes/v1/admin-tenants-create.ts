@@ -24,10 +24,9 @@ import { requireAuth } from '../../middleware/require-auth.js';
 import { requirePlatformAdminsPool } from '../../middleware/require-platform-admins-pool.js';
 import { getOfficineUserByEmail, CognitoUnavailableError } from '../../lib/cognito.js';
 import { sendInvitationEmail } from '../../lib/ses-client.js';
-import { generateInvitationToken } from '../../lib/secure-tokens.js';
+import { createInternalInvitation } from '../../lib/invitation-creation.js';
 import { env } from '../../config/env.js';
 
-const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const WEB_BASE_URL = process.env.WEB_BASE_URL ?? 'https://app.garageos.aifollyadvisor.com';
 
 // Presence / type / length validation only. Domain checks (VAT format,
@@ -160,38 +159,17 @@ export const adminTenantsCreateRoutes: FastifyPluginAsync = async (app) => {
           select: { id: true },
         });
 
-        // Step 3: generate token + invitation. P2002 on the partial unique
-        // index (same pattern as users-invitations-create.ts BR-206) means a
-        // pending invitation for this email already exists in this tenant.
-        const { plaintext: tokenPlaintext, hash: tokenHash } = generateInvitationToken();
-        const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
-
-        let invitation;
-        try {
-          invitation = await tx.invitation.create({
-            data: {
-              tenantId: tenant.id,
-              invitationType: 'internal_user',
-              targetEmail: body.ownerEmail,
-              firstName: body.ownerFirstName,
-              lastName: body.ownerLastName,
-              role: 'super_admin',
-              locationId: location.id,
-              tokenHash,
-              expiresAt,
-            },
-            select: { id: true, expiresAt: true },
-          });
-        } catch (err) {
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            throw businessError(
-              'user.invitation.duplicate_pending',
-              409,
-              'Esiste già un invito pendente per questa email.',
-            );
-          }
-          throw err;
-        }
+        // Step 3: generate token + insert invitation row. P2002 on the partial
+        // unique index (same pattern as users-invitations-create.ts, BR-206) is
+        // mapped to duplicate_pending inside createInternalInvitation.
+        const { invitation, tokenPlaintext } = await createInternalInvitation(tx, {
+          tenantId: tenant.id,
+          targetEmail: body.ownerEmail,
+          firstName: body.ownerFirstName,
+          lastName: body.ownerLastName,
+          role: 'super_admin',
+          locationId: location.id,
+        });
 
         // Step 4: audit log — same transaction so it rolls back atomically with
         // the rows above. actorType:'system' because platform admins have no

@@ -15,19 +15,17 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
-import { Prisma } from '@garageos/database';
 import { businessError } from '../../lib/business-error.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 import { requireSuperAdmin } from '../../middleware/require-super-admin.js';
 import { sendInvitationEmail } from '../../lib/ses-client.js';
-import { generateInvitationToken } from '../../lib/secure-tokens.js';
-import { INVITATION_ADMIN_SELECT, serializeInvitationAdmin } from '../../lib/dtos/invitation.js';
+import { createInternalInvitation } from '../../lib/invitation-creation.js';
+import { serializeInvitationAdmin } from '../../lib/dtos/invitation.js';
 import { getOfficineUserByEmail, CognitoUnavailableError } from '../../lib/cognito.js';
 import { env } from '../../config/env.js';
 
-const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const WEB_BASE_URL = process.env.WEB_BASE_URL ?? 'https://app.garageos.aifollyadvisor.com';
 
 const InviteBodySchema = z.object({
@@ -167,39 +165,17 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
           }
         }
 
-        // 3) Generate token + insert invitation row. P2002 on the partial unique
-        //    index (uq_invitations_pending_internal from migration 20260519000000)
-        //    means a pending invitation already exists — BR-206.
-        const { plaintext: tokenPlaintext, hash: tokenHash } = generateInvitationToken();
-        const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
-
-        let invitation;
-        try {
-          invitation = await tx.invitation.create({
-            data: {
-              tenantId,
-              invitationType: 'internal_user',
-              targetEmail: body.email,
-              firstName: body.firstName,
-              lastName: body.lastName,
-              role: body.role,
-              locationId: body.locationId,
-              tokenHash,
-              expiresAt,
-            },
-            select: INVITATION_ADMIN_SELECT,
-          });
-        } catch (err) {
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            // BR-206: partial unique index uq_invitations_pending_internal
-            throw businessError(
-              'user.invitation.duplicate_pending',
-              409,
-              'Esiste già un invito pendente per questa email.',
-            );
-          }
-          throw err;
-        }
+        // 3) Generate token + insert invitation row. P2002 on the partial
+        //    unique index (uq_invitations_pending_internal, BR-206) is mapped
+        //    to duplicate_pending inside createInternalInvitation.
+        const { invitation, tokenPlaintext } = await createInternalInvitation(tx, {
+          tenantId,
+          targetEmail: body.email,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          role: body.role,
+          locationId: body.locationId,
+        });
 
         // 4) Look up the inviting user's DB UUID so the audit row is
         //    traceable to the Super Admin who triggered the action.
