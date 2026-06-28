@@ -5,6 +5,7 @@ import { ProtectedRoute } from '@/auth/ProtectedRoute';
 import { Login } from '@/pages/Login';
 import { SetPassword } from '@/pages/SetPassword';
 import { PlatformConsole } from '@/pages/PlatformConsole';
+import { CreateTenant } from '@/pages/CreateTenant';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,6 +30,7 @@ export function App() {
             {/* Protected routes — ProtectedRoute guards unauthenticated access */}
             <Route element={<ProtectedRoute />}>
               <Route path="/" element={<PlatformConsole />} />
+              <Route path="/officine/nuova" element={<CreateTenant />} />
             </Route>
 
             {/* Fallback redirect */}
