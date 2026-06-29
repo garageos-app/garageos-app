@@ -215,6 +215,8 @@ describe('tenantContext middleware (JWT-backed)', () => {
           tenantId: TENANT_ID,
           status: 'active',
           deletedAt: null,
+          // BR-210: suspended tenant blocks login via the joined status filter.
+          tenant: { is: { status: 'active' } },
         },
         select: { id: true },
       });
