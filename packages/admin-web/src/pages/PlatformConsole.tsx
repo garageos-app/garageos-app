@@ -34,6 +34,9 @@ export function PlatformConsole() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">Console piattaforma</h1>
           <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={() => navigate('/officine')}>
+              Officine
+            </Button>
             <Button onClick={() => navigate('/officine/nuova')}>Crea officina</Button>
             <Button variant="outline" onClick={signOut}>
               Esci
