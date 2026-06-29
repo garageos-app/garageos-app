@@ -16,6 +16,7 @@
 
 import {
   AdminDisableUserCommand,
+  AdminEnableUserCommand,
   AdminUpdateUserAttributesCommand,
   AdminUserGlobalSignOutCommand,
   CognitoIdentityProviderClient,
@@ -51,6 +52,7 @@ beforeEach(async () => {
   cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
   cognitoMock.on(AdminUserGlobalSignOutCommand).resolves({});
   cognitoMock.on(AdminDisableUserCommand).resolves({});
+  cognitoMock.on(AdminEnableUserCommand).resolves({});
 });
 
 // ─── 1. Pool isolation (GET) ──────────────────────────────────────────────────
@@ -477,6 +479,19 @@ describe('PATCH — disable then reactivate lifecycle (cross-tenant)', () => {
     });
     expect(reactivateRes.statusCode).toBe(200);
     expect((reactivateRes.json() as { user: UserDto }).user.status).toBe('active');
+
+    // Cognito symmetry: AdminEnableUserCommand MUST be called on inactive→active
+    // transition so the user can actually log in after reactivation. The disable
+    // step earlier left the Cognito account disabled; without the enable call the
+    // "Riattiva" admin action would succeed in DB but leave a login loop.
+    const enableCalls = cognitoMock.commandCalls(AdminEnableUserCommand);
+    expect(enableCalls).toHaveLength(1);
+    expect(enableCalls[0]!.args[0].input.Username).toBe('mech-atu-lc@test.it');
+
+    // Sanity: AdminDisableUserCommand was called once (for the deactivation step).
+    const disableCalls = cognitoMock.commandCalls(AdminDisableUserCommand);
+    expect(disableCalls).toHaveLength(1);
+    expect(disableCalls[0]!.args[0].input.Username).toBe('mech-atu-lc@test.it');
   });
 });
 

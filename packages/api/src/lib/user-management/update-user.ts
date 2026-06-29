@@ -23,6 +23,7 @@ import { env } from '../../config/env.js';
 import { businessError } from '../business-error.js';
 import {
   disableOfficineUser,
+  enableOfficineUser,
   signOutOfficineUser,
   updateOfficineUserRoleAndLocation,
 } from '../cognito.js';
@@ -233,6 +234,12 @@ export async function updateOfficineUser(
       effectiveNewLocationId: newLocationId,
       statusBecameInactive:
         body.status !== undefined && target.status === 'active' && body.status === 'inactive',
+      // Symmetric with statusBecameInactive: inactive→active transition requires
+      // re-enabling the Cognito account. See feedback_disabled_user_login_loop_ux
+      // and feedback_lambda_iam_admin_enable_user_gap for the recurring class of
+      // bugs that missing this symmetry causes.
+      statusBecameActive:
+        body.status !== undefined && target.status === 'inactive' && body.status === 'active',
     };
   });
 
@@ -279,6 +286,24 @@ export async function updateOfficineUser(
       log.error(
         { err, targetId },
         'cognito user disable on status=inactive failed (DB updated; user may successfully re-login until next disable retry)',
+      );
+    }
+  }
+
+  // Symmetric enable: re-enable the Cognito account on inactive→active so the
+  // user can log in again. Without this, AdminDisableUser set during deactivation
+  // persists and the "Riattiva" flow leaves Cognito disabled → login loop.
+  // See feedback_disabled_user_login_loop_ux / feedback_lambda_iam_admin_enable_user_gap.
+  if (result.statusBecameActive) {
+    try {
+      await enableOfficineUser({
+        poolId: env.COGNITO_OFFICINE_POOL_ID,
+        email: result.targetEmail,
+      });
+    } catch (err) {
+      log.error(
+        { err, targetId },
+        'cognito user enable on status=active failed (DB updated; user remains disabled in Cognito until next enable retry)',
       );
     }
   }
