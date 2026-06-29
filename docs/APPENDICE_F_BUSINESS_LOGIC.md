@@ -842,10 +842,14 @@ Un tenant deve sempre avere **almeno un `user` con `role=super_admin` e `status=
 - Impossibile cambiare ruolo dell'ultimo Super Admin
 - Messaggio: "Non puoi rimuovere l'ultimo amministratore. Promuovi prima un altro utente."
 
+**Enforcement cross-tenant (Slice 3, 2026-06-29):** La stessa guardia è applicata da `PATCH /v1/admin/tenants/:id/users/:userId` tramite delega a `updateOfficineUser` — identico al percorso officine `PATCH /v1/users/:id`. Il codice di errore `user.last_super_admin 409` è sollevato dalla logica condivisa.
+
 ### BR-204 — Super Admin senza location specifica
 Un Super Admin può avere `location_id=NULL` (amministra tutto il tenant).
 
 Un Meccanico **deve** avere `location_id` popolato (assegnato a una sede specifica).
+
+**Enforcement cross-tenant (Slice 3, 2026-06-29):** La stessa guardia è applicata da `PATCH /v1/admin/tenants/:id/users/:userId` (via `updateOfficineUser`) e da `POST /v1/admin/tenants/:id/users/invitations`. Entrambe le route tentano auto-default alla sede primaria attiva del tenant quando `role='mechanic'`; se non esiste, sollevano `user.location_required_for_mechanic 422`.
 
 ### BR-205 — Visibilità cross-location
 **Super Admin:** vede tutti gli interventi, veicoli, clienti di qualsiasi location del proprio tenant.
@@ -892,6 +896,8 @@ Un tenant in stato `suspended` (da admin o per billing):
 - Dopo 90 giorni di suspension continua → status `cancelled`
 
 **Implementazione (Slice 2, 2026-06-29):** login-block via `tenant-context.ts` (join `tenant.status='active'`) + accept-block in `invitations-public-accept.ts`; suspend/reactivate via `POST /v1/admin/tenants/:id/{suspend,reactivate}`; rigenerazione magic-link via `POST /v1/admin/tenants/:id/regenerate-invitation`. **Differito:** cancellazione schedule notifiche future + auto-cancel a 90 giorni (nessun tenant gestito dalla console ha reminder oggi).
+
+**Nota (Slice 3, 2026-06-29):** Le route di gestione profilo e utenti (`GET`/`PATCH /v1/admin/tenants/:id`, `GET /v1/admin/tenants/:id/users`, `PATCH /v1/admin/tenants/:id/users/:userId`, `POST /v1/admin/tenants/:id/users/invitations`) operano su tenant di qualsiasi stato (incluso `suspended`) — la console di piattaforma non applica il gate BR-210 su questi endpoint per permettere la gestione operativa anche in stato di sospensione.
 
 ### BR-211 — Cancellazione tenant
 Un tenant `cancelled` mantiene i dati per **10 anni** (retention legale/fiscale) poi cancellazione completa via job scheduled.
