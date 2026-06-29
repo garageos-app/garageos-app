@@ -89,10 +89,13 @@ describe('GET /v1/users/me (integration)', () => {
     expect(body.tenant.businessName).toBe('Test Tenant users-me-nosede');
   });
 
-  it('returns 401 when no user row matches the JWT cognito_sub (T7 middleware short-circuit)', async () => {
+  it('returns 401 auth.session.inactive when no user row matches the JWT cognito_sub (T7 middleware short-circuit)', async () => {
     const { tenantId } = await createTenantWithLocation('users-me-noone');
     // No user inserted — T7 tenantContext middleware cannot find the user row
-    // and returns 401 before the handler is reached.
+    // and returns 401 before the handler is reached. A token whose user row is
+    // missing/inactive/deleted (or whose tenant is suspended) is a terminal
+    // denial: the same generic auth.session.inactive code as those cases
+    // (BR-210), distinct from the UNAUTHORIZED returned for a bad/expired token.
 
     const token = await signTestToken({
       pool: 'officine',
@@ -107,7 +110,7 @@ describe('GET /v1/users/me (integration)', () => {
     });
 
     expect(res.statusCode).toBe(401);
-    expect(res.json().code).toBe('UNAUTHORIZED');
+    expect(res.json().code).toBe('auth.session.inactive');
   });
 
   it('cross-tenant isolation: tenant A token cannot read tenant B user (T7 middleware enforcement)', async () => {
