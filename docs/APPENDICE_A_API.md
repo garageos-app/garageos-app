@@ -2902,6 +2902,11 @@ L'`owner_type=intervention` resta officina-only.
 | POST | `/v1/admin/tenants/:id/suspend` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.4]** Sospendi tenant (BR-210) |
 | POST | `/v1/admin/tenants/:id/reactivate` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.4]** Riattiva tenant (BR-210) |
 | POST | `/v1/admin/tenants/:id/regenerate-invitation` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.5]** Rigenera magic-link invito owner (unico endpoint a restituire token in chiaro) |
+| GET | `/v1/admin/tenants/:id` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.6]** Profilo completo tenant (shape TENANT_ME) |
+| PATCH | `/v1/admin/tenants/:id` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.7]** Modifica profilo tenant, inclusa P.IVA (campo inibito in PATCH /v1/tenants/me) |
+| GET | `/v1/admin/tenants/:id/users` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.8]** Lista utenti del tenant (inclusi soft-deleted) |
+| PATCH | `/v1/admin/tenants/:id/users/:userId` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.9]** Modifica ruolo/sede/stato utente cross-tenant (BR-203, BR-204) |
+| POST | `/v1/admin/tenants/:id/users/invitations` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.10]** Invita nuovo utente nel tenant; rate-limit 30/h |
 | GET | `/admin/tenants` | F-ADM-001 | Admin | Lista tutti i tenant |
 | POST | `/admin/tenants/:id/suspend` | F-ADM-002 | Admin | Sospendi tenant |
 | POST | `/admin/tenants/:id/activate` | F-ADM-002 | Admin | Riattiva tenant |
@@ -3155,6 +3160,292 @@ L'invio email è best-effort (mirror di Slice 1). Se fallisce, `emailSent: false
 - `409 tenant.invalid_status` — il tenant non è `active` (sospeso o cancellato — il guard mirror quello di `invitations-public-accept.ts`)
 - `410 user.invitation.already_accepted` — l'invitation è già stata accettata; usare un flow di invito separato per aggiungere utenti
 - `429 admin.tenant.rate_limited` — oltre 30 richieste/ora per platform-admin
+
+#### 3.12.6 `GET /v1/admin/tenants/:id` — Profilo tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** standard
+**Shipped:** Slice 3
+
+Restituisce il profilo completo del tenant indicato dal percorso. La shape di risposta è identica a quella di `GET /v1/tenants/me` (serializzatore `serializeTenantMe`), incluso il campo derivato `onboardingCompletedAt`.
+
+Anti-enumerazione: UUID non valido nel formato e ID sconosciuto restituiscono entrambi `404 tenant.not_found`.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant (`withContext({ role: 'admin' })` diretto).
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | ID del tenant |
+
+**Response `200 OK`:**
+
+```json
+{
+  "tenant": {
+    "id": "uuid",
+    "businessName": "Officina Rossi SRL",
+    "vatNumber": "12345678901",
+    "email": "info@officinarossi.it",
+    "phone": "+39 02 1234567",
+    "addressLine": "Via Roma 1",
+    "city": "Milano",
+    "province": "MI",
+    "postalCode": "20100",
+    "status": "active",
+    "plan": "base",
+    "billingStatus": "ok",
+    "createdAt": "2026-06-01T10:00:00.000Z",
+    "onboardingCompletedAt": "2026-06-02T08:00:00.000Z"
+  }
+}
+```
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 tenant.not_found` — UUID non valido o tenant inesistente/eliminato (anti-enum)
+
+#### 3.12.7 `PATCH /v1/admin/tenants/:id` — Modifica profilo tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** standard
+**Shipped:** Slice 3
+
+Modifica il profilo del tenant. A differenza di `PATCH /v1/tenants/me`, **la P.IVA (`vatNumber`) è modificabile** da questo endpoint (campo legale che richiede validazione operatore). L'aggiornamento è atomico: il log di audit `tenant_profile_updated` viene scritto nella stessa transazione Postgres. `actorType:'system'` nel log di audit; il Cognito sub del platform-admin è catturato nel campo `metadata`.
+
+Anti-enumerazione: UUID non valido nel formato e ID sconosciuto restituiscono entrambi `404 tenant.not_found`.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant.
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | ID del tenant da modificare |
+
+**Request body** (parziale, almeno un campo):
+
+```json
+{
+  "businessName": "Officina Rossi SRL",
+  "vatNumber": "12345678901",
+  "email": "info@officinarossi.it",
+  "phone": "+39 02 1234567",
+  "addressLine": "Via Roma 1",
+  "city": "Milano",
+  "province": "MI",
+  "postalCode": "20100"
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `businessName` | string | Max 200 caratteri |
+| `vatNumber` | string | 11 cifre esatte (VatNumberSchema) — modificabile solo da questo endpoint admin |
+| `email` | string | RFC 5322, non-nullable |
+| `phone` | string \| null | Formato libero 6-30 char `[+]?[0-9 ()-]` |
+| `addressLine` | string \| null | Max 255 caratteri |
+| `city` | string \| null | Max 100 caratteri |
+| `province` | string \| null | 2 lettere maiuscole (auto-uppercase) |
+| `postalCode` | string \| null | Esattamente 5 cifre |
+
+**Response `200 OK`:** stessa shape di `GET /v1/admin/tenants/:id` (§3.12.6).
+
+**Errori:**
+
+- `400 VALIDATION_ERROR` — validazione campi fallita
+- `400 tenant.vat_number_invalid` — `vatNumber` non è composto da 11 cifre
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 tenant.not_found` — UUID non valido o tenant inesistente/eliminato (anti-enum)
+- `409 tenant.vat_number_duplicate` — P.IVA già registrata in un altro tenant
+- `422 tenants.me.update.empty_body` — body senza campi modificabili
+- `422 tenants.me.update.unknown_field` — body contiene un campo non modificabile
+
+#### 3.12.8 `GET /v1/admin/tenants/:id/users` — Lista utenti tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno (solo lettura)
+**Shipped:** Slice 3
+
+Restituisce tutti gli utenti (attivi, inattivi e soft-deleted) del tenant indicato. Equivalente a `GET /v1/users` ma con scope cross-tenant. Il client filtra per `status` lato UI.
+
+Anti-enumerazione: UUID non valido nel formato e ID sconosciuto restituiscono entrambi `404 tenant.not_found` (un tenant inesistente non restituisce `[]`).
+
+> **Nota sicurezza:** la policy RLS `users_read` è `USING(true)` (permissiva). Il filtro `{ tenantId: id }` a livello applicativo è l'unico guard cross-tenant e non va mai omesso.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. `withContext({ role: 'admin' })` diretto.
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | ID del tenant |
+
+**Response `200 OK`:**
+
+```json
+{
+  "users": [
+    {
+      "id": "a1b2c3d4-...",
+      "email": "marco@officina.it",
+      "firstName": "Marco",
+      "lastName": "Rossi",
+      "role": "super_admin",
+      "locationId": null,
+      "status": "active",
+      "phone": null,
+      "avatarUrl": null,
+      "lastLoginAt": "2026-05-19T08:30:00.000Z",
+      "createdAt": "2026-04-01T09:00:00.000Z",
+      "updatedAt": "2026-05-01T12:00:00.000Z",
+      "deletedAt": null
+    }
+  ]
+}
+```
+
+Shape per-elemento: DTO **UserAdmin** (definito in §3.3).
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 tenant.not_found` — UUID non valido o tenant inesistente/eliminato (anti-enum)
+
+#### 3.12.9 `PATCH /v1/admin/tenants/:id/users/:userId` — Modifica utente tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** standard
+**Shipped:** Slice 3
+
+Modifica ruolo, sede e/o stato di un utente nel tenant indicato. Delega tutta la logica di business a `updateOfficineUser` (identico al percorso officine `PATCH /v1/users/:id`): le stesse guardie BR-203 (ultimo super_admin) e BR-204 (meccanico senza sede) si applicano in modo identico. `actorType:'system'` nel log di audit; il Cognito sub del platform-admin è catturato in `metadata`.
+
+Anti-enumerazione: UUID non valido nel formato per `:id` o `:userId` → `404 tenant.not_found`.
+
+Se `role='mechanic'` e `locationId` è assente nel body, l'endpoint tenta auto-default alla sede primaria attiva del tenant (BR-204 defaulting). Se non esiste, `updateOfficineUser` solleva `user.location_required_for_mechanic 422`.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant.
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | ID del tenant |
+| `userId` | `string` (UUID) | ID dell'utente target |
+
+**Request body** (almeno un campo):
+
+```json
+{
+  "role": "super_admin",
+  "locationId": "b2c3d4e5-...",
+  "status": "inactive"
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `role` | `"super_admin"` \| `"mechanic"` | optional |
+| `locationId` | UUID \| `null` | optional |
+| `status` | `"active"` \| `"inactive"` | optional |
+
+**Response `200 OK`:**
+
+```json
+{ "user": { /* DTO UserAdmin — vedi §3.3 */ } }
+```
+
+**Errori:**
+
+- `400 VALIDATION_ERROR` — nessun campo fornito o valore non valido
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 tenant.not_found` — UUID tenant non valido o inesistente/eliminato (anti-enum)
+- `404 user.not_found` — utente non trovato o cross-tenant
+- `409 user.last_super_admin` — modifica lascerebbe il tenant senza super_admin attivi — BR-203
+- `422 user.location_required_for_mechanic` — `role=mechanic` ma `locationId` risultante è null — BR-204
+- `422 user.location_invalid` — `locationId` non appartiene al tenant o non attiva
+
+#### 3.12.10 `POST /v1/admin/tenants/:id/users/invitations` — Invita utente nel tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** 30 richieste/ora per platform-admin (chiave: `jwt.sub`, fallback `ip`)
+**Shipped:** Slice 3
+
+Invia un invito magic-link a un nuovo utente (meccanico o super_admin) nel tenant indicato. Segue lo stesso flusso di `POST /v1/users/invitations` (§3.3): pre-check Cognito → transazione DB (invitation + audit) → email best-effort.
+
+**Differenze chiave rispetto all'endpoint officine:**
+- Opera cross-tenant (path `:id`).
+- L'invito è consentito **indipendentemente dallo stato del tenant** (`active`, `suspended`, ecc.) — comportamento intenzionale per la gestione operativa.
+- `actorType:'system'` nel log di audit; il Cognito sub del platform-admin è catturato in `metadata`.
+- Il `magicLinkUrl` in chiaro è restituito nella risposta (come in §3.12.5 `regenerate-invitation`).
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant.
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | ID del tenant di destinazione |
+
+**Request body:**
+
+```json
+{
+  "email": "luca.ferrari@officinarossi.it",
+  "firstName": "Luca",
+  "lastName": "Ferrari",
+  "role": "mechanic"
+}
+```
+
+| Campo | Tipo | Obbligatorio | Note |
+|---|---|---|---|
+| `email` | string | sì | Lowercased, max 255 |
+| `firstName` | string | sì | Max 100 caratteri |
+| `lastName` | string | sì | Max 100 caratteri |
+| `role` | `"super_admin"` \| `"mechanic"` | sì | |
+
+> **BR-204:** Se `role='mechanic'`, la `locationId` viene auto-assegnata alla sede primaria attiva del tenant. Se non esiste una sede primaria → `422 user.location_required_for_mechanic`.
+
+**Response `200 OK`:**
+
+```json
+{
+  "invitation": {
+    "email": "luca.ferrari@officinarossi.it",
+    "role": "mechanic",
+    "expiresAt": "2026-07-05T10:00:00.000Z",
+    "emailSent": true,
+    "magicLinkUrl": "https://app.garageos.aifollyadvisor.com/invitations/TOKEN"
+  }
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `email` | `string` | Email destinatario |
+| `role` | `"super_admin"` \| `"mechanic"` | Ruolo assegnato |
+| `expiresAt` | `string` (ISO-8601) | Scadenza token (7 giorni) |
+| `emailSent` | `boolean` | `false` se l'invio email ha fallito (best-effort) |
+| `magicLinkUrl` | `string` | URL magic-link in chiaro — consegnabile via canale alternativo se email fallisce |
+
+**Errori:**
+
+- `400 VALIDATION_ERROR` — campo mancante o non valido
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 tenant.not_found` — UUID non valido o tenant inesistente/eliminato (anti-enum)
+- `409 user.invitation.duplicate_pending` — invito pendente già esistente per questa email nel tenant
+- `409 user.invitation.email_in_other_tenant` — email già registrata in Cognito (altro tenant) o con invito pendente in altro tenant
+- `422 user.location_required_for_mechanic` — `role=mechanic` ma nessuna sede primaria attiva nel tenant — BR-204
+- `429 admin.tenant.rate_limited` — oltre 30 richieste/ora per platform-admin
+- `502 auth.cognito_unavailable` — Cognito non raggiungibile durante il pre-check email
 
 ### 3.13 Public
 

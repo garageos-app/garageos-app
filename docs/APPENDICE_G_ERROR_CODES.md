@@ -410,12 +410,22 @@ Per fornire dati utili al client per gestire l'errore:
 | `admin.permission.denied` | 403 | critical | Azione riservata ad admin | |
 | `admin.impersonation.target_not_found` | 404 | info | Tenant da impersonare non trovato | |
 | `admin.impersonation.not_allowed` | 403 | critical | Impersonation non consentita | Target è admin |
-| `admin.tenant.rate_limited` | 429 | warning | Troppe richieste | POST /v1/admin/tenants e /:id/regenerate-invitation — oltre 30 richieste/ora per platform-admin (Slice 2) |
+| `admin.tenant.rate_limited` | 429 | warning | Troppe richieste | POST /v1/admin/tenants, /:id/regenerate-invitation e /:id/users/invitations — oltre 30 richieste/ora per platform-admin |
 | `system.database.connection_failed` | 503 | critical | Database non raggiungibile | |
 | `system.email.send_failed` | 502 | error | Invio email fallito | SES error |
 | `system.push.send_failed` | 502 | error | Invio push fallito | Expo Push error |
 | `system.s3.upload_failed` | 502 | error | Upload S3 fallito | |
 | `system.scheduler.schedule_failed` | 502 | error | Creazione schedule EventBridge fallita | |
+
+**Slice 3 — route `admin/tenants/:id` (profilo + utenti):** le route Slice 3 non introducono nuovi codici; riutilizzano le famiglie `tenant.*`, `user.*` e `user.invitation.*` esistenti. Codici applicabili per route:
+
+| Route | Codici errore applicabili |
+|---|---|
+| `GET /v1/admin/tenants/:id` | `tenant.not_found` |
+| `PATCH /v1/admin/tenants/:id` | `tenant.not_found`, `tenant.vat_number_invalid`, `tenant.vat_number_duplicate`, `tenants.me.update.empty_body`, `tenants.me.update.unknown_field` |
+| `GET /v1/admin/tenants/:id/users` | `tenant.not_found` |
+| `PATCH /v1/admin/tenants/:id/users/:userId` | `tenant.not_found`, `user.not_found`, `user.last_super_admin`, `user.location_required_for_mechanic`, `user.location_invalid` |
+| `POST /v1/admin/tenants/:id/users/invitations` | `tenant.not_found`, `user.invitation.duplicate_pending`, `user.invitation.email_in_other_tenant`, `user.location_required_for_mechanic`, `admin.tenant.rate_limited`, `auth.cognito_unavailable` |
 
 ### 3.14 GDPR & privacy
 
