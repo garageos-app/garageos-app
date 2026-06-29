@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Link } from 'react-router-dom';
 import { useApiFetch, ApiError } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,8 +88,10 @@ export function CreateTenant() {
               </p>
               {invitation.emailSent === false && (
                 <p className="text-amber-700">
-                  Attenzione: Email non inviata. Il re-invio del link sarà disponibile a breve
-                  (Slice 2); nel frattempo contatta il supporto.
+                  Attenzione: Email non inviata.{' '}
+                  <Link to="/officine" className="underline">
+                    Se l&apos;email non arriva, rigenera il link dalla lista Officine.
+                  </Link>
                 </p>
               )}
               <Button onClick={resetForm}>Crea un&apos;altra officina</Button>

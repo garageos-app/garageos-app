@@ -14,6 +14,16 @@ const { mockApiFetch } = vi.hoisted(() => ({
 
 vi.mock('@/lib/api-client', () => ({
   useApiFetch: () => mockApiFetch,
+  ApiError: class ApiError extends Error {
+    readonly code: string;
+    readonly status: number;
+    constructor(code: string, status: number, message: string) {
+      super(message);
+      this.name = 'ApiError';
+      this.code = code;
+      this.status = status;
+    }
+  },
 }));
 
 vi.mock('@/auth/useAuth', () => ({
@@ -56,6 +66,18 @@ const TENANT_SUSPENDED: TenantAdminListItem = {
   status: 'suspended',
   createdAt: '2026-02-20T14:00:00.000Z',
   owner: { email: 'luigi@rossi.it', invitationStatus: 'accepted' },
+};
+
+// Active tenant whose owner has already accepted the invitation — Rigenera link
+// must NOT appear for this row.
+const TENANT_ACTIVE_ACCEPTED_OWNER: TenantAdminListItem = {
+  id: 'tenant-003',
+  businessName: 'Garage Verdi SRL',
+  vatNumber: '11223344556',
+  email: 'info@verdi.it',
+  status: 'active',
+  createdAt: '2026-03-10T08:00:00.000Z',
+  owner: { email: 'anna@verdi.it', invitationStatus: 'accepted' },
 };
 
 beforeEach(() => {
@@ -108,5 +130,83 @@ describe('TenantList page', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Errore nel caricamento delle officine.');
+  });
+
+  // ── T8: action gating ───────────────────────────────────────────────────────
+
+  it('action gating: active+pending-owner row shows Sospendi and Rigenera link, not Riattiva', async () => {
+    mockApiFetch.mockResolvedValueOnce({ tenants: [TENANT_ACTIVE] });
+
+    render(<TenantList />, { wrapper: makeWrapper() });
+    await screen.findByText('Officina Bianchi SRL');
+
+    // Sospendi and Rigenera link must be present
+    expect(screen.getByRole('button', { name: /sospendi/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /rigenera link/i })).toBeInTheDocument();
+    // Riattiva must NOT appear
+    expect(screen.queryByRole('button', { name: /riattiva/i })).not.toBeInTheDocument();
+  });
+
+  it('action gating: suspended row shows Riattiva only (no Sospendi, no Rigenera link)', async () => {
+    mockApiFetch.mockResolvedValueOnce({ tenants: [TENANT_SUSPENDED] });
+
+    render(<TenantList />, { wrapper: makeWrapper() });
+    await screen.findByText('Autofficina Rossi SNC');
+
+    // Riattiva must be present
+    expect(screen.getByRole('button', { name: /riattiva/i })).toBeInTheDocument();
+    // Sospendi and Rigenera link must NOT appear
+    expect(screen.queryByRole('button', { name: /sospendi/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /rigenera link/i })).not.toBeInTheDocument();
+  });
+
+  it('action gating: active+accepted-owner row shows Sospendi but NOT Rigenera link', async () => {
+    mockApiFetch.mockResolvedValueOnce({ tenants: [TENANT_ACTIVE_ACCEPTED_OWNER] });
+
+    render(<TenantList />, { wrapper: makeWrapper() });
+    await screen.findByText('Garage Verdi SRL');
+
+    expect(screen.getByRole('button', { name: /sospendi/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /rigenera link/i })).not.toBeInTheDocument();
+  });
+
+  // ── T8: regenerate success dialog ──────────────────────────────────────────
+
+  it('regenerate success: clicking Rigenera link opens dialog with magicLinkUrl', async () => {
+    const magicLinkUrl = 'https://app.garageos.aifollyadvisor.com/invitations/tok_abc123';
+
+    // mockImplementation disambiguates list query vs. mutation by path/method
+    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (
+        init?.method === 'POST' &&
+        typeof path === 'string' &&
+        path.includes('regenerate-invitation')
+      ) {
+        return Promise.resolve({
+          invitation: {
+            ownerEmail: 'mario@bianchi.it',
+            expiresAt: '2026-07-06T10:00:00.000Z',
+            emailSent: true,
+            magicLinkUrl,
+          },
+        });
+      }
+      // List query and any refetch
+      return Promise.resolve({ tenants: [TENANT_ACTIVE] });
+    });
+
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+
+    render(<TenantList />, { wrapper: makeWrapper() });
+    await screen.findByText('Officina Bianchi SRL');
+
+    // Click the Rigenera link button
+    await user.click(screen.getByRole('button', { name: /rigenera link/i }));
+
+    // Result dialog must appear with the URL
+    expect(await screen.findByDisplayValue(magicLinkUrl)).toBeInTheDocument();
+    // emailSent=true → "Email inviata" note
+    expect(screen.getByText(/email inviata a mario@bianchi\.it/i)).toBeInTheDocument();
   });
 });
