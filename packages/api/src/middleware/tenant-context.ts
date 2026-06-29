@@ -1,6 +1,7 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
+import { businessError } from '../lib/business-error.js';
 import type { CognitoIdTokenPayload } from '../plugins/auth.js';
 
 // JWT-backed tenant context extractor (PR 7).
@@ -79,9 +80,13 @@ export async function tenantContext(request: FastifyRequest, reply: FastifyReply
   // Companion proactive measure: users-admin-delete + users-admin-update
   // call AdminUserGlobalSignOut to invalidate refresh tokens.
   //
-  // No new error code: response shape matches existing JWT failures
-  // (401 Unauthorized) to avoid leaking the distinction between
-  // "token expired" and "user disabled" to clients.
+  // Status stays 401 to match existing JWT failures. The code, however, is
+  // the dedicated `auth.session.inactive` (not the generic UNAUTHORIZED used
+  // by require-auth / token failures): it is still GENERIC across "user
+  // disabled" and "tenant suspended" (BR-210 — the client must not learn
+  // which), but distinct enough that the web client renders a terminal
+  // "accesso non disponibile" screen instead of looping the re-login a
+  // plain expired-token UNAUTHORIZED would (correctly) trigger.
   const userRow = await request.server.prisma.user.findFirst({
     where: {
       cognitoSub: parsed.data.sub,
@@ -102,7 +107,8 @@ export async function tenantContext(request: FastifyRequest, reply: FastifyReply
       { cognitoSub: parsed.data.sub, tenantId: parsed.data['custom:tenant_id'] },
       'tenant-context: user inactive or deleted — denying request',
     );
-    throw unauthorizedError('User inactive or not found');
+    // auth.session.inactive (APPENDICE_G §3.2) — see the comment block above.
+    throw businessError('auth.session.inactive', 401, 'User inactive or not found');
   }
 
   void reply;

@@ -244,7 +244,12 @@ describe('tenantContext middleware (JWT-backed)', () => {
 
       const res = await app.inject({ method: 'GET', url: '/_probe' });
       const body = res.json();
-      expect(body.code).toBe('UNAUTHORIZED');
+      // Distinct, generic code: same for "user disabled" and "tenant
+      // suspended" so the body still does not reveal which (BR-210), while
+      // letting the web client tell this terminal denial apart from a plain
+      // expired-token UNAUTHORIZED.
+      expect(res.statusCode).toBe(401);
+      expect(body.code).toBe('auth.session.inactive');
     });
   });
 });

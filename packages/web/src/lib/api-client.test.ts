@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, createApiFetch } from './api-client';
+import { ACCOUNT_INACTIVE_MESSAGE } from './error-messages';
 
 const baseDeps = () => ({
   getIdToken: vi.fn().mockResolvedValue('FAKE_JWT'),
   onAuthExpired: vi.fn(),
+  onAccountInactive: vi.fn(),
   baseUrl: 'https://api.example.com',
 });
 
@@ -32,7 +34,7 @@ describe('createApiFetch', () => {
     );
   });
 
-  it('401: triggers onAuthExpired + throws ApiError(auth.expired)', async () => {
+  it('401 (empty/unknown body): triggers onAuthExpired + throws ApiError(auth.expired)', async () => {
     fetchSpy.mockResolvedValueOnce(new Response('', { status: 401 }));
     const deps = baseDeps();
     const apiFetch = createApiFetch(deps);
@@ -41,6 +43,36 @@ describe('createApiFetch', () => {
       status: 401,
     });
     expect(deps.onAuthExpired).toHaveBeenCalledOnce();
+    // The terminal path must NOT fire for a generic/expired 401.
+    expect(deps.onAccountInactive).not.toHaveBeenCalled();
+  });
+
+  it('401 (auth.session.inactive): triggers onAccountInactive, not onAuthExpired', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          type: 'https://api.garageos.it/errors/auth.session.inactive',
+          title: 'Accesso non disponibile',
+          status: 401,
+          code: 'auth.session.inactive',
+          detail: 'User inactive or not found',
+          instance: '/v1/test',
+          request_id: 'req-2',
+        }),
+        { status: 401 },
+      ),
+    );
+    const deps = baseDeps();
+    const apiFetch = createApiFetch(deps);
+    await expect(apiFetch('/v1/test')).rejects.toMatchObject({
+      code: 'auth.session.inactive',
+      status: 401,
+      // Centralized Italian copy — never the server's English `detail`, which
+      // would surface untranslated via translateError on mutation onError.
+      message: ACCOUNT_INACTIVE_MESSAGE,
+    });
+    expect(deps.onAccountInactive).toHaveBeenCalledOnce();
+    expect(deps.onAuthExpired).not.toHaveBeenCalled();
   });
 
   it('404 with RFC 7807 body: parses code+detail from server', async () => {

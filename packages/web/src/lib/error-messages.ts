@@ -1,4 +1,13 @@
+// IT-strings — hardcoded, no i18n in this app.
+// Single source for the generic terminal-denial copy (backend code
+// `auth.session.inactive`): shown both on the AccountInactive screen and in
+// the toast that fires if a mutation hits the inactive 401 (see api-client).
+// Generic by design (BR-210): must not reveal user-disabled vs tenant-suspended.
+export const ACCOUNT_INACTIVE_MESSAGE =
+  'Il tuo accesso non è al momento disponibile. Se ritieni che si tratti di un errore, contatta il supporto.';
+
 export const ERROR_MESSAGES: Record<string, string> = {
+  'auth.session.inactive': ACCOUNT_INACTIVE_MESSAGE,
   'intervention.creation.date_future': 'Non è possibile registrare interventi futuri.',
   'intervention.creation.date_before_registration':
     "La data è precedente all'immatricolazione del veicolo.",

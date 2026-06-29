@@ -8,6 +8,11 @@ import {
 import { officineUserPool } from '@/lib/cognito';
 import { mapCognitoError } from '@/lib/auth-errors';
 import { clearOnboardingSkipped } from '@/lib/onboardingSkip';
+import {
+  clearAccountInactiveFlag,
+  isAccountInactiveFlag,
+  markAccountInactiveFlag,
+} from '@/lib/accountInactiveFlag';
 
 export type UserRole = 'super_admin' | 'mechanic';
 
@@ -34,7 +39,13 @@ export type AuthState =
   | { status: 'idle' }
   | { status: 'authenticating' }
   | { status: 'authenticated'; user: AuthenticatedUser }
-  | { status: 'unauthenticated'; error?: string };
+  | { status: 'unauthenticated'; error?: string }
+  // Terminal denial: the API rejected an otherwise-valid session because the
+  // officine user was disabled or the tenant suspended (backend code
+  // `auth.session.inactive`). Distinct from `unauthenticated` so ProtectedRoute
+  // shows a terminal screen instead of redirecting to /login — re-login cannot
+  // clear it, so a redirect would loop. Only signOut() exits this state.
+  | { status: 'account_inactive' };
 
 type AuthAction =
   | { type: 'REHYDRATE_OK'; user: AuthenticatedUser }
@@ -42,9 +53,10 @@ type AuthAction =
   | { type: 'SIGNIN_START' }
   | { type: 'SIGNIN_OK'; user: AuthenticatedUser }
   | { type: 'SIGNIN_ERROR'; message: string }
+  | { type: 'ACCOUNT_INACTIVE' }
   | { type: 'SIGNOUT' };
 
-function reducer(state: AuthState, action: AuthAction): AuthState {
+export function reducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case 'REHYDRATE_OK':
       if (state.status === 'idle') return { status: 'authenticated', user: action.user };
@@ -65,6 +77,10 @@ function reducer(state: AuthState, action: AuthAction): AuthState {
         return { status: 'unauthenticated', error: action.message };
       }
       return state;
+    case 'ACCOUNT_INACTIVE':
+      // Unconditional terminal transition (mirrors SIGNOUT): a reactive denial
+      // can land on any live session.
+      return { status: 'account_inactive' };
     case 'SIGNOUT':
       return { status: 'unauthenticated' };
   }
@@ -75,6 +91,11 @@ export interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
   getIdToken: () => Promise<string | null>;
+  // Drive the session into the terminal `account_inactive` state. Called by
+  // the API client when a request returns `auth.session.inactive` (see
+  // useApiFetch). Does NOT touch the Cognito session on purpose: a page reload
+  // re-lands on the terminal screen instead of dropping to /login.
+  markAccountInactive: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -103,6 +124,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Terminal `account_inactive` survives reload via a sessionStorage flag:
+    // honor it BEFORE touching Cognito so a disabled/suspended principal does
+    // not briefly rehydrate to `authenticated` and re-fire authenticated
+    // requests. Only signOut ("Torna al login") clears the flag.
+    if (isAccountInactiveFlag()) {
+      dispatch({ type: 'ACCOUNT_INACTIVE' });
+      return;
+    }
     const current = officineUserPool.getCurrentUser();
     if (!current) {
       dispatch({ type: 'REHYDRATE_NONE' });
@@ -163,6 +192,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear the session-scoped onboarding-skip flag so a same-tab
     // logout → login re-prompts the wizard (F-OFF-002).
     clearOnboardingSkipped();
+    // Clear the terminal account-inactive flag so "Torna al login" actually
+    // re-enables a fresh login instead of bouncing back to the terminal screen.
+    clearAccountInactiveFlag();
+  }, [queryClient]);
+
+  const markAccountInactive = useCallback(() => {
+    // Persist across reload (see lib/accountInactiveFlag) and clear the React
+    // Query cache so a disabled principal's user-scoped data does not linger in
+    // memory — mirrors the queryClient.clear() that signOut performs on the
+    // expired-session path.
+    markAccountInactiveFlag();
+    queryClient.clear();
+    dispatch({ type: 'ACCOUNT_INACTIVE' });
   }, [queryClient]);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {
@@ -177,8 +219,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, signIn, signOut, getIdToken }),
-    [state, signIn, signOut, getIdToken],
+    () => ({ state, signIn, signOut, getIdToken, markAccountInactive }),
+    [state, signIn, signOut, getIdToken, markAccountInactive],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

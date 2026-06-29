@@ -192,6 +192,7 @@ Per fornire dati utili al client per gestire l'errore:
 | `auth.forbidden.wrong_pool` | 403 | warning | Pool autorizzazione errata | JWT da pool non autorizzato (es. clienti invece di officine) |
 | `auth.forbidden.super_admin_required` | 403 | warning | Super admin richiesto | JWT role non è super_admin per operazione riservata |
 | `auth.tenant.suspended` | 403 | warning | Tenant sospeso | Tenant `status=suspended` |
+| `auth.session.inactive` | 401 | warning | Accesso non disponibile | Reactive post-auth denial in `tenant-context`: officine user `status=inactive`/deleted OR tenant `status=suspended`. Generic across both (BR-210 anti-enumeration); distinct from the `UNAUTHORIZED` token failures so the web SPA shows a terminal screen instead of looping the re-login. |
 | `auth.cognito_unavailable` | 502 | error | Servizio di autenticazione temporaneamente non disponibile | POST /v1/users/invitations — Cognito `AdminGetUser` early-check fallisce (cross-tenant detection BR-213) |
 
 ### 3.3 Tenant & organizzazione
@@ -915,6 +916,7 @@ auth.login.invalid_credentials
 auth.password.too_weak
 auth.password_reset.invalid_token
 auth.permission.denied
+auth.session.inactive
 auth.signup.email_already_registered
 auth.signup.email_domain_blocked
 auth.tenant.suspended

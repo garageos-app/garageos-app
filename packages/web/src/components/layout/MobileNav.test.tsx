@@ -32,6 +32,7 @@ const mockAuth = (overrides: Partial<AuthContextValue> = {}): AuthContextValue =
   signIn: vi.fn(),
   signOut: vi.fn(),
   getIdToken: vi.fn().mockResolvedValue('jwt'),
+  markAccountInactive: vi.fn(),
   ...overrides,
 });
 
