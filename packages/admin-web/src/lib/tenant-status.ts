@@ -2,7 +2,7 @@
 // Shared by TenantList (T7) and future row-action dialogs (T8).
 // Italian labels are inline — admin-web has no i18n framework.
 
-import type { TenantAdminListItem } from '@/pages/TenantList';
+import type { TenantAdminListItem } from '@/lib/tenant-types';
 
 type TenantStatus = TenantAdminListItem['status'];
 type InvitationStatus = NonNullable<TenantAdminListItem['owner']>['invitationStatus'];

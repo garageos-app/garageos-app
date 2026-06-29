@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useApiFetch, ApiError } from '@/lib/api-client';
 import { STATUS_BADGE, INVITATION_BADGE } from '@/lib/tenant-status';
+import type { TenantAdminListItem } from '@/lib/tenant-types';
 import { ACTION_ERROR_MESSAGES, GENERIC_ACTION_ERROR } from '@/lib/tenant-actions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,17 +34,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-// ─── Wire type (mirrors TenantAdminListItem in packages/api/src/lib/dtos/tenant-admin.ts) ────
-
-export interface TenantAdminListItem {
-  id: string;
-  businessName: string;
-  vatNumber: string;
-  email: string;
-  status: 'active' | 'suspended' | 'pending' | 'cancelled';
-  createdAt: string; // ISO-8601
-  owner: { email: string; invitationStatus: 'pending' | 'accepted' | 'expired' } | null;
-}
+// Re-export for consumers that already import TenantAdminListItem from this page
+// (e.g. the test). Actual definition lives in lib/tenant-types.ts.
+export type { TenantAdminListItem } from '@/lib/tenant-types';
 
 // ─── Response types ───────────────────────────────────────────────────────────
 
@@ -91,6 +84,9 @@ export function TenantList() {
 
   function handleMutationError(err: unknown) {
     if (err instanceof ApiError) {
+      // api-client already fired toast.error('Sessione scaduta…') and signed the user
+      // out for these codes — do not stack a second contradictory toast (Fix 5).
+      if (err.code === 'auth.expired' || err.code === 'auth.no_token') return;
       toast.error(ACTION_ERROR_MESSAGES[err.code] ?? GENERIC_ACTION_ERROR);
     } else {
       toast.error(GENERIC_ACTION_ERROR);
@@ -104,6 +100,10 @@ export function TenantList() {
     mutationFn: (id: string) =>
       apiFetch<{ tenant: { id: string; status: string } }>(`/v1/admin/tenants/${id}/suspend`, {
         method: 'POST',
+        // api-client unconditionally sets Content-Type: application/json; Fastify rejects
+        // an empty body with FST_ERR_CTP_EMPTY_JSON_BODY. Send '{}' to satisfy the parser.
+        // See [[feedback_fastify_empty_body_under_json_content_type]].
+        body: JSON.stringify({}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
@@ -118,6 +118,8 @@ export function TenantList() {
     mutationFn: (id: string) =>
       apiFetch<{ tenant: { id: string; status: string } }>(`/v1/admin/tenants/${id}/reactivate`, {
         method: 'POST',
+        // See comment in suspendMutation for why '{}' is required.
+        body: JSON.stringify({}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
@@ -132,6 +134,8 @@ export function TenantList() {
     mutationFn: (id: string) =>
       apiFetch<{ invitation: RegenerateResult }>(`/v1/admin/tenants/${id}/regenerate-invitation`, {
         method: 'POST',
+        // See comment in suspendMutation for why '{}' is required.
+        body: JSON.stringify({}),
       }),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
@@ -244,7 +248,11 @@ export function TenantList() {
                           <Button
                             variant="destructive"
                             size="sm"
-                            disabled={suspendMutation.isPending}
+                            // Disable only the row whose suspend is in flight (Fix 4).
+                            // suspendMutation.variables holds the id passed to mutate().
+                            disabled={
+                              suspendMutation.isPending && suspendMutation.variables === tenant.id
+                            }
                             onClick={() =>
                               setSuspendTarget({
                                 id: tenant.id,
@@ -259,7 +267,11 @@ export function TenantList() {
                           <Button
                             variant="default"
                             size="sm"
-                            disabled={reactivateMutation.isPending}
+                            // Disable only the row whose reactivation is in flight (Fix 4).
+                            disabled={
+                              reactivateMutation.isPending &&
+                              reactivateMutation.variables === tenant.id
+                            }
                             onClick={() =>
                               setReactivateTarget({
                                 id: tenant.id,
@@ -274,7 +286,11 @@ export function TenantList() {
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={regenerateMutation.isPending}
+                            // Disable only the row whose regeneration is in flight (Fix 4).
+                            disabled={
+                              regenerateMutation.isPending &&
+                              regenerateMutation.variables === tenant.id
+                            }
                             onClick={() => regenerateMutation.mutate(tenant.id)}
                           >
                             Rigenera link
@@ -374,8 +390,15 @@ export function TenantList() {
               variant="outline"
               onClick={() => {
                 if (regenerateResult) {
-                  void navigator.clipboard.writeText(regenerateResult.magicLinkUrl);
-                  toast.success('Link copiato negli appunti.');
+                  // Await the write and toast conditionally; a rejected promise means
+                  // insecure context or denied permission — keep the readonly input so
+                  // manual copy is always possible (Fix 3).
+                  navigator.clipboard
+                    .writeText(regenerateResult.magicLinkUrl)
+                    .then(() => toast.success('Link copiato negli appunti.'))
+                    .catch(() =>
+                      toast.error('Impossibile copiare. Selezionalo e copialo manualmente.'),
+                    );
                 }
               }}
             >

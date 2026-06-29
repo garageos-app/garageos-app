@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useApiFetch, ApiError } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +34,7 @@ function mapApiError(err: ApiError): string {
 
 export function CreateTenant() {
   const apiFetch = useApiFetch();
+  const queryClient = useQueryClient();
   const [apiError, setApiError] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<CreateTenantResponse | null>(null);
 
@@ -55,6 +57,10 @@ export function CreateTenant() {
         method: 'POST',
         body: JSON.stringify(values),
       });
+      // Invalidate the tenant list so the new officina appears immediately when
+      // the operator navigates to /officine (staleTime:5min would hide it otherwise).
+      // See Fix 2.
+      void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
       setConfirmationData(res);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -90,8 +96,9 @@ export function CreateTenant() {
                 <p className="text-amber-700">
                   Attenzione: Email non inviata.{' '}
                   <Link to="/officine" className="underline">
-                    Se l&apos;email non arriva, rigenera il link dalla lista Officine.
-                  </Link>
+                    Se l&apos;email non arriva, rigenera il link dalla lista Officine
+                  </Link>{' '}
+                  oppure contatta il supporto.
                 </p>
               )}
               <Button onClick={resetForm}>Crea un&apos;altra officina</Button>

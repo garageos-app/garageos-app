@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TenantList } from '@/pages/TenantList';
-import type { TenantAdminListItem } from '@/pages/TenantList';
+import type { TenantAdminListItem } from '@/lib/tenant-types';
 
 // Mock useApiFetch so tests control the API response without real network or
 // Cognito dependencies.
@@ -168,6 +168,97 @@ describe('TenantList page', () => {
 
     expect(screen.getByRole('button', { name: /sospendi/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /rigenera link/i })).not.toBeInTheDocument();
+  });
+
+  // ── Fix 1: empty JSON body regression ─────────────────────────────────────
+  // Guards against FST_ERR_CTP_EMPTY_JSON_BODY (400) on lifecycle POSTs.
+  // api-client sets Content-Type: application/json unconditionally, so Fastify
+  // rejects a bodyless POST before the handler runs. Every mutation must send '{}'.
+
+  it('Fix 1 — suspend mutation sends body: JSON.stringify({})', async () => {
+    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && typeof path === 'string' && path.includes('/suspend')) {
+        return Promise.resolve({ tenant: { id: 'tenant-001', status: 'suspended' } });
+      }
+      return Promise.resolve({ tenants: [TENANT_ACTIVE] });
+    });
+
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+
+    render(<TenantList />, { wrapper: makeWrapper() });
+    await screen.findByText('Officina Bianchi SRL');
+
+    // Open the confirm dialog (row button)
+    await user.click(screen.getByRole('button', { name: /sospendi/i }));
+    // Scope the confirm click to the alertdialog to avoid ambiguity with the row button
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: /sospendi/i }));
+
+    // Verify the mutation was called with the correct body
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      `/v1/admin/tenants/${TENANT_ACTIVE.id}/suspend`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({}) }),
+    );
+  });
+
+  it('Fix 1 — reactivate mutation sends body: JSON.stringify({})', async () => {
+    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && typeof path === 'string' && path.includes('/reactivate')) {
+        return Promise.resolve({ tenant: { id: 'tenant-002', status: 'active' } });
+      }
+      return Promise.resolve({ tenants: [TENANT_SUSPENDED] });
+    });
+
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+
+    render(<TenantList />, { wrapper: makeWrapper() });
+    await screen.findByText('Autofficina Rossi SNC');
+
+    // Open the confirm dialog (row button)
+    await user.click(screen.getByRole('button', { name: /riattiva/i }));
+    // Scope the confirm click to the alertdialog
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: /riattiva/i }));
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      `/v1/admin/tenants/${TENANT_SUSPENDED.id}/reactivate`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({}) }),
+    );
+  });
+
+  it('Fix 1 — regenerate mutation sends body: JSON.stringify({})', async () => {
+    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (
+        init?.method === 'POST' &&
+        typeof path === 'string' &&
+        path.includes('regenerate-invitation')
+      ) {
+        return Promise.resolve({
+          invitation: {
+            ownerEmail: 'mario@bianchi.it',
+            expiresAt: '2026-07-06T10:00:00.000Z',
+            emailSent: true,
+            magicLinkUrl: 'https://app.garageos.example.com/invitations/tok_fix1',
+          },
+        });
+      }
+      return Promise.resolve({ tenants: [TENANT_ACTIVE] });
+    });
+
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+
+    render(<TenantList />, { wrapper: makeWrapper() });
+    await screen.findByText('Officina Bianchi SRL');
+
+    await user.click(screen.getByRole('button', { name: /rigenera link/i }));
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      `/v1/admin/tenants/${TENANT_ACTIVE.id}/regenerate-invitation`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({}) }),
+    );
   });
 
   // ── T8: regenerate success dialog ──────────────────────────────────────────
