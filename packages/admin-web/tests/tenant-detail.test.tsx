@@ -108,6 +108,23 @@ const USER_INACTIVE: AdminUser = {
   deletedAt: null,
 };
 
+// Soft-deleted user: status may be 'active' but deletedAt marks the row as deleted.
+const USER_DELETED: AdminUser = {
+  id: 'user-003',
+  email: 'carlo@bianchi.it',
+  firstName: 'Carlo',
+  lastName: 'Verdi',
+  role: 'mechanic',
+  locationId: null,
+  status: 'active',
+  phone: null,
+  avatarUrl: null,
+  lastLoginAt: null,
+  createdAt: '2026-03-01T10:00:00.000Z',
+  updatedAt: '2026-04-01T10:00:00.000Z',
+  deletedAt: '2026-04-01T10:00:00.000Z',
+};
+
 beforeEach(() => {
   mockApiFetch.mockReset();
 });
@@ -166,6 +183,26 @@ describe('TenantDetail page', () => {
     expect(screen.getByRole('button', { name: /disabilita/i })).toBeInTheDocument();
     // Inactive user (USER_INACTIVE) shows Riattiva, not Disabilita.
     expect(screen.getByRole('button', { name: /riattiva/i })).toBeInTheDocument();
+  });
+
+  it('role-toggle gating: shown for active users, hidden for inactive and soft-deleted users', async () => {
+    // Fixture: one active super_admin, one inactive mechanic, one soft-deleted mechanic.
+    mockApiFetch.mockImplementation((path: string) => {
+      if (typeof path === 'string' && path.endsWith('/users')) {
+        return Promise.resolve({ users: [USER_ACTIVE, USER_INACTIVE, USER_DELETED] });
+      }
+      return Promise.resolve({ tenant: TENANT_PROFILE });
+    });
+
+    render(<TenantDetail />, { wrapper: makeWrapper() });
+
+    await screen.findByText('Mario Rossi');
+
+    // Active super_admin → "Rendi meccanico" visible.
+    expect(screen.getByRole('button', { name: /rendi meccanico/i })).toBeInTheDocument();
+    // Inactive mechanic (USER_INACTIVE) and soft-deleted mechanic (USER_DELETED) would both
+    // show "Rendi amministratore" if ungated — after the fix neither should appear.
+    expect(screen.queryByRole('button', { name: /rendi amministratore/i })).not.toBeInTheDocument();
   });
 
   it('invite dialog: submitting the form calls POST /invitations with the correct body', async () => {

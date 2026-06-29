@@ -153,13 +153,9 @@ export function TenantDetail() {
       void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
       toast.success('Dati officina aggiornati.');
     },
-    onError: (err: unknown) => {
-      toast.error(
-        err instanceof ApiError
-          ? (ACTION_ERROR_MESSAGES[err.code] ?? GENERIC_ACTION_ERROR)
-          : GENERIC_ACTION_ERROR,
-      );
-    },
+    // Use the shared handler so auth-expiry codes are silenced the same way as
+    // all other mutations on this page (no second contradictory toast).
+    onError: handleMutationError,
   });
 
   // ── User action mutations ─────────────────────────────────────────────────────
@@ -459,21 +455,27 @@ export function TenantDetail() {
                                 Riattiva
                               </Button>
                             )}
-                            {/* Role toggle — label reflects the NEW role the click would assign */}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={
-                                roleMutation.isPending && roleMutation.variables?.userId === user.id
-                              }
-                              onClick={() =>
-                                setRoleTarget({ userId: user.id, name: fullName, newRole })
-                              }
-                            >
-                              {user.role === 'super_admin'
-                                ? 'Rendi meccanico'
-                                : 'Rendi amministratore'}
-                            </Button>
+                            {/* Role toggle — only for active non-deleted users.
+                                Soft-deleted (deletedAt != null) or disabled (status=inactive)
+                                users are excluded: the backend lookup filters deletedAt:null
+                                and would return 404 user.not_found for deleted rows. */}
+                            {!isDisabled && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={
+                                  roleMutation.isPending &&
+                                  roleMutation.variables?.userId === user.id
+                                }
+                                onClick={() =>
+                                  setRoleTarget({ userId: user.id, name: fullName, newRole })
+                                }
+                              >
+                                {user.role === 'super_admin'
+                                  ? 'Rendi meccanico'
+                                  : 'Rendi amministratore'}
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -683,9 +685,15 @@ export function TenantDetail() {
               variant="outline"
               onClick={() => {
                 if (inviteResult) {
-                  // Await the write and toast conditionally; a rejected promise means
-                  // insecure context or denied permission — keep the readonly input so
-                  // manual copy is always possible (mirrors TenantList.tsx Fix 3).
+                  // Guard: navigator.clipboard is undefined in non-secure contexts
+                  // (HTTP, iframes without clipboard-write permission). Accessing a
+                  // property on undefined would throw synchronously before .catch() runs.
+                  if (!navigator.clipboard) {
+                    toast.error('Impossibile copiare. Selezionalo e copialo manualmente.');
+                    return;
+                  }
+                  // In a secure context, a rejected promise means the user denied the
+                  // clipboard-write permission — the readonly input stays as fallback.
                   navigator.clipboard
                     .writeText(inviteResult.magicLinkUrl)
                     .then(() => toast.success('Link copiato negli appunti.'))
