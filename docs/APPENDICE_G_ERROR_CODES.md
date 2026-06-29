@@ -409,6 +409,7 @@ Per fornire dati utili al client per gestire l'errore:
 | `admin.permission.denied` | 403 | critical | Azione riservata ad admin | |
 | `admin.impersonation.target_not_found` | 404 | info | Tenant da impersonare non trovato | |
 | `admin.impersonation.not_allowed` | 403 | critical | Impersonation non consentita | Target è admin |
+| `admin.tenant.rate_limited` | 429 | warning | Troppe richieste | POST /v1/admin/tenants e /:id/regenerate-invitation — oltre 30 richieste/ora per platform-admin (Slice 2) |
 | `system.database.connection_failed` | 503 | critical | Database non raggiungibile | |
 | `system.email.send_failed` | 502 | error | Invio email fallito | SES error |
 | `system.push.send_failed` | 502 | error | Invio push fallito | Expo Push error |
@@ -887,6 +888,7 @@ Elenco di tutti gli error code v1.0 in ordine alfabetico, per ricerca rapida:
 admin.impersonation.not_allowed
 admin.impersonation.target_not_found
 admin.permission.denied
+admin.tenant.rate_limited
 attachment.deletion.locked
 attachment.download.permission_denied
 attachment.not_found

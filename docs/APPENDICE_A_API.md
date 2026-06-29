@@ -2898,6 +2898,10 @@ L'`owner_type=intervention` resta officina-only.
 |---|---|---|---|---|
 | GET | `/v1/admin/me` | Slice 0 | Platform Admin | **[DETTAGLIATO §3.12.1]** Identità admin autenticato (JWT claims, no DB) |
 | POST | `/v1/admin/tenants` | Slice 1 | Platform Admin | **[DETTAGLIATO §3.12.2]** Crea nuovo tenant (officina), location primaria e invito owner |
+| GET | `/v1/admin/tenants` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.3]** Lista tutti i tenant con stato e owner summary |
+| POST | `/v1/admin/tenants/:id/suspend` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.4]** Sospendi tenant (BR-210) |
+| POST | `/v1/admin/tenants/:id/reactivate` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.4]** Riattiva tenant (BR-210) |
+| POST | `/v1/admin/tenants/:id/regenerate-invitation` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.5]** Rigenera magic-link invito owner (unico endpoint a restituire token in chiaro) |
 | GET | `/admin/tenants` | F-ADM-001 | Admin | Lista tutti i tenant |
 | POST | `/admin/tenants/:id/suspend` | F-ADM-002 | Admin | Sospendi tenant |
 | POST | `/admin/tenants/:id/activate` | F-ADM-002 | Admin | Riattiva tenant |
@@ -3004,6 +3008,153 @@ Nessun token di invito viene restituito nella risposta — la consegna è esclus
 - `409 tenant.vat_number_duplicate` — partita IVA già registrata in un tenant esistente
 - `409 user.invitation.email_in_other_tenant` — `ownerEmail` già registrata in un altro tenant (Cognito hit)
 - `502 auth.cognito_unavailable` — Cognito `AdminGetUser` lookup fallito durante il pre-check email
+
+#### 3.12.3 `GET /v1/admin/tenants` — Lista tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno (solo lettura)
+**Shipped:** Slice 2
+
+Restituisce tutti i tenant non eliminati in ordine decrescente di creazione, ciascuno con il riepilogo dell'owner derivato dall'ultima invitation `super_admin` di tipo `internal_user`. L'owner viene risolto con un'unica query batch (nessun N+1).
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant — opera a livello piattaforma con `withContext({ role: 'admin' })`.
+
+**Response `200 OK`:**
+
+```json
+{
+  "tenants": [
+    {
+      "id": "uuid",
+      "businessName": "Officina Rossi SRL",
+      "vatNumber": "12345678901",
+      "email": "info@officinarossi.it",
+      "status": "active",
+      "createdAt": "2026-06-01T10:00:00.000Z",
+      "owner": {
+        "email": "giuseppe.rossi@officinarossi.it",
+        "invitationStatus": "pending"
+      }
+    }
+  ]
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | |
+| `businessName` | `string` | |
+| `vatNumber` | `string` | 11 cifre |
+| `email` | `string` | Email di contatto del tenant (non nullable) |
+| `status` | `"active" \| "suspended" \| "pending" \| "cancelled"` | |
+| `createdAt` | `string` (ISO-8601) | |
+| `owner` | `{ email: string; invitationStatus: "pending" \| "accepted" \| "expired" } \| null` | `null` se nessun invito `super_admin` esiste per il tenant |
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+
+#### 3.12.4 `POST /v1/admin/tenants/:id/suspend` e `/reactivate` — Lifecycle tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno
+**Shipped:** Slice 2
+
+Gestiscono la transizione di stato del tenant (BR-210):
+
+- `suspend`: `active` → `suspended`
+- `reactivate`: `suspended` → `active`
+
+Anti-enumerazione: UUID non valido nel formato e ID sconosciuto restituiscono entrambi `404 tenant.not_found`.
+L'audit log registra `tenant_suspended` / `tenant_reactivated` con `actorType: 'system'` e il Cognito sub del platform-admin nel campo `metadata`.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant (`withContext({ role: 'admin' })` diretto).
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | ID del tenant da modificare |
+
+**Response `200 OK` — suspend:**
+
+```json
+{
+  "tenant": {
+    "id": "uuid",
+    "status": "suspended"
+  }
+}
+```
+
+**Response `200 OK` — reactivate:**
+
+```json
+{
+  "tenant": {
+    "id": "uuid",
+    "status": "active"
+  }
+}
+```
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 tenant.not_found` — UUID non valido o tenant inesistente/eliminato (anti-enum)
+- `409 tenant.invalid_status` — transizione non consentita (es. sospendere un tenant già sospeso)
+
+#### 3.12.5 `POST /v1/admin/tenants/:id/regenerate-invitation` — Rigenera magic-link
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** 30 richieste/ora per platform-admin (chiave: `jwt.sub`, fallback `ip`)
+**Shipped:** Slice 2
+
+Path di recovery dell'operatore: rigenera il token del magic-link sull'invitation `super_admin` esistente tramite UPDATE in-place (non crea una nuova riga). Il vecchio token viene invalidato immediatamente al commit della transazione.
+
+> **Nota:** Questo è il **solo endpoint in GarageOS che restituisce un token in chiaro** (`magicLinkUrl`). È intenzionale: il platform-admin autenticato esegue un'azione di recovery esplicita e può consegnare il link direttamente al titolare dell'officina tramite un canale secondario quando la consegna email fallisce.
+
+L'invio email è best-effort (mirror di Slice 1). Se fallisce, `emailSent: false` e `magicLinkUrl` nella risposta è il fallback dell'operatore.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant.
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | ID del tenant di cui rigenerare l'invito |
+
+**Response `200 OK`:**
+
+```json
+{
+  "invitation": {
+    "ownerEmail": "giuseppe.rossi@officinarossi.it",
+    "expiresAt": "2026-07-05T10:00:00.000Z",
+    "emailSent": true,
+    "magicLinkUrl": "https://app.garageos.aifollyadvisor.com/invitations/TOKEN"
+  }
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `ownerEmail` | `string` | Email del titolare destinatario del link |
+| `expiresAt` | `string` (ISO-8601) | Scadenza del nuovo token (7 giorni da adesso) |
+| `emailSent` | `boolean` | `false` se l'invio email ha fallito (best-effort) |
+| `magicLinkUrl` | `string` | URL completo del magic-link — **token in chiaro, solo in questo endpoint** |
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 tenant.not_found` — UUID non valido o tenant inesistente/eliminato (anti-enum)
+- `404 user.invitation.not_found` — nessun invito `super_admin` esistente per questo tenant (tenant provisionato prima di Slice 1)
+- `409 tenant.invalid_status` — il tenant non è `active` (sospeso o cancellato — il guard mirror quello di `invitations-public-accept.ts`)
+- `410 user.invitation.already_accepted` — l'invitation è già stata accettata; usare un flow di invito separato per aggiungere utenti
+- `429 admin.tenant.rate_limited` — oltre 30 richieste/ora per platform-admin
 
 ### 3.13 Public
 
