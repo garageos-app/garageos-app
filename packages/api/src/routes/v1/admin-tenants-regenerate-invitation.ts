@@ -44,6 +44,26 @@ export const adminTenantsRegenerateInvitationRoutes: FastifyPluginAsync = async 
     '/v1/admin/tenants/:id/regenerate-invitation',
     {
       preHandler: [requireAuth, requirePlatformAdminsPool],
+      config: {
+        rateLimit: {
+          // 30 tenant-provisioning calls per hour per platform-admin.
+          // Keyed on jwt.sub (the admin's Cognito sub set by requireAuth).
+          // request.userId is undefined on admin routes (tenantContext absent).
+          max: 30,
+          timeWindow: '1 hour',
+          keyGenerator: (request) => `admin-tenant:${request.jwt?.sub ?? request.ip}`,
+          errorResponseBuilder: (_req, ctx) => {
+            const retryAfter = Math.ceil(ctx.ttl / 1000);
+            const err = new Error(
+              `Troppi tentativi. Riprova tra un'ora. Retry dopo ${retryAfter}s.`,
+            ) as Error & { statusCode: number; retryAfter: number };
+            err.name = 'admin.tenant.rate_limited';
+            err.statusCode = 429;
+            err.retryAfter = retryAfter;
+            return err;
+          },
+        },
+      },
     },
     async (request, reply) => {
       // Anti-enum: invalid UUID format → 404, same as unknown tenant.

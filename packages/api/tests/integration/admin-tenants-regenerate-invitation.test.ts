@@ -12,6 +12,9 @@
 //   6. Unknown tenant UUID → 404 tenant.not_found.
 //   7. Non-UUID :id → 404 tenant.not_found (anti-enum).
 //   8. Email transport throws → still 200 emailSent:false with valid magicLinkUrl.
+//   9. Rate-limit (F4 / Task 6) — 31st call from same admin JWT sub → 429
+//      admin.tenant.rate_limited; unique adminSub per describe for isolation
+//      (feedback_integration_test_rate_limit_isolation.md).
 //
 // CI-only (Docker / Testcontainers). Do NOT run locally on Windows.
 
@@ -445,5 +448,86 @@ describe('POST /v1/admin/tenants/:id/regenerate-invitation — business cases (i
 
     // Confirm the SES mock WAS called (failure was transport-level, not skipped).
     expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(1);
+  });
+});
+
+// ─── 9. Rate-limit (F4 / Task 6) ─────────────────────────────────────────────
+// Unique adminSub per describe so each describe block gets its own rate-limit
+// bucket (feedback_integration_test_rate_limit_isolation.md).
+// The key is admin-tenant:${jwt.sub} — confirmed in the route source:
+// request.userId is undefined on admin routes (tenantContext absent);
+// jwt.sub (set by requireAuth) is the correct per-admin key.
+
+describe('POST /v1/admin/tenants/:id/regenerate-invitation — rate-limit (integration)', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+    _resetSesClientForTests();
+    sesMock.reset();
+    sesMock.on(SendEmailCommand).resolves({});
+  });
+
+  // Sanity: a single regenerate call from a fresh admin sub is not rate-limited.
+  it('single regenerate call from a fresh admin sub returns 200 (under the limit)', async () => {
+    const { tenantId } = await seedTenant();
+    await seedInvitation({ tenantId });
+
+    const adminSub = `rl-sanity-regen-${crypto.randomUUID()}`;
+    const token = await signTestToken({ pool: 'platform-admins', sub: adminSub });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/admin/tenants/${tenantId}/regenerate-invitation`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      payload: '{}',
+    });
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  // Rate-limit: 31st call from the same admin sub triggers 429.
+  // Requests 1-30 each return 404 tenant.not_found (non-existent UUID) — the
+  // handler runs but short-circuits at the tenant lookup; this still decrements
+  // the bucket. Request 31 is blocked before the handler by the rate-limit plugin.
+  it('31st call from the same admin JWT sub returns 429 admin.tenant.rate_limited', async () => {
+    const adminSub = `rl-burst-regen-${crypto.randomUUID()}`;
+    const token = await signTestToken({ pool: 'platform-admins', sub: adminSub });
+    // Non-existent but valid UUID → each call gets 404 tenant.not_found
+    // without touching SES or seeding data.
+    const NONEXISTENT_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+    const fire = () =>
+      app.inject({
+        method: 'POST',
+        url: `/v1/admin/tenants/${NONEXISTENT_ID}/regenerate-invitation`,
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        payload: '{}',
+      });
+
+    for (let i = 0; i < 30; i++) {
+      const res = await fire();
+      // Each of the first 30 calls passes the rate-limit hook and reaches the
+      // handler, which returns 404 tenant.not_found.
+      expect(res.statusCode).not.toBe(429);
+    }
+
+    // 31st call: rate-limit plugin fires before the handler → 429.
+    const limited = await fire();
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers['content-type']).toContain(PROBLEM_JSON_CONTENT_TYPE);
+    expect((limited.json() as { code: string }).code).toBe('admin.tenant.rate_limited');
   });
 });
