@@ -11,6 +11,7 @@ function makeCtxValue(state: AuthState): AuthContextValue {
     signIn: async () => {},
     signOut: () => {},
     getIdToken: async () => null,
+    markAccountInactive: () => {},
   };
 }
 

@@ -11,6 +11,7 @@ function withAuthState(state: AuthState) {
     signIn: vi.fn(),
     signOut: vi.fn(),
     getIdToken: vi.fn(),
+    markAccountInactive: vi.fn(),
   };
 }
 

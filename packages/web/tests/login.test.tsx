@@ -7,7 +7,9 @@ import { Login } from '@/pages/Login';
 
 function renderLogin(state: AuthState, signIn = vi.fn()) {
   return render(
-    <AuthContext.Provider value={{ state, signIn, signOut: vi.fn(), getIdToken: vi.fn() }}>
+    <AuthContext.Provider
+      value={{ state, signIn, signOut: vi.fn(), getIdToken: vi.fn(), markAccountInactive: vi.fn() }}
+    >
       <MemoryRouter initialEntries={['/login']}>
         <Routes>
           <Route path="/login" element={<Login />} />
