@@ -2051,9 +2051,8 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
-| GET | `/tenants/me` | F-OFF-007 | Tenant User | Info tenant corrente. Include `onboardingCompletedAt` (ISO string o `null`) usato dal client per il redirect al wizard di onboarding (F-OFF-002) |
+| GET | `/tenants/me` | F-OFF-007 | Tenant User | Info tenant corrente. Include `onboardingCompletedAt` (ISO string o `null`) — flag inerte, wizard rimosso |
 | PATCH | `/tenants/me` | F-OFF-007 | Super Admin | **[DETTAGLIATO sotto]** Aggiorna dati tenant |
-| POST | `/tenants/me/onboarding/complete` | F-OFF-002 | Super Admin | Marca il wizard di onboarding come completato (scrive `settings.onboardingCompletedAt`). Nessun body. `204`. Idempotente |
 | GET | `/tenants/me/locations` | F-OFF-003, F-OFF-004 | Tenant User (Super Admin for F-OFF-004 scope) | **[DETTAGLIATO sotto per F-OFF-004]** Lista location attive (usata anche da InviteUserDialog) |
 | POST | `/tenants/me/locations` | F-OFF-003 | Super Admin | Crea location |
 | PATCH | `/tenants/me/locations/:id` | F-OFF-003 | Super Admin | Modifica location |

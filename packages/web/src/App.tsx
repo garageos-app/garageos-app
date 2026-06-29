@@ -19,8 +19,6 @@ import { AcceptInvitation } from '@/pages/AcceptInvitation';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
 import { ForgotPassword } from '@/pages/ForgotPassword';
 import { ResetPassword } from '@/pages/ResetPassword';
-import { OnboardingGate } from '@/auth/OnboardingGate';
-import { OnboardingWizard } from '@/pages/OnboardingWizard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,25 +43,19 @@ export function App() {
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/invitations/:token" element={<AcceptInvitation />} />
               <Route element={<ProtectedRoute />}>
-                <Route path="/onboarding" element={<OnboardingWizard />} />
                 <Route element={<AppLayout />}>
-                  <Route element={<OnboardingGate />}>
-                    <Route path="/" element={<HomeDashboard />} />
-                    <Route path="/search" element={<SearchResults />} />
-                    <Route path="/vehicles/new" element={<VehicleCreate />} />
-                    <Route path="/vehicles/:id" element={<VehicleDetail />} />
-                    <Route
-                      path="/vehicles/:id/interventions/new"
-                      element={<InterventionCreate />}
-                    />
-                    <Route path="/customers" element={<CustomerList />} />
-                    <Route path="/customers/:id" element={<CustomerDetail />} />
-                    <Route path="/interventions/:id" element={<InterventionDetail />} />
-                    <Route path="/deadlines" element={<DeadlineDashboard />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="/settings/users" element={<Settings />} />
-                    <Route path="/settings/locations" element={<Settings />} />
-                  </Route>
+                  <Route path="/" element={<HomeDashboard />} />
+                  <Route path="/search" element={<SearchResults />} />
+                  <Route path="/vehicles/new" element={<VehicleCreate />} />
+                  <Route path="/vehicles/:id" element={<VehicleDetail />} />
+                  <Route path="/vehicles/:id/interventions/new" element={<InterventionCreate />} />
+                  <Route path="/customers" element={<CustomerList />} />
+                  <Route path="/customers/:id" element={<CustomerDetail />} />
+                  <Route path="/interventions/:id" element={<InterventionDetail />} />
+                  <Route path="/deadlines" element={<DeadlineDashboard />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/settings/users" element={<Settings />} />
+                  <Route path="/settings/locations" element={<Settings />} />
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

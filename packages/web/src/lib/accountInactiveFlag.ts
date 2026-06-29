@@ -11,7 +11,7 @@
 // sessionStorage gives the right semantics: survives reload / silent re-auth (a
 // reload is not a login), cleared when the tab closes, and cleared explicitly on
 // signOut (the "Torna al login" exit) so a same-tab logout re-enables a fresh
-// login. This mirrors lib/onboardingSkip.ts.
+// login.
 
 export const ACCOUNT_INACTIVE_KEY = 'garageos.accountInactive';
 
