@@ -34,7 +34,13 @@ export type AuthState =
   | { status: 'idle' }
   | { status: 'authenticating' }
   | { status: 'authenticated'; user: AuthenticatedUser }
-  | { status: 'unauthenticated'; error?: string };
+  | { status: 'unauthenticated'; error?: string }
+  // Terminal denial: the API rejected an otherwise-valid session because the
+  // officine user was disabled or the tenant suspended (backend code
+  // `auth.session.inactive`). Distinct from `unauthenticated` so ProtectedRoute
+  // shows a terminal screen instead of redirecting to /login — re-login cannot
+  // clear it, so a redirect would loop. Only signOut() exits this state.
+  | { status: 'account_inactive' };
 
 type AuthAction =
   | { type: 'REHYDRATE_OK'; user: AuthenticatedUser }
@@ -42,9 +48,10 @@ type AuthAction =
   | { type: 'SIGNIN_START' }
   | { type: 'SIGNIN_OK'; user: AuthenticatedUser }
   | { type: 'SIGNIN_ERROR'; message: string }
+  | { type: 'ACCOUNT_INACTIVE' }
   | { type: 'SIGNOUT' };
 
-function reducer(state: AuthState, action: AuthAction): AuthState {
+export function reducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case 'REHYDRATE_OK':
       if (state.status === 'idle') return { status: 'authenticated', user: action.user };
@@ -65,6 +72,10 @@ function reducer(state: AuthState, action: AuthAction): AuthState {
         return { status: 'unauthenticated', error: action.message };
       }
       return state;
+    case 'ACCOUNT_INACTIVE':
+      // Unconditional terminal transition (mirrors SIGNOUT): a reactive denial
+      // can land on any live session.
+      return { status: 'account_inactive' };
     case 'SIGNOUT':
       return { status: 'unauthenticated' };
   }
@@ -75,6 +86,11 @@ export interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
   getIdToken: () => Promise<string | null>;
+  // Drive the session into the terminal `account_inactive` state. Called by
+  // the API client when a request returns `auth.session.inactive` (see
+  // useApiFetch). Does NOT touch the Cognito session on purpose: a page reload
+  // re-lands on the terminal screen instead of dropping to /login.
+  markAccountInactive: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -165,6 +181,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearOnboardingSkipped();
   }, [queryClient]);
 
+  const markAccountInactive = useCallback(() => {
+    dispatch({ type: 'ACCOUNT_INACTIVE' });
+  }, []);
+
   const getIdToken = useCallback(async (): Promise<string | null> => {
     return new Promise((resolve) => {
       const current = officineUserPool.getCurrentUser();
@@ -177,8 +197,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, signIn, signOut, getIdToken }),
-    [state, signIn, signOut, getIdToken],
+    () => ({ state, signIn, signOut, getIdToken, markAccountInactive }),
+    [state, signIn, signOut, getIdToken, markAccountInactive],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

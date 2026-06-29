@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { userFromIdToken } from './AuthContext';
+import { reducer, userFromIdToken, type AuthState } from './AuthContext';
 
 // Builds the minimal idToken shape userFromIdToken consumes — a thin
 // stand-in for CognitoIdToken with a payload bag of claims.
@@ -84,5 +84,23 @@ describe('userFromIdToken', () => {
       }),
     );
     expect(user.tenantId).toBeUndefined();
+  });
+});
+
+describe('reducer — account_inactive terminal state', () => {
+  const authenticated: AuthState = {
+    status: 'authenticated',
+    user: { email: 'mario@example.com' },
+  };
+
+  it('ACCOUNT_INACTIVE moves a live session into the terminal state', () => {
+    expect(reducer(authenticated, { type: 'ACCOUNT_INACTIVE' })).toEqual({
+      status: 'account_inactive',
+    });
+  });
+
+  it('SIGNOUT exits account_inactive back to unauthenticated', () => {
+    const inactive: AuthState = { status: 'account_inactive' };
+    expect(reducer(inactive, { type: 'SIGNOUT' })).toEqual({ status: 'unauthenticated' });
   });
 });
