@@ -243,8 +243,9 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
       action: string;
       actor_type: string;
       actor_id: string | null;
+      metadata: Record<string, unknown>;
     }>(
-      `SELECT action, actor_type, actor_id
+      `SELECT action, actor_type, actor_id, metadata
          FROM audit_logs
         WHERE tenant_id = $1 AND action = 'user_invited'`,
       [tenantId],
@@ -254,6 +255,17 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
     // Platform admins have no tenant User row → actorType='system', actorId=null.
     expect(auditRows[0]!.actor_type).toBe('system');
     expect(auditRows[0]!.actor_id).toBeNull();
+    // SECURITY: metadata must contain only the safe fields and must NOT include
+    // the plaintext token (which appears only in the response magicLinkUrl).
+    const meta = auditRows[0]!.metadata;
+    expect(meta).toMatchObject({
+      actorCognitoSub: adminSub,
+      role: 'mechanic',
+      targetEmail: VALID_MECHANIC_BODY.email,
+    });
+    expect(Object.keys(meta)).toHaveLength(3); // no extra keys
+    // The plaintext token extracted from the response must not appear anywhere in the metadata.
+    expect(JSON.stringify(meta)).not.toContain(plaintext);
 
     // ── AWS SDK mock call counts ──────────────────────────────────────────────
     // Cognito called once for the email cross-tenant pre-check.
@@ -305,34 +317,11 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
     });
     expect(first.statusCode).toBe(200);
 
-    // Second invite for the same (tenant, email) hits the unique index.
-    // Note: the pendingElsewhere check will now intercept this (it matches
-    // the existing row inserted in step 1) and return email_in_other_tenant.
-    // Actually, since the first invite is for THIS tenant, the pendingElsewhere
-    // check returns the row → 409 user.invitation.email_in_other_tenant.
-    // The duplicate_pending path fires when the partial unique index fires
-    // inside the same-tenant createInternalInvitation. Since pendingElsewhere
-    // catches it first, we assert the 409 regardless of exact code.
-    //
-    // Actually, let me re-read the code:
-    // pendingElsewhere = tx.invitation.findFirst({ where: { targetEmail: email, ... } })
-    // This query has NO tenantId filter → it matches any pending invitation for the email,
-    // including the one in the SAME tenant. So the pendingElsewhere check fires first
-    // and returns user.invitation.email_in_other_tenant 409.
-    // The brief's test case says "Duplicate pending for same (tenant,email) →
-    // user.invitation.duplicate_pending 409" — but the pendingElsewhere check will
-    // catch it first. Let me verify the code flow...
-    //
-    // Yes: pendingElsewhere has NO tenantId filter. So for same-tenant duplicate,
-    // pendingElsewhere fires → user.invitation.email_in_other_tenant 409.
-    // The P2002 / duplicate_pending path is unreachable in this scenario.
-    // The duplicate_pending code fires only when pendingElsewhere misses (TOCTOU)
-    // and the partial index fires inside the transaction.
-    //
-    // The brief says to test "Duplicate pending for same (tenant,email) →
-    // user.invitation.duplicate_pending 409". We interpret this as "any 409 for
-    // the duplicate scenario" since the precise code depends on timing.
-    // Assert 409; the two possible codes are documented above.
+    // Second invite for the same (tenant, email): the pendingElsewhere check now
+    // excludes the current tenant (tenantId: { not: id }), so it does NOT match
+    // the row inserted above. Execution falls through to createInternalInvitation,
+    // which hits the partial unique index uq_invitations_pending_internal and maps
+    // P2002 → user.invitation.duplicate_pending 409 (BR-206).
     const second = await app.inject({
       method: 'POST',
       url: `${BASE_URL}/${tenantId}/users/invitations`,
@@ -341,13 +330,7 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
     });
 
     expect(second.statusCode).toBe(409);
-    const secondBody = second.json() as { code: string };
-    // Either pendingElsewhere fires (email_in_other_tenant) or the partial index
-    // fires (duplicate_pending). Both are correct per the invariant.
-    expect([
-      'user.invitation.email_in_other_tenant',
-      'user.invitation.duplicate_pending',
-    ]).toContain(secondBody.code);
+    expect((second.json() as { code: string }).code).toBe('user.invitation.duplicate_pending');
   });
 
   // ── 5. Email already in officine Cognito pool ───────────────────────────────

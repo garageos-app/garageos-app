@@ -114,13 +114,17 @@ export const adminTenantUsersInvitationsRoutes: FastifyPluginAsync = async (app)
         );
       }
 
-      // ─── DB pre-check: pending invitation in any tenant (OUTSIDE tx) ─────────
+      // ─── DB pre-check: pending invitation in ANOTHER tenant (OUTSIDE tx) ──────
       // A PENDING (unaccepted) internal_user invitation in ANOTHER tenant has no
       // Cognito user yet — AdminCreateUser runs only at acceptance time. The
       // per-tenant partial unique index uq_invitations_pending_internal never
       // fires for cross-tenant collisions, so without this check two tenants
       // can hold a live magic-link for the same email simultaneously. A residual
       // concurrent TOCTOU window is accepted (same policy as admin-tenants-create.ts).
+      // tenantId: { not: id } ensures same-tenant duplicates fall through to
+      // createInternalInvitation, which raises user.invitation.duplicate_pending 409
+      // via P2002 on uq_invitations_pending_internal (BR-206). Without the exclusion,
+      // a same-tenant re-invite would wrongly return email_in_other_tenant 409.
       const pendingElsewhere = await app.withContext({ role: 'admin' as const }, (tx) =>
         tx.invitation.findFirst({
           where: {
@@ -128,6 +132,7 @@ export const adminTenantUsersInvitationsRoutes: FastifyPluginAsync = async (app)
             invitationType: 'internal_user',
             acceptedAt: null,
             expiresAt: { gt: new Date() },
+            tenantId: { not: id },
           },
           select: { id: true },
         }),
