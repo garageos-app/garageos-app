@@ -17,6 +17,11 @@ export class ApiError extends Error {
 export interface ApiClientDeps {
   getIdToken: () => Promise<string | null>;
   onAuthExpired: () => void;
+  // Called on a 401 whose body code is `auth.session.inactive` (officine user
+  // disabled or tenant suspended — a terminal denial that re-login cannot
+  // clear). Distinct from onAuthExpired so the app shows a terminal screen
+  // instead of bouncing back to /login.
+  onAccountInactive: () => void;
   baseUrl: string;
 }
 
@@ -43,6 +48,20 @@ export function createApiFetch(deps: ApiClientDeps) {
     }
 
     if (res.status === 401) {
+      // Read the RFC-7807 body to tell a terminal account/tenant denial
+      // (auth.session.inactive — re-login won't help) apart from a plain
+      // expired/invalid token (UNAUTHORIZED — re-login is the fix). An empty
+      // or unparseable body has no code and falls through to the expired path.
+      const body401 = (await res.json().catch(() => ({}))) as {
+        code?: unknown;
+        detail?: unknown;
+      };
+      if (body401?.code === 'auth.session.inactive') {
+        deps.onAccountInactive();
+        const detail =
+          typeof body401.detail === 'string' ? body401.detail : 'Il tuo accesso non è disponibile.';
+        throw new ApiError('auth.session.inactive', 401, detail);
+      }
       deps.onAuthExpired();
       throw new ApiError('auth.expired', 401, 'Sessione scaduta');
     }
@@ -74,7 +93,7 @@ export function createApiFetch(deps: ApiClientDeps) {
 }
 
 export function useApiFetch() {
-  const { getIdToken, signOut } = useAuth();
+  const { getIdToken, signOut, markAccountInactive } = useAuth();
   const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
   return useCallback(
     createApiFetch({
@@ -83,8 +102,12 @@ export function useApiFetch() {
         toast.error('Sessione scaduta. Effettua nuovamente il login.');
         signOut();
       },
+      // No toast: the terminal screen (ProtectedRoute → AccountInactive)
+      // carries the message. signOut is intentionally not called here so the
+      // Cognito session survives a reload and re-lands on the terminal screen.
+      onAccountInactive: markAccountInactive,
       baseUrl,
     }),
-    [getIdToken, signOut, baseUrl],
+    [getIdToken, signOut, markAccountInactive, baseUrl],
   );
 }
