@@ -65,6 +65,7 @@ beforeEach(() => {
   cognitoUserGetSessionMock.mockReset();
   cognitoUserSignOutMock.mockReset();
   authenticateUserMock.mockReset();
+  sessionStorage.clear();
 });
 
 describe('AuthProvider rehydrate', () => {
@@ -72,6 +73,16 @@ describe('AuthProvider rehydrate', () => {
     getCurrentUserMock.mockReturnValue(null);
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.state.status).toBe('unauthenticated'));
+  });
+
+  it('account-inactive flag → account_inactive on mount, without touching Cognito', async () => {
+    // The terminal state must survive a reload via sessionStorage and must NOT
+    // rehydrate the still-valid Cognito session (which would re-fire
+    // authenticated requests from a disabled principal).
+    sessionStorage.setItem('garageos.accountInactive', '1');
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.state.status).toBe('account_inactive'));
+    expect(getCurrentUserMock).not.toHaveBeenCalled();
   });
 
   it('REHYDRATE_OK → authenticated when getSession succeeds', async () => {

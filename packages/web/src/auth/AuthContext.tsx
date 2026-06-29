@@ -8,6 +8,11 @@ import {
 import { officineUserPool } from '@/lib/cognito';
 import { mapCognitoError } from '@/lib/auth-errors';
 import { clearOnboardingSkipped } from '@/lib/onboardingSkip';
+import {
+  clearAccountInactiveFlag,
+  isAccountInactiveFlag,
+  markAccountInactiveFlag,
+} from '@/lib/accountInactiveFlag';
 
 export type UserRole = 'super_admin' | 'mechanic';
 
@@ -119,6 +124,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Terminal `account_inactive` survives reload via a sessionStorage flag:
+    // honor it BEFORE touching Cognito so a disabled/suspended principal does
+    // not briefly rehydrate to `authenticated` and re-fire authenticated
+    // requests. Only signOut ("Torna al login") clears the flag.
+    if (isAccountInactiveFlag()) {
+      dispatch({ type: 'ACCOUNT_INACTIVE' });
+      return;
+    }
     const current = officineUserPool.getCurrentUser();
     if (!current) {
       dispatch({ type: 'REHYDRATE_NONE' });
@@ -179,11 +192,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear the session-scoped onboarding-skip flag so a same-tab
     // logout → login re-prompts the wizard (F-OFF-002).
     clearOnboardingSkipped();
+    // Clear the terminal account-inactive flag so "Torna al login" actually
+    // re-enables a fresh login instead of bouncing back to the terminal screen.
+    clearAccountInactiveFlag();
   }, [queryClient]);
 
   const markAccountInactive = useCallback(() => {
+    // Persist across reload (see lib/accountInactiveFlag) and clear the React
+    // Query cache so a disabled principal's user-scoped data does not linger in
+    // memory — mirrors the queryClient.clear() that signOut performs on the
+    // expired-session path.
+    markAccountInactiveFlag();
+    queryClient.clear();
     dispatch({ type: 'ACCOUNT_INACTIVE' });
-  }, []);
+  }, [queryClient]);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {
     return new Promise((resolve) => {

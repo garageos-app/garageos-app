@@ -1,6 +1,12 @@
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth/useAuth';
+import { ACCOUNT_INACTIVE_MESSAGE } from '@/lib/error-messages';
+
+// Backend code (APPENDICE_G §3.2) for a terminal post-auth denial: officine
+// user disabled or tenant suspended. Kept as a single named constant so the
+// 401 dispatch below cannot silently drift from a typo.
+export const ACCOUNT_INACTIVE_CODE = 'auth.session.inactive';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -47,25 +53,9 @@ export function createApiFetch(deps: ApiClientDeps) {
       throw new ApiError('network.offline', 0, 'Errore di connessione. Verifica la rete.');
     }
 
-    if (res.status === 401) {
-      // Read the RFC-7807 body to tell a terminal account/tenant denial
-      // (auth.session.inactive — re-login won't help) apart from a plain
-      // expired/invalid token (UNAUTHORIZED — re-login is the fix). An empty
-      // or unparseable body has no code and falls through to the expired path.
-      const body401 = (await res.json().catch(() => ({}))) as {
-        code?: unknown;
-        detail?: unknown;
-      };
-      if (body401?.code === 'auth.session.inactive') {
-        deps.onAccountInactive();
-        const detail =
-          typeof body401.detail === 'string' ? body401.detail : 'Il tuo accesso non è disponibile.';
-        throw new ApiError('auth.session.inactive', 401, detail);
-      }
-      deps.onAuthExpired();
-      throw new ApiError('auth.expired', 401, 'Sessione scaduta');
-    }
-
+    // Parse the RFC-7807 body once and dispatch on it (the 401 branch needs
+    // the `code`, the generic error branch needs `detail`/`name`). An empty or
+    // unparseable body becomes {} so both branches fall back gracefully.
     const body = (await res.json().catch(() => ({}))) as {
       code?: unknown;
       detail?: unknown;
@@ -73,6 +63,22 @@ export function createApiFetch(deps: ApiClientDeps) {
       name?: unknown;
       message?: unknown;
     };
+
+    if (res.status === 401) {
+      // A terminal account/tenant denial (auth.session.inactive — re-login
+      // won't help) is told apart from a plain expired/invalid token
+      // (UNAUTHORIZED — re-login is the fix) by the body code. A bodyless 401
+      // has no code and falls through to the expired path. The thrown message
+      // is the centralized Italian copy, never the server's English detail
+      // (which would surface untranslated via translateError on mutations).
+      if (body.code === ACCOUNT_INACTIVE_CODE) {
+        deps.onAccountInactive();
+        throw new ApiError(ACCOUNT_INACTIVE_CODE, 401, ACCOUNT_INACTIVE_MESSAGE);
+      }
+      deps.onAuthExpired();
+      throw new ApiError('auth.expired', 401, 'Sessione scaduta');
+    }
+
     if (!res.ok) {
       const code =
         typeof body?.code === 'string'

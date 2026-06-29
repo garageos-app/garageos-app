@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, createApiFetch } from './api-client';
+import { ACCOUNT_INACTIVE_MESSAGE } from './error-messages';
 
 const baseDeps = () => ({
   getIdToken: vi.fn().mockResolvedValue('FAKE_JWT'),
@@ -66,7 +67,9 @@ describe('createApiFetch', () => {
     await expect(apiFetch('/v1/test')).rejects.toMatchObject({
       code: 'auth.session.inactive',
       status: 401,
-      message: 'User inactive or not found',
+      // Centralized Italian copy — never the server's English `detail`, which
+      // would surface untranslated via translateError on mutation onError.
+      message: ACCOUNT_INACTIVE_MESSAGE,
     });
     expect(deps.onAccountInactive).toHaveBeenCalledOnce();
     expect(deps.onAuthExpired).not.toHaveBeenCalled();
