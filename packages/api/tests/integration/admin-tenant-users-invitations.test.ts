@@ -35,7 +35,7 @@ import { _resetSesClientForTests } from '../../src/lib/ses-client.js';
 import { _resetCognitoClientForTests } from '../../src/lib/cognito.js';
 
 import { buildTestServer } from './fixtures.js';
-import { resetDb, createTenantWithLocation } from './helpers.js';
+import { resetDb, createTenantWithLocation, createUser } from './helpers.js';
 import { signTestToken } from '../helpers/jwt.js';
 import { pgAdmin } from './setup.js';
 
@@ -466,6 +466,81 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
       [noLocationTenantId],
     );
     expect(rows[0]!.c).toBe('0');
+  });
+
+  // ── 9a. Same-tenant active user ─────────────────────────────────────────────
+  // Regression: before the fix, this would fall through to the Cognito check
+  // and return email_in_other_tenant 409 instead of email_already_active 409.
+  it('returns 409 user.invitation.email_already_active when the email belongs to an active user in the same tenant', async () => {
+    const targetEmail = 'already-active@rossi.it';
+    await createUser({
+      tenantId,
+      cognitoSub: `existing-active-${crypto.randomUUID()}`,
+      email: targetEmail,
+      role: 'mechanic',
+      locationId: primaryLocationId,
+    });
+
+    const token = await signTestToken({ pool: 'platform-admins' });
+    const res = await app.inject({
+      method: 'POST',
+      url: `${BASE_URL}/${tenantId}/users/invitations`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { email: targetEmail, firstName: 'Già', lastName: 'Attivo', role: 'mechanic' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { code: string }).code).toBe('user.invitation.email_already_active');
+
+    // No invitation row written.
+    const { rows } = await pgAdmin.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM invitations WHERE target_email = $1`,
+      [targetEmail],
+    );
+    expect(rows[0]!.c).toBe('0');
+
+    // SES must not have been called.
+    expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
+  });
+
+  // ── 9b. Same-tenant soft-deleted user ──────────────────────────────────────
+  // Regression: before the fix, soft-deleted same-tenant users would also
+  // fall through to the Cognito check and return email_in_other_tenant 409.
+  it('returns 409 user.invitation.email_soft_deleted_in_tenant when the email belongs to a soft-deleted user in the same tenant', async () => {
+    const targetEmail = 'soft-deleted@rossi.it';
+    // Insert a soft-deleted user directly (pgAdmin bypasses RLS — same pattern
+    // as other direct-insert fixtures in this file).
+    await pgAdmin.query(
+      `INSERT INTO users
+         (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+          role, status, deleted_at, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, 'Soft', 'Deleted',
+               'mechanic'::"UserRole", 'inactive'::"UserStatus", NOW(), NOW(), NOW())`,
+      [tenantId, primaryLocationId, `soft-del-sub-${crypto.randomUUID()}`, targetEmail],
+    );
+
+    const token = await signTestToken({ pool: 'platform-admins' });
+    const res = await app.inject({
+      method: 'POST',
+      url: `${BASE_URL}/${tenantId}/users/invitations`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { email: targetEmail, firstName: 'Soft', lastName: 'Deleted', role: 'mechanic' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { code: string }).code).toBe(
+      'user.invitation.email_soft_deleted_in_tenant',
+    );
+
+    // No invitation row written.
+    const { rows } = await pgAdmin.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM invitations WHERE target_email = $1`,
+      [targetEmail],
+    );
+    expect(rows[0]!.c).toBe('0');
+
+    // SES must not have been called.
+    expect(sesMock.commandCalls(SendEmailCommand)).toHaveLength(0);
   });
 });
 

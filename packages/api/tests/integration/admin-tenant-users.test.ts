@@ -26,7 +26,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { _resetCognitoClientForTests } from '../../src/lib/cognito.js';
 import { buildTestServer } from './fixtures.js';
-import { createTenantWithLocation, createUser, resetDb } from './helpers.js';
+import { createTenantWithLocation, createUser, createLocation, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
@@ -381,6 +381,52 @@ describe('PATCH — BR-204 primary-location defaulting (cross-tenant)', () => {
     expect(body.user.role).toBe('mechanic');
     // locationId must equal the primary location resolved by the route handler.
     expect(body.user.locationId).toBe(primaryLocationId);
+  });
+
+  it('does NOT relocate a mechanic already at a secondary location when role is re-sent without locationId', async () => {
+    // Regression: the old route-level defaulting fired whenever body had
+    // role:'mechanic' and no locationId — regardless of the user's current
+    // location. This test proves the fix: effective-location gating in
+    // updateOfficineUser prevents silent relocation.
+    const { tenantId, locationId: primaryLocationId } =
+      await createTenantWithLocation('atu-br204-norelo');
+    const { locationId: secondaryLocationId } = await createLocation({
+      tenantId,
+      name: 'Sede Secondaria',
+    });
+
+    await createUser({
+      tenantId,
+      cognitoSub: `sa-atu-br204-norelo-${crypto.randomUUID()}`,
+      email: 'admin-br204-norelo@test.it',
+      role: 'super_admin',
+    });
+    const { userId: mechId } = await createUser({
+      tenantId,
+      cognitoSub: `mech-atu-br204-norelo-${crypto.randomUUID()}`,
+      email: 'mech-br204-norelo@test.it',
+      role: 'mechanic',
+      locationId: secondaryLocationId,
+    });
+    void primaryLocationId; // ensure primary exists so defaulting could fire if buggy
+
+    const token = await signTestToken({ pool: 'platform-admins' });
+
+    // body { role: 'mechanic' } with no locationId — must NOT relocate to primary.
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/admin/tenants/${tenantId}/users/${mechId}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      remoteAddress: TEST_IP,
+      payload: JSON.stringify({ role: 'mechanic' }),
+    });
+
+    expect(res.statusCode).toBe(200);
+    type UserDto2 = { role: string; locationId: string | null };
+    const body2 = res.json() as { user: UserDto2 };
+    expect(body2.user.role).toBe('mechanic');
+    // Must remain at the secondary location — NOT relocated to the primary.
+    expect(body2.user.locationId).toBe(secondaryLocationId);
   });
 });
 

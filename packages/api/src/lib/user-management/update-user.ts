@@ -43,6 +43,12 @@ export interface UpdateUserInput {
     locationId?: string | null | undefined;
     status?: 'active' | 'inactive' | undefined;
   };
+  // When true, the helper auto-assigns the tenant's primary active location to a
+  // mechanic that has no effective location (neither body nor current assignment).
+  // Gated on the EFFECTIVE location, so an already-assigned mechanic is never
+  // silently relocated. Used only by the platform-admin cross-tenant route;
+  // the officine route omits this flag to preserve its existing 422 behavior.
+  defaultMechanicLocationToPrimary?: boolean | undefined;
   actor: UpdateUserActor;
   ip: string;
 }
@@ -52,7 +58,7 @@ export async function updateOfficineUser(
   input: UpdateUserInput,
   log: FastifyBaseLogger,
 ): Promise<UserAdminWireDto> {
-  const { tenantId, targetId, body, actor, ip } = input;
+  const { tenantId, targetId, body, actor, ip, defaultMechanicLocationToPrimary } = input;
 
   const result = await app.withContext({ role: 'admin' as const }, async (tx) => {
     // Lookup target user (same tenant, not soft-deleted).
@@ -73,8 +79,24 @@ export async function updateOfficineUser(
 
     // Compute effective new values.
     const newRole = body.role ?? target.role;
-    const newLocationId = body.locationId !== undefined ? body.locationId : target.locationId;
+    let newLocationId = body.locationId !== undefined ? body.locationId : target.locationId;
     const newStatus = body.status ?? target.status;
+
+    // BR-204 admin convenience: when a platform admin makes a user a mechanic
+    // without specifying a location AND the user currently has none, default to
+    // the tenant's primary location. Computed on the EFFECTIVE location so an
+    // already-assigned mechanic is never silently relocated.
+    let locationDefaulted = false;
+    if (defaultMechanicLocationToPrimary && newRole === 'mechanic' && !newLocationId) {
+      const primary = await tx.location.findFirst({
+        where: { tenantId, isPrimary: true, status: 'active', deletedAt: null },
+        select: { id: true },
+      });
+      if (primary) {
+        newLocationId = primary.id;
+        locationDefaulted = true;
+      }
+    }
 
     // BR-204: a mechanic must always be assigned to a location. See BR-204.
     if (newRole === 'mechanic' && !newLocationId) {
@@ -137,7 +159,9 @@ export async function updateOfficineUser(
       where: { id: targetId },
       data: {
         ...(body.role !== undefined ? { role: body.role } : {}),
-        ...(body.locationId !== undefined ? { locationId: body.locationId } : {}),
+        ...(body.locationId !== undefined || locationDefaulted
+          ? { locationId: newLocationId }
+          : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
       },
       select: USER_ADMIN_SELECT,
@@ -166,10 +190,13 @@ export async function updateOfficineUser(
         metadata: { from: target.role, to: body.role, ...actorMetaExtra },
       });
     }
-    if (body.locationId !== undefined && body.locationId !== target.locationId) {
+    if (
+      (body.locationId !== undefined || locationDefaulted) &&
+      newLocationId !== target.locationId
+    ) {
       auditRows.push({
         action: 'user_location_changed',
-        metadata: { from: target.locationId, to: body.locationId, ...actorMetaExtra },
+        metadata: { from: target.locationId, to: newLocationId, ...actorMetaExtra },
       });
     }
     if (body.status !== undefined && body.status !== target.status) {
@@ -198,7 +225,12 @@ export async function updateOfficineUser(
       targetEmail: target.email,
       targetCognitoSub: target.cognitoSub,
       roleChanged: body.role !== undefined && body.role !== target.role,
-      locationChanged: body.locationId !== undefined && body.locationId !== target.locationId,
+      locationChanged:
+        (body.locationId !== undefined || locationDefaulted) && newLocationId !== target.locationId,
+      // Carries the resolved effective locationId for Cognito sync outside the tx.
+      // When locationDefaulted, this is the injected primary id; otherwise it
+      // mirrors body.locationId (string | null). Always defined but may be null.
+      effectiveNewLocationId: newLocationId,
       statusBecameInactive:
         body.status !== undefined && target.status === 'active' && body.status === 'inactive',
     };
@@ -213,7 +245,7 @@ export async function updateOfficineUser(
         poolId: env.COGNITO_OFFICINE_POOL_ID,
         email: result.targetEmail,
         ...(result.roleChanged && body.role !== undefined ? { role: body.role } : {}),
-        ...(result.locationChanged ? { locationId: body.locationId ?? null } : {}),
+        ...(result.locationChanged ? { locationId: result.effectiveNewLocationId } : {}),
       });
     } catch (err) {
       log.error(

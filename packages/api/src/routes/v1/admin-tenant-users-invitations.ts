@@ -84,6 +84,34 @@ export const adminTenantUsersInvitationsRoutes: FastifyPluginAsync = async (app)
         throw businessError('tenant.not_found', 404, 'Officina non trovata.');
       }
 
+      // ─── Same-tenant collision check (OUTSIDE tx) ────────────────────────────
+      // Must run BEFORE the Cognito check: if the email already belongs to an
+      // active or soft-deleted user IN THIS TENANT we return the tenant-specific
+      // error code rather than email_in_other_tenant. The Cognito check below
+      // then only catches genuinely cross-tenant cases (no DB row here but the
+      // Cognito pool already has the user = registered in another workspace).
+      // See Block 1 in users-invitations-create.ts for the original pattern.
+      const existingUser = await app.withContext({ role: 'admin' as const }, (tx) =>
+        tx.user.findFirst({
+          where: { tenantId: id, email },
+          select: { id: true, deletedAt: true },
+        }),
+      );
+      if (existingUser) {
+        if (existingUser.deletedAt !== null) {
+          throw businessError(
+            'user.invitation.email_soft_deleted_in_tenant',
+            409,
+            'Questa email appartiene a un utente disattivato di questa officina. Riattivalo dalla scheda utenti invece di reinvitarlo.',
+          );
+        }
+        throw businessError(
+          'user.invitation.email_already_active',
+          409,
+          'Questa email è già un utente attivo di questa officina.',
+        );
+      }
+
       // ─── Cognito pre-check (OUTSIDE tx) ──────────────────────────────────────
       // Cross-tenant early-check: if the email already exists in the officine
       // Cognito pool, it belongs to a user in another tenant — their Cognito

@@ -18,11 +18,10 @@
 // PATCH: updates a tenant user's role/locationId/status cross-tenant.
 //   Delegates all business-invariant logic to updateOfficineUser (BR-203
 //   last-super_admin guard, BR-204 mechanic-requires-location, Cognito sync).
-//   Performs BR-204 primary-location defaulting before delegating: if
-//   body.role === 'mechanic' and body.locationId is absent, resolves the
-//   tenant's primary active location and injects it so updateOfficineUser can
-//   satisfy BR-204 automatically. If no primary location exists, locationId
-//   stays absent and updateOfficineUser raises user.location_required_for_mechanic.
+//   Passes defaultMechanicLocationToPrimary: true so the helper auto-defaults
+//   to the primary location when making a user a mechanic with no effective
+//   location. The defaulting is gated on the EFFECTIVE location — an already-
+//   assigned mechanic is never relocated. See UpdateUserInput in update-user.ts.
 //
 // Business rules (delegated to updateOfficineUser):
 //   BR-203 — last super_admin guard
@@ -124,11 +123,9 @@ export const adminTenantUsersRoutes: FastifyPluginAsync = async (app) => {
         throw parsedBody.error;
       }
 
-      // One withContext block: verify tenant + resolve primary location for
-      // BR-204 defaulting. Folding into one block avoids a redundant round-trip.
-      const effectiveBody = await app.withContext({ role: 'admin' as const }, async (tx) => {
-        // Confirm tenant exists before delegating to updateOfficineUser, so
-        // callers get tenant.not_found rather than user.not_found on a bad id.
+      // Confirm tenant exists before delegating to updateOfficineUser, so
+      // callers get tenant.not_found rather than user.not_found on a bad id.
+      await app.withContext({ role: 'admin' as const }, async (tx) => {
         const tenant = await tx.tenant.findFirst({
           where: { id, deletedAt: null },
           select: { id: true },
@@ -136,39 +133,21 @@ export const adminTenantUsersRoutes: FastifyPluginAsync = async (app) => {
         if (!tenant) {
           throw businessError('tenant.not_found', 404, 'Officina non trovata.');
         }
-
-        const body = parsedBody.data;
-
-        // BR-204 defaulting: when demoting to mechanic with no explicit locationId,
-        // attempt to inject the tenant's primary active location. This lets the
-        // caller send { role: 'mechanic' } without needing to know the location id.
-        // If no primary location exists, locationId stays absent and
-        // updateOfficineUser will raise user.location_required_for_mechanic 422.
-        // See BR-204 in docs/APPENDICE_F_BUSINESS_LOGIC.md.
-        if (body.role === 'mechanic' && body.locationId === undefined) {
-          const primary = await tx.location.findFirst({
-            where: { tenantId: id, isPrimary: true, status: 'active', deletedAt: null },
-            select: { id: true },
-          });
-          if (primary) {
-            // Return a new object so the original parsedBody.data is not mutated.
-            return { ...body, locationId: primary.id };
-          }
-        }
-
-        return body;
       });
 
       // Delegate all business logic (BR-203, BR-204, Cognito sync, audit) to
       // updateOfficineUser. Actor type is 'system' because platform admins have
       // no tenant User row; their identity is captured in audit metadata via
       // actorCognitoSub. See UpdateUserActor in update-user.ts.
+      // defaultMechanicLocationToPrimary: true enables the helper's BR-204
+      // convenience defaulting — see UpdateUserInput for the guard semantics.
       const user = await updateOfficineUser(
         app,
         {
           tenantId: id,
           targetId: userId,
-          body: effectiveBody,
+          body: parsedBody.data,
+          defaultMechanicLocationToPrimary: true,
           // requireAuth guarantees request.jwt is set; Cognito JWTs always
           // include a non-empty sub. The double non-null asserts both.
           actor: { type: 'system', cognitoSub: request.jwt!.sub! },
