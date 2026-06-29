@@ -78,6 +78,9 @@ describe('tenant-context — suspended tenant blocks officine login (BR-210)', (
     });
     // Generic 401 — anti-enumeration: caller must not learn why (BR-210).
     expect(res.statusCode).toBe(401);
+    // Same generic code as the inactive-user case below (BR-210): the code
+    // must NOT distinguish "tenant suspended" from "user disabled".
+    expect(res.json().code).toBe('auth.session.inactive');
   });
 
   it('re-activated tenant → 200 again (reversible — BR-210)', async () => {
@@ -150,6 +153,8 @@ describe('tenant-context — suspended tenant blocks officine login (BR-210)', (
       remoteAddress: TEST_IP,
     });
     expect(res.statusCode).toBe(401);
+    // Same generic code as the suspended-tenant case above (BR-210).
+    expect(res.json().code).toBe('auth.session.inactive');
   });
 
   it('suspended-tenant officine JWT on /v1/admin/* → 403 pool isolation (not 401)', async () => {
