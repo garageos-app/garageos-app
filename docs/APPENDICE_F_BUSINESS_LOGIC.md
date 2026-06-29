@@ -891,6 +891,8 @@ Un tenant in stato `suspended` (da admin o per billing):
 - Gli schedule di notifiche future vengono **cancellati** (no promemoria inviati in nome di un tenant sospeso)
 - Dopo 90 giorni di suspension continua → status `cancelled`
 
+**Implementazione (Slice 2, 2026-06-29):** login-block via `tenant-context.ts` (join `tenant.status='active'`) + accept-block in `invitations-public-accept.ts`; suspend/reactivate via `POST /v1/admin/tenants/:id/{suspend,reactivate}`; rigenerazione magic-link via `POST /v1/admin/tenants/:id/regenerate-invitation`. **Differito:** cancellazione schedule notifiche future + auto-cancel a 90 giorni (nessun tenant gestito dalla console ha reminder oggi).
+
 ### BR-211 — Cancellazione tenant
 Un tenant `cancelled` mantiene i dati per **10 anni** (retention legale/fiscale) poi cancellazione completa via job scheduled.
 

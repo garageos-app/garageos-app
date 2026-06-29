@@ -281,6 +281,66 @@ describe('POST /v1/invitations/:token/accept — password policy + rollback', ()
   });
 });
 
+// ─── Suspended tenant — BR-210 ───────────────────────────────────────────────
+
+describe('POST /v1/invitations/:token/accept — suspended tenant (BR-210)', () => {
+  const TEST_IP = '10.30.40.5';
+
+  it('returns 403 auth.tenant.suspended when the tenant is suspended', async () => {
+    const { tenantId } = await createTenantWithLocation('accept-susp');
+    await createInvitation({
+      tenantId,
+      targetEmail: 'susp@x.com',
+      token: 'susp-tok',
+    });
+
+    await pgAdmin.query(`UPDATE tenants SET status = 'suspended' WHERE id = $1`, [tenantId]);
+
+    // Phase 1 throws before any Cognito call — no Cognito mock override needed.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/invitations/susp-tok/accept',
+      remoteAddress: TEST_IP,
+      payload: { password: 'Password123!' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { code: string }).code).toBe('auth.tenant.suspended');
+  });
+
+  it('returns 201 after tenant is re-activated (link is still valid)', async () => {
+    const { tenantId } = await createTenantWithLocation('accept-react');
+    await createInvitation({
+      tenantId,
+      targetEmail: 'react-inv@x.com',
+      token: 'react-inv-tok',
+    });
+
+    await pgAdmin.query(`UPDATE tenants SET status = 'suspended' WHERE id = $1`, [tenantId]);
+
+    // Confirm suspended → 403.
+    const suspRes = await app.inject({
+      method: 'POST',
+      url: '/v1/invitations/react-inv-tok/accept',
+      remoteAddress: TEST_IP,
+      payload: { password: 'Password123!' },
+    });
+    expect(suspRes.statusCode).toBe(403);
+    expect((suspRes.json() as { code: string }).code).toBe('auth.tenant.suspended');
+
+    // Re-activate — the same (still non-expired, non-consumed) link now succeeds.
+    await pgAdmin.query(`UPDATE tenants SET status = 'active' WHERE id = $1`, [tenantId]);
+
+    // Default beforeEach Cognito mock handles Phase 2+3 correctly.
+    const okRes = await app.inject({
+      method: 'POST',
+      url: '/v1/invitations/react-inv-tok/accept',
+      remoteAddress: TEST_IP,
+      payload: { password: 'Password123!' },
+    });
+    expect(okRes.statusCode).toBe(201);
+  });
+});
+
 // ─── Email race 409 ───────────────────────────────────────────────────────────
 
 describe('POST /v1/invitations/:token/accept — email race 409', () => {

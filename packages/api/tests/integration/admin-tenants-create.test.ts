@@ -13,6 +13,9 @@
 //   4. Owner-email in other tenant (Cognito resolves) → 409
 //      user.invitation.email_in_other_tenant, NO tenant / location / invitation rows.
 //   5. VAT invalid format → 400 tenant.vat_number_invalid.
+//   6. Rate-limit (F4 / Task 6) — 31st call from same admin JWT sub → 429
+//      admin.tenant.rate_limited; unique adminSub per describe for isolation
+//      (feedback_integration_test_rate_limit_isolation.md).
 //
 // CI-only (Docker / Testcontainers). Do NOT run locally on Windows.
 
@@ -454,5 +457,90 @@ describe('POST /v1/admin/tenants — business cases (integration)', () => {
 
     expect(res.statusCode).toBe(400);
     expect((res.json() as { code: string }).code).toBe('tenant.vat_number_invalid');
+  });
+});
+
+// ─── 6. Rate-limit (F4 / Task 6) ─────────────────────────────────────────────
+// Unique adminSub per describe so each describe block gets its own rate-limit
+// bucket (feedback_integration_test_rate_limit_isolation.md).
+// The key is admin-tenant:${jwt.sub} — confirmed in admin-tenants-create.ts
+// (request.userId is undefined on admin routes; jwt.sub is the correct key).
+
+describe('POST /v1/admin/tenants — rate-limit (integration)', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestServer();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(async () => {
+    await resetDb();
+    _resetSesClientForTests();
+    sesMock.reset();
+    sesMock.on(SendEmailCommand).resolves({});
+    _resetCognitoClientForTests();
+    cognitoMock.reset();
+    cognitoMock
+      .on(AdminGetUserCommand)
+      .rejects(new UserNotFoundException({ message: 'User does not exist.', $metadata: {} }));
+  });
+
+  // Sanity: a single call from a fresh admin sub is not rate-limited.
+  it('single create call from a fresh admin sub returns 201 (under the limit)', async () => {
+    const adminSub = `rl-sanity-create-${crypto.randomUUID()}`;
+    const token = await signTestToken({
+      pool: 'platform-admins',
+      sub: adminSub,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/tenants',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      payload: VALID_BODY,
+    });
+
+    expect(res.statusCode).toBe(201);
+  });
+
+  // Rate-limit: 31st call from the same admin sub triggers 429.
+  // Requests 1-30 each get a non-429 response (400 VALIDATION_ERROR from Zod,
+  // since the empty body is validated inside the handler after the rate-limit
+  // hook runs). Request 31 is blocked before the handler by the plugin.
+  it('31st call from the same admin JWT sub returns 429 admin.tenant.rate_limited', async () => {
+    const adminSub = `rl-burst-create-${crypto.randomUUID()}`;
+    const token = await signTestToken({
+      pool: 'platform-admins',
+      sub: adminSub,
+    });
+
+    const fire = () =>
+      app.inject({
+        method: 'POST',
+        url: '/v1/admin/tenants',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        payload: '{}', // empty body → Zod 400 inside handler, counted by rate-limit
+      });
+
+    for (let i = 0; i < 30; i++) {
+      const res = await fire();
+      // Each of the first 30 calls passes the rate-limit hook (counter < 30)
+      // and reaches the handler, which rejects with 400 VALIDATION_ERROR.
+      expect(res.statusCode).not.toBe(429);
+    }
+
+    // 31st call: rate-limit plugin fires before the handler → 429.
+    const limited = await fire();
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers['content-type']).toContain(PROBLEM_JSON_CONTENT_TYPE);
+    expect((limited.json() as { code: string }).code).toBe('admin.tenant.rate_limited');
   });
 });
