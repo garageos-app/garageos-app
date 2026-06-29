@@ -1,8 +1,8 @@
 // Pure helper: generate token + create an internal_user invitation row.
 //
 // Extracted from admin-tenants-create.ts and users-invitations-create.ts so
-// that both callers (and the future "regenerate invitation" endpoint, Task 5)
-// share a single, tested implementation.
+// that both callers (and the regenerate-invitation endpoint) share a single,
+// tested implementation.
 //
 // Email send and audit log remain in the callers — they differ per call site:
 //   - admin-tenants-create.ts: actorType:'system', no inviter lookup

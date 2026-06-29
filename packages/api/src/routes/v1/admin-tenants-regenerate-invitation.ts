@@ -19,7 +19,8 @@
 //     was caused by an invented `invitations.updated_at` column.
 //   - status check: BR-210 — a suspended/cancelled tenant must not onboard.
 //     The same guard exists on the accept endpoint; we mirror it here.
-//   - Auth chain: requireAuth → requirePlatformAdminsPool. Rate-limit added in Task 6.
+//   - Auth chain: requireAuth → requirePlatformAdminsPool. Rate-limit: 30 calls
+//     per hour per platform-admin sub — see adminTenantRateLimitConfig.
 //   - actorType:'system' in audit log — platform admins have no tenant User row;
 //     Cognito sub captured in metadata instead.
 //   - Best-effort email (mirror Slice 1): failure logs and continues; the
@@ -34,6 +35,7 @@ import { requirePlatformAdminsPool } from '../../middleware/require-platform-adm
 import { sendInvitationEmail } from '../../lib/ses-client.js';
 import { generateInvitationToken } from '../../lib/secure-tokens.js';
 import { INVITATION_TTL_MS } from '../../lib/invitation-creation.js';
+import { adminTenantRateLimitConfig } from '../../lib/admin-tenant-rate-limit.js';
 
 const WEB_BASE_URL = process.env.WEB_BASE_URL ?? 'https://app.garageos.aifollyadvisor.com';
 
@@ -44,26 +46,7 @@ export const adminTenantsRegenerateInvitationRoutes: FastifyPluginAsync = async 
     '/v1/admin/tenants/:id/regenerate-invitation',
     {
       preHandler: [requireAuth, requirePlatformAdminsPool],
-      config: {
-        rateLimit: {
-          // 30 tenant-provisioning calls per hour per platform-admin.
-          // Keyed on jwt.sub (the admin's Cognito sub set by requireAuth).
-          // request.userId is undefined on admin routes (tenantContext absent).
-          max: 30,
-          timeWindow: '1 hour',
-          keyGenerator: (request) => `admin-tenant:${request.jwt?.sub ?? request.ip}`,
-          errorResponseBuilder: (_req, ctx) => {
-            const retryAfter = Math.ceil(ctx.ttl / 1000);
-            const err = new Error(
-              `Troppi tentativi. Riprova tra un'ora. Retry dopo ${retryAfter}s.`,
-            ) as Error & { statusCode: number; retryAfter: number };
-            err.name = 'admin.tenant.rate_limited';
-            err.statusCode = 429;
-            err.retryAfter = retryAfter;
-            return err;
-          },
-        },
-      },
+      config: { rateLimit: adminTenantRateLimitConfig },
     },
     async (request, reply) => {
       // Anti-enum: invalid UUID format → 404, same as unknown tenant.

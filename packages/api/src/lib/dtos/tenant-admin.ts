@@ -4,9 +4,8 @@
 //   - Explicit wire-format type to avoid TS deep-enum inference issues (TS2883)
 //   - Pure serializer function + pure owner-status derivation (unit-testable)
 //
-// Schema verification note: Tenant.email is `String` (non-nullable) in
-// schema.prisma, not `String?`. The task brief declared `email: string | null`;
-// schema wins — wire type uses `string`. Report in task-3-report.md.
+// Schema note: Tenant.email is `String` (non-nullable) in schema.prisma — wire
+// type uses `string` (not `string | null`).
 
 import type { Prisma } from '@garageos/database';
 
@@ -27,12 +26,14 @@ export type TenantAdminListRow = Prisma.TenantGetPayload<{
 
 // ─── Invitation SELECT (owner derivation) ─────────────────────────────────────
 
+// createdAt is intentionally excluded: neither deriveOwnerStatus nor the
+// serializer reads it. The list query's `orderBy: { createdAt: 'desc' }` does
+// not require it in the select (Prisma orderBy is independent of select).
 export const INVITATION_OWNER_SELECT = {
   tenantId: true,
   targetEmail: true,
   acceptedAt: true,
   expiresAt: true,
-  createdAt: true,
 } as const satisfies Prisma.InvitationSelect;
 
 export type InvitationOwnerRow = Prisma.InvitationGetPayload<{

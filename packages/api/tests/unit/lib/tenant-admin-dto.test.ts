@@ -23,7 +23,6 @@ function makeInvitation(overrides: Partial<InvitationOwnerRow> = {}): Invitation
     targetEmail: 'owner@test.it',
     acceptedAt: null,
     expiresAt: FUTURE,
-    createdAt: NOW,
     ...overrides,
   };
 }

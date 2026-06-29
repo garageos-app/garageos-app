@@ -43,18 +43,23 @@ export const adminTenantsLifecycleRoutes: FastifyPluginAsync = async (app) => {
       const { id } = parsedParams.data;
 
       await app.withContext({ role: 'admin' as const }, async (tx) => {
-        // BR-210: lookup tenant — null (unknown id) or soft-deleted → 404.
-        const tenant = await tx.tenant.findFirst({
-          where: { id, deletedAt: null },
-          select: { id: true, status: true },
+        // BR-210: compare-and-set — only the winner of a concurrent suspend race
+        // writes the status row; the loser gets count=0 and writes no audit row.
+        // This prevents duplicate `tenant_suspended` audit entries under concurrent
+        // requests (Fix 2 — see feedback_lifecycle_cas_guard.md).
+        const updated = await tx.tenant.updateMany({
+          where: { id, deletedAt: null, status: 'active' },
+          data: { status: 'suspended' },
         });
-        if (!tenant) {
-          throw businessError('tenant.not_found', 404, 'Officina non trovata.');
-        }
-
-        // BR-210: only an active tenant can be suspended.
-        // pending / suspended / cancelled all fail with tenant.invalid_status.
-        if (tenant.status !== 'active') {
+        if (updated.count === 0) {
+          // Disambiguate not-found vs wrong-status for the correct error code.
+          const t = await tx.tenant.findFirst({
+            where: { id, deletedAt: null },
+            select: { id: true },
+          });
+          if (!t) throw businessError('tenant.not_found', 404, 'Officina non trovata.');
+          // BR-210: only an active tenant can be suspended.
+          // pending / suspended / cancelled all fail with tenant.invalid_status.
           throw businessError(
             'tenant.invalid_status',
             409,
@@ -62,12 +67,8 @@ export const adminTenantsLifecycleRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        await tx.tenant.update({
-          where: { id },
-          data: { status: 'suspended' },
-        });
-
         // Audit — in-tx so it rolls back atomically on failure.
+        // Written only by the single CAS winner (count === 1).
         await tx.auditLog.create({
           data: {
             tenantId: id,
@@ -104,18 +105,23 @@ export const adminTenantsLifecycleRoutes: FastifyPluginAsync = async (app) => {
       const { id } = parsedParams.data;
 
       await app.withContext({ role: 'admin' as const }, async (tx) => {
-        // BR-210: lookup tenant — null (unknown id) or soft-deleted → 404.
-        const tenant = await tx.tenant.findFirst({
-          where: { id, deletedAt: null },
-          select: { id: true, status: true },
+        // BR-210: compare-and-set — only the winner of a concurrent reactivate race
+        // writes the status row; the loser gets count=0 and writes no audit row.
+        // This prevents duplicate `tenant_reactivated` audit entries under concurrent
+        // requests (Fix 2 — see feedback_lifecycle_cas_guard.md).
+        const updated = await tx.tenant.updateMany({
+          where: { id, deletedAt: null, status: 'suspended' },
+          data: { status: 'active' },
         });
-        if (!tenant) {
-          throw businessError('tenant.not_found', 404, 'Officina non trovata.');
-        }
-
-        // BR-210: only a suspended tenant can be reactivated.
-        // active / pending / cancelled all fail with tenant.invalid_status.
-        if (tenant.status !== 'suspended') {
+        if (updated.count === 0) {
+          // Disambiguate not-found vs wrong-status for the correct error code.
+          const t = await tx.tenant.findFirst({
+            where: { id, deletedAt: null },
+            select: { id: true },
+          });
+          if (!t) throw businessError('tenant.not_found', 404, 'Officina non trovata.');
+          // BR-210: only a suspended tenant can be reactivated.
+          // active / pending / cancelled all fail with tenant.invalid_status.
           throw businessError(
             'tenant.invalid_status',
             409,
@@ -123,12 +129,8 @@ export const adminTenantsLifecycleRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        await tx.tenant.update({
-          where: { id },
-          data: { status: 'active' },
-        });
-
         // Audit — in-tx so it rolls back atomically on failure.
+        // Written only by the single CAS winner (count === 1).
         await tx.auditLog.create({
           data: {
             tenantId: id,

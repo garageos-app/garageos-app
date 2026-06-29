@@ -12,10 +12,8 @@
 //   to avoid holding an open Postgres connection during a network call (P2028
 //   risk — see feedback_cognito_call_outside_postgres_tx.md).
 // - Auth chain: requireAuth → requirePlatformAdminsPool. No tenantContext
-//   middleware. Rate-limit: 30 calls per hour per platform-admin (keyed on
-//   request.jwt.sub — set by requireAuth). Note: request.userId is undefined
-//   here because tenantContext does not run on admin routes; jwt.sub is the
-//   correct per-admin key (Task 6 addition).
+//   middleware. Rate-limit: 30 calls per hour per platform-admin sub — see
+//   adminTenantRateLimitConfig in lib/admin-tenant-rate-limit.ts.
 
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
@@ -28,6 +26,7 @@ import { getOfficineUserByEmail, CognitoUnavailableError } from '../../lib/cogni
 import { sendInvitationEmail } from '../../lib/ses-client.js';
 import { createInternalInvitation } from '../../lib/invitation-creation.js';
 import { env } from '../../config/env.js';
+import { adminTenantRateLimitConfig } from '../../lib/admin-tenant-rate-limit.js';
 
 const WEB_BASE_URL = process.env.WEB_BASE_URL ?? 'https://app.garageos.aifollyadvisor.com';
 
@@ -49,26 +48,7 @@ export const adminTenantsCreateRoutes: FastifyPluginAsync = async (app) => {
     '/v1/admin/tenants',
     {
       preHandler: [requireAuth, requirePlatformAdminsPool],
-      config: {
-        rateLimit: {
-          // 30 tenant-provisioning calls per hour per platform-admin.
-          // Keyed on jwt.sub (the admin's Cognito sub set by requireAuth).
-          // request.userId is undefined on admin routes (tenantContext absent).
-          max: 30,
-          timeWindow: '1 hour',
-          keyGenerator: (request) => `admin-tenant:${request.jwt?.sub ?? request.ip}`,
-          errorResponseBuilder: (_req, ctx) => {
-            const retryAfter = Math.ceil(ctx.ttl / 1000);
-            const err = new Error(
-              `Troppi tentativi. Riprova tra un'ora. Retry dopo ${retryAfter}s.`,
-            ) as Error & { statusCode: number; retryAfter: number };
-            err.name = 'admin.tenant.rate_limited';
-            err.statusCode = 429;
-            err.retryAfter = retryAfter;
-            return err;
-          },
-        },
-      },
+      config: { rateLimit: adminTenantRateLimitConfig },
     },
     async (request, reply) => {
       const parsed = BodySchema.safeParse(request.body);
