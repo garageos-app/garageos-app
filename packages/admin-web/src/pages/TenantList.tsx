@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useApiFetch, ApiError } from '@/lib/api-client';
@@ -226,7 +227,13 @@ export function TenantList() {
 
                 return (
                   <TableRow key={tenant.id}>
-                    <TableCell className="font-medium">{tenant.businessName}</TableCell>
+                    <TableCell className="font-medium">
+                      {/* Only the name cell is a link; the actions cell keeps its own click
+                          handlers without stopPropagation since no parent onClick is added. */}
+                      <Link to={`/officine/${tenant.id}`} className="hover:underline">
+                        {tenant.businessName}
+                      </Link>
+                    </TableCell>
                     <TableCell>{tenant.vatNumber}</TableCell>
                     <TableCell>{tenant.owner?.email ?? '—'}</TableCell>
                     <TableCell>

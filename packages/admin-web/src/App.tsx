@@ -6,6 +6,7 @@ import { Login } from '@/pages/Login';
 import { SetPassword } from '@/pages/SetPassword';
 import { PlatformConsole } from '@/pages/PlatformConsole';
 import { CreateTenant } from '@/pages/CreateTenant';
+import { TenantDetail } from '@/pages/TenantDetail';
 import { TenantList } from '@/pages/TenantList';
 
 const queryClient = new QueryClient({
@@ -33,6 +34,10 @@ export function App() {
               <Route path="/" element={<PlatformConsole />} />
               <Route path="/officine" element={<TenantList />} />
               <Route path="/officine/nuova" element={<CreateTenant />} />
+              {/* /officine/nuova must come before /officine/:id so "nuova" is not
+                  swallowed by the param — react-router v6 ranks static > dynamic,
+                  but explicit order makes intent clear. */}
+              <Route path="/officine/:id" element={<TenantDetail />} />
             </Route>
 
             {/* Fallback redirect */}
