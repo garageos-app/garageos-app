@@ -66,7 +66,6 @@ function buildFakePrisma(
       findFirstOrThrow: vi.fn().mockResolvedValue({
         id: USER_ID,
         role: 'mechanic',
-        locationId: LOCATION_ID,
       }),
       findFirst: vi.fn().mockResolvedValue({ id: USER_ID }),
     },

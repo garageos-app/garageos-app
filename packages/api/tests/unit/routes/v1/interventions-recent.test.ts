@@ -59,7 +59,6 @@ function buildFakePrisma(rows: unknown[] = []): FakePrisma {
       findFirstOrThrow: vi.fn().mockResolvedValue({
         id: '33333333-3333-4333-8333-333333333333',
         role: 'mechanic',
-        locationId: '44444444-4444-4444-8444-444444444444',
       }),
       findFirst: vi.fn().mockResolvedValue({
         id: '33333333-3333-4333-8333-333333333333',
@@ -69,14 +68,9 @@ function buildFakePrisma(rows: unknown[] = []): FakePrisma {
   };
 }
 
-const MECHANIC_LOCATION_ID = '44444444-4444-4444-8444-444444444444';
-
 async function buildApp(
   prisma: FakePrisma,
-  claims: { role: 'super_admin' | 'mechanic'; locationId?: string } = {
-    role: 'mechanic',
-    locationId: MECHANIC_LOCATION_ID,
-  },
+  claims: { role: 'super_admin' | 'mechanic' } = { role: 'mechanic' },
 ): Promise<FastifyInstance> {
   const verifier: JwtVerifier = {
     verify: async (): Promise<VerifyResult> => ({
@@ -86,7 +80,6 @@ async function buildApp(
         token_use: 'id',
         'custom:tenant_id': TENANT_ID,
         'custom:role': claims.role,
-        ...(claims.locationId ? { 'custom:location_id': claims.locationId } : {}),
       },
     }),
   };
@@ -189,7 +182,7 @@ describe('GET /v1/interventions/recent (unit)', () => {
 
   it('mechanic: where does NOT include locationId (BR-205 relaxed — sede unica, sees all tenant records)', async () => {
     const prisma = buildFakePrisma([]);
-    app = await buildApp(prisma); // default mechanic @ MECHANIC_LOCATION_ID
+    app = await buildApp(prisma); // default mechanic — no locationId (sede unica)
     await app.inject({
       method: 'GET',
       url: '/v1/interventions/recent',

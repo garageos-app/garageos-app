@@ -11,7 +11,7 @@
 //   is no JWT-derived tenantId to scope the RLS row-filter (the request is
 //   unauthenticated). See feedback_withcontext_empty_blocks_rls_writes.
 //
-// Wire shape: 7 public fields only. Internal fields (id, token, locationId,
+// Wire shape: 7 public fields only. Internal fields (id, token,
 //   acceptedAt, createdAt, tenantId) are intentionally stripped.
 
 import type { FastifyPluginAsync } from 'fastify';
@@ -41,7 +41,6 @@ export const invitationsPublicReadRoutes: FastifyPluginAsync = async (app) => {
           firstName: true,
           lastName: true,
           role: true,
-          locationId: true,
           acceptedAt: true,
           expiresAt: true,
         },
@@ -58,20 +57,12 @@ export const invitationsPublicReadRoutes: FastifyPluginAsync = async (app) => {
         throw businessError('user.invitation.not_found', 404, 'Invito non trovato.');
       }
 
-      const [tenant, location] = await Promise.all([
-        tx.tenant.findUnique({
-          where: { id: inv.tenantId },
-          // tenant.businessName is the display name (see adaptation: Tenant
-          // model uses businessName, not name).
-          select: { businessName: true },
-        }),
-        inv.locationId
-          ? tx.location.findUnique({
-              where: { id: inv.locationId },
-              select: { name: true },
-            })
-          : Promise.resolve(null),
-      ]);
+      const tenant = await tx.tenant.findUnique({
+        where: { id: inv.tenantId },
+        // tenant.businessName is the display name (see adaptation: Tenant
+        // model uses businessName, not name).
+        select: { businessName: true },
+      });
 
       return {
         targetEmail: inv.targetEmail,
@@ -80,7 +71,6 @@ export const invitationsPublicReadRoutes: FastifyPluginAsync = async (app) => {
         role: inv.role ?? '',
         // Wire field is tenantName; value comes from tenant.businessName.
         tenantName: tenant?.businessName ?? '',
-        locationName: location?.name ?? null,
         expiresAt: inv.expiresAt.toISOString(),
       };
     });

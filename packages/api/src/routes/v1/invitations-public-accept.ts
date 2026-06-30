@@ -136,9 +136,6 @@ export const invitationsPublicAcceptRoutes: FastifyPluginAsync = async (app) => 
           tenantId: invitation.tenantId,
           // role is non-null for internal_user invitations (validated at invite creation).
           role: invitation.role!,
-          // locationId: seats are gone (sede-unica); cognito.ts still expects
-          // the field (Task 5 removes it from the Cognito attribute sync).
-          locationId: null,
         });
         cognitoSub = created.cognitoSub;
       } catch (err) {

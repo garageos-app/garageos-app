@@ -58,7 +58,7 @@ function buildFakePrisma(opts: FakeOptions = {}): FakePrisma {
   const byId = opts.byId === undefined ? pendingRow() : opts.byId;
   return {
     user: {
-      findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID, locationId: LOCATION_ID }),
+      findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID }),
       // tenant-context reactive status lookup (F-OFF-004 follow-ups Item 1).
       findFirst: vi.fn().mockResolvedValue({ id: USER_ID }),
     },

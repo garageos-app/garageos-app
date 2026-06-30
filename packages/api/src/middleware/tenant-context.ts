@@ -23,16 +23,11 @@ import type { CognitoIdTokenPayload } from '../plugins/auth.js';
 // requests should be gated out by requireOfficinaPool before reaching
 // this middleware. Claims shape reference: APPENDICE_C §5.5 (Cognito
 // custom attributes) and GarageOS-Specifiche.md §5.5.2 / §7.3.
-//
-// BR-204: `custom:location_id` is optional — super_admin accounts are
-// not scoped to a specific location — so the schema tolerates its
-// absence and leaves request.locationId undefined.
 
 const officineClaimsSchema = z.object({
   sub: z.string().min(1),
   'custom:tenant_id': z.uuid(),
   'custom:role': z.enum(['super_admin', 'mechanic']),
-  'custom:location_id': z.union([z.uuid(), z.literal('')]).optional(),
 });
 
 export type UserRole = z.infer<typeof officineClaimsSchema>['custom:role'];
@@ -65,10 +60,6 @@ export async function tenantContext(request: FastifyRequest, reply: FastifyReply
   request.userId = parsed.data.sub;
   request.tenantId = parsed.data['custom:tenant_id'];
   request.userRole = parsed.data['custom:role'];
-  const loc = parsed.data['custom:location_id'];
-  if (loc !== undefined && loc !== '') {
-    request.locationId = loc;
-  }
 
   // F-OFF-004 follow-ups Item 1 (security regression closure):
   // Cognito access tokens remain valid until their TTL (~1h default)
@@ -119,7 +110,6 @@ declare module 'fastify' {
     tenantId?: string;
     userId?: string;
     userRole?: UserRole;
-    locationId?: string;
   }
 }
 

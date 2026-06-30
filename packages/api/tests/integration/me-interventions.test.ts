@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -17,15 +17,14 @@ import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
 async function seed(suffix: string, interventionStatus?: 'active' | 'disputed' | 'cancelled') {
-  const { tenantId, locationId } = await createTenantWithLocation(suffix);
-  const { userId } = await createUser({ tenantId, cognitoSub: `mech-${suffix}`, locationId });
+  const { tenantId } = await createTenantWithLocation(suffix);
+  const { userId } = await createUser({ tenantId, cognitoSub: `mech-${suffix}` });
   const { customerId } = await createCustomer({ cognitoSub: `cust-${suffix}` });
   const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
   await createOwnership({ vehicleId, customerId });
   const tagliando = await ensureSystemInterventionType('TAGLIANDO');
   const { interventionId } = await createIntervention({
     tenantId,
-    locationId,
     userId,
     vehicleId,
     interventionTypeId: tagliando.id,
@@ -38,7 +37,6 @@ async function seed(suffix: string, interventionStatus?: 'active' | 'disputed' |
   });
   return {
     tenantId,
-    locationId,
     customerId,
     vehicleId,
     interventionId,
@@ -49,7 +47,6 @@ async function seed(suffix: string, interventionStatus?: 'active' | 'disputed' |
 // Insert a shop deadline linked to an intervention as its source (BR-067).
 async function createSourceDeadline(params: {
   tenantId: string;
-  locationId: string;
   vehicleId: string;
   interventionTypeId: string;
   sourceInterventionId: string;
@@ -60,7 +57,6 @@ async function createSourceDeadline(params: {
 }): Promise<{ deadlineId: string }> {
   const {
     tenantId,
-    locationId,
     vehicleId,
     interventionTypeId,
     sourceInterventionId,
@@ -71,15 +67,14 @@ async function createSourceDeadline(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO deadlines
-       (id, tenant_id, location_id, vehicle_id, intervention_type_id,
+       (id, tenant_id, vehicle_id, intervention_type_id,
         source_intervention_id, due_date, due_odometer_km, description,
         is_recurring, status, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::date, $7, $8, false,
-        $9::"DeadlineStatus", NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, $7, false,
+        $8::"DeadlineStatus", NOW(), NOW())
      RETURNING id`,
     [
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId,
       sourceInterventionId,
@@ -166,7 +161,7 @@ describe('GET /v1/me/interventions/:id (integration)', () => {
     const revisione = await ensureSystemInterventionType('REVISIONE');
     await createSourceDeadline({
       tenantId: s.tenantId,
-      locationId: s.locationId,
+
       vehicleId: s.vehicleId,
       interventionTypeId: revisione.id,
       sourceInterventionId: s.interventionId,
@@ -178,7 +173,7 @@ describe('GET /v1/me/interventions/:id (integration)', () => {
     // A cancelled deadline from the same intervention must NOT surface.
     await createSourceDeadline({
       tenantId: s.tenantId,
-      locationId: s.locationId,
+
       vehicleId: s.vehicleId,
       interventionTypeId: revisione.id,
       sourceInterventionId: s.interventionId,

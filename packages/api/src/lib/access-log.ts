@@ -35,14 +35,13 @@ export interface RecordVehicleAccessArgs {
   vehicleId: string;
   tenantId: string;
   userId: string;
-  locationId?: string;
   action: AccessLogAction;
   ipAddress?: string;
   log?: FastifyBaseLogger;
 }
 
 export async function recordVehicleAccess(args: RecordVehicleAccessArgs): Promise<void> {
-  const { tx, vehicleId, tenantId, userId, locationId, action, ipAddress, log } = args;
+  const { tx, vehicleId, tenantId, userId, action, ipAddress, log } = args;
   const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS);
 
   try {
@@ -61,7 +60,6 @@ export async function recordVehicleAccess(args: RecordVehicleAccessArgs): Promis
         vehicleId,
         tenantId,
         userId,
-        ...(locationId ? { locationId } : {}),
         action,
         ...(ipAddress ? { ipAddress } : {}),
       },
@@ -76,7 +74,6 @@ export interface RecordVehiclesBatchArgs {
   vehicleIds: string[];
   tenantId: string;
   userId: string;
-  locationId?: string;
   action: AccessLogAction;
   ipAddress?: string;
   log?: FastifyBaseLogger;
@@ -90,7 +87,7 @@ export interface RecordVehiclesBatchArgs {
 // Errors are swallowed into log.warn for the same BR-154 rationale as the
 // single-row helper: audit loss must not break the user-visible read.
 export async function recordVehiclesBatch(args: RecordVehiclesBatchArgs): Promise<void> {
-  const { tx, vehicleIds, tenantId, userId, locationId, action, ipAddress, log } = args;
+  const { tx, vehicleIds, tenantId, userId, action, ipAddress, log } = args;
   if (vehicleIds.length === 0) return;
   const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS);
 
@@ -110,7 +107,6 @@ export async function recordVehiclesBatch(args: RecordVehiclesBatchArgs): Promis
         vehicleId,
         tenantId,
         userId,
-        ...(locationId ? { locationId } : {}),
         action,
         ...(ipAddress ? { ipAddress } : {}),
       }));

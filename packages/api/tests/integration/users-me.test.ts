@@ -27,12 +27,11 @@ describe('GET /v1/users/me (integration)', () => {
   });
 
   it('returns the caller user with tenant + location names for the matching tenant', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('users-me-ok');
+    const { tenantId } = await createTenantWithLocation('users-me-ok');
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
-      locationId,
       email: 'mechanic@tenant-a.test',
       firstName: 'Gianni',
       lastName: 'Bianchi',

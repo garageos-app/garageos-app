@@ -13,11 +13,9 @@ const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const VEHICLE_ID = '44444444-4444-4444-8444-444444444444';
 const CUSTOMER_ID = '55555555-5555-4555-8555-555555555555';
-const LOCATION_ID = '66666666-6666-4666-8666-666666666666';
 
 interface FakePrisma {
   user: { findFirstOrThrow: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
-  location: { findUnique: ReturnType<typeof vi.fn> };
   vehicle: {
     findMany: ReturnType<typeof vi.fn>;
     findUniqueOrThrow: ReturnType<typeof vi.fn>;
@@ -51,12 +49,9 @@ interface FakePrisma {
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
   return {
     user: {
-      findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID, locationId: LOCATION_ID }),
+      findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID }),
       // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
       findFirst: vi.fn().mockResolvedValue({ id: USER_ID }),
-    },
-    location: {
-      findUnique: vi.fn().mockResolvedValue({ id: LOCATION_ID, tenantId: TENANT_ID }),
     },
     vehicle: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -163,7 +158,6 @@ async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
         token_use: 'id',
         'custom:tenant_id': TENANT_ID,
         'custom:role': 'mechanic',
-        'custom:location_id': LOCATION_ID,
       },
     }),
   };
@@ -671,7 +665,6 @@ describe('POST /v1/vehicles — validation & auth', () => {
       lastName: 'Rossi',
       email: 'mario.rossi@example.com',
     },
-    locationId: LOCATION_ID,
   };
 
   it('returns 401 without auth', async () => {
@@ -707,7 +700,7 @@ describe('POST /v1/vehicles — validation & auth', () => {
       method: 'POST',
       url: '/v1/vehicles',
       headers: { authorization: 'Bearer x' },
-      payload: { customer: validBody.customer, locationId: LOCATION_ID },
+      payload: { customer: validBody.customer },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({
@@ -783,37 +776,6 @@ describe('POST /v1/vehicles — validation & auth', () => {
       },
     });
     expect(res.statusCode).toBe(400);
-  });
-
-  it('rejects a missing locationId', async () => {
-    app = await buildApp();
-    const { locationId: _drop, ...rest } = validBody;
-    void _drop;
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/vehicles',
-      headers: { authorization: 'Bearer x' },
-      payload: rest,
-    });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it('returns 422 vehicle.creation.location_not_in_tenant when location belongs to another tenant', async () => {
-    const prisma = buildFakePrisma();
-    prisma.location.findUnique = vi
-      .fn()
-      .mockResolvedValue({ id: LOCATION_ID, tenantId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' });
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/vehicles',
-      headers: { authorization: 'Bearer x' },
-      payload: validBody,
-    });
-    expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({
-      code: 'vehicle.creation.location_not_in_tenant',
-    });
   });
 
   it('returns 409 vehicle.creation.duplicate_vin when a vehicle with that VIN already exists', async () => {
@@ -902,7 +864,6 @@ describe('POST /v1/vehicles — data path', () => {
       mode: 'existing',
       customerId: CUSTOMER_ID,
     },
-    locationId: LOCATION_ID,
   };
 
   it('returns 404 when the existing customerId is not found (P2025)', async () => {
@@ -969,7 +930,6 @@ describe('POST /v1/vehicles — data path', () => {
         email: 'new@example.com',
         isBusiness: false,
       },
-      locationId: LOCATION_ID,
     };
     prisma.customer.findUnique.mockResolvedValue(null);
     prisma.customer.create.mockResolvedValue({
@@ -1011,7 +971,6 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'race@example.com',
       },
-      locationId: LOCATION_ID,
     };
     const { Prisma } = await import('@garageos/database');
     // findUnique -> null (initial dedupe check), then create -> P2002,
@@ -1059,7 +1018,6 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'already@example.com',
       },
-      locationId: LOCATION_ID,
     };
     prisma.customer.findUnique.mockResolvedValue({
       id: CUSTOMER_ID,
@@ -1090,7 +1048,6 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'happy@example.com',
       },
-      locationId: LOCATION_ID,
     };
     app = await buildApp({ prisma });
     await app.inject({
@@ -1120,7 +1077,6 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'cert@example.com',
       },
-      locationId: LOCATION_ID,
     };
     app = await buildApp({ prisma });
     await app.inject({
@@ -1154,7 +1110,6 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'own@example.com',
       },
-      locationId: LOCATION_ID,
     };
     app = await buildApp({ prisma });
     await app.inject({
@@ -1191,7 +1146,6 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'skip-relation@example.com',
       },
-      locationId: LOCATION_ID,
     };
     app = await buildApp({ prisma });
     await app.inject({
@@ -1218,7 +1172,7 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'invite@example.com',
       },
-      locationId: LOCATION_ID,
+
       sendInvitationEmail: true,
     };
     app = await buildApp({ prisma });
@@ -1240,7 +1194,7 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'noinvite@example.com',
       },
-      locationId: LOCATION_ID,
+
       sendInvitationEmail: false,
     };
     app = await buildApp({ prisma });
@@ -1262,7 +1216,6 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'audit@example.com',
       },
-      locationId: LOCATION_ID,
     };
     app = await buildApp({ prisma });
     await app.inject({
@@ -1292,7 +1245,6 @@ describe('POST /v1/vehicles — data path', () => {
         lastName: 'Rossi',
         email: 'response@example.com',
       },
-      locationId: LOCATION_ID,
     };
     prisma.vehicle.findUniqueOrThrow.mockResolvedValue({
       id: VEHICLE_ID,
@@ -1397,14 +1349,5 @@ describe('PATCH /v1/vehicles/:id — body validation', () => {
 });
 
 // Exposed for Task 8 data-path tests to reuse the same fixtures.
-export {
-  buildApp,
-  buildFakePrisma,
-  TENANT_ID,
-  COGNITO_SUB,
-  USER_ID,
-  VEHICLE_ID,
-  CUSTOMER_ID,
-  LOCATION_ID,
-};
+export { buildApp, buildFakePrisma, TENANT_ID, COGNITO_SUB, USER_ID, VEHICLE_ID, CUSTOMER_ID };
 export type { FakePrisma, AppDeps };

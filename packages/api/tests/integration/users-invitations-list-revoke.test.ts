@@ -1,4 +1,4 @@
-// Integration tests for GET + DELETE /v1/users/invitations — F-OFF-004.
+﻿// Integration tests for GET + DELETE /v1/users/invitations — F-OFF-004.
 // List pending invitations and revoke (tombstone) them.
 //
 // Helper pattern mirrors users-invitations-create.test.ts (T6):
@@ -20,7 +20,6 @@ async function createInvitation(params: {
   firstName?: string;
   lastName?: string;
   role?: 'super_admin' | 'mechanic';
-  locationId?: string | null;
   token?: string;
   expiresAt?: Date;
   acceptedAt?: Date | null;
@@ -31,7 +30,6 @@ async function createInvitation(params: {
     firstName = 'Test',
     lastName = 'User',
     role = 'mechanic',
-    locationId = null,
     token = `tok-${crypto.randomUUID()}`,
     expiresAt = new Date(Date.now() + 7 * 86400000),
     acceptedAt = null,
@@ -40,21 +38,11 @@ async function createInvitation(params: {
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO invitations
        (id, tenant_id, invitation_type, target_email, first_name, last_name,
-        role, location_id, token_hash, expires_at, accepted_at, created_at)
+        role, token_hash, expires_at, accepted_at, created_at)
      VALUES (gen_random_uuid(), $1, 'internal_user'::"InvitationType", $2, $3, $4,
-        $5::"UserRole", $6, $7, $8, $9, NOW())
+        $5::"UserRole", $6, $7, $8, NOW())
      RETURNING id`,
-    [
-      tenantId,
-      targetEmail,
-      firstName,
-      lastName,
-      role,
-      locationId,
-      tokenHash,
-      expiresAt,
-      acceptedAt,
-    ],
+    [tenantId, targetEmail, firstName, lastName, role, tokenHash, expiresAt, acceptedAt],
   );
   return { invitationId: rows[0]!.id };
 }
@@ -73,7 +61,7 @@ describe('GET + DELETE /v1/users/invitations', () => {
   });
 
   it('GET returns only pending (non-accepted, non-expired) invitations of tenant', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('inv-list-ok');
+    const { tenantId } = await createTenantWithLocation('inv-list-ok');
     const adminSub = `sa-list-${crypto.randomUUID()}`;
     await createUser({
       tenantId,
@@ -90,19 +78,17 @@ describe('GET + DELETE /v1/users/invitations', () => {
     });
 
     // Pending — should appear.
-    await createInvitation({ tenantId, targetEmail: 'a@x.com', locationId });
+    await createInvitation({ tenantId, targetEmail: 'a@x.com' });
     // Already accepted (tombstone) — must be excluded.
     await createInvitation({
       tenantId,
       targetEmail: 'b@x.com',
-      locationId,
       acceptedAt: new Date(),
     });
     // Expired — must be excluded.
     await createInvitation({
       tenantId,
       targetEmail: 'c@x.com',
-      locationId,
       expiresAt: new Date(Date.now() - 1000),
     });
 
@@ -119,7 +105,7 @@ describe('GET + DELETE /v1/users/invitations', () => {
   });
 
   it('DELETE marks invitation as accepted (tombstone) + audits with user_invitation_revoked', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('inv-revoke-ok');
+    const { tenantId } = await createTenantWithLocation('inv-revoke-ok');
     const adminSub = `sa-revoke-${crypto.randomUUID()}`;
     await createUser({
       tenantId,
@@ -138,7 +124,6 @@ describe('GET + DELETE /v1/users/invitations', () => {
     const { invitationId } = await createInvitation({
       tenantId,
       targetEmail: 'm@x.com',
-      locationId,
     });
 
     const res = await app.inject({
@@ -203,7 +188,7 @@ describe('GET + DELETE /v1/users/invitations', () => {
   });
 
   it('DELETE returns 404 for cross-tenant invitation (tenant isolation)', async () => {
-    const { tenantId: t1Id, locationId: t1LocId } = await createTenantWithLocation('inv-cross-t1');
+    const { tenantId: t1Id } = await createTenantWithLocation('inv-cross-t1');
     const { tenantId: t2Id } = await createTenantWithLocation('inv-cross-t2');
 
     const sa2Sub = `sa-cross2-${crypto.randomUUID()}`;
@@ -225,7 +210,6 @@ describe('GET + DELETE /v1/users/invitations', () => {
     const { invitationId } = await createInvitation({
       tenantId: t1Id,
       targetEmail: 'cross@x.com',
-      locationId: t1LocId,
     });
 
     const res = await app.inject({
@@ -239,7 +223,7 @@ describe('GET + DELETE /v1/users/invitations', () => {
   });
 
   it('DELETE returns 410 with code user.invitation.already_accepted for already-tombstoned invitation', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('inv-410');
+    const { tenantId } = await createTenantWithLocation('inv-410');
     const adminSub = `sa-410-${crypto.randomUUID()}`;
     await createUser({
       tenantId,
@@ -259,7 +243,6 @@ describe('GET + DELETE /v1/users/invitations', () => {
     const { invitationId } = await createInvitation({
       tenantId,
       targetEmail: 'acc@x.com',
-      locationId,
       acceptedAt: new Date(),
     });
 

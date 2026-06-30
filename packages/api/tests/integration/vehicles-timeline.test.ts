@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -37,20 +37,18 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('returns shop_interventions cross-tenant for officine pool (BR-150)', async () => {
-    const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('tl-cross-A');
-    const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('tl-cross-B');
+    const { tenantId: tenantA } = await createTenantWithLocation('tl-cross-A');
+    const { tenantId: tenantB } = await createTenantWithLocation('tl-cross-B');
 
     const subA = '11111111-1111-4111-8111-aaaaaaaaaaaa';
     const subB = '22222222-2222-4222-8222-bbbbbbbbbbbb';
     const { userId: userA } = await createUser({
       tenantId: tenantA,
       cognitoSub: subA,
-      locationId: locA,
     });
     const { userId: userB } = await createUser({
       tenantId: tenantB,
       cognitoSub: subB,
-      locationId: locB,
     });
 
     const { customerId } = await createCustomer({});
@@ -61,7 +59,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
 
     await createIntervention({
       tenantId: tenantA,
-      locationId: locA,
       userId: userA,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -71,7 +68,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     });
     await createIntervention({
       tenantId: tenantB,
-      locationId: locB,
       userId: userB,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -126,19 +122,17 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('GET /timeline/officine returns distinct officine with viewer_is_owner', async () => {
-    const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('tl-off-A');
-    const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('tl-off-B');
+    const { tenantId: tenantA } = await createTenantWithLocation('tl-off-A');
+    const { tenantId: tenantB } = await createTenantWithLocation('tl-off-B');
     const subA = '31111111-1111-4111-8111-aaaaaaaaaaaa';
     const subB = '32222222-2222-4222-8222-bbbbbbbbbbbb';
     const { userId: userA } = await createUser({
       tenantId: tenantA,
       cognitoSub: subA,
-      locationId: locA,
     });
     const { userId: userB } = await createUser({
       tenantId: tenantB,
       cognitoSub: subB,
-      locationId: locB,
     });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
@@ -148,7 +142,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     for (const date of ['2026-04-15', '2026-02-01']) {
       await createIntervention({
         tenantId: tenantA,
-        locationId: locA,
         userId: userA,
         vehicleId,
         interventionTypeId: tagliando.id,
@@ -158,7 +151,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     }
     await createIntervention({
       tenantId: tenantB,
-      locationId: locB,
       userId: userB,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -189,19 +181,17 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('filters shop interventions by tenant_ids', async () => {
-    const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('tl-filt-A');
-    const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('tl-filt-B');
+    const { tenantId: tenantA } = await createTenantWithLocation('tl-filt-A');
+    const { tenantId: tenantB } = await createTenantWithLocation('tl-filt-B');
     const subA = '41111111-1111-4111-8111-aaaaaaaaaaaa';
     const subB = '42222222-2222-4222-8222-bbbbbbbbbbbb';
     const { userId: userA } = await createUser({
       tenantId: tenantA,
       cognitoSub: subA,
-      locationId: locA,
     });
     const { userId: userB } = await createUser({
       tenantId: tenantB,
       cognitoSub: subB,
-      locationId: locB,
     });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
@@ -209,7 +199,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const tagliando = await ensureSystemInterventionType('TAGLIANDO');
     await createIntervention({
       tenantId: tenantA,
-      locationId: locA,
       userId: userA,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -219,7 +208,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     });
     await createIntervention({
       tenantId: tenantB,
-      locationId: locB,
       userId: userB,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -246,9 +234,9 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('returns 400 for a malformed tenant_ids value', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('tl-filt-bad');
+    const { tenantId } = await createTenantWithLocation('tl-filt-bad');
     const cognitoSub = '43333333-3333-4333-8333-cccccccccccc';
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const token = await signTestToken({
       pool: 'officine',
@@ -265,9 +253,9 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('computes wiki_window_open=false when wikiLockedAt is set', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('tl-wiki-lock');
+    const { tenantId } = await createTenantWithLocation('tl-wiki-lock');
     const cognitoSub = 'eeeeeeee-5555-4555-8555-555555555555';
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
@@ -276,7 +264,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const lockedAt = new Date('2026-05-01T10:00:00.000Z');
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -319,9 +306,9 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('computes wiki_window_open=false when createdAt is older than 48h even if wikiLockedAt is null', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('tl-wiki-aged');
+    const { tenantId } = await createTenantWithLocation('tl-wiki-aged');
     const cognitoSub = 'eeeeeeee-6666-4666-8666-666666666666';
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
@@ -329,7 +316,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -371,9 +357,9 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('officine pool never sees private_interventions in the timeline', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('tl-no-priv');
+    const { tenantId } = await createTenantWithLocation('tl-no-priv');
     const cognitoSub = '33333333-3333-4333-8333-cccccccccccc';
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
@@ -381,7 +367,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
 
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -417,12 +402,11 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('clienti current owner sees merged shop + own private interventions', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('tl-owner');
+    const { tenantId } = await createTenantWithLocation('tl-owner');
     const tenantSub = '44444444-4444-4444-8444-dddddddddddd';
     const { userId } = await createUser({
       tenantId,
       cognitoSub: tenantSub,
-      locationId,
     });
     const customerSub = '55555555-5555-4555-8555-eeeeeeeeeeee';
     const { customerId } = await createCustomer({ cognitoSub: customerSub });
@@ -432,7 +416,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
 
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -574,9 +557,9 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('respects from_date / to_date filters', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('tl-dates');
+    const { tenantId } = await createTenantWithLocation('tl-dates');
     const cognitoSub = 'aaaaaaaa-1111-4111-8111-111111111111';
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
@@ -584,7 +567,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
 
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -594,7 +576,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     });
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: tagliando.id,
@@ -622,9 +603,9 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   });
 
   it('paginates with cursor across the merged set', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('tl-paginate');
+    const { tenantId } = await createTenantWithLocation('tl-paginate');
     const cognitoSub = 'bbbbbbbb-2222-4222-8222-222222222222';
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const customerSub = 'cccccccc-3333-4333-8333-333333333333';
     const { customerId } = await createCustomer({ cognitoSub: customerSub });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -638,7 +619,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       if (dates.indexOf(d) % 2 === 0) {
         await createIntervention({
           tenantId,
-          locationId,
           userId,
           vehicleId,
           interventionTypeId: tagliando.id,
@@ -707,8 +687,8 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
 
   it('returns 404 when the vehicle does not exist', async () => {
     const cognitoSub = 'dddddddd-4444-4444-8444-444444444444';
-    const { tenantId, locationId } = await createTenantWithLocation('tl-404');
-    await createUser({ tenantId, cognitoSub, locationId });
+    const { tenantId } = await createTenantWithLocation('tl-404');
+    await createUser({ tenantId, cognitoSub });
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,

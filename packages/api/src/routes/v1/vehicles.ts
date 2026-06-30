@@ -32,9 +32,9 @@ const searchQuerySchema = z
   );
 
 // Reuses CreateVehicleSchema from @garageos/database verbatim (vehicle +
-// customer discriminator + locationId + sendInvitationEmail +
-// forceNonstandardVin) and layers the API-only `force` flag used to
-// override BR-002 duplicate-plate warnings.
+// customer discriminator + sendInvitationEmail + forceNonstandardVin) and
+// layers the API-only `force` flag used to override BR-002 duplicate-plate
+// warnings.
 const CreateVehicleBodySchema = CreateVehicleSchema.extend({
   force: z.boolean().default(false),
 });
@@ -224,7 +224,7 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
         // post-0004 — see users.ts header for rationale.
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: { id: true, locationId: true },
+          select: { id: true },
         });
 
         const where: Record<string, unknown> = {};
@@ -285,7 +285,6 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
           vehicleIds: page.map((v) => v.id),
           tenantId,
           userId: user.id,
-          ...(user.locationId ? { locationId: user.locationId } : {}),
           action: 'search_match',
           ipAddress: request.ip,
           log: request.log,
@@ -317,7 +316,7 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
         // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: { id: true, locationId: true },
+          select: { id: true },
         });
 
         const vehicle = await tx.vehicle.findUniqueOrThrow({
@@ -341,7 +340,6 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
           vehicleId: vehicle.id,
           tenantId,
           userId: user.id,
-          ...(user.locationId ? { locationId: user.locationId } : {}),
           action: 'view',
           ipAddress: request.ip,
           log: request.log,
@@ -393,24 +391,8 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
         // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: { id: true, locationId: true },
+          select: { id: true },
         });
-
-        // Location must belong to the requesting tenant. Done outside the
-        // duplicate-VIN / plate checks because it is a precondition of the
-        // whole flow — failing here is more informative than a 404 on the
-        // ownership insert later.
-        const location = await tx.location.findUnique({
-          where: { id: body.locationId },
-          select: { tenantId: true },
-        });
-        if (!location || location.tenantId !== tenantId) {
-          throw businessError(
-            'vehicle.creation.location_not_in_tenant',
-            422,
-            'La location indicata non appartiene al tenant corrente.',
-          );
-        }
 
         await checkDuplicateVin(tx, body.vehicle.vin);
         await checkDuplicatePlateWarning(
@@ -548,7 +530,6 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
           vehicleId: vehicle.id,
           tenantId,
           userId: user.id,
-          ...(user.locationId ? { locationId: user.locationId } : {}),
           action: 'vehicle_registered',
           ipAddress: request.ip,
           log: request.log,

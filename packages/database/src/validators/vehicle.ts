@@ -69,7 +69,6 @@ export const CreateVehicleSchema = z.object({
         message: 'businessName e vatNumber obbligatori per clienti aziendali',
       }),
   ]),
-  locationId: z.uuid(),
   sendInvitationEmail: z.boolean().default(true),
   // BR-001 exception: non-standard VIN (pre-1981, agricultural, special).
   forceNonstandardVin: z.boolean().default(false),

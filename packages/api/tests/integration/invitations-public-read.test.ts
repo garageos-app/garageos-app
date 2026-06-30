@@ -1,4 +1,4 @@
-// Integration tests for GET /v1/invitations/:token — F-OFF-004 public read.
+﻿// Integration tests for GET /v1/invitations/:token — F-OFF-004 public read.
 // Public (no auth) endpoint; token is the credential.
 //
 // Helper pattern mirrors users-invitations-list-revoke.test.ts (T7):
@@ -22,7 +22,6 @@ async function createInvitation(params: {
   firstName?: string;
   lastName?: string;
   role?: 'super_admin' | 'mechanic';
-  locationId?: string | null;
   token?: string;
   expiresAt?: Date;
   acceptedAt?: Date | null;
@@ -34,7 +33,6 @@ async function createInvitation(params: {
     firstName = 'Test',
     lastName = 'User',
     role = 'mechanic',
-    locationId = null,
     token = `tok-${crypto.randomUUID()}`,
     expiresAt = new Date(Date.now() + 7 * 86400000),
     acceptedAt = null,
@@ -43,9 +41,9 @@ async function createInvitation(params: {
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO invitations
        (id, tenant_id, invitation_type, target_email, first_name, last_name,
-        role, location_id, token_hash, expires_at, accepted_at, created_at)
+        role, token_hash, expires_at, accepted_at, created_at)
      VALUES (gen_random_uuid(), $1, $2::"InvitationType", $3, $4, $5,
-        $6::"UserRole", $7, $8, $9, $10, NOW())
+        $6::"UserRole", $7, $8, $9, NOW())
      RETURNING id`,
     [
       tenantId,
@@ -54,7 +52,6 @@ async function createInvitation(params: {
       firstName,
       lastName,
       role,
-      locationId,
       tokenHash,
       expiresAt,
       acceptedAt,
@@ -104,19 +101,14 @@ describe('GET /v1/invitations/:token', () => {
 
   it('returns public view for valid pending invitation', async () => {
     const suffix = `pub-read-ok-${crypto.randomUUID().slice(0, 8)}`;
-    const { tenantId, locationId } = await createTenantWithLocation(suffix);
+    const { tenantId } = await createTenantWithLocation(suffix);
 
     // Fetch the known fixture values seeded by createTenantWithLocation.
     const { rows: tRows } = await pgAdmin.query<{ business_name: string }>(
       `SELECT business_name FROM tenants WHERE id = $1`,
       [tenantId],
     );
-    const { rows: lRows } = await pgAdmin.query<{ name: string }>(
-      `SELECT name FROM locations WHERE id = $1`,
-      [locationId],
-    );
     const expectedTenantName = tRows[0]!.business_name;
-    const expectedLocationName = lRows[0]!.name;
 
     const { token } = await createInvitation({
       tenantId,
@@ -124,7 +116,6 @@ describe('GET /v1/invitations/:token', () => {
       firstName: 'Mario',
       lastName: 'Rossi',
       role: 'mechanic',
-      locationId,
       token: `public-token-${suffix}`,
     });
 
@@ -149,7 +140,7 @@ describe('GET /v1/invitations/:token', () => {
     expect(body.invitation.role).toBe('mechanic');
     // tenantName is sourced from tenant.businessName (see adaptation note).
     expect(body.invitation.tenantName).toBe(expectedTenantName);
-    expect(body.invitation.locationName).toBe(expectedLocationName);
+    expect(body.invitation.locationName).toBeNull();
     expect(body.invitation.expiresAt).toBeDefined();
 
     // Response must NOT expose internal fields (anti-enum).
@@ -168,13 +159,12 @@ describe('GET /v1/invitations/:token', () => {
   });
 
   it('returns 404 for already-consumed invitation (anti-enum)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation(
+    const { tenantId } = await createTenantWithLocation(
       `pub-read-consumed-${crypto.randomUUID().slice(0, 8)}`,
     );
     const { token } = await createInvitation({
       tenantId,
       targetEmail: 'consumed@x.com',
-      locationId,
       acceptedAt: new Date(),
     });
 
@@ -184,13 +174,12 @@ describe('GET /v1/invitations/:token', () => {
   });
 
   it('returns 404 for expired invitation (anti-enum)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation(
+    const { tenantId } = await createTenantWithLocation(
       `pub-read-expired-${crypto.randomUUID().slice(0, 8)}`,
     );
     const { token } = await createInvitation({
       tenantId,
       targetEmail: 'expired@x.com',
-      locationId,
       expiresAt: new Date(Date.now() - 1000),
     });
 

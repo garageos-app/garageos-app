@@ -400,7 +400,6 @@ describe('GET /v1/me/vehicles/:id/access-log', () => {
     action: 'view',
     createdAt: new Date('2026-06-04T10:00:00.000Z'),
     tenant: { id: TENANT_ID, businessName: 'Officina Rossi' },
-    location: { city: 'Bologna' },
     user: { firstName: 'Mario', lastName: 'Bianchi' },
   };
   const ACCESS_ROW_CREATE = {
@@ -408,7 +407,6 @@ describe('GET /v1/me/vehicles/:id/access-log', () => {
     action: 'create',
     createdAt: new Date('2026-06-03T09:00:00.000Z'),
     tenant: { id: TENANT_ID, businessName: 'Officina Rossi' },
-    location: { city: 'Bologna' },
     user: { firstName: 'Mario', lastName: 'Bianchi' },
   };
 
@@ -500,7 +498,6 @@ describe('GET /v1/me/vehicles/:id/access-log', () => {
     expect(body.data[0]).toEqual({
       action: 'view',
       tenantName: 'Officina Rossi',
-      locationCity: 'Bologna',
       occurredAt: '2026-06-04T10:00:00.000Z',
       mechanicName: 'Mario Bianchi',
     });

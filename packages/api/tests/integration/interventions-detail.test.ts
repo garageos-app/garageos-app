@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -38,12 +38,11 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // -----------------------------------------------------------------------
 
   async function setupCaller(suffix: string) {
-    const { tenantId, locationId } = await createTenantWithLocation(suffix);
+    const { tenantId } = await createTenantWithLocation(suffix);
     const cognitoSub = `det-caller-${suffix.slice(0, 20)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
-      locationId,
       firstName: 'Giuseppe',
       lastName: 'Verdi',
     });
@@ -53,12 +52,11 @@ describe('GET /v1/interventions/:id (officina)', () => {
       tenantId,
       role: 'mechanic',
     });
-    return { tenantId, locationId, userId, token };
+    return { tenantId, userId, token };
   }
 
   async function setupIntervention(args: {
     tenantId: string;
-    locationId: string;
     userId: string;
     overrides?: Partial<Parameters<typeof createIntervention>[0]>;
   }) {
@@ -66,7 +64,6 @@ describe('GET /v1/interventions/:id (officina)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: args.tenantId });
     const { interventionId } = await createIntervention({
       tenantId: args.tenantId,
-      locationId: args.locationId,
       userId: args.userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -87,10 +84,9 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // Scenario 1: Happy path — full DTO with all top-level fields
   // -----------------------------------------------------------------------
   it('returns full DTO with all top-level fields and nested relations', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('det-happy');
+    const { tenantId, userId, token } = await setupCaller('det-happy');
     const { interventionId, vehicleId, typeId } = await setupIntervention({
       tenantId,
-      locationId,
       userId,
     });
 
@@ -178,10 +174,9 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // location, vehicle, attachments) stay visible.
   // -----------------------------------------------------------------------
   it('allows cross-tenant read but redacts internal_notes and created_by (BR-153)', async () => {
-    const { tenantId: tenantA, locationId: locA, userId: userA } = await setupCaller('det-xA');
+    const { tenantId: tenantA, userId: userA } = await setupCaller('det-xA');
     const { interventionId } = await setupIntervention({
       tenantId: tenantA,
-      locationId: locA,
       userId: userA,
     });
 
@@ -295,10 +290,9 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // Scenario 7: Cancelled state
   // -----------------------------------------------------------------------
   it('surfaces cancelled_at and cancelled_reason for a cancelled intervention', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('det-cancel');
+    const { tenantId, userId, token } = await setupCaller('det-cancel');
     const { interventionId } = await setupIntervention({
       tenantId,
-      locationId,
       userId,
       overrides: { status: 'cancelled' },
     });
@@ -327,10 +321,9 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // Scenario 8: Disputed state
   // -----------------------------------------------------------------------
   it('sets is_disputed=true when intervention status is disputed', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('det-dispute');
+    const { tenantId, userId, token } = await setupCaller('det-dispute');
     const { interventionId } = await setupIntervention({
       tenantId,
-      locationId,
       userId,
       overrides: { status: 'disputed' },
     });
@@ -351,8 +344,8 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // Scenario 9: wiki_window_open=true (BR-062)
   // -----------------------------------------------------------------------
   it('wiki_window_open=true when createdAt is 47h ago, no wikiLockedAt, no firstSeenByCustomerAt', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('det-wiki-open');
-    const { interventionId } = await setupIntervention({ tenantId, locationId, userId });
+    const { tenantId, userId, token } = await setupCaller('det-wiki-open');
+    const { interventionId } = await setupIntervention({ tenantId, userId });
 
     const fortySevenHoursAgo = new Date(Date.now() - 47 * 60 * 60 * 1000);
     await pgAdmin.query(`UPDATE interventions SET created_at = $1 WHERE id = $2`, [
@@ -374,8 +367,8 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // Scenario 10: wiki_window_open=false (time elapsed >48h) (BR-062)
   // -----------------------------------------------------------------------
   it('wiki_window_open=false when createdAt is 49h ago with no lock or first-seen', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('det-wiki-aged');
-    const { interventionId } = await setupIntervention({ tenantId, locationId, userId });
+    const { tenantId, userId, token } = await setupCaller('det-wiki-aged');
+    const { interventionId } = await setupIntervention({ tenantId, userId });
 
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 60 * 60 * 1000);
     await pgAdmin.query(`UPDATE interventions SET created_at = $1 WHERE id = $2`, [
@@ -397,10 +390,9 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // Scenario 11: wiki_window_open=false (firstSeenByCustomerAt set) (BR-062)
   // -----------------------------------------------------------------------
   it('wiki_window_open=false when firstSeenByCustomerAt is set even if createdAt is recent', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('det-wiki-seen');
+    const { tenantId, userId, token } = await setupCaller('det-wiki-seen');
     const { interventionId } = await setupIntervention({
       tenantId,
-      locationId,
       userId,
       overrides: { firstSeenByCustomerAt: new Date() },
     });
@@ -419,7 +411,7 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // Scenario 12: parts_replaced empty vs populated
   // -----------------------------------------------------------------------
   it('normalizes parts_replaced correctly for empty and non-empty cases', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('det-parts');
+    const { tenantId, userId, token } = await setupCaller('det-parts');
     // beforeEach already calls ensureSystemInterventionType('TAGLIANDO'); look up
     // the existing row rather than re-creating it.
     const type = await pgAdmin
@@ -430,7 +422,6 @@ describe('GET /v1/interventions/:id (officina)', () => {
     const { vehicleId: vEmpty } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId: idEmpty } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId: vEmpty,
       interventionTypeId: type.id,
@@ -443,7 +434,6 @@ describe('GET /v1/interventions/:id (officina)', () => {
     const { vehicleId: vParts } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId: idParts } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId: vParts,
       interventionTypeId: type.id,
@@ -496,8 +486,8 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // Scenario 13: Attachments filtering (processed=true only, deletedAt=null)
   // -----------------------------------------------------------------------
   it('hides pending (processed=false) and soft-deleted (deletedAt!=null) attachments; surfaces only processed+live ones', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('det-attach');
-    const { interventionId } = await setupIntervention({ tenantId, locationId, userId });
+    const { tenantId, userId, token } = await setupCaller('det-attach');
+    const { interventionId } = await setupIntervention({ tenantId, userId });
 
     // Attachment 1: processed=false → must be excluded
     await pgAdmin.query(
@@ -581,8 +571,8 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // patched.
   // -----------------------------------------------------------------------
   it.skip('scenario 14: returns 404 when intervention has deletedAt != null (soft-delete filter)', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('det-softdel');
-    const { interventionId } = await setupIntervention({ tenantId, locationId, userId });
+    const { tenantId, userId, token } = await setupCaller('det-softdel');
+    const { interventionId } = await setupIntervention({ tenantId, userId });
 
     // Soft-delete the intervention via raw SQL to simulate future
     // soft-delete behavior — backend route must filter even if the column

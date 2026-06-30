@@ -52,34 +52,23 @@ const deadlinesCreateRoutes: FastifyPluginAsync = async (app) => {
       const result = await app.withContext({ tenantId }, async (tx) => {
         // (cognitoSub, tenantId) lookup post-0004 — see users.ts header
         // for the cross-tenant defense-in-depth rationale.
-        const user = await tx.user.findFirstOrThrow({
+        // Existence + ownership gate — ensures the caller is a real user
+        // in this tenant (throws P2025 → 404 if not found).
+        await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: { id: true, role: true, locationId: true },
+          select: { id: true },
         });
 
         // Vehicle existence enforced by RLS — P2025 → 404 covers both
         // unknown id and other-tenant id (RLS-as-404). Vehicle has no
-        // tenantId / locationId columns in the schema (tenant ownership
-        // is via createdByTenantId / certifiedByTenantId; visibility is
-        // via vehicle_ownerships); this lookup is purely an existence
-        // gate that piggybacks on the vehicles_select RLS scope.
+        // tenantId columns in the schema (tenant ownership is via
+        // createdByTenantId / certifiedByTenantId; visibility is via
+        // vehicle_ownerships); this lookup is purely an existence gate
+        // that piggybacks on the vehicles_select RLS scope.
         await tx.vehicle.findUniqueOrThrow({
           where: { id: vehicleId },
           select: { id: true },
         });
-
-        // Deadline.locationId is NOT NULL in the schema. Mirrors the
-        // pattern in routes/v1/interventions.ts: location is inferred
-        // from the authenticated user. Super-admin accounts without a
-        // primary location must be associated to one before creating
-        // deadlines.
-        if (!user.locationId) {
-          throw businessError(
-            'deadline.creation.user_no_location',
-            422,
-            "L'utente autenticato non è associato a una location. Imposta una location prima di creare scadenze.",
-          );
-        }
 
         // intervention_types is permissive read post-PR #60. Filter app-
         // side: accept system rows (tenantId IS NULL) OR our own.
@@ -113,7 +102,6 @@ const deadlinesCreateRoutes: FastifyPluginAsync = async (app) => {
         const deadline = await tx.deadline.create({
           data: {
             tenantId,
-            locationId: user.locationId,
             vehicleId,
             interventionTypeId: itype.id,
             sourceInterventionId: body.sourceInterventionId ?? null,
@@ -128,7 +116,6 @@ const deadlinesCreateRoutes: FastifyPluginAsync = async (app) => {
           select: {
             id: true,
             tenantId: true,
-            locationId: true,
             vehicleId: true,
             interventionTypeId: true,
             sourceInterventionId: true,

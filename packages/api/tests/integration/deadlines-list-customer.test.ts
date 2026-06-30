@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -29,7 +29,6 @@ const TEST_IP = '10.20.31.6';
 
 async function seedDeadline(params: {
   tenantId: string;
-  locationId: string;
   vehicleId: string;
   interventionTypeId: string;
   dueDate: string; // YYYY-MM-DD
@@ -38,7 +37,6 @@ async function seedDeadline(params: {
 }): Promise<{ deadlineId: string }> {
   const {
     tenantId,
-    locationId,
     vehicleId,
     interventionTypeId,
     dueDate,
@@ -47,12 +45,12 @@ async function seedDeadline(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO deadlines
-       (id, tenant_id, location_id, vehicle_id, intervention_type_id,
+       (id, tenant_id, vehicle_id, intervention_type_id,
         due_date, description, is_recurring, status, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, false,
-        $7::"DeadlineStatus", NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4::date, $5, false,
+        $6::"DeadlineStatus", NOW(), NOW())
      RETURNING id`,
-    [tenantId, locationId, vehicleId, interventionTypeId, dueDate, description, status],
+    [tenantId, vehicleId, interventionTypeId, dueDate, description, status],
   );
   return { deadlineId: rows[0]!.id };
 }
@@ -73,7 +71,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
   });
 
   it('200 returns only deadlines on customer-owned vehicles (RLS filter)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-dl-owns');
+    const { tenantId } = await createTenantWithLocation('me-dl-owns');
     const type = await ensureSystemInterventionType('TAGLIANDO');
 
     // Vehicle A: owned by the calling customer.
@@ -99,7 +97,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId: ownedVehicle,
       interventionTypeId: type.id,
       dueDate: '2027-04-15',
@@ -107,7 +104,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId: otherVehicle,
       interventionTypeId: type.id,
       dueDate: '2027-05-15',
@@ -138,7 +134,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
   });
 
   it('default filter excludes completed and cancelled (status defaults to open|overdue)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-dl-default');
+    const { tenantId } = await createTenantWithLocation('me-dl-default');
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -148,7 +144,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-01-01',
@@ -157,7 +152,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-02-01',
@@ -166,7 +160,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-03-01',
@@ -175,7 +168,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-04-01',
@@ -204,7 +196,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
   });
 
   it('?status=completed overrides default and returns completed only', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-dl-status');
+    const { tenantId } = await createTenantWithLocation('me-dl-status');
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -214,7 +206,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-01-01',
@@ -223,7 +214,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-02-01',
@@ -232,7 +222,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-03-01',
@@ -262,7 +251,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
   });
 
   it('cursor pagination returns subsequent pages', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-dl-cursor');
+    const { tenantId } = await createTenantWithLocation('me-dl-cursor');
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -272,7 +261,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-01-01',
@@ -280,7 +268,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-02-01',
@@ -288,7 +275,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-03-01',
@@ -354,7 +340,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
   });
 
   it('customer with ENDED ownership does not see those vehicles deadlines (RLS endedAt IS NULL)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-dl-ended');
+    const { tenantId } = await createTenantWithLocation('me-dl-ended');
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -371,7 +357,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-04-15',
@@ -396,16 +381,15 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
   });
 
   it('officina-pool token denied with 403 (requireClientiPool guard)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-dl-officine');
+    const { tenantId } = await createTenantWithLocation('me-dl-officine');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
 
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -428,7 +412,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
   });
 
   it('response includes nested vehicle and interventionType', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-dl-nested');
+    const { tenantId } = await createTenantWithLocation('me-dl-nested');
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({
       createdByTenantId: tenantId,
@@ -444,7 +428,6 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-04-15',

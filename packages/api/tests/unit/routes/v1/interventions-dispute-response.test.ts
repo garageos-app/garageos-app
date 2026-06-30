@@ -8,7 +8,6 @@ import type { JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js'
 import interventionDisputeResponseRoutes from '../../../../src/routes/v1/interventions-dispute-response.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
-const LOCATION_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const VEHICLE_ID = '44444444-4444-4444-8444-444444444444';
 const INTERVENTION_ID = '55555555-5555-4555-8555-555555555555';
@@ -42,7 +41,7 @@ interface FakePrisma {
 }
 
 function buildUserRow(role: 'super_admin' | 'mechanic' = 'super_admin') {
-  return { id: USER_ID, role, locationId: LOCATION_ID };
+  return { id: USER_ID, role };
 }
 
 function buildInterventionRow(
@@ -159,7 +158,6 @@ async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
         token_use: 'id',
         'custom:tenant_id': TENANT_ID,
         'custom:role': 'super_admin',
-        'custom:location_id': LOCATION_ID,
       },
     }),
   };
@@ -515,7 +513,6 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
     prisma.user.findFirstOrThrow = vi.fn().mockResolvedValue({
       id: USER_ID,
       role: 'read_only', // hypothetical future role
-      locationId: LOCATION_ID,
     });
     app = await buildApp({ prisma });
     const res = await app.inject({
@@ -842,7 +839,6 @@ describe('POST /v1/interventions/:id/dispute-response — attachments wiring', (
 export { buildApp, buildFakePrisma, buildOpenDispute, buildRespondedDispute };
 export {
   TENANT_ID,
-  LOCATION_ID,
   USER_ID,
   VEHICLE_ID,
   INTERVENTION_ID,

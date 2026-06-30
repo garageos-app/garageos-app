@@ -43,9 +43,6 @@ const interventionDetailSelect = {
   cancelledReason: true,
   interventionType: { select: { id: true, code: true, nameIt: true } },
   tenant: { select: { id: true, businessName: true } },
-  location: {
-    select: { id: true, name: true, city: true, addressLine: true },
-  },
   vehicle: {
     select: { id: true, garageCode: true, plate: true, make: true, model: true },
   },
@@ -129,12 +126,6 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
             name_it: row.interventionType.nameIt,
           },
           tenant: { id: row.tenant.id, business_name: row.tenant.businessName },
-          location: {
-            id: row.location.id,
-            name: row.location.name,
-            city: row.location.city,
-            address: row.location.addressLine,
-          },
           vehicle: {
             id: row.vehicle.id,
             garage_code: row.vehicle.garageCode,

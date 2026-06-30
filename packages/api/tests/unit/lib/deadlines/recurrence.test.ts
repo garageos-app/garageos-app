@@ -59,7 +59,7 @@ describe('createNextRecurringDeadline', () => {
     const completed = {
       id: 'old',
       tenantId: 't',
-      locationId: 'l',
+
       vehicleId: 'v',
       interventionTypeId: 'it',
       dueDate: new Date('2026-12-31T00:00:00Z'),
@@ -80,7 +80,7 @@ describe('createNextRecurringDeadline', () => {
     const completed = {
       id: 'old',
       tenantId: 't',
-      locationId: 'l',
+
       vehicleId: 'v',
       interventionTypeId: 'it',
       dueDate: new Date('2026-12-31T00:00:00Z'),
@@ -100,7 +100,7 @@ describe('createNextRecurringDeadline', () => {
     const completed = {
       id: 'old',
       tenantId: 't',
-      locationId: 'l',
+
       vehicleId: 'v',
       interventionTypeId: 'it',
       dueDate: new Date('2026-12-31T00:00:00Z'),
@@ -130,7 +130,7 @@ describe('createNextRecurringDeadline', () => {
     const completed = {
       id: 'old',
       tenantId: 't',
-      locationId: 'l',
+
       vehicleId: 'v',
       interventionTypeId: 'it',
       dueDate: new Date('2024-01-01T00:00:00Z'),
@@ -151,7 +151,7 @@ describe('createNextRecurringDeadline', () => {
     const completed = {
       id: 'old',
       tenantId: 't',
-      locationId: 'l',
+
       vehicleId: 'v',
       interventionTypeId: 'it',
       dueDate: new Date('2026-12-31T00:00:00Z'),
@@ -171,7 +171,7 @@ describe('createNextRecurringDeadline', () => {
     const completed = {
       id: 'old',
       tenantId: 't',
-      locationId: 'l',
+
       vehicleId: 'v',
       interventionTypeId: 'it',
       dueDate: new Date('2027-01-31T00:00:00Z'),

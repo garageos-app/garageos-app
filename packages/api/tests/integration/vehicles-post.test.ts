@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -62,7 +62,7 @@ describe('POST /v1/vehicles (integration)', () => {
   });
 
   it('creates vehicle + customer + ownership + relation + invitation atomically (happy path, create_new)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('post-happy');
+    const { tenantId } = await createTenantWithLocation('post-happy');
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     await createUser({ tenantId, cognitoSub });
     const token = await signTestToken({
@@ -72,7 +72,7 @@ describe('POST /v1/vehicles (integration)', () => {
       role: 'mechanic',
     });
 
-    const body = buildBody({ locationId });
+    const body = buildBody({});
     const res = await app.inject({
       method: 'POST',
       url: '/v1/vehicles',
@@ -109,7 +109,7 @@ describe('POST /v1/vehicles (integration)', () => {
   });
 
   it('reuses an existing customer (existing mode) without creating a duplicate', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('post-existing');
+    const { tenantId } = await createTenantWithLocation('post-existing');
     const cognitoSub = '22222222-2222-4222-8222-222222222222';
     await createUser({ tenantId, cognitoSub });
     const { customerId } = await createCustomer({});
@@ -134,7 +134,6 @@ describe('POST /v1/vehicles (integration)', () => {
         odometerKm: 45000,
       },
       customer: { mode: 'existing', customerId },
-      locationId,
     };
     const res = await app.inject({
       method: 'POST',
@@ -151,7 +150,7 @@ describe('POST /v1/vehicles (integration)', () => {
   });
 
   it('returns 409 vehicle.creation.duplicate_vin when VIN already exists', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('post-dup-vin');
+    const { tenantId } = await createTenantWithLocation('post-dup-vin');
     const cognitoSub = '33333333-3333-4333-8333-333333333333';
     await createUser({ tenantId, cognitoSub });
     await createVehicle({ createdByTenantId: tenantId, vin: VALID_VIN });
@@ -165,14 +164,14 @@ describe('POST /v1/vehicles (integration)', () => {
       method: 'POST',
       url: '/v1/vehicles',
       headers: { authorization: `Bearer ${token}` },
-      payload: buildBody({ locationId }),
+      payload: buildBody({}),
     });
     expect(res.statusCode).toBe(409);
     expect(res.json()).toMatchObject({ code: 'vehicle.creation.duplicate_vin' });
   });
 
   it('returns 409 duplicate_plate_warning without force, accepts with force=true', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('post-dup-plate');
+    const { tenantId } = await createTenantWithLocation('post-dup-plate');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
     await createUser({ tenantId, cognitoSub });
     await createVehicle({
@@ -191,7 +190,7 @@ describe('POST /v1/vehicles (integration)', () => {
       method: 'POST',
       url: '/v1/vehicles',
       headers: { authorization: `Bearer ${token}` },
-      payload: buildBody({ locationId }),
+      payload: buildBody({}),
     });
     expect(resWarn.statusCode).toBe(409);
     expect(resWarn.json()).toMatchObject({
@@ -202,36 +201,13 @@ describe('POST /v1/vehicles (integration)', () => {
       method: 'POST',
       url: '/v1/vehicles',
       headers: { authorization: `Bearer ${token}` },
-      payload: buildBody({ locationId, force: true }),
+      payload: buildBody({ force: true }),
     });
     expect(resForce.statusCode).toBe(201);
   });
 
-  it('returns 422 location_not_in_tenant when location belongs to another tenant', async () => {
-    const { tenantId } = await createTenantWithLocation('post-loc-A');
-    const { locationId: otherLocationId } = await createTenantWithLocation('post-loc-B');
-    const cognitoSub = '55555555-5555-4555-8555-555555555555';
-    await createUser({ tenantId, cognitoSub });
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: cognitoSub,
-      tenantId,
-      role: 'mechanic',
-    });
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/vehicles',
-      headers: { authorization: `Bearer ${token}` },
-      payload: buildBody({ locationId: otherLocationId }),
-    });
-    expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({
-      code: 'vehicle.creation.location_not_in_tenant',
-    });
-  });
-
   it('returns 400 invalid_vin_checksum on a checksum-failing VIN (no forceNonstandardVin)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('post-chk');
+    const { tenantId } = await createTenantWithLocation('post-chk');
     const cognitoSub = '66666666-6666-4666-8666-666666666666';
     await createUser({ tenantId, cognitoSub });
     const token = await signTestToken({
@@ -240,7 +216,7 @@ describe('POST /v1/vehicles (integration)', () => {
       tenantId,
       role: 'mechanic',
     });
-    const body = buildBody({ locationId });
+    const body = buildBody({});
     body.vehicle.vin = INVALID_CHECKSUM_VIN;
     const res = await app.inject({
       method: 'POST',
@@ -259,7 +235,7 @@ describe('POST /v1/vehicles (integration)', () => {
     // VIN so the duplicate_vin check fires. checkDuplicateVin runs
     // before resolveCustomer, so this exercises the pre-customer-create
     // ordering: no customer row should leak through the failed flow.
-    const { tenantId, locationId } = await createTenantWithLocation('post-rollback');
+    const { tenantId } = await createTenantWithLocation('post-rollback');
     const cognitoSub = '77777777-7777-4777-8777-777777777777';
     await createUser({ tenantId, cognitoSub });
     await createVehicle({ createdByTenantId: tenantId, vin: VALID_VIN });
@@ -270,7 +246,7 @@ describe('POST /v1/vehicles (integration)', () => {
       role: 'mechanic',
     });
 
-    const body = buildBody({ locationId });
+    const body = buildBody({});
     body.customer.email = `rollback-${Date.now()}@test.it`;
     const res = await app.inject({
       method: 'POST',

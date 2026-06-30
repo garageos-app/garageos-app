@@ -41,19 +41,21 @@ export async function resetDb(): Promise<void> {
 }
 
 // sede-unica: location concept removed (Task 1 dropped the Location table).
-// The signature keeps locationId in the return type as null so existing call sites
-// that destructure it compile without change (they just get null and ignore it).
-export async function createTenantWithLocation(
+// Renamed from createTenantWithLocation (Task 5 cleanup).
+export async function createTenant(
   suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-): Promise<{ tenantId: string; locationId: null }> {
+): Promise<{ tenantId: string }> {
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
      RETURNING id`,
     [`Test Tenant ${suffix}`, `${Math.floor(Math.random() * 1e11)}`, `t-${suffix}@test.it`],
   );
-  return { tenantId: rows[0]!.id, locationId: null };
+  return { tenantId: rows[0]!.id };
 }
+
+/** @deprecated Use createTenant instead */
+export const createTenantWithLocation = createTenant;
 
 // Insert a users row via pgAdmin (superuser — bypasses RLS) for
 // integration-test fixtures. The HTTP call under test goes through
@@ -413,7 +415,6 @@ export async function createCustomerTenantRelation(params: {
 // array so timeline `parts_replaced_count` is non-zero.
 export async function createIntervention(params: {
   tenantId: string;
-  locationId: string;
   userId: string;
   vehicleId: string;
   interventionTypeId: string;
@@ -435,7 +436,6 @@ export async function createIntervention(params: {
 }): Promise<{ interventionId: string }> {
   const {
     tenantId,
-    locationId,
     userId,
     vehicleId,
     interventionTypeId,
@@ -449,15 +449,14 @@ export async function createIntervention(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO interventions
-       (id, tenant_id, location_id, user_id, vehicle_id, intervention_type_id,
+       (id, tenant_id, user_id, vehicle_id, intervention_type_id,
         intervention_date, odometer_km, title, description, parts_replaced,
         internal_notes, status, km_anomaly, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::date, $7, $8, $9,
-        $10::jsonb, $11, $12::"InterventionStatus", false, NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, $7, $8,
+        $9::jsonb, $10, $11::"InterventionStatus", false, NOW(), NOW())
      RETURNING id`,
     [
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId,

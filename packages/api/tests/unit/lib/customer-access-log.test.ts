@@ -11,7 +11,6 @@ function row(overrides: Record<string, unknown> = {}) {
     action: 'view',
     createdAt: new Date('2026-06-04T10:00:00.000Z'),
     tenant: { id: TENANT_REL, businessName: 'Officina Rossi' },
-    location: { city: 'Bologna' },
     user: { firstName: 'Mario', lastName: 'Bianchi' },
     ...overrides,
   };
@@ -32,7 +31,6 @@ describe('serializeCustomerAccessLog', () => {
     expect(entry).toEqual({
       action: 'view',
       tenantName: 'Officina Rossi',
-      locationCity: 'Bologna',
       occurredAt: '2026-06-04T10:00:00.000Z',
       mechanicName: 'Mario Bianchi',
     });
@@ -41,6 +39,7 @@ describe('serializeCustomerAccessLog', () => {
     expect(entry).not.toHaveProperty('tenantId');
     expect(entry).not.toHaveProperty('userId');
     expect(entry).not.toHaveProperty('locationId');
+    expect(entry).not.toHaveProperty('locationCity');
     expect(entry).not.toHaveProperty('vehicleId');
     expect(entry).not.toHaveProperty('ipAddress');
     expect(entry).not.toHaveProperty('userAgent');
@@ -53,10 +52,5 @@ describe('serializeCustomerAccessLog', () => {
     );
     expect(entry).not.toHaveProperty('mechanicName');
     expect(entry!.tenantName).toBe('Officina Verdi');
-  });
-
-  it('returns locationCity null when the row has no location', () => {
-    const [entry] = serializeCustomerAccessLog([row({ location: null })], new Set([TENANT_REL]));
-    expect(entry!.locationCity).toBeNull();
   });
 });

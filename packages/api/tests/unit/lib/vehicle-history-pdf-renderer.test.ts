@@ -53,7 +53,6 @@ function intervention(i: number) {
     odometerKm: 50000 + i * 1000,
     typeName: 'Tagliando',
     tenantName: 'Officina Bianchi Srl',
-    locationCity: 'Milano',
     title: `Tagliando ${i}`,
     description: 'Sostituzione olio motore e filtri.\nControllo freni: àèìòù ok.',
     partsReplaced: [

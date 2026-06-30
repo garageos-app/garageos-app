@@ -54,12 +54,10 @@ describe('serializeUserMe', () => {
     lastName: 'B',
     role: 'mechanic' as const,
     tenantId: 't1',
-    locationId: null,
     phone: null,
     status: 'active' as const,
     createdAt: new Date(),
     tenant: { businessName: 'Matula' },
-    location: null,
   };
 
   it('returns avatarUrl=null when DB field is null', async () => {

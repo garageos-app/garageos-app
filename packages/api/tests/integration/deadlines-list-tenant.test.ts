@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -20,7 +20,6 @@ import { signTestToken } from '../helpers/jwt.js';
 
 interface SeedDeadlineParams {
   tenantId: string;
-  locationId: string;
   vehicleId: string;
   interventionTypeId: string;
   dueDate?: Date | null;
@@ -32,7 +31,6 @@ interface SeedDeadlineParams {
 async function seedDeadline(params: SeedDeadlineParams): Promise<{ deadlineId: string }> {
   const {
     tenantId,
-    locationId,
     vehicleId,
     interventionTypeId,
     dueDate = new Date('2025-12-31'),
@@ -41,20 +39,11 @@ async function seedDeadline(params: SeedDeadlineParams): Promise<{ deadlineId: s
     status = 'open',
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
-    `INSERT INTO deadlines (id, tenant_id, location_id, vehicle_id, intervention_type_id,
+    `INSERT INTO deadlines (id, tenant_id, vehicle_id, intervention_type_id,
         due_date, due_odometer_km, description, status, is_recurring, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8::"DeadlineStatus", false, NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::"DeadlineStatus", false, NOW(), NOW())
      RETURNING id`,
-    [
-      tenantId,
-      locationId,
-      vehicleId,
-      interventionTypeId,
-      dueDate,
-      dueOdometerKm,
-      description,
-      status,
-    ],
+    [tenantId, vehicleId, interventionTypeId, dueDate, dueOdometerKm, description, status],
   );
   return { deadlineId: rows[0]!.id };
 }
@@ -72,8 +61,8 @@ describe('GET /v1/deadlines (integration)', () => {
   });
 
   it('returns only deadlines for the calling tenant (RLS isolation)', async () => {
-    const { tenantId: tA, locationId: lA } = await createTenantWithLocation('dl-iso-A');
-    const { tenantId: tB, locationId: lB } = await createTenantWithLocation('dl-iso-B');
+    const { tenantId: tA } = await createTenantWithLocation('dl-iso-A');
+    const { tenantId: tB } = await createTenantWithLocation('dl-iso-B');
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     await createUser({ tenantId: tA, cognitoSub });
 
@@ -85,21 +74,18 @@ describe('GET /v1/deadlines (integration)', () => {
 
     await seedDeadline({
       tenantId: tA,
-      locationId: lA,
       vehicleId: vA1,
       interventionTypeId: typeId,
       dueDate: new Date('2025-08-01'),
     });
     await seedDeadline({
       tenantId: tA,
-      locationId: lA,
       vehicleId: vA2,
       interventionTypeId: typeId,
       dueDate: new Date('2025-09-01'),
     });
     await seedDeadline({
       tenantId: tB,
-      locationId: lB,
       vehicleId: vB,
       interventionTypeId: typeId,
       dueDate: new Date('2025-08-01'),
@@ -126,7 +112,7 @@ describe('GET /v1/deadlines (integration)', () => {
   });
 
   it('default status filter excludes completed and cancelled', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('dl-status-default');
+    const { tenantId } = await createTenantWithLocation('dl-status-default');
     const cognitoSub = '22222222-2222-4222-8222-222222222222';
     await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('GOMME');
@@ -134,21 +120,18 @@ describe('GET /v1/deadlines (integration)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: typeId,
       status: 'open',
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: typeId,
       status: 'completed',
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: typeId,
       status: 'cancelled',
@@ -171,7 +154,7 @@ describe('GET /v1/deadlines (integration)', () => {
   });
 
   it('?status=cancelled override returns cancelled rows', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('dl-status-override');
+    const { tenantId } = await createTenantWithLocation('dl-status-override');
     const cognitoSub = '33333333-3333-4333-8333-333333333333';
     await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('REVISIONE');
@@ -179,14 +162,12 @@ describe('GET /v1/deadlines (integration)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: typeId,
       status: 'open',
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: typeId,
       status: 'cancelled',
@@ -209,16 +190,16 @@ describe('GET /v1/deadlines (integration)', () => {
   });
 
   it('filters by intervention_type_id', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('dl-type-filter');
+    const { tenantId } = await createTenantWithLocation('dl-type-filter');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
     await createUser({ tenantId, cognitoSub });
     const { id: typeA } = await ensureSystemInterventionType('TAGLIANDO');
     const { id: typeB } = await ensureSystemInterventionType('GOMME');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
-    await seedDeadline({ tenantId, locationId, vehicleId, interventionTypeId: typeA });
-    await seedDeadline({ tenantId, locationId, vehicleId, interventionTypeId: typeA });
-    await seedDeadline({ tenantId, locationId, vehicleId, interventionTypeId: typeB });
+    await seedDeadline({ tenantId, vehicleId, interventionTypeId: typeA });
+    await seedDeadline({ tenantId, vehicleId, interventionTypeId: typeA });
+    await seedDeadline({ tenantId, vehicleId, interventionTypeId: typeB });
 
     const token = await signTestToken({
       pool: 'officine',
@@ -237,7 +218,7 @@ describe('GET /v1/deadlines (integration)', () => {
   });
 
   it('returns customer PII when tenant is related to the customer', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('dl-pii-related');
+    const { tenantId } = await createTenantWithLocation('dl-pii-related');
     const cognitoSub = '55555555-5555-4555-8555-555555555555';
     await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -245,7 +226,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
     await createCustomerTenantRelation({ tenantId, customerId });
-    await seedDeadline({ tenantId, locationId, vehicleId, interventionTypeId: typeId });
+    await seedDeadline({ tenantId, vehicleId, interventionTypeId: typeId });
 
     const token = await signTestToken({
       pool: 'officine',
@@ -275,7 +256,7 @@ describe('GET /v1/deadlines (integration)', () => {
   });
 
   it('redacts customer PII when tenant is NOT related (BR-151)', async () => {
-    const { tenantId: tA, locationId: lA } = await createTenantWithLocation('dl-pii-A');
+    const { tenantId: tA } = await createTenantWithLocation('dl-pii-A');
     const { tenantId: tB } = await createTenantWithLocation('dl-pii-B');
     const cognitoSub = '66666666-6666-4666-8666-666666666666';
     await createUser({ tenantId: tA, cognitoSub });
@@ -288,7 +269,7 @@ describe('GET /v1/deadlines (integration)', () => {
     // Only tenant B is related (decoy — proves nontrivial CTR query):
     await createCustomerTenantRelation({ tenantId: tB, customerId });
 
-    await seedDeadline({ tenantId: tA, locationId: lA, vehicleId, interventionTypeId: typeId });
+    await seedDeadline({ tenantId: tA, vehicleId, interventionTypeId: typeId });
 
     const token = await signTestToken({
       pool: 'officine',
@@ -317,7 +298,7 @@ describe('GET /v1/deadlines (integration)', () => {
   });
 
   it('paginates with cursor', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('dl-pagination');
+    const { tenantId } = await createTenantWithLocation('dl-pagination');
     const cognitoSub = '77777777-7777-4777-8777-777777777777';
     await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -327,7 +308,6 @@ describe('GET /v1/deadlines (integration)', () => {
     for (const day of [1, 2, 3]) {
       const { deadlineId } = await seedDeadline({
         tenantId,
-        locationId,
         vehicleId,
         interventionTypeId: typeId,
         dueDate: new Date(`2025-08-0${day}`),
@@ -402,7 +382,7 @@ describe('GET /v1/deadlines — BR-205 relaxed (sede unica)', () => {
   });
 
   it('mechanic sees all tenant deadlines (BR-205 relaxed — sede unica)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('dl-all');
+    const { tenantId } = await createTenantWithLocation('dl-all');
     const cognitoSub = '20000000-0000-4000-8000-000000000001';
     await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -410,7 +390,6 @@ describe('GET /v1/deadlines — BR-205 relaxed (sede unica)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: typeId,
       dueDate: new Date('2026-08-01'),
@@ -418,7 +397,6 @@ describe('GET /v1/deadlines — BR-205 relaxed (sede unica)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: typeId,
       dueDate: new Date('2026-08-02'),

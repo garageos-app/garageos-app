@@ -17,7 +17,6 @@ const baseRow: RawInterventionRow = {
   status: 'disputed',
   interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
   tenant: { businessName: 'Officina Rossi' },
-  location: { city: 'Milano' },
   sourceDeadlines: [],
 };
 
@@ -40,7 +39,7 @@ describe('projectShopInterventionDetail', () => {
       partsReplacedCount: 3,
       status: 'disputed',
       isDisputed: true,
-      tenant: { businessName: 'Officina Rossi', locationCity: 'Milano' },
+      tenant: { businessName: 'Officina Rossi' },
       attachmentsCount: 2,
       generatedDeadlines: [],
     });

@@ -42,7 +42,7 @@ export const CreateDisputeSchema = z.object({
 });
 
 // BR-065 — fields editable on PATCH /interventions/:id.
-// BR-061 — vehicleId, interventionDate, odometerKm, tenantId, locationId,
+// BR-061 — vehicleId, interventionDate, odometerKm, tenantId,
 //          userId are absent here on purpose; .strict() rejects them.
 // BR-064 — reason is request-level metadata for the revision row created
 //          when the wiki window is closed; required iff isLocked, validated

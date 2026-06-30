@@ -94,7 +94,6 @@ const shopRowSelect = {
   createdAt: true,
   firstSeenByCustomerAt: true,
   tenant: { select: { businessName: true } },
-  location: { select: { city: true } },
   interventionType: { select: { id: true, code: true, nameIt: true } },
 } as const;
 
@@ -315,7 +314,6 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
               tenant: {
                 id: r.tenantId,
                 business_name: r.tenant.businessName,
-                location_city: r.location.city,
               },
               viewer_is_owner: r.tenantId === callerTenantId,
               has_attachments: attachments > 0,

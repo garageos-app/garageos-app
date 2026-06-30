@@ -5,10 +5,10 @@ import { Factory } from 'fishery';
 import { prisma } from '../client.js';
 import type { Prisma } from '../../prisma/generated/prisma/client/client.js';
 
-// All FKs (tenantId, locationId, userId, vehicleId, interventionTypeId) must
-// be set explicitly by the caller — an intervention without its parent
-// entities is not a valid fixture. Factory defaults are placeholder UUIDs
-// intended to fail loudly at DB time if left unset.
+// All FKs (tenantId, userId, vehicleId, interventionTypeId) must be set
+// explicitly by the caller — an intervention without its parent entities
+// is not a valid fixture. Factory defaults are placeholder UUIDs intended
+// to fail loudly at DB time if left unset.
 
 export const InterventionFactory = Factory.define<Prisma.InterventionUncheckedCreateInput>(
   ({ sequence, onCreate }) => {

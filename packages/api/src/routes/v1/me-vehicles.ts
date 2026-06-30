@@ -261,7 +261,6 @@ const meVehicleRoutes: FastifyPluginAsync = async (app) => {
             action: true,
             createdAt: true,
             tenant: { select: { id: true, businessName: true } },
-            location: { select: { city: true } },
             user: { select: { firstName: true, lastName: true } },
           },
         });

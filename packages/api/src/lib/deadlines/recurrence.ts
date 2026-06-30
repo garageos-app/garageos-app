@@ -11,7 +11,6 @@ type PrismaTxLike = Pick<PrismaClient, 'deadline' | 'deadlineNotification'>;
 export interface CompletedDeadlineSnapshot {
   id: string;
   tenantId: string;
-  locationId: string;
   vehicleId: string;
   interventionTypeId: string;
   dueDate: Date;
@@ -92,7 +91,6 @@ export async function createNextRecurringDeadline(
   const created = await tx.deadline.create({
     data: {
       tenantId: completed.tenantId,
-      locationId: completed.locationId,
       vehicleId: completed.vehicleId,
       interventionTypeId: completed.interventionTypeId,
       // Chain provenance: intervention that completed cycle N is the source of cycle N+1.
@@ -111,7 +109,6 @@ export async function createNextRecurringDeadline(
     select: {
       id: true,
       tenantId: true,
-      locationId: true,
       vehicleId: true,
       interventionTypeId: true,
       sourceInterventionId: true,

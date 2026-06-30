@@ -29,13 +29,12 @@ describe('GET /v1/interventions/:id/disputes (integration)', () => {
   });
 
   async function setupOfficinaCaller(suffix: string) {
-    const { tenantId, locationId } = await createTenantWithLocation(suffix);
+    const { tenantId } = await createTenantWithLocation(suffix);
     const cognitoSub = `dl-caller-${suffix}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const token = await signTestToken({
       pool: 'officine',
@@ -43,20 +42,15 @@ describe('GET /v1/interventions/:id/disputes (integration)', () => {
       tenantId,
       role: 'super_admin',
     });
-    return { tenantId, locationId, userId, token };
+    return { tenantId, userId, token };
   }
 
-  async function setupInterventionForTenant(args: {
-    tenantId: string;
-    locationId: string;
-    userId: string;
-  }) {
+  async function setupInterventionForTenant(args: { tenantId: string; userId: string }) {
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: args.tenantId });
     const interventionType = await ensureSystemInterventionType('TAGLIANDO');
     const { interventionId } = await createIntervention({
       tenantId: args.tenantId,
-      locationId: args.locationId,
       userId: args.userId,
       vehicleId,
       interventionTypeId: interventionType.id,
@@ -67,8 +61,8 @@ describe('GET /v1/interventions/:id/disputes (integration)', () => {
   }
 
   it('returns 200 with empty disputes array when intervention has no dispute', async () => {
-    const { tenantId, locationId, userId, token } = await setupOfficinaCaller('list-empty');
-    const { interventionId } = await setupInterventionForTenant({ tenantId, locationId, userId });
+    const { tenantId, userId, token } = await setupOfficinaCaller('list-empty');
+    const { interventionId } = await setupInterventionForTenant({ tenantId, userId });
 
     const res = await app.inject({
       method: 'GET',
@@ -81,10 +75,9 @@ describe('GET /v1/interventions/:id/disputes (integration)', () => {
   });
 
   it('returns 200 with 2 open disputes ordered by createdAt asc', async () => {
-    const { tenantId, locationId, userId, token } = await setupOfficinaCaller('list-2open');
+    const { tenantId, userId, token } = await setupOfficinaCaller('list-2open');
     const { customerId, interventionId } = await setupInterventionForTenant({
       tenantId,
-      locationId,
       userId,
     });
     const { disputeId: d1 } = await createDispute({
@@ -125,10 +118,9 @@ describe('GET /v1/interventions/:id/disputes (integration)', () => {
   });
 
   it('returns 200 with 1 open + 1 responded dispute (responded includes tenantResponseUser)', async () => {
-    const { tenantId, locationId, userId, token } = await setupOfficinaCaller('list-mixed');
+    const { tenantId, userId, token } = await setupOfficinaCaller('list-mixed');
     const { customerId, interventionId } = await setupInterventionForTenant({
       tenantId,
-      locationId,
       userId,
     });
     await createDispute({ interventionId, customerId, status: 'open' });
@@ -163,10 +155,9 @@ describe('GET /v1/interventions/:id/disputes (integration)', () => {
   });
 
   it('returns 200 with all 5 status flavours', async () => {
-    const { tenantId, locationId, userId, token } = await setupOfficinaCaller('list-5states');
+    const { tenantId, userId, token } = await setupOfficinaCaller('list-5states');
     const { customerId, interventionId } = await setupInterventionForTenant({
       tenantId,
-      locationId,
       userId,
     });
     await createDispute({ interventionId, customerId, status: 'open' });
@@ -207,14 +198,9 @@ describe('GET /v1/interventions/:id/disputes (integration)', () => {
   });
 
   it('returns 404 when intervention belongs to a different tenant (RLS-as-404)', async () => {
-    const {
-      tenantId: tenantA,
-      locationId: locA,
-      userId: userA,
-    } = await setupOfficinaCaller('list-x-A');
+    const { tenantId: tenantA, userId: userA } = await setupOfficinaCaller('list-x-A');
     const { customerId, interventionId } = await setupInterventionForTenant({
       tenantId: tenantA,
-      locationId: locA,
       userId: userA,
     });
     await createDispute({ interventionId, customerId });

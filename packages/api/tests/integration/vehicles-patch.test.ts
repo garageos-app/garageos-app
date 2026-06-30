@@ -41,9 +41,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
 
   describe('happy path', () => {
     it('updates a single tech field and returns the refreshed vehicle', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-h1');
+      const { tenantId } = await createTenantWithLocation('patch-h1');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
       const token = await signTestToken({
@@ -72,9 +72,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
     });
 
     it('updates multiple fields atomically and leaves others untouched', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-h2');
+      const { tenantId } = await createTenantWithLocation('patch-h2');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa02';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({
         createdByTenantId: tenantId,
         make: 'Fiat',
@@ -125,9 +125,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
 
   describe('BR-008 archived', () => {
     it('returns 422 vehicle.modification.archived when status=archived', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-arc');
+      const { tenantId } = await createTenantWithLocation('patch-arc');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa03';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({
         createdByTenantId: tenantId,
         status: 'archived',
@@ -155,9 +155,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
 
   describe('BR-005 vin immutable on certified', () => {
     it('returns 422 vehicle.modification.vin_immutable when patching vin on certified', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-vin1');
+      const { tenantId } = await createTenantWithLocation('patch-vin1');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa04';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({
         createdByTenantId: tenantId,
         status: 'certified',
@@ -184,9 +184,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
     });
 
     it('allows VIN change on pending vehicles', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-vin2');
+      const { tenantId } = await createTenantWithLocation('patch-vin2');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa05';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({
         createdByTenantId: tenantId,
         status: 'pending',
@@ -213,9 +213,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
     });
 
     it('returns 200 when vin in body equals current vin (no-op)', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-vin3');
+      const { tenantId } = await createTenantWithLocation('patch-vin3');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa06';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId, vin } = await createVehicle({
         createdByTenantId: tenantId,
         status: 'certified',
@@ -241,9 +241,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
 
   describe('VIN change validation', () => {
     it('returns 400 invalid_vin_checksum when new VIN fails ISO 3779 and forceNonstandardVin=false', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-cks');
+      const { tenantId } = await createTenantWithLocation('patch-cks');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa07';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({
         createdByTenantId: tenantId,
         status: 'pending',
@@ -269,9 +269,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
     });
 
     it('accepts non-3779 VIN when forceNonstandardVin=true', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-cks2');
+      const { tenantId } = await createTenantWithLocation('patch-cks2');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa08';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({
         createdByTenantId: tenantId,
         status: 'pending',
@@ -295,9 +295,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
     });
 
     it('returns 409 duplicate_vin when new VIN exists on another vehicle', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-dup');
+      const { tenantId } = await createTenantWithLocation('patch-dup');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa09';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       await createVehicle({
         createdByTenantId: tenantId,
         vin: 'ZFA11100000003BBB',
@@ -329,9 +329,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
 
   describe('Plate change validation', () => {
     it('returns 409 duplicate_plate_warning when new plate already used and force=false', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-pl1');
+      const { tenantId } = await createTenantWithLocation('patch-pl1');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       await createVehicle({ createdByTenantId: tenantId, plate: 'AB123CD' });
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -355,9 +355,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
     });
 
     it('accepts duplicate plate when force=true', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-pl2');
+      const { tenantId } = await createTenantWithLocation('patch-pl2');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       await createVehicle({ createdByTenantId: tenantId, plate: 'AB123CE' });
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -379,9 +379,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
     });
 
     it('returns 200 when plate sent is unchanged (excludeId prevents self-collision)', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-pl3');
+      const { tenantId } = await createTenantWithLocation('patch-pl3');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa12';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       // Explicit valid Italian plate so the PATCH body passes ItalianPlateSchema
       // when the test re-sends the same value (the random helper plate uses
       // 5 digits which would not pass strict validation here).
@@ -410,9 +410,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
 
   describe('BR-151 PII filter', () => {
     it('masks owner PII when tenant has no customer_tenant_relation', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-pii');
+      const { tenantId } = await createTenantWithLocation('patch-pii');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa13';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
       const { customerId } = await createCustomer({});
       await createOwnership({ vehicleId, customerId });
@@ -446,10 +446,10 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
   });
 
   describe('access_log', () => {
-    it('writes a row with action=update and the right user/tenant/location/ip', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-log');
+    it('writes a row with action=update and the right user/tenant/ip', async () => {
+      const { tenantId } = await createTenantWithLocation('patch-log');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa14';
-      const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+      const { userId } = await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
       const token = await signTestToken({
@@ -472,10 +472,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
         action: string;
         tenant_id: string;
         user_id: string;
-        location_id: string | null;
         ip_address: string | null;
       }>(
-        `SELECT action, tenant_id, user_id, location_id, ip_address::text
+        `SELECT action, tenant_id, user_id, ip_address::text
          FROM access_logs WHERE vehicle_id = $1`,
         [vehicleId],
       );
@@ -483,7 +482,6 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
       expect(updateLogs).toHaveLength(1);
       expect(updateLogs[0]!.tenant_id).toBe(tenantId);
       expect(updateLogs[0]!.user_id).toBe(userId);
-      expect(updateLogs[0]!.location_id).toBe(locationId);
       expect(updateLogs[0]!.ip_address).not.toBeNull();
     });
   });
@@ -493,10 +491,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
       const { tenantId: tenantA } = await createTenantWithLocation('patch-rls-a');
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
 
-      const { tenantId: tenantB, locationId: locationB } =
-        await createTenantWithLocation('patch-rls-b');
+      const { tenantId: tenantB } = await createTenantWithLocation('patch-rls-b');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa15';
-      await createUser({ tenantId: tenantB, cognitoSub, locationId: locationB });
+      await createUser({ tenantId: tenantB, cognitoSub });
 
       const token = await signTestToken({
         pool: 'officine',
@@ -518,9 +515,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
 
   describe('body validation surface', () => {
     async function patchWithBody(payload: Record<string, unknown>) {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-bv');
+      const { tenantId } = await createTenantWithLocation('patch-bv');
       const cognitoSub = `aaaaaaaa-aaaa-4aaa-8aaa-${Math.random().toString(16).slice(2, 14).padEnd(12, '0')}`;
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
       const token = await signTestToken({
@@ -556,9 +553,9 @@ describe('PATCH /v1/vehicles/:id (integration)', () => {
 
   describe('updatedAt', () => {
     it('advances updatedAt after a PATCH', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation('patch-upd');
+      const { tenantId } = await createTenantWithLocation('patch-upd');
       const cognitoSub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa16';
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
       const before = await pgAdmin.query<{ updated_at: Date }>(

@@ -27,7 +27,6 @@ import { getOrCreateTagPresignedUrl } from '../../../../src/lib/vehicle-tag-s3.j
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
-const LOCATION_ID = '44444444-4444-4444-8444-444444444444';
 const VEHICLE_ID = '55555555-5555-4555-8555-555555555555';
 const GARAGE_CODE = 'GO-288-QPWZ';
 
@@ -71,7 +70,6 @@ function buildFakePrisma(
       findFirstOrThrow: vi.fn().mockResolvedValue({
         id: USER_ID,
         role: 'super_admin',
-        locationId: LOCATION_ID,
       }),
       findFirst: vi.fn().mockResolvedValue({ id: USER_ID }),
     },

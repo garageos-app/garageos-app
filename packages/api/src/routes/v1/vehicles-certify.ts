@@ -81,7 +81,7 @@ const vehicleCertifyRoutes: FastifyPluginAsync = async (app) => {
         // (cognitoSub, tenantId) lookup — see users.ts header.
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: { id: true, locationId: true },
+          select: { id: true },
         });
 
         const existing = await tx.vehicle.findFirst({
@@ -177,7 +177,6 @@ const vehicleCertifyRoutes: FastifyPluginAsync = async (app) => {
               vehicleId: id,
               tenantId,
               userId: user.id,
-              ...(user.locationId ? { locationId: user.locationId } : {}),
               action: 'update',
               ...(request.ip ? { ipAddress: request.ip } : {}),
             },

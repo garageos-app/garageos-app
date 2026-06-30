@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -34,8 +34,8 @@ describe('GET /v1/interventions/recent (integration)', () => {
   });
 
   it('returns only interventions of the calling tenant (RLS isolation)', async () => {
-    const { tenantId: tA, locationId: lA } = await createTenantWithLocation('rec-iso-A');
-    const { tenantId: tB, locationId: lB } = await createTenantWithLocation('rec-iso-B');
+    const { tenantId: tA } = await createTenantWithLocation('rec-iso-A');
+    const { tenantId: tB } = await createTenantWithLocation('rec-iso-B');
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     const { userId: uA } = await createUser({ tenantId: tA, cognitoSub });
     const { userId: uB } = await createUser({
@@ -48,7 +48,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
 
     await createIntervention({
       tenantId: tA,
-      locationId: lA,
       userId: uA,
       vehicleId: vA,
       interventionTypeId: typeId,
@@ -58,7 +57,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     });
     await createIntervention({
       tenantId: tB,
-      locationId: lB,
       userId: uB,
       vehicleId: vB,
       interventionTypeId: typeId,
@@ -85,7 +83,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
   });
 
   it('excludes cancelled interventions; includes active and disputed', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rec-status');
+    const { tenantId } = await createTenantWithLocation('rec-status');
     const cognitoSub = '33333333-3333-4333-8333-333333333333';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -93,7 +91,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
 
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -104,7 +101,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     });
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -115,7 +111,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     });
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -144,7 +139,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
   });
 
   it('orders by createdAt DESC with id DESC tiebreaker', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rec-order');
+    const { tenantId } = await createTenantWithLocation('rec-order');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -154,7 +149,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     const sharedCreatedAt = new Date('2026-05-23T10:00:00.000Z');
     const { interventionId: i1 } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -165,7 +159,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     });
     const { interventionId: i2 } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -177,7 +170,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     // Newer createdAt — must appear first regardless of id.
     const { interventionId: i3 } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -208,7 +200,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
   });
 
   it('respects limit query param (cap 50, default 10)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rec-limit');
+    const { tenantId } = await createTenantWithLocation('rec-limit');
     const cognitoSub = '55555555-5555-4555-8555-555555555555';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -217,7 +209,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     for (let i = 0; i < 12; i++) {
       await createIntervention({
         tenantId,
-        locationId,
         userId,
         vehicleId,
         interventionTypeId: typeId,
@@ -286,7 +277,7 @@ describe('GET /v1/interventions/recent — BR-205 relaxed (sede unica)', () => {
   });
 
   it('mechanic sees all tenant interventions (BR-205 relaxed — sede unica)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rec-all');
+    const { tenantId } = await createTenantWithLocation('rec-all');
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const cognitoSub = '10000000-0000-4000-8000-000000000001';
@@ -295,7 +286,6 @@ describe('GET /v1/interventions/recent — BR-205 relaxed (sede unica)', () => {
     // Create two interventions — both should be visible to the mechanic.
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -305,7 +295,6 @@ describe('GET /v1/interventions/recent — BR-205 relaxed (sede unica)', () => {
     });
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,

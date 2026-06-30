@@ -386,7 +386,7 @@ describe('DELETE /v1/users/:id — Cognito GlobalSignOut proactive lockout', () 
     // independent (one failure does not skip the other).
     cognitoMock.on(AdminDisableUserCommand).rejects(new Error('Cognito down'));
 
-    const { tenantId, locationId } = await createTenantWithLocation('del-disable-fail');
+    const { tenantId } = await createTenantWithLocation('del-disable-fail');
 
     const adminSub = `sa-del-disable-${crypto.randomUUID()}`;
     await createUser({
@@ -402,7 +402,6 @@ describe('DELETE /v1/users/:id — Cognito GlobalSignOut proactive lockout', () 
       cognitoSub: targetSub,
       email: 'mech-del-disable@test.it',
       role: 'mechanic',
-      locationId,
     });
 
     const token = await signTestToken({

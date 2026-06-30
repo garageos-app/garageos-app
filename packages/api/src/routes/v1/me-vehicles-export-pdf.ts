@@ -72,7 +72,6 @@ const meVehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
             partsReplaced: true,
             interventionType: { select: { nameIt: true } },
             tenant: { select: { businessName: true } },
-            location: { select: { city: true } },
           },
         });
 
@@ -97,7 +96,6 @@ const meVehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
               odometerKm: it.odometerKm,
               typeName: it.interventionType.nameIt,
               tenantName: it.tenant.businessName,
-              locationCity: it.location?.city ?? null,
               title: it.title,
               description: it.description,
               partsReplaced: normalizePartsReplaced(it.partsReplaced),

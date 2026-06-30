@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,18 +40,17 @@ describe('POST /v1/vehicles/:id/ownership-transfer (integration)', () => {
     actorRole?: 'super_admin' | 'mechanic';
   }): Promise<{
     tenantId: string;
-    locationId: string;
     actorJwt: string;
     cedente: { customerId: string; email: string };
     cessionario: { customerId: string; email: string };
     vehicleId: string;
   }> {
     const prefix = 'ot-' + Math.random().toString(36).slice(2, 6);
-    const { tenantId, locationId } = await createTenantWithLocation(prefix);
+    const { tenantId } = await createTenantWithLocation(prefix);
 
     const actorCognitoSub = 'ot-actor-' + Math.random().toString(36).slice(2, 10);
     const role = opts?.actorRole ?? 'super_admin';
-    await createUser({ tenantId, cognitoSub: actorCognitoSub, role, locationId });
+    await createUser({ tenantId, cognitoSub: actorCognitoSub, role });
 
     const cedente = await createCustomer({
       email: `cedente-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.it`,
@@ -74,10 +73,9 @@ describe('POST /v1/vehicles/:id/ownership-transfer (integration)', () => {
       sub: actorCognitoSub,
       tenantId,
       role,
-      locationId,
     });
 
-    return { tenantId, locationId, actorJwt, cedente, cessionario, vehicleId };
+    return { tenantId, actorJwt, cedente, cessionario, vehicleId };
   }
 
   it('200: happy path with existing recipient (super_admin)', async () => {
@@ -442,15 +440,14 @@ describe('POST /v1/vehicles/:id/ownership-transfer/document-upload-url (integrat
   // vehicle to be visible to the tenant; an active owner is not required.
   async function setupPresignScenario(): Promise<{
     tenantId: string;
-    locationId: string;
     actorJwt: string;
     vehicleId: string;
   }> {
     const prefix = 'ps-' + Math.random().toString(36).slice(2, 6);
-    const { tenantId, locationId } = await createTenantWithLocation(prefix);
+    const { tenantId } = await createTenantWithLocation(prefix);
 
     const actorSub = 'ps-actor-' + Math.random().toString(36).slice(2, 10);
-    await createUser({ tenantId, cognitoSub: actorSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub: actorSub, role: 'super_admin' });
 
     const { vehicleId } = await createVehicle({
       createdByTenantId: tenantId,
@@ -462,10 +459,9 @@ describe('POST /v1/vehicles/:id/ownership-transfer/document-upload-url (integrat
       sub: actorSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
-    return { tenantId, locationId, actorJwt, vehicleId };
+    return { tenantId, actorJwt, vehicleId };
   }
 
   it('200: happy path — s3Key has vehicle-transfers/<vehicleId>/ prefix and uploadUrl contains X-Amz-Signature=', async () => {
@@ -551,17 +547,16 @@ describe('POST /v1/vehicles/:id/ownership-transfer — documentS3Key (integratio
   // Helper: full certified-vehicle scenario ready for a transfer request.
   async function setupTransferScenario(): Promise<{
     tenantId: string;
-    locationId: string;
     actorJwt: string;
     cedente: { customerId: string; email: string };
     cessionario: { customerId: string; email: string };
     vehicleId: string;
   }> {
     const prefix = 'ds-' + Math.random().toString(36).slice(2, 6);
-    const { tenantId, locationId } = await createTenantWithLocation(prefix);
+    const { tenantId } = await createTenantWithLocation(prefix);
 
     const actorSub = 'ds-actor-' + Math.random().toString(36).slice(2, 10);
-    await createUser({ tenantId, cognitoSub: actorSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub: actorSub, role: 'super_admin' });
 
     const cedente = await createCustomer({
       email: `cedente-ds-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.it`,
@@ -584,10 +579,9 @@ describe('POST /v1/vehicles/:id/ownership-transfer — documentS3Key (integratio
       sub: actorSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
-    return { tenantId, locationId, actorJwt, cedente, cessionario, vehicleId };
+    return { tenantId, actorJwt, cedente, cessionario, vehicleId };
   }
 
   it('200: valid documentS3Key is persisted as documentUrl on the VehicleTransfer row', async () => {

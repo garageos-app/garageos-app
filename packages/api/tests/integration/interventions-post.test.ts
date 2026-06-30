@@ -1,4 +1,4 @@
-import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+﻿import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { mockClient } from 'aws-sdk-client-mock';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -77,9 +77,9 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
   });
 
   it('creates intervention + customer_tenant_relation + access_log atomically (happy path)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('int-happy');
+    const { tenantId } = await createTenantWithLocation('int-happy');
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
@@ -134,35 +134,33 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
     // Intervention row persisted with correct FKs.
     const { rows: interventionRows } = await pgAdmin.query<{
       tenant_id: string;
-      location_id: string;
       user_id: string;
     }>(
-      `SELECT tenant_id, location_id, user_id FROM interventions
+      `SELECT tenant_id, user_id FROM interventions
         WHERE id = $1`,
       [json.intervention.id],
     );
     expect(interventionRows[0]).toMatchObject({
       tenant_id: tenantId,
-      location_id: locationId,
     });
   });
 
   it('returns 409 odometer_decrease_warning without force, then 201 with kmAnomaly=true on retry (BR-068)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('int-km');
+    const { tenantId } = await createTenantWithLocation('int-km');
     const cognitoSub = '22222222-2222-4222-8222-222222222222';
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
     // Pre-existing intervention at 50000 km (DB-side INSERT, bypasses route).
     await pgAdmin.query(
       `INSERT INTO interventions
-         (id, tenant_id, location_id, user_id, vehicle_id, intervention_type_id,
+         (id, tenant_id, user_id, vehicle_id, intervention_type_id,
           intervention_date, odometer_km, description, status, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5,
+       VALUES (gen_random_uuid(), $1, $2, $3, $4,
          '2026-03-01'::date, 50000, 'Previous intervention at 50000',
          'active'::"InterventionStatus", NOW(), NOW())`,
-      [tenantId, locationId, userId, vehicleId, taglianodoTypeId],
+      [tenantId, userId, vehicleId, taglianodoTypeId],
     );
     const token = await signTestToken({
       pool: 'officine',
@@ -202,9 +200,9 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
   });
 
   it('returns 404 when the vehicle does not exist', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('int-no-vehicle');
+    const { tenantId } = await createTenantWithLocation('int-no-vehicle');
     const cognitoSub = '33333333-3333-4333-8333-333333333333';
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
@@ -223,9 +221,9 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
   });
 
   it('returns 404 when the intervention type does not exist', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('int-no-type');
+    const { tenantId } = await createTenantWithLocation('int-no-type');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const token = await signTestToken({
       pool: 'officine',
@@ -245,9 +243,9 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
   });
 
   it('auto-creates a Deadline with type defaults when createDeadline.enabled=true (BR-080)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('int-deadline');
+    const { tenantId } = await createTenantWithLocation('int-deadline');
     const cognitoSub = '55555555-5555-4555-8555-555555555555';
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
@@ -288,35 +286,13 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
     });
   });
 
-  it('returns 422 user_no_location when authenticated user has no locationId', async () => {
-    const { tenantId } = await createTenantWithLocation('int-noloc');
-    const cognitoSub = '66666666-6666-4666-8666-666666666666';
-    await createUser({ tenantId, cognitoSub, locationId: null });
-    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: cognitoSub,
-      tenantId,
-      role: 'mechanic',
-    });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/vehicles/${vehicleId}/interventions`,
-      headers: { authorization: `Bearer ${token}` },
-      payload: buildBody(taglianodoTypeId),
-    });
-    expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({ code: 'intervention.creation.user_no_location' });
-  });
-
   it('BR-083: a high-km private intervention does NOT block a lower-km officina create', async () => {
     // Setup: vehicle V has 1 officina intervention at 10_000 km AND 1
     // customer-side private intervention at 50_000 km. The customer's
     // self-declared 50k must NOT bind the workshop's future km per BR-083.
-    const { tenantId, locationId } = await createTenantWithLocation('br083-noblock');
+    const { tenantId } = await createTenantWithLocation('br083-noblock');
     const cognitoSub = '11111111-1111-4111-8111-111111111083';
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
@@ -359,9 +335,9 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
     async function setupCreationScenario(
       opts: { customerPrefs?: object; withOwnership?: boolean } = {},
     ): Promise<{ token: string; vehicleId: string; plate: string }> {
-      const { tenantId, locationId } = await createTenantWithLocation();
+      const { tenantId } = await createTenantWithLocation();
       const cognitoSub = `office-${Math.random().toString(36).slice(2, 10)}`;
-      await createUser({ tenantId, cognitoSub, locationId });
+      await createUser({ tenantId, cognitoSub });
       const { vehicleId, plate } = await createVehicle({ createdByTenantId: tenantId });
 
       if (opts.withOwnership !== false) {

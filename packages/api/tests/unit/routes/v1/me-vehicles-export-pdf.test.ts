@@ -130,7 +130,6 @@ describe('GET /v1/me/vehicles/:id/export.pdf (unit)', () => {
     expect(callArg.vehicleId).toBe(VEHICLE_ID);
     expect(callArg.data.interventions[0]!.interventionDate).toBe('2026-05-23');
     expect(callArg.data.interventions[0]!.tenantName).toBe('Officina X');
-    expect(callArg.data.interventions[0]!.locationCity).toBe('Roma');
   });
 
   it('404 — me.vehicle.not_found when ownership is null; S3 not called', async () => {

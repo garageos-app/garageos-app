@@ -17,7 +17,6 @@ const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const VEHICLE_ID = '44444444-4444-4444-8444-444444444444';
 const CUSTOMER_ID = '55555555-5555-4555-8555-555555555555';
-const LOCATION_ID = '66666666-6666-4666-8666-666666666666';
 const INTERVENTION_TYPE_ID = '77777777-7777-4777-8777-777777777777';
 const INTERVENTION_ID = '88888888-8888-4888-8888-888888888888';
 const DEADLINE_ID = '99999999-9999-4999-8999-999999999999';
@@ -84,7 +83,6 @@ function buildInterventionRow() {
   return {
     id: INTERVENTION_ID,
     tenantId: TENANT_ID,
-    locationId: LOCATION_ID,
     userId: USER_ID,
     vehicleId: VEHICLE_ID,
     interventionTypeId: INTERVENTION_TYPE_ID,
@@ -104,7 +102,7 @@ function buildInterventionRow() {
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
   return {
     user: {
-      findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID, locationId: LOCATION_ID }),
+      findFirstOrThrow: vi.fn().mockResolvedValue({ id: USER_ID }),
       // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
       findFirst: vi.fn().mockResolvedValue({ id: USER_ID }),
     },
@@ -197,7 +195,6 @@ async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
         token_use: 'id',
         'custom:tenant_id': TENANT_ID,
         'custom:role': 'mechanic',
-        'custom:location_id': LOCATION_ID,
       },
     }),
   };
@@ -320,19 +317,6 @@ describe('POST /v1/vehicles/:id/interventions — preconditions', () => {
   });
   afterEach(async () => {
     await app?.close();
-  });
-
-  it('returns 422 user_no_location when the authenticated user has no locationId', async () => {
-    prisma.user.findFirstOrThrow.mockResolvedValue({ id: USER_ID, locationId: null });
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
-      headers: { authorization: 'Bearer x' },
-      payload: validBody,
-    });
-    expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({ code: 'intervention.creation.user_no_location' });
   });
 
   it('returns 404 when the vehicle does not exist (Prisma P2025)', async () => {
@@ -522,7 +506,7 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
     await app?.close();
   });
 
-  it('inserts the intervention with tenant/location/user from the JWT and ownership context', async () => {
+  it('inserts the intervention with tenant/user from the JWT and ownership context', async () => {
     app = await buildApp({ prisma });
     await app.inject({
       method: 'POST',
@@ -534,7 +518,6 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           tenantId: TENANT_ID,
-          locationId: LOCATION_ID,
           userId: USER_ID,
           vehicleId: VEHICLE_ID,
           interventionTypeId: INTERVENTION_TYPE_ID,
@@ -630,7 +613,6 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           tenantId: TENANT_ID,
-          locationId: LOCATION_ID,
           vehicleId: VEHICLE_ID,
           interventionTypeId: INTERVENTION_TYPE_ID,
           sourceInterventionId: INTERVENTION_ID,

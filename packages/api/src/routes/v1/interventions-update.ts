@@ -99,7 +99,7 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
         // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: { id: true, locationId: true },
+          select: { id: true },
         });
 
         const existing = await tx.intervention.findUniqueOrThrow({
@@ -230,7 +230,6 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           vehicleId: existing.vehicleId,
           tenantId,
           userId: user.id,
-          ...(user.locationId ? { locationId: user.locationId } : {}),
           action: 'update',
           ipAddress: request.ip,
           log: request.log,
@@ -241,7 +240,6 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           select: {
             id: true,
             tenantId: true,
-            locationId: true,
             userId: true,
             vehicleId: true,
             interventionTypeId: true,

@@ -114,7 +114,6 @@ const deadlinesUpdateRoutes: FastifyPluginAsync = async (app) => {
           select: {
             id: true,
             tenantId: true,
-            locationId: true,
             vehicleId: true,
             interventionTypeId: true,
             sourceInterventionId: true,

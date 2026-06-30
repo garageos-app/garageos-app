@@ -66,7 +66,6 @@ const deadlinesCompleteRoutes: FastifyPluginAsync = async (app) => {
           select: {
             id: true,
             tenantId: true,
-            locationId: true,
             vehicleId: true,
             interventionTypeId: true,
             dueDate: true,
@@ -133,7 +132,6 @@ const deadlinesCompleteRoutes: FastifyPluginAsync = async (app) => {
             completed: {
               id: existing.id,
               tenantId: existing.tenantId,
-              locationId: existing.locationId,
               vehicleId: existing.vehicleId,
               interventionTypeId: existing.interventionTypeId,
               dueDate: existing.dueDate,
@@ -152,7 +150,6 @@ const deadlinesCompleteRoutes: FastifyPluginAsync = async (app) => {
           select: {
             id: true,
             tenantId: true,
-            locationId: true,
             vehicleId: true,
             interventionTypeId: true,
             sourceInterventionId: true,
