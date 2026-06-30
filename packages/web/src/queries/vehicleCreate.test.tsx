@@ -36,7 +36,6 @@ const payload: CreateVehiclePayload = {
     email: 'm@e.it',
     isBusiness: false,
   },
-  locationId: '11111111-1111-4111-8111-111111111111',
   sendInvitationEmail: false,
   forceNonstandardVin: false,
 };
