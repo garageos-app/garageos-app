@@ -55,7 +55,7 @@ export type TimelineItem =
       status: string;
       is_disputed: boolean;
       wiki_window_open: boolean;
-      tenant: { business_name: string; location_city: string };
+      tenant: { business_name: string };
       has_attachments: boolean;
       attachments_count: number;
     }

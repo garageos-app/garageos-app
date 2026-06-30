@@ -218,25 +218,12 @@ Per fornire dati utili al client per gestire l'errore:
 | `tenant.vat_number_invalid` | 400 | info | P.IVA non valida | Checksum P.IVA IT fallito | |
 | `tenant.billing.past_due` | 402 | warning | Pagamento in sospeso | Solo v1.1+ | |
 | `tenant.invalid_status` | 409 | info | Operazione non consentita per lo stato attuale dell'officina | POST /v1/admin/tenants/:id/suspend|reactivate|regenerate-invitation — transizione di stato illegale | Slice 2 |
-| `location.not_found` | 404 | info | Location non trovata | | |
-| `location.not_in_tenant` | 422 | warning | Location non appartiene al tenant | Tentativo cross-tenant | |
-| `tenants.me.locations.not_found` | 404 | info | Sede non trovata | PATCH/DELETE /v1/tenants/me/locations/:id con id non del tenant o gia disattivato | F-OFF-003 |
-| `tenants.me.locations.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH location con body vuoto | F-OFF-003 |
-| `tenants.me.locations.update.unknown_field` | 422 | info | Campo non riconosciuto | POST/PATCH location con chiave non in schema | F-OFF-003 |
-| `tenants.me.locations.cannot_unset_primary` | 422 | info | Non si puo togliere la sede primaria | PATCH location con isPrimary:false | F-OFF-003 (BR-201) |
-| `tenants.me.locations.cannot_delete_primary` | 422 | warning | Non si puo disattivare la sede primaria | DELETE sulla sede primaria | F-OFF-003 (BR-201) |
-| `tenants.me.locations.has_active_users` | 422 | warning | Sede con meccanici attivi | DELETE sede con utenti attivi assegnati | F-OFF-003 (BR-204) |
-| `location.cannot_remove_primary` | 422 | warning | Non puoi rimuovere la sede principale | Senza designarne un'altra | BR-201 |
-| `location.cannot_disable_last` | 422 | warning | Impossibile disattivare l'ultima sede attiva | | |
 | `user.not_found` | 404 | info | Utente non trovato | GET, PATCH, DELETE /v1/users/:id — target mancante o cross-tenant | F-OFF-004 |
 | `user.cannot_delete_self_via_admin` | 422 | warning | Non puoi rimuovere te stesso da qui | DELETE /v1/users/:id — actor == target | F-OFF-004 |
 | `user.last_super_admin` | 409 | error | Impossibile rimuovere/declassare l'ultimo amministratore | DELETE o PATCH /v1/users/:id che lascerebbe il tenant senza super_admin attivi | F-OFF-004, BR-203 |
-| `user.location_required_for_mechanic` | 422 | warning | Un meccanico deve essere assegnato a una sede | POST /v1/users/invitations o PATCH /v1/users/:id con role=mechanic e locationId null | F-OFF-004, BR-204 |
-| `user.location_invalid` | 422 | warning | Sede non valida o inattiva | PATCH /v1/users/:id con locationId non appartenente al tenant o status!=active | F-OFF-004 |
 | `user.invitation.not_found` | 404 | info | Invito non trovato | Token non esistente, tipo errato, scaduto o già consumato (anti-enum: tutti i casi restituiscono 404) | F-OFF-004 |
 | `user.invitation.email_already_active` | 409 | info | Account con questa email già attivo | POST /v1/users/invitations o POST /v1/invitations/:token/accept — utente già esistente nel tenant | F-OFF-004 |
 | `user.invitation.duplicate_pending` | 409 | info | Esiste già un invito pendente per questa email | POST /v1/users/invitations — violazione indice parziale uq_invitations_pending_internal (BR-206) | F-OFF-004, BR-206 |
-| `user.invitation.location_invalid` | 422 | warning | Sede non valida o inattiva | POST /v1/users/invitations — locationId non appartiene al tenant o status!=active | F-OFF-004 |
 | `user.invitation.accept_password_policy` | 422 | warning | Password non conforme ai requisiti | POST /v1/invitations/:token/accept — Cognito rifiuta la password per policy | F-OFF-004 |
 | `user.invitation.cognito_unavailable` | 502 | error | Servizio di autenticazione temporaneamente non disponibile | POST /v1/invitations/:token/accept — Cognito AdminCreateUser o AdminSetUserPassword fallisce | F-OFF-004 |
 | `user.invitation.already_accepted` | 410 | info | Invito già accettato o revocato | DELETE /v1/users/invitations/:id su invito già tombstonato (acceptedAt != null) | F-OFF-004 |
@@ -424,8 +411,8 @@ Per fornire dati utili al client per gestire l'errore:
 | `GET /v1/admin/tenants/:id` | `tenant.not_found` |
 | `PATCH /v1/admin/tenants/:id` | `tenant.not_found`, `tenant.vat_number_invalid`, `tenant.vat_number_duplicate`, `tenants.me.update.empty_body`, `tenants.me.update.unknown_field` |
 | `GET /v1/admin/tenants/:id/users` | `tenant.not_found` |
-| `PATCH /v1/admin/tenants/:id/users/:userId` | `tenant.not_found`, `user.not_found`, `user.last_super_admin`, `user.location_required_for_mechanic`, `user.location_invalid` |
-| `POST /v1/admin/tenants/:id/users/invitations` | `tenant.not_found`, `user.invitation.duplicate_pending`, `user.invitation.email_in_other_tenant`, `user.location_required_for_mechanic`, `admin.tenant.rate_limited`, `auth.cognito_unavailable` |
+| `PATCH /v1/admin/tenants/:id/users/:userId` | `tenant.not_found`, `user.not_found`, `user.last_super_admin` |
+| `POST /v1/admin/tenants/:id/users/invitations` | `tenant.not_found`, `user.invitation.duplicate_pending`, `user.invitation.email_in_other_tenant`, `admin.tenant.rate_limited`, `auth.cognito_unavailable` |
 
 ### 3.14 GDPR & privacy
 
@@ -982,10 +969,6 @@ intervention.modification.locked
 intervention.modification.revision_reason_required
 intervention.not_found
 intervention.revisions.not_owner
-location.cannot_disable_last
-location.cannot_remove_primary
-location.not_found
-location.not_in_tenant
 me.intervention.not_found
 me.notification-preferences.update.empty_body
 me.notification-preferences.update.unknown_field
@@ -1041,11 +1024,8 @@ user.invitation.email_in_other_tenant
 user.invitation.email_mismatch
 user.invitation.email_soft_deleted_in_tenant
 user.invitation.expired
-user.invitation.location_invalid
 user.invitation.not_found
 user.last_super_admin
-user.location_invalid
-user.location_required_for_mechanic
 user.not_found
 users.me.avatar.invalid_mime
 users.me.avatar.s3_unavailable

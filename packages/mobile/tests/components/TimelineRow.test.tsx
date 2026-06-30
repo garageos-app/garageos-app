@@ -14,7 +14,7 @@ const shopItem: TimelineItem = {
   status: 'completed',
   is_disputed: false,
   wiki_window_open: false,
-  tenant: { business_name: 'Autofficina Rossi', location_city: 'Roma' },
+  tenant: { business_name: 'Autofficina Rossi' },
   has_attachments: true,
   attachments_count: 3,
 };
@@ -86,7 +86,7 @@ describe('TimelineRow dispute affordances', () => {
     status: 'disputed',
     is_disputed: true,
     wiki_window_open: false,
-    tenant: { business_name: 'Officina Rossi', location_city: 'Milano' },
+    tenant: { business_name: 'Officina Rossi' },
     has_attachments: false,
     attachments_count: 0,
   };
