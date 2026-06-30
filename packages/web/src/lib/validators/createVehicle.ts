@@ -85,7 +85,6 @@ export const CreateVehiclePayloadSchema = z.object({
         message: 'businessName e vatNumber obbligatori per clienti aziendali',
       }),
   ]),
-  locationId: z.uuid(),
   sendInvitationEmail: z.boolean().default(true),
   forceNonstandardVin: z.boolean().default(false),
 });
@@ -124,7 +123,6 @@ export const VehicleFormSchema = z
     powerKw: z.string().optional(),
     color: z.string().max(50).optional(),
     odometerKm: z.string().regex(intRe, 'Km non validi'),
-    locationId: z.string().min(1, 'Sede obbligatoria'),
   })
   .superRefine((d, ctx) => {
     if (d.customerMode === 'existing') {
@@ -234,7 +232,6 @@ export function transformToPayload(v: VehicleFormValues): CreateVehiclePayload {
       ...(color !== undefined ? { color } : {}),
     },
     customer,
-    locationId: v.locationId,
     sendInvitationEmail: false, // invito app differito (SES sandbox); toggle UI disabilitato
     forceNonstandardVin: false,
   };

@@ -1,7 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
-import { resolveLocationFilter } from '../../lib/location-filter.js';
 import { maskCustomer, resolvePiiVisibility } from '../../lib/pii-filter.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -23,7 +22,6 @@ const querySchema = z.object({
   intervention_type_id: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.uuid().optional(),
-  location_id: z.uuid().optional(),
 });
 
 const deadlinesListTenantRoutes: FastifyPluginAsync = async (app) => {
@@ -31,22 +29,14 @@ const deadlinesListTenantRoutes: FastifyPluginAsync = async (app) => {
     '/v1/deadlines',
     { preHandler: [requireAuth, requireOfficinaPool, tenantContext] },
     async (request, reply) => {
-      const { status, intervention_type_id, limit, cursor, location_id } = querySchema.parse(
-        request.query,
-      );
+      const { status, intervention_type_id, limit, cursor } = querySchema.parse(request.query);
       const tenantId = request.tenantId!;
-      const effectiveLocationId = resolveLocationFilter(
-        request.userRole!,
-        request.locationId,
-        location_id,
-      );
 
       return app.withContext({ tenantId }, async (tx) => {
         const rows = await tx.deadline.findMany({
           where: {
             status,
             ...(intervention_type_id ? { interventionTypeId: intervention_type_id } : {}),
-            ...(effectiveLocationId ? { locationId: effectiveLocationId } : {}),
           },
           orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
           take: limit + 1,

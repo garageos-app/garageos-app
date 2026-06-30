@@ -6,14 +6,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { SYSTEM_INTERVENTION_TYPES } from '../../src/seed-data.js';
 import { PrismaClient } from '../generated/prisma/client/client.js';
 
-import {
-  CUSTOMERS,
-  INTERVENTIONS,
-  LOCATION,
-  TENANT,
-  VEHICLES,
-  personaEmail,
-} from './pilot-demo-data.js';
+import { CUSTOMERS, INTERVENTIONS, TENANT, VEHICLES, personaEmail } from './pilot-demo-data.js';
 
 interface RunOptions {
   pilotDemoSub: string;
@@ -89,34 +82,17 @@ export async function runPilotDemoSeed(opts: RunOptions): Promise<void> {
       },
     });
 
-    // 2. Location — no compound unique on (tenantId,name); findFirst+create.
-    let location = await prisma.location.findFirst({
-      where: { tenantId: tenant.id, name: LOCATION.name },
-    });
-    if (!location) {
-      location = await prisma.location.create({
-        data: {
-          tenantId: tenant.id,
-          name: LOCATION.name,
-          addressLine: LOCATION.addressLine,
-          city: LOCATION.city,
-          province: LOCATION.province,
-          postalCode: LOCATION.postalCode,
-          country: LOCATION.country,
-        },
-      });
-    }
-
-    // 3. Super-admin user bound to provided cognito sub.
+    // 2. Super-admin user bound to provided cognito sub.
+    // Note: locationId removed as part of sede-unica migration — tenants no
+    // longer have separate location rows; address lives directly on Tenant.
     await prisma.user.upsert({
       where: { cognitoSub: opts.pilotDemoSub },
       // email in update too so re-seeding with PILOT_DEMO_EMAIL_BASE set
       // applies the new alias (this row is keyed by the stable cognitoSub,
       // so update — not create — is the re-seed path).
-      update: { tenantId: tenant.id, locationId: location.id, email: personaEmail('giuseppe') },
+      update: { tenantId: tenant.id, email: personaEmail('giuseppe') },
       create: {
         tenantId: tenant.id,
-        locationId: location.id,
         cognitoSub: opts.pilotDemoSub,
         email: personaEmail('giuseppe'),
         firstName: 'Giuseppe',
@@ -240,7 +216,6 @@ export async function runPilotDemoSeed(opts: RunOptions): Promise<void> {
       await prisma.intervention.create({
         data: {
           tenantId: tenant.id,
-          locationId: location.id,
           userId: seederUser.id,
           vehicleId,
           interventionTypeId: typeId,

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import {
   CreateScheduleCommand,
@@ -40,11 +40,10 @@ const TEST_IP = '10.20.31.3';
 
 // Direct pgAdmin seed mirroring deadlines-list-vehicle.test.ts: bypasses
 // RLS so cross-tenant fixtures + non-`open` statuses can be inserted
-// without driving the public POST path. createdByTenantId / locationId
-// must match the row's intended owner.
+// without driving the public POST path. createdByTenantId must match
+// the row's intended owner.
 async function seedDeadline(params: {
   tenantId: string;
-  locationId: string;
   vehicleId: string;
   interventionTypeId: string;
   dueDate: string; // YYYY-MM-DD
@@ -57,7 +56,6 @@ async function seedDeadline(params: {
 }): Promise<{ deadlineId: string }> {
   const {
     tenantId,
-    locationId,
     vehicleId,
     interventionTypeId,
     dueDate,
@@ -70,15 +68,14 @@ async function seedDeadline(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO deadlines
-       (id, tenant_id, location_id, vehicle_id, intervention_type_id,
+       (id, tenant_id, vehicle_id, intervention_type_id,
         due_date, due_odometer_km, description, is_recurring,
         recurring_months, recurring_km, status, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, $7, $8,
-        $9, $10, $11::"DeadlineStatus", NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4::date, $5, $6, $7,
+        $8, $9, $10::"DeadlineStatus", NOW(), NOW())
      RETURNING id`,
     [
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId,
       dueDate,
@@ -165,26 +162,23 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
   // vehicle + intervention type + open deadline + 3 pending reminders.
   async function seedOpenDeadlineWithReminders(opts: { tenantSuffix: string }): Promise<{
     tenantId: string;
-    locationId: string;
     cognitoSub: string;
     vehicleId: string;
     deadlineId: string;
     notificationIds: string[];
     typeId: string;
   }> {
-    const { tenantId, locationId } = await createTenantWithLocation(opts.tenantSuffix);
+    const { tenantId } = await createTenantWithLocation(opts.tenantSuffix);
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -217,7 +211,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
 
     return {
       tenantId,
-      locationId,
       cognitoSub,
       vehicleId,
       deadlineId,
@@ -242,7 +235,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const newDueIso = inFutureDueDateIso(150);
@@ -290,7 +282,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -330,7 +321,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -346,14 +336,13 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
   });
 
   it('409 deadline.update.not_open when status is cancelled', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('patch-cancelled');
+    const { tenantId } = await createTenantWithLocation('patch-cancelled');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -365,7 +354,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -383,14 +371,13 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
   });
 
   it('409 deadline.update.not_open when status is completed', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('patch-completed');
+    const { tenantId } = await createTenantWithLocation('patch-completed');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -402,7 +389,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -427,7 +413,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -449,7 +434,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -471,7 +455,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId: a.tenantId,
-      locationId: a.locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -483,7 +466,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       tenantId: b.tenantId,
       cognitoSub: bSub,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const token = await signTestToken({
@@ -491,7 +473,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: bSub,
       tenantId: b.tenantId,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const res = await app.inject({
@@ -506,16 +487,15 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
   });
 
   it('404 unknown deadline id', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('patch-unknown');
+    const { tenantId } = await createTenantWithLocation('patch-unknown');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
 
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -540,7 +520,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const newDueIso = inFutureDueDateIso(150);
@@ -580,14 +559,13 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
     // 'sent' row alongside 2 pending rows, change dueDate, and verify
     // the sent row is intact while the 2 pending rows are cancelled +
     // 3 fresh rows are created.
-    const { tenantId, locationId } = await createTenantWithLocation('patch-sent');
+    const { tenantId } = await createTenantWithLocation('patch-sent');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -626,7 +604,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const newDueIso = inFutureDueDateIso(150);
@@ -663,7 +640,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -679,7 +655,6 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
     expect(body).toMatchObject({
       id: seed.deadlineId,
       tenantId: seed.tenantId,
-      locationId: seed.locationId,
       vehicleId: seed.vehicleId,
       interventionTypeId: seed.typeId,
       status: 'open',

@@ -4,7 +4,6 @@ import {
   CustomerFactory,
   InterventionFactory,
   InterventionTypeFactory,
-  LocationFactory,
   TenantFactory,
   UserFactory,
   VehicleFactory,
@@ -17,7 +16,6 @@ import {
   invitedUser,
   mechanicUser,
   motorcycle,
-  secondaryLocation,
   suspendedTenant,
 } from '../../../src/factories/index.js';
 import {
@@ -52,19 +50,6 @@ describe('TenantFactory.build', () => {
     const b = TenantFactory.build();
     expect(a.id).not.toBe(b.id);
     expect(a.vatNumber).not.toBe(b.vatNumber);
-  });
-});
-
-describe('LocationFactory.build', () => {
-  it('defaults to IT primary location', () => {
-    const l = LocationFactory.build();
-    expect(l.country).toBe('IT');
-    expect(l.isPrimary).toBe(true);
-    expect(l.status).toBe('active');
-  });
-
-  it('secondaryLocation trait flips isPrimary', () => {
-    expect(secondaryLocation.build().isPrimary).toBe(false);
   });
 });
 
@@ -182,7 +167,7 @@ describe('InterventionFactory.build', () => {
 
   it('all FK ids are valid UUIDs', () => {
     const i = InterventionFactory.build();
-    for (const id of [i.tenantId, i.locationId, i.userId, i.vehicleId, i.interventionTypeId]) {
+    for (const id of [i.tenantId, i.userId, i.vehicleId, i.interventionTypeId]) {
       expect(() => UuidSchema.parse(id)).not.toThrow();
     }
   });

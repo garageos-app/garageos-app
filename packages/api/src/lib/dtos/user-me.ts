@@ -14,16 +14,12 @@ export const USER_ME_SELECT = {
   lastName: true,
   role: true,
   tenantId: true,
-  locationId: true,
   avatarUrl: true,
   phone: true,
   status: true,
   createdAt: true,
-  // Names for the officina brand strip (F-OFF-007 follow-up): the web
-  // TopBar shows "Officina <businessName> · Sede <name>". location is null
-  // for users without an assigned sede.
+  // Tenant name for the officina brand strip (F-OFF-007 follow-up).
   tenant: { select: { businessName: true } },
-  location: { select: { name: true, city: true } },
 } as const satisfies Prisma.UserSelect;
 
 export type UserMeDto = Prisma.UserGetPayload<{ select: typeof USER_ME_SELECT }>;

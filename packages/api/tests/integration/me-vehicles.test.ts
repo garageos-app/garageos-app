@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -313,18 +313,16 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
   async function seedAccess(params: {
     vehicleId: string;
     tenantId: string;
-    locationId: string;
     userId: string;
     action: string;
     createdAt: string; // ISO
   }) {
     await pgAdmin.query(
-      `INSERT INTO access_logs (vehicle_id, tenant_id, location_id, user_id, action, ip_address, user_agent, created_at)
-       VALUES ($1, $2, $3, $4, $5::"AccessLogAction", $6::inet, $7, $8)`,
+      `INSERT INTO access_logs (vehicle_id, tenant_id, user_id, action, ip_address, user_agent, created_at)
+       VALUES ($1, $2, $3, $4::"AccessLogAction", $5::inet, $6, $7)`,
       [
         params.vehicleId,
         params.tenantId,
-        params.locationId,
         params.userId,
         params.action,
         '203.0.113.7',
@@ -339,10 +337,9 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
     const { customerId } = await createCustomer({ cognitoSub });
 
     // Tenant A: customer HAS a relation -> mechanic name visible.
-    const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('me-acc-a');
+    const { tenantId: tenantA } = await createTenantWithLocation('me-acc-a');
     const { userId: mechA } = await createUser({
       tenantId: tenantA,
-      locationId: locA,
       cognitoSub: cognitoSub + '-mA',
       email: `mA-${cognitoSub}@example.com`,
       firstName: 'Anna',
@@ -352,10 +349,9 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
     await createCustomerTenantRelation({ tenantId: tenantA, customerId });
 
     // Tenant B: NO relation -> mechanic name hidden.
-    const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('me-acc-b');
+    const { tenantId: tenantB } = await createTenantWithLocation('me-acc-b');
     const { userId: mechB } = await createUser({
       tenantId: tenantB,
-      locationId: locB,
       cognitoSub: cognitoSub + '-mB',
       email: `mB-${cognitoSub}@example.com`,
       firstName: 'Bruno',
@@ -376,7 +372,6 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
     await seedAccess({
       vehicleId,
       tenantId: tenantA,
-      locationId: locA,
       userId: mechA,
       action: 'vehicle_registered',
       createdAt: '2026-06-01T08:00:00.000Z',
@@ -384,7 +379,6 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
     await seedAccess({
       vehicleId,
       tenantId: tenantA,
-      locationId: locA,
       userId: mechA,
       action: 'view',
       createdAt: '2026-06-02T08:00:00.000Z',
@@ -392,7 +386,6 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
     await seedAccess({
       vehicleId,
       tenantId: tenantA,
-      locationId: locA,
       userId: mechA,
       action: 'create',
       createdAt: '2026-06-03T08:00:00.000Z',
@@ -400,7 +393,6 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
     await seedAccess({
       vehicleId,
       tenantId: tenantB,
-      locationId: locB,
       userId: mechB,
       action: 'search_match',
       createdAt: '2026-06-04T08:00:00.000Z',
@@ -408,7 +400,6 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
     await seedAccess({
       vehicleId,
       tenantId: tenantB,
-      locationId: locB,
       userId: mechB,
       action: 'view',
       createdAt: '2026-06-05T08:00:00.000Z',
@@ -426,7 +417,6 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
       data: Array<{
         action: string;
         tenantName: string;
-        locationCity: string | null;
         occurredAt: string;
         mechanicName?: string;
       }>;
@@ -445,7 +435,7 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
     // and a hardcoded city 'Milano'.
     expect(body.data[0]!.tenantName).toBe('Test Tenant me-acc-b');
     expect(body.data[0]).not.toHaveProperty('mechanicName');
-    expect(body.data[0]!.locationCity).toBe('Milano');
+    expect(body.data[0]).not.toHaveProperty('locationCity');
     // Tenant A rows (related) -> mechanic name visible.
     expect(body.data[1]!.mechanicName).toBe('Anna Verdi');
     expect(body.data[2]!.mechanicName).toBe('Anna Verdi');
@@ -461,10 +451,9 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
   it('paginates newest-first across a page boundary via cursor', async () => {
     const cognitoSub = 'me-acc-pg-' + Math.random().toString(36).slice(2, 10);
     const { customerId } = await createCustomer({ cognitoSub });
-    const { tenantId, locationId } = await createTenantWithLocation('me-acc-pg');
+    const { tenantId } = await createTenantWithLocation('me-acc-pg');
     const { userId } = await createUser({
       tenantId,
-      locationId,
       cognitoSub: cognitoSub + '-m',
       email: `m-${cognitoSub}@example.com`,
       firstName: 'Carla',
@@ -481,7 +470,6 @@ describe('GET /v1/me/vehicles/:id/access-log (integration)', () => {
       await seedAccess({
         vehicleId,
         tenantId,
-        locationId,
         userId,
         action: 'view',
         createdAt: `2026-06-0${i}T08:00:00.000Z`,

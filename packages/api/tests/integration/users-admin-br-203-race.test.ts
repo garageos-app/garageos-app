@@ -163,7 +163,7 @@ describe('BR-203 — concurrent DELETE race', () => {
 
 describe('BR-203 — concurrent PATCH demote race', () => {
   it('two concurrent PATCH demote on last two super_admin → one 200, one 409', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('br203-patch-race');
+    const { tenantId } = await createTenantWithLocation('br203-patch-race');
 
     const subA = `sa-patch-a-${crypto.randomUUID()}`;
     const subB = `sa-patch-b-${crypto.randomUUID()}`;
@@ -194,20 +194,19 @@ describe('BR-203 — concurrent PATCH demote race', () => {
     });
 
     // A demotes B to mechanic; B demotes A to mechanic, concurrently.
-    // Mechanic requires location_id, so we provide one.
     const [resA, resB] = await Promise.all([
       app.inject({
         method: 'PATCH',
         url: `/v1/users/${idB}`,
         headers: { authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' },
-        payload: { role: 'mechanic', locationId },
+        payload: { role: 'mechanic' },
         remoteAddress: '10.20.41.1',
       }),
       app.inject({
         method: 'PATCH',
         url: `/v1/users/${idA}`,
         headers: { authorization: `Bearer ${tokenB}`, 'content-type': 'application/json' },
-        payload: { role: 'mechanic', locationId },
+        payload: { role: 'mechanic' },
         remoteAddress: '10.20.41.2',
       }),
     ]);

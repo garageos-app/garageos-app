@@ -76,13 +76,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   }
 
   it('201 happy path: creates deadline + 3 notifications + 3 schedules', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -92,7 +91,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -139,13 +137,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('422 past dueDate: Zod refuses', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -155,7 +152,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -175,13 +171,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('400 missing interventionTypeId: Zod refuses', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -190,7 +185,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -208,13 +202,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('404 unknown vehicle (RLS-as-404)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
 
@@ -223,7 +216,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -255,14 +247,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       tenantId: b.tenantId,
       cognitoSub: bSub,
       role: 'super_admin',
-      locationId: b.locationId,
     });
     const token = await signTestToken({
       pool: 'officine',
       sub: bSub,
       tenantId: b.tenantId,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const res = await app.inject({
@@ -292,7 +282,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       tenantId: a.tenantId,
       cognitoSub: aSub,
       role: 'super_admin',
-      locationId: a.locationId,
     });
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
 
@@ -316,7 +305,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: aSub,
       tenantId: a.tenantId,
       role: 'super_admin',
-      locationId: a.locationId,
     });
 
     const res = await app.inject({
@@ -335,13 +323,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('201 accepts system intervention types (tenantId IS NULL)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     // ensureSystemInterventionType inserts with tenant_id = NULL.
     const type = await ensureSystemInterventionType('REVISIONE');
@@ -352,7 +339,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -369,13 +355,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('422 sourceInterventionId from a different vehicle', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId: targetVehicleId } = await createVehicle({
@@ -387,7 +372,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     // Source intervention belongs to a DIFFERENT vehicle in the same tenant.
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId: otherVehicleId,
       interventionTypeId: type.id,
@@ -400,7 +384,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -420,13 +403,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('400 isRecurring=true requires recurringMonths or recurringKm (Zod refine)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -436,7 +418,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -456,13 +437,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('201 partial: marks deliveryStatus=failed when scheduler.CreateSchedule throws (compensating action)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -475,7 +455,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -506,13 +485,12 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('201 creates only 1 notification when dueDate is 5 days away (T-30, T-7 in past)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -528,7 +506,6 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({

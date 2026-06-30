@@ -253,13 +253,8 @@ describe('POST /v1/admin/tenants — business logic', () => {
     // tenant.create called once
     expect(prisma.tenant.create).toHaveBeenCalledTimes(1);
 
-    // location.create called with isPrimary:true and name:'Sede principale'
-    expect(prisma.location.create).toHaveBeenCalledTimes(1);
-    const locArg = prisma.location.create.mock.calls[0]![0] as {
-      data: { isPrimary: boolean; name: string };
-    };
-    expect(locArg.data.isPrimary).toBe(true);
-    expect(locArg.data.name).toBe('Sede principale');
+    // sede-unica: no location.create — tenant has no separate Location row
+    expect(prisma.location.create).not.toHaveBeenCalled();
 
     // invitation.create called with role:'super_admin' and invitationType:'internal_user'
     expect(prisma.invitation.create).toHaveBeenCalledTimes(1);

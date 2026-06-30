@@ -1,21 +1,18 @@
 // POST /v1/users/:id/reactivate — F-OFF-004 reactivation (slice 2026-05-21).
 //
 // Inverte la soft-delete (UPDATE users SET deletedAt=NULL, status='active'),
-// con override opzionale di role/locationId, e Cognito AdminEnableUser
-// best-effort post-tx. Mirror simmetrico del DELETE /v1/users/:id.
+// con override opzionale di role, e Cognito AdminEnableUser best-effort post-tx.
+// Mirror simmetrico del DELETE /v1/users/:id.
 //
 // Auth chain: requireAuth → requireOfficinaPool → tenantContext → requireSuperAdmin
 // RLS context: role: 'admin' required for writes.
 //
 // Business rules enforced:
-//   BR-204 — mechanic location required
 //   BR-212 — riattivazione utente (vedi APPENDICE_F)
 //
 // Error codes:
 //   user.not_found                       — 404: target non soft-deleted o cross-tenant
 //   user.already_active                  — 422: defensive guard (race / replay)
-//   user.location_required_for_mechanic  — 422: BR-204
-//   user.location_invalid                — 422: locationId stale o cross-tenant
 //
 // See docs/superpowers/specs/2026-05-21-user-reactivation-design.md §4.1.
 
@@ -35,7 +32,6 @@ const ParamsSchema = z.object({ id: z.string().uuid() });
 
 const BodySchema = z.object({
   role: z.enum(['super_admin', 'mechanic']).optional(),
-  locationId: z.string().uuid().nullable().optional(),
 });
 
 export const usersAdminReactivateRoutes: FastifyPluginAsync = async (app) => {
@@ -66,7 +62,6 @@ export const usersAdminReactivateRoutes: FastifyPluginAsync = async (app) => {
             id: true,
             email: true,
             role: true,
-            locationId: true,
             status: true,
             cognitoSub: true,
             deletedAt: true,
@@ -83,34 +78,11 @@ export const usersAdminReactivateRoutes: FastifyPluginAsync = async (app) => {
           throw businessError('user.already_active', 422, 'Utente già attivo.');
         }
 
-        // Compute effective new values: override if body provides, else
-        // preserve the pre-deactivation value from the target row.
+        // Compute effective new role: override if body provides, else preserve
+        // the pre-deactivation value from the target row.
         const newRole = body.role ?? target.role;
-        const newLocationId = body.locationId !== undefined ? body.locationId : target.locationId;
 
-        // BR-204: a mechanic must always be assigned to a location.
-        if (newRole === 'mechanic' && !newLocationId) {
-          throw businessError(
-            'user.location_required_for_mechanic',
-            422,
-            'Un meccanico deve essere assegnato a una sede.',
-          );
-        }
-
-        // Validate location existence + activity when non-null. Stale
-        // locations (deleted or inactive after the user's deactivation)
-        // surface as 422 — the operator must pick a fresh one.
-        if (newLocationId !== null && newLocationId !== undefined) {
-          const loc = await tx.location.findFirst({
-            where: { id: newLocationId, tenantId, status: 'active', deletedAt: null },
-            select: { id: true },
-          });
-          if (!loc) {
-            throw businessError('user.location_invalid', 422, 'Sede non valida o inattiva.');
-          }
-        }
-
-        // Persist: clear soft-delete + optional overrides. Only include
+        // Persist: clear soft-delete + optional role override. Only include
         // override fields explicitly so Prisma doesn't issue redundant
         // SET clauses on unchanged columns.
         const updated = await tx.user.update({
@@ -119,7 +91,6 @@ export const usersAdminReactivateRoutes: FastifyPluginAsync = async (app) => {
             deletedAt: null,
             status: 'active',
             ...(body.role !== undefined ? { role: body.role } : {}),
-            ...(body.locationId !== undefined ? { locationId: body.locationId } : {}),
           },
           select: USER_ADMIN_SELECT,
         });
@@ -145,9 +116,7 @@ export const usersAdminReactivateRoutes: FastifyPluginAsync = async (app) => {
               previousStatus: target.status,
               previousDeletedAt: target.deletedAt!.toISOString(),
               roleOverridden: body.role !== undefined,
-              locationOverridden: body.locationId !== undefined,
               newRole,
-              newLocationId,
             },
             ipAddress: request.ip,
           },
@@ -158,7 +127,6 @@ export const usersAdminReactivateRoutes: FastifyPluginAsync = async (app) => {
           targetEmail: target.email,
           targetCognitoSub: target.cognitoSub,
           roleOverridden: body.role !== undefined,
-          locationOverridden: body.locationId !== undefined,
         };
       });
 
@@ -179,13 +147,12 @@ export const usersAdminReactivateRoutes: FastifyPluginAsync = async (app) => {
         );
       }
 
-      if (result.roleOverridden || result.locationOverridden) {
+      if (result.roleOverridden) {
         try {
           await updateOfficineUserRoleAndLocation({
             poolId: env.COGNITO_OFFICINE_POOL_ID,
             email: result.targetEmail,
-            ...(result.roleOverridden && body.role !== undefined ? { role: body.role } : {}),
-            ...(result.locationOverridden ? { locationId: body.locationId ?? null } : {}),
+            ...(body.role !== undefined ? { role: body.role } : {}),
           });
         } catch (err) {
           cognitoSyncFailed = true;

@@ -85,21 +85,8 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
         // permissive — see users.ts header for rationale.
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: { id: true, locationId: true },
+          select: { id: true },
         });
-
-        // Intervention.locationId is NOT NULL in the schema. There is no
-        // location_id field on the request body (APPENDICE_A §2.2) — the
-        // location is inferred from the authenticated user. Super-admin
-        // accounts without a primary location must be associated to one
-        // before they can register interventions.
-        if (!user.locationId) {
-          throw businessError(
-            'intervention.creation.user_no_location',
-            422,
-            "L'utente autenticato non è associato a una location. Imposta una location prima di registrare interventi.",
-          );
-        }
 
         // P2025 → 404 by the shared error handler. findUniqueOrThrow keeps
         // the error semantics identical to GET /v1/vehicles/:id.
@@ -192,7 +179,6 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
         const intervention = await tx.intervention.create({
           data: {
             tenantId,
-            locationId: user.locationId,
             userId: user.id,
             vehicleId,
             interventionTypeId: interventionType.id,
@@ -207,7 +193,6 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
           select: {
             id: true,
             tenantId: true,
-            locationId: true,
             userId: true,
             vehicleId: true,
             interventionTypeId: true,
@@ -268,7 +253,6 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
             const deadline = await tx.deadline.create({
               data: {
                 tenantId,
-                locationId: user.locationId,
                 vehicleId,
                 interventionTypeId: interventionType.id,
                 sourceInterventionId: intervention.id,
@@ -296,7 +280,6 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
           vehicleId,
           tenantId,
           userId: user.id,
-          locationId: user.locationId,
           action: 'create',
           ipAddress: request.ip,
           log: request.log,

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
@@ -46,13 +46,12 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
   });
 
   it('200 happy path single dispute: persists tenant_response, flips intervention.status to active, writes access_log row', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -60,7 +59,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     await createOwnership({ vehicleId, customerId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -79,7 +77,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -141,13 +138,12 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
   });
 
   it('200 multi-dispute fanout: 2 customers, both flipped to responded, intervention active', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'mechanic',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -156,7 +152,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     await createOwnership({ vehicleId, customerId: c1 });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -180,7 +175,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -207,13 +201,12 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
   });
 
   it('200 residual open dispute (third customer) keeps intervention disputed', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -222,7 +215,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     await createOwnership({ vehicleId, customerId: c1 });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -246,7 +238,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     // Target only the first dispute via disputeId
@@ -275,13 +266,12 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
   });
 
   it('access_log dedup: response to a second dispute within 30 min does NOT add another row', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -290,7 +280,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     await createOwnership({ vehicleId, customerId: c1 });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -314,7 +303,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     // First response targets d1
@@ -357,7 +345,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       tenantId: a.tenantId,
       cognitoSub: aSub,
       role: 'super_admin',
-      locationId: a.locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
@@ -365,7 +352,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     await createOwnership({ vehicleId, customerId });
     const { interventionId } = await createIntervention({
       tenantId: a.tenantId,
-      locationId: a.locationId,
       userId: aUserId,
       vehicleId,
       interventionTypeId: type.id,
@@ -381,14 +367,12 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       tenantId: b.tenantId,
       cognitoSub: bSub,
       role: 'super_admin',
-      locationId: b.locationId,
     });
     const token = await signTestToken({
       pool: 'officine',
       sub: bSub,
       tenantId: b.tenantId,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const res = await app.inject({
@@ -412,13 +396,12 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
   });
 
   it('409 already responded: re-responding to the same dispute returns no_active_dispute', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -426,7 +409,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     await createOwnership({ vehicleId, customerId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -445,7 +427,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const first = await app.inject({
@@ -468,13 +449,12 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
   });
 
   it('PATCH unlock end-to-end: dispute-response then PATCH /interventions/:id succeeds', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -482,7 +462,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     await createOwnership({ vehicleId, customerId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -498,7 +477,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     // Step 1: PATCH while disputed → 422 modification.disputed
@@ -559,19 +537,17 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
   });
 
   it('409 omitted disputeId on intervention with zero open disputes', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -585,7 +561,6 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -620,13 +595,12 @@ describe('POST /v1/interventions/:id/dispute-response — attachments integratio
   });
 
   it('full flow: officina uploads response attachment → confirms → responds to dispute with attachmentIds', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('disp-resp-attach');
+    const { tenantId } = await createTenantWithLocation('disp-resp-attach');
     const cognitoSub = `office-resp-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -634,7 +608,6 @@ describe('POST /v1/interventions/:id/dispute-response — attachments integratio
     await createOwnership({ vehicleId, customerId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -649,7 +622,6 @@ describe('POST /v1/interventions/:id/dispute-response — attachments integratio
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     // Step A: officina uploads a response attachment
@@ -729,19 +701,17 @@ describe('POST /v1/interventions/:id/dispute-response — attachments integratio
   });
 
   it('422 no_open_dispute prevents officina upload when no dispute exists', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('disp-no-dispute');
+    const { tenantId } = await createTenantWithLocation('disp-no-dispute');
     const cognitoSub = `office-nodis-${randomUUID().slice(0, 8)}`;
     const { userId: _userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId: _userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -755,7 +725,6 @@ describe('POST /v1/interventions/:id/dispute-response — attachments integratio
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({

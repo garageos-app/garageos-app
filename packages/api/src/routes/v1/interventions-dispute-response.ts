@@ -50,7 +50,7 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
       return app.withContext({ tenantId }, async (tx) => {
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: { id: true, role: true, locationId: true },
+          select: { id: true, role: true },
         });
 
         // Guard order: permission → reason → attachments → 404
@@ -189,7 +189,6 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
           vehicleId: intervention.vehicleId,
           tenantId,
           userId: user.id,
-          ...(user.locationId ? { locationId: user.locationId } : {}),
           action: 'respond',
           ipAddress: request.ip,
           log: request.log,

@@ -1,7 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { z } from 'zod';
 
-import { resolveLocationFilter } from '../../lib/location-filter.js';
 import { resolvePiiVisibility } from '../../lib/pii-filter.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -32,8 +30,6 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 const LIMIT_PER_GROUP = 20;
 const CUSTOMER_FALLBACK = 'Cliente';
 
-const querySchema = z.object({ location_id: z.uuid().optional() });
-
 function deriveCustomerName(
   customer: {
     isBusiness: boolean;
@@ -55,17 +51,8 @@ const disputesOpenRoutes: FastifyPluginAsync = async (app) => {
     '/v1/disputes/open',
     { preHandler: [requireAuth, requireOfficinaPool, tenantContext] },
     async (request) => {
-      const { location_id } = querySchema.parse(request.query);
       const tenantId = request.tenantId!;
-      const effectiveLocationId = resolveLocationFilter(
-        request.userRole!,
-        request.locationId,
-        location_id,
-      );
-      const interventionWhere = {
-        tenantId,
-        ...(effectiveLocationId ? { locationId: effectiveLocationId } : {}),
-      };
+      const interventionWhere = { tenantId };
 
       return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
         const selectShape = {

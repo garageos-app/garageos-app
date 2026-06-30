@@ -5,8 +5,7 @@ import { Factory } from 'fishery';
 import { prisma } from '../client.js';
 import type { Prisma } from '../../prisma/generated/prisma/client/client.js';
 
-// Caller must pass `tenantId`. `locationId` is required for mechanics
-// (BR-204) but optional for super_admins — callers set it explicitly.
+// Caller must pass `tenantId`. Other fields can be set via params.
 
 export const UserFactory = Factory.define<Prisma.UserUncheckedCreateInput>(
   ({ sequence, onCreate }) => {
@@ -18,7 +17,6 @@ export const UserFactory = Factory.define<Prisma.UserUncheckedCreateInput>(
     return {
       id: randomUUID(),
       tenantId: randomUUID(),
-      locationId: null,
       cognitoSub: `cognito-test-${sequence}`,
       email: `user-${sequence}@test.local`,
       firstName: 'Mario',

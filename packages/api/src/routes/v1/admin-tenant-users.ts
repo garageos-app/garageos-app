@@ -15,25 +15,18 @@
 //   Anti-enum: invalid UUID format → tenant.not_found 404 (same as unknown UUID).
 //   Loads the tenant first so an unknown id returns 404 rather than empty [].
 //
-// PATCH: updates a tenant user's role/locationId/status cross-tenant.
+// PATCH: updates a tenant user's role/status cross-tenant.
 //   Delegates all business-invariant logic to updateOfficineUser (BR-203
-//   last-super_admin guard, BR-204 mechanic-requires-location, Cognito sync).
-//   Passes defaultMechanicLocationToPrimary: true so the helper auto-defaults
-//   to the primary location when making a user a mechanic with no effective
-//   location. The defaulting is gated on the EFFECTIVE location — an already-
-//   assigned mechanic is never relocated. See UpdateUserInput in update-user.ts.
+//   last-super_admin guard, Cognito sync).
 //
 // Business rules (delegated to updateOfficineUser):
 //   BR-203 — last super_admin guard
-//   BR-204 — mechanic location required (with pre-resolve defaulting here)
 //
 // Error codes (own):
 //   tenant.not_found — 404: tenant unknown or soft-deleted
 // Error codes (from updateOfficineUser):
 //   user.not_found                       — 404: target missing or cross-tenant
 //   user.last_super_admin                — 409: BR-203 violation
-//   user.location_required_for_mechanic  — 422: BR-204 violation
-//   user.location_invalid                — 422: locationId not in tenant or inactive
 
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
@@ -53,11 +46,10 @@ const ParamsWithUserSchema = z.object({ id: z.string().uuid(), userId: z.string(
 const BodySchema = z
   .object({
     role: z.enum(['super_admin', 'mechanic']).optional(),
-    locationId: z.string().uuid().nullable().optional(),
     status: z.enum(['active', 'inactive']).optional(),
   })
-  .refine((d) => d.role !== undefined || d.locationId !== undefined || d.status !== undefined, {
-    message: 'At least one field (role, locationId, status) must be present',
+  .refine((d) => d.role !== undefined || d.status !== undefined, {
+    message: 'At least one field (role, status) must be present',
   });
 
 export const adminTenantUsersRoutes: FastifyPluginAsync = async (app) => {
@@ -135,19 +127,16 @@ export const adminTenantUsersRoutes: FastifyPluginAsync = async (app) => {
         }
       });
 
-      // Delegate all business logic (BR-203, BR-204, Cognito sync, audit) to
+      // Delegate all business logic (BR-203, Cognito sync, audit) to
       // updateOfficineUser. Actor type is 'system' because platform admins have
       // no tenant User row; their identity is captured in audit metadata via
       // actorCognitoSub. See UpdateUserActor in update-user.ts.
-      // defaultMechanicLocationToPrimary: true enables the helper's BR-204
-      // convenience defaulting — see UpdateUserInput for the guard semantics.
       const user = await updateOfficineUser(
         app,
         {
           tenantId: id,
           targetId: userId,
           body: parsedBody.data,
-          defaultMechanicLocationToPrimary: true,
           // requireAuth guarantees request.jwt is set; Cognito JWTs always
           // include a non-empty sub. The double non-null asserts both.
           actor: { type: 'system', cognitoSub: request.jwt!.sub! },

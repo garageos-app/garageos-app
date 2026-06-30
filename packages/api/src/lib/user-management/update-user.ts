@@ -1,21 +1,17 @@
-// Helper: update a user's role, locationId, or status within a tenant.
+// Helper: update a user's role or status within a tenant.
 //
 // Extracted from users-admin-update.ts so that both the officine super_admin
-// route (PATCH /v1/users/:id) and the future platform-admin cross-tenant
+// route (PATCH /v1/users/:id) and the platform-admin cross-tenant
 // route share the same business-invariant logic.
 //
 // Business rules enforced:
 //   BR-203 — last super_admin guard: prevents the tenant from having zero
 //             active super_admins by blocking demotion (role change) or
 //             deactivation (status=inactive) of the last one.
-//   BR-204 — mechanic location required: a user with role=mechanic must
-//             always be assigned to a location.
 //
 // Error codes:
 //   user.not_found                       — 404: target missing or cross-tenant
 //   user.last_super_admin                — 409: BR-203 violation
-//   user.location_required_for_mechanic  — 422: BR-204 violation
-//   user.location_invalid                — 422: locationId not in tenant or inactive
 
 import type { FastifyInstance, FastifyBaseLogger } from 'fastify';
 
@@ -41,15 +37,8 @@ export interface UpdateUserInput {
   // under the project's `exactOptionalPropertyTypes: true` tsconfig flag.
   body: {
     role?: 'super_admin' | 'mechanic' | undefined;
-    locationId?: string | null | undefined;
     status?: 'active' | 'inactive' | undefined;
   };
-  // When true, the helper auto-assigns the tenant's primary active location to a
-  // mechanic that has no effective location (neither body nor current assignment).
-  // Gated on the EFFECTIVE location, so an already-assigned mechanic is never
-  // silently relocated. Used only by the platform-admin cross-tenant route;
-  // the officine route omits this flag to preserve its existing 422 behavior.
-  defaultMechanicLocationToPrimary?: boolean | undefined;
   actor: UpdateUserActor;
   ip: string;
 }
@@ -59,7 +48,7 @@ export async function updateOfficineUser(
   input: UpdateUserInput,
   log: FastifyBaseLogger,
 ): Promise<UserAdminWireDto> {
-  const { tenantId, targetId, body, actor, ip, defaultMechanicLocationToPrimary } = input;
+  const { tenantId, targetId, body, actor } = input;
 
   const result = await app.withContext({ role: 'admin' as const }, async (tx) => {
     // Lookup target user (same tenant, not soft-deleted).
@@ -69,7 +58,6 @@ export async function updateOfficineUser(
         id: true,
         email: true,
         role: true,
-        locationId: true,
         status: true,
         cognitoSub: true,
       },
@@ -80,33 +68,7 @@ export async function updateOfficineUser(
 
     // Compute effective new values.
     const newRole = body.role ?? target.role;
-    let newLocationId = body.locationId !== undefined ? body.locationId : target.locationId;
     const newStatus = body.status ?? target.status;
-
-    // BR-204 admin convenience: when a platform admin makes a user a mechanic
-    // without specifying a location AND the user currently has none, default to
-    // the tenant's primary location. Computed on the EFFECTIVE location so an
-    // already-assigned mechanic is never silently relocated.
-    let locationDefaulted = false;
-    if (defaultMechanicLocationToPrimary && newRole === 'mechanic' && !newLocationId) {
-      const primary = await tx.location.findFirst({
-        where: { tenantId, isPrimary: true, status: 'active', deletedAt: null },
-        select: { id: true },
-      });
-      if (primary) {
-        newLocationId = primary.id;
-        locationDefaulted = true;
-      }
-    }
-
-    // BR-204: a mechanic must always be assigned to a location. See BR-204.
-    if (newRole === 'mechanic' && !newLocationId) {
-      throw businessError(
-        'user.location_required_for_mechanic',
-        422,
-        'Un meccanico deve essere assegnato a una sede.',
-      );
-    }
 
     // BR-203: race-safe guard against leaving the tenant with zero active
     // super_admins. Fires only when target IS currently an active super_admin
@@ -144,25 +106,11 @@ export async function updateOfficineUser(
       }
     }
 
-    // Validate locationId — if provided and non-null, must belong to same
-    // tenant and be active.
-    if (body.locationId !== undefined && body.locationId !== null) {
-      const loc = await tx.location.findFirst({
-        where: { id: body.locationId, tenantId, status: 'active', deletedAt: null },
-      });
-      if (!loc) {
-        throw businessError('user.location_invalid', 422, 'Sede non valida o inattiva.');
-      }
-    }
-
     // Persist — only include fields that were explicitly provided.
     const updated = await tx.user.update({
       where: { id: targetId },
       data: {
         ...(body.role !== undefined ? { role: body.role } : {}),
-        ...(body.locationId !== undefined || locationDefaulted
-          ? { locationId: newLocationId }
-          : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
       },
       select: USER_ADMIN_SELECT,
@@ -191,15 +139,6 @@ export async function updateOfficineUser(
         metadata: { from: target.role, to: body.role, ...actorMetaExtra },
       });
     }
-    if (
-      (body.locationId !== undefined || locationDefaulted) &&
-      newLocationId !== target.locationId
-    ) {
-      auditRows.push({
-        action: 'user_location_changed',
-        metadata: { from: target.locationId, to: newLocationId, ...actorMetaExtra },
-      });
-    }
     if (body.status !== undefined && body.status !== target.status) {
       auditRows.push({
         action: 'user_status_changed',
@@ -216,7 +155,7 @@ export async function updateOfficineUser(
           entityType: 'user',
           entityId: targetId,
           metadata: row.metadata,
-          ipAddress: ip,
+          ipAddress: input.ip,
         },
       });
     }
@@ -226,12 +165,6 @@ export async function updateOfficineUser(
       targetEmail: target.email,
       targetCognitoSub: target.cognitoSub,
       roleChanged: body.role !== undefined && body.role !== target.role,
-      locationChanged:
-        (body.locationId !== undefined || locationDefaulted) && newLocationId !== target.locationId,
-      // Carries the resolved effective locationId for Cognito sync outside the tx.
-      // When locationDefaulted, this is the injected primary id; otherwise it
-      // mirrors body.locationId (string | null). Always defined but may be null.
-      effectiveNewLocationId: newLocationId,
       statusBecameInactive:
         body.status !== undefined && target.status === 'active' && body.status === 'inactive',
       // Symmetric with statusBecameInactive: inactive→active transition requires
@@ -244,15 +177,14 @@ export async function updateOfficineUser(
   });
 
   // Cognito sync — best-effort, outside the DB transaction.
-  // Only syncs role and/or locationId (status has no Cognito attribute).
+  // Only syncs role (status has no Cognito attribute).
   // DB is the source of truth; Cognito reflects on next JWT refresh if this fails.
-  if (result.roleChanged || result.locationChanged) {
+  if (result.roleChanged) {
     try {
       await updateOfficineUserRoleAndLocation({
         poolId: env.COGNITO_OFFICINE_POOL_ID,
         email: result.targetEmail,
-        ...(result.roleChanged && body.role !== undefined ? { role: body.role } : {}),
-        ...(result.locationChanged ? { locationId: result.effectiveNewLocationId } : {}),
+        ...(body.role !== undefined ? { role: body.role } : {}),
       });
     } catch (err) {
       log.error(

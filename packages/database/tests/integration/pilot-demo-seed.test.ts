@@ -39,9 +39,6 @@ describe('pilot-demo seed (idempotency)', () => {
     await pgAdmin.query(
       `DELETE FROM users WHERE tenant_id IN (SELECT id FROM tenants WHERE vat_number = 'IT00000000000')`,
     );
-    await pgAdmin.query(
-      `DELETE FROM locations WHERE tenant_id IN (SELECT id FROM tenants WHERE vat_number = 'IT00000000000')`,
-    );
     await pgAdmin.query(`DELETE FROM vehicles WHERE vin LIKE 'VINDEMO%'`);
     await pgAdmin.query(`DELETE FROM customers WHERE email LIKE '%@demo-giuseppe.test'`);
     await pgAdmin.query(`DELETE FROM tenants WHERE vat_number = 'IT00000000000'`);

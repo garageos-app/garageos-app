@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { withContext } from '../../src/index.js';
 
-import { createTenantWithLocation, createUser, createVehicle, resetDb } from './helpers.js';
+import { createTenant, createUser, createVehicle, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 
 // RLS integration tests for vehicle_tag_prints (F-OFF-104 / BR-027).
@@ -34,8 +34,8 @@ describe('RLS — vehicle_tag_prints (post-migration 20260529120000)', () => {
     vehicleAId: string;
     userAId: string;
   }> {
-    const { tenantId: tenantAId } = await createTenantWithLocation();
-    const { tenantId: tenantBId } = await createTenantWithLocation();
+    const { tenantId: tenantAId } = await createTenant();
+    const { tenantId: tenantBId } = await createTenant();
 
     const { id: userAId } = await createUser({ tenantId: tenantAId });
     const { vehicleId: vehicleAId } = await createVehicle({ tenantId: tenantAId });

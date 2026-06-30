@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -42,21 +42,19 @@ describe('GET /v1/intervention-types (integration)', () => {
   // per-test seed in each it() block is required).
   const AUTHED_SUB = '11111111-1111-4111-8111-111111111111';
 
-  async function authedRequest(tenantId: string, locationId: string) {
+  async function authedRequest(tenantId: string) {
     // Seed the user so tenant-context middleware finds an active row.
     await createUser({
       tenantId,
       cognitoSub: AUTHED_SUB,
       email: 'test-mechanic@test.it',
       role: 'mechanic',
-      locationId,
     });
     const token = await signTestToken({
       pool: 'officine',
       sub: AUTHED_SUB,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
     return app.inject({
       method: 'GET',
@@ -66,8 +64,8 @@ describe('GET /v1/intervention-types (integration)', () => {
   }
 
   it('returns system-wide types only for fresh tenant', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('itypes-fresh');
-    const res = await authedRequest(tenantId, locationId);
+    const { tenantId } = await createTenantWithLocation('itypes-fresh');
+    const res = await authedRequest(tenantId);
     expect(res.statusCode).toBe(200);
     const json = res.json() as {
       data: Array<{ code: string; custom: boolean; tenantId?: unknown }>;
@@ -78,7 +76,7 @@ describe('GET /v1/intervention-types (integration)', () => {
   });
 
   it('includes tenant custom rows alongside system', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('itypes-custom');
+    const { tenantId } = await createTenantWithLocation('itypes-custom');
     await pgAdmin.query(
       `INSERT INTO intervention_types
         (id, tenant_id, code, name_it, description, icon, category, suggests_deadline,
@@ -87,7 +85,7 @@ describe('GET /v1/intervention-types (integration)', () => {
         'other'::"InterventionTypeCategory", false, NOW(), NOW())`,
       [tenantId],
     );
-    const res = await authedRequest(tenantId, locationId);
+    const res = await authedRequest(tenantId);
     expect(res.statusCode).toBe(200);
     const json = res.json() as { data: Array<{ code: string; custom: boolean }> };
     const custom = json.data.find((r) => r.code === 'CUSTOM_FOO');
@@ -97,7 +95,7 @@ describe('GET /v1/intervention-types (integration)', () => {
 
   it('isolates tenant custom rows cross-tenant', async () => {
     const { tenantId: tenantA } = await createTenantWithLocation('itypes-a');
-    const { tenantId: tenantB, locationId: locationB } = await createTenantWithLocation('itypes-b');
+    const { tenantId: tenantB } = await createTenantWithLocation('itypes-b');
     await pgAdmin.query(
       `INSERT INTO intervention_types
         (id, tenant_id, code, name_it, description, icon, category, suggests_deadline,
@@ -106,14 +104,14 @@ describe('GET /v1/intervention-types (integration)', () => {
         'other'::"InterventionTypeCategory", false, NOW(), NOW())`,
       [tenantA],
     );
-    const res = await authedRequest(tenantB, locationB);
+    const res = await authedRequest(tenantB);
     const json = res.json() as { data: Array<{ code: string }> };
     expect(json.data.find((r) => r.code === 'TENANT_A_ONLY')).toBeUndefined();
   });
 
   it('orders by category enum-order ASC then nameIt ASC', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('itypes-order');
-    const res = await authedRequest(tenantId, locationId);
+    const { tenantId } = await createTenantWithLocation('itypes-order');
+    const res = await authedRequest(tenantId);
     const json = res.json() as { data: Array<{ category: string; nameIt: string }> };
     // Prisma `orderBy: { category: 'asc' }` on a Postgres enum column orders by
     // enum *definition* order, not alphabetical. Mirror the InterventionTypeCategory

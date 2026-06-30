@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import {
   CreateScheduleCommand,
@@ -47,7 +47,6 @@ const TEST_IP = '10.20.31.4';
 // without driving the public POST path.
 async function seedDeadline(params: {
   tenantId: string;
-  locationId: string;
   vehicleId: string;
   interventionTypeId: string;
   dueDate: string; // YYYY-MM-DD
@@ -56,7 +55,6 @@ async function seedDeadline(params: {
 }): Promise<{ deadlineId: string }> {
   const {
     tenantId,
-    locationId,
     vehicleId,
     interventionTypeId,
     dueDate,
@@ -65,13 +63,13 @@ async function seedDeadline(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO deadlines
-       (id, tenant_id, location_id, vehicle_id, intervention_type_id,
+       (id, tenant_id, vehicle_id, intervention_type_id,
         due_date, description, is_recurring,
         status, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, false,
-        $7::"DeadlineStatus", NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4::date, $5, false,
+        $6::"DeadlineStatus", NOW(), NOW())
      RETURNING id`,
-    [tenantId, locationId, vehicleId, interventionTypeId, dueDate, description, status],
+    [tenantId, vehicleId, interventionTypeId, dueDate, description, status],
   );
   return { deadlineId: rows[0]!.id };
 }
@@ -146,20 +144,18 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
   // deadline + 3 pending reminders.
   async function seedOpenDeadlineWithReminders(opts: { tenantSuffix: string }): Promise<{
     tenantId: string;
-    locationId: string;
     cognitoSub: string;
     vehicleId: string;
     deadlineId: string;
     notificationIds: string[];
   }> {
-    const { tenantId, locationId } = await createTenantWithLocation(opts.tenantSuffix);
+    const { tenantId } = await createTenantWithLocation(opts.tenantSuffix);
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -192,7 +188,6 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
 
     return {
       tenantId,
-      locationId,
       cognitoSub,
       vehicleId,
       deadlineId,
@@ -208,7 +203,6 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -244,14 +238,13 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
   it('204 idempotent on already-cancelled deadline: no AWS calls, status unchanged', async () => {
     // When the deadline is already cancelled, DELETE is a no-op: 204
     // returned without touching the scheduler or rewriting the row.
-    const { tenantId, locationId } = await createTenantWithLocation('delete-idempotent');
+    const { tenantId } = await createTenantWithLocation('delete-idempotent');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -271,7 +264,6 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -306,14 +298,13 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
     // Completed deadlines preserve audit and cannot be retroactively
     // erased — the operator can complete-with-undo within the BR
     // window but not delete.
-    const { tenantId, locationId } = await createTenantWithLocation('delete-completed');
+    const { tenantId } = await createTenantWithLocation('delete-completed');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -325,7 +316,6 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -357,7 +347,6 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId: a.tenantId,
-      locationId: a.locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -369,7 +358,6 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
       tenantId: b.tenantId,
       cognitoSub: bSub,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const token = await signTestToken({
@@ -377,7 +365,6 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
       sub: bSub,
       tenantId: b.tenantId,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const res = await app.inject({
@@ -398,16 +385,15 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
   });
 
   it('404 unknown deadline id', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('delete-unknown');
+    const { tenantId } = await createTenantWithLocation('delete-unknown');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
 
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -423,14 +409,13 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
     // Sent rows must NEVER be touched by cancelPendingReminders. Seed
     // 1 sent + 2 pending, DELETE the deadline, verify the sent row is
     // intact and only the 2 pending rows got DeleteSchedule.
-    const { tenantId, locationId } = await createTenantWithLocation('delete-sent');
+    const { tenantId } = await createTenantWithLocation('delete-sent');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -463,7 +448,6 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({

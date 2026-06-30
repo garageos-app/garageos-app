@@ -59,7 +59,6 @@ function buildFakePrisma(rows: unknown[] = []): FakePrisma {
       findFirstOrThrow: vi.fn().mockResolvedValue({
         id: '33333333-3333-4333-8333-333333333333',
         role: 'mechanic',
-        locationId: '44444444-4444-4444-8444-444444444444',
       }),
       findFirst: vi.fn().mockResolvedValue({
         id: '33333333-3333-4333-8333-333333333333',
@@ -69,14 +68,9 @@ function buildFakePrisma(rows: unknown[] = []): FakePrisma {
   };
 }
 
-const MECHANIC_LOCATION_ID = '44444444-4444-4444-8444-444444444444';
-
 async function buildApp(
   prisma: FakePrisma,
-  claims: { role: 'super_admin' | 'mechanic'; locationId?: string } = {
-    role: 'mechanic',
-    locationId: MECHANIC_LOCATION_ID,
-  },
+  claims: { role: 'super_admin' | 'mechanic' } = { role: 'mechanic' },
 ): Promise<FastifyInstance> {
   const verifier: JwtVerifier = {
     verify: async (): Promise<VerifyResult> => ({
@@ -86,7 +80,6 @@ async function buildApp(
         token_use: 'id',
         'custom:tenant_id': TENANT_ID,
         'custom:role': claims.role,
-        ...(claims.locationId ? { 'custom:location_id': claims.locationId } : {}),
       },
     }),
   };
@@ -187,24 +180,9 @@ describe('GET /v1/interventions/recent (unit)', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('mechanic: where includes own locationId (BR-205, query param ignored)', async () => {
+  it('mechanic: where does NOT include locationId (BR-205 relaxed — sede unica, sees all tenant records)', async () => {
     const prisma = buildFakePrisma([]);
-    app = await buildApp(prisma); // default mechanic @ MECHANIC_LOCATION_ID
-    await app.inject({
-      method: 'GET',
-      url: '/v1/interventions/recent?location_id=99999999-9999-4999-8999-999999999999',
-      headers: { authorization: 'Bearer test' },
-    });
-    expect(prisma.intervention.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ locationId: MECHANIC_LOCATION_ID }),
-      }),
-    );
-  });
-
-  it('super_admin: no location_id param → where has no locationId (all sedi)', async () => {
-    const prisma = buildFakePrisma([]);
-    app = await buildApp(prisma, { role: 'super_admin' });
+    app = await buildApp(prisma); // default mechanic — no locationId (sede unica)
     await app.inject({
       method: 'GET',
       url: '/v1/interventions/recent',
@@ -214,31 +192,16 @@ describe('GET /v1/interventions/recent (unit)', () => {
     expect(where).not.toHaveProperty('locationId');
   });
 
-  it('super_admin: location_id param narrows the where', async () => {
+  it('super_admin: where has no locationId (BR-205 relaxed — all tenant records)', async () => {
     const prisma = buildFakePrisma([]);
     app = await buildApp(prisma, { role: 'super_admin' });
     await app.inject({
       method: 'GET',
-      url: '/v1/interventions/recent?location_id=55555555-5555-4555-8555-555555555555',
+      url: '/v1/interventions/recent',
       headers: { authorization: 'Bearer test' },
     });
-    expect(prisma.intervention.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          locationId: '55555555-5555-4555-8555-555555555555',
-        }),
-      }),
-    );
-  });
-
-  it('400 on malformed location_id (not a uuid)', async () => {
-    app = await buildApp(buildFakePrisma());
-    const res = await app.inject({
-      method: 'GET',
-      url: '/v1/interventions/recent?location_id=not-a-uuid',
-      headers: { authorization: 'Bearer test' },
-    });
-    expect(res.statusCode).toBe(400);
+    const where = prisma.intervention.findMany.mock.calls[0]![0].where as Record<string, unknown>;
+    expect(where).not.toHaveProperty('locationId');
   });
 
   it('summary derives from title when present', async () => {

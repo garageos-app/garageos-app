@@ -19,7 +19,7 @@ export interface VehicleHistoryInterventionData {
   odometerKm: number;
   typeName: string;
   tenantName: string;
-  locationCity: string | null;
+
   title: string | null;
   description: string;
   partsReplaced: { name: string; code: string | null; quantity: number; notes: string | null }[];
@@ -141,9 +141,7 @@ export async function renderVehicleHistoryPdf(data: VehicleHistoryPdfData): Prom
       });
       y -= LINE;
 
-      const officina = it.locationCity
-        ? `${it.tenantName} ${DOT} ${it.locationCity}`
-        : it.tenantName;
+      const officina = it.tenantName;
       page.drawText(`${it.typeName} ${DOT} ${officina}`, {
         x: MARGIN,
         y,

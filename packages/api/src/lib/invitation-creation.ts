@@ -26,7 +26,6 @@ export interface CreateInternalInvitationInput {
   firstName: string;
   lastName: string;
   role: 'super_admin' | 'mechanic';
-  locationId: string | null;
 }
 
 /**
@@ -58,7 +57,6 @@ export async function createInternalInvitation(
         firstName: input.firstName,
         lastName: input.lastName,
         role: input.role,
-        locationId: input.locationId,
         tokenHash,
         expiresAt,
       },

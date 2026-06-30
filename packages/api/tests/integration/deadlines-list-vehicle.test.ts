@@ -37,7 +37,6 @@ const TEST_IP = '10.20.31.2';
 // public POST /deadlines path so the list-endpoint test stays focused.
 async function seedDeadline(params: {
   tenantId: string;
-  locationId: string;
   vehicleId: string;
   interventionTypeId: string;
   dueDate: string; // YYYY-MM-DD
@@ -46,7 +45,6 @@ async function seedDeadline(params: {
 }): Promise<{ deadlineId: string }> {
   const {
     tenantId,
-    locationId,
     vehicleId,
     interventionTypeId,
     dueDate,
@@ -55,12 +53,12 @@ async function seedDeadline(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO deadlines
-       (id, tenant_id, location_id, vehicle_id, intervention_type_id,
+       (id, tenant_id, vehicle_id, intervention_type_id,
         due_date, description, is_recurring, status, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, false,
-        $7::"DeadlineStatus", NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4::date, $5, false,
+        $6::"DeadlineStatus", NOW(), NOW())
      RETURNING id`,
-    [tenantId, locationId, vehicleId, interventionTypeId, dueDate, description, status],
+    [tenantId, vehicleId, interventionTypeId, dueDate, description, status],
   );
   return { deadlineId: rows[0]!.id };
 }
@@ -81,16 +79,15 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('200 returns deadlines for vehicle ordered by dueDate ASC', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('list-asc');
+    const { tenantId } = await createTenantWithLocation('list-asc');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     // Insert in non-sorted order to verify the orderBy.
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-06-01',
@@ -98,7 +95,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-01-01',
@@ -106,7 +102,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-12-01',
@@ -118,7 +113,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -138,15 +132,14 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('?status=open filter applied', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('list-status');
+    const { tenantId } = await createTenantWithLocation('list-status');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-01-01',
@@ -155,7 +148,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-02-01',
@@ -164,7 +156,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-03-01',
@@ -177,7 +168,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -196,15 +186,14 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('?limit=2 returns 2 rows + nextCursor', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('list-limit');
+    const { tenantId } = await createTenantWithLocation('list-limit');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-01-01',
@@ -212,7 +201,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-02-01',
@@ -220,7 +208,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-03-01',
@@ -232,7 +219,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -252,15 +238,14 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('?cursor= proceeds pagination', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('list-cursor');
+    const { tenantId } = await createTenantWithLocation('list-cursor');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-01-01',
@@ -268,7 +253,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-02-01',
@@ -276,7 +260,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     });
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-03-01',
@@ -288,7 +271,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const firstRes = await app.inject({
@@ -330,7 +312,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     await seedDeadline({
       tenantId: a.tenantId,
-      locationId: a.locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-01-01',
@@ -342,14 +323,12 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       tenantId: b.tenantId,
       cognitoSub: bSub,
       role: 'super_admin',
-      locationId: b.locationId,
     });
     const token = await signTestToken({
       pool: 'officine',
       sub: bSub,
       tenantId: b.tenantId,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const res = await app.inject({
@@ -365,9 +344,9 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('customer with active ownership reads via dualPoolContext', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('cust-owns');
+    const { tenantId } = await createTenantWithLocation('cust-owns');
     const tenantSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub: tenantSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub: tenantSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -377,7 +356,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-04-15',
@@ -406,9 +384,9 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('customer without ownership returns 404', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('cust-noown');
+    const { tenantId } = await createTenantWithLocation('cust-noown');
     const tenantSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub: tenantSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub: tenantSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -422,7 +400,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-04-15',
@@ -447,7 +424,7 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
 
   it('customer with ENDED ownership returns 404 (defense in depth)', async () => {
     // ended_at IS NOT NULL → no active ownership → 404.
-    const { tenantId, locationId } = await createTenantWithLocation('cust-ended');
+    const { tenantId } = await createTenantWithLocation('cust-ended');
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -463,7 +440,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
 
     await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: '2027-04-15',
@@ -498,9 +474,9 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   });
 
   it('empty list returns {deadlines: [], nextCursor: null}', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('empty');
+    const { tenantId } = await createTenantWithLocation('empty');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const token = await signTestToken({
@@ -508,7 +484,6 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({

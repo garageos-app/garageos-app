@@ -13,7 +13,6 @@ import type { InvitationAdminRow } from '../../src/lib/dtos/invitation.js';
 // ─── Constants ────────────────────────────────────────────────────────────────
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const INVITATION_ID = '33333333-3333-4333-8333-333333333333';
-const LOCATION_ID = '22222222-2222-4222-8222-222222222222';
 
 const BASE_INPUT = {
   tenantId: TENANT_ID,
@@ -21,7 +20,6 @@ const BASE_INPUT = {
   firstName: 'Mario',
   lastName: 'Rossi',
   role: 'super_admin' as const,
-  locationId: LOCATION_ID,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -32,7 +30,6 @@ function makeInvitationRow(overrides: Partial<InvitationAdminRow> = {}): Invitat
     firstName: 'Mario',
     lastName: 'Rossi',
     role: 'super_admin',
-    locationId: LOCATION_ID,
     expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
     acceptedAt: null,
     createdAt: new Date(),
@@ -77,7 +74,6 @@ describe('createInternalInvitation', () => {
         firstName: string;
         lastName: string;
         role: string;
-        locationId: string | null;
         tokenHash: string;
         expiresAt: Date;
       };
@@ -103,20 +99,7 @@ describe('createInternalInvitation', () => {
       firstName: 'Mario',
       lastName: 'Rossi',
       role: 'super_admin',
-      locationId: LOCATION_ID,
     });
-  });
-
-  it('passes locationId:null through to invitation.create', async () => {
-    const row = makeInvitationRow({ locationId: null });
-    const tx = makeTx(async () => row);
-
-    await createInternalInvitation(tx, { ...BASE_INPUT, locationId: null });
-
-    const callArg = (tx.invitation.create as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
-      data: { locationId: string | null };
-    };
-    expect(callArg.data.locationId).toBeNull();
   });
 
   it('throws businessError user.invitation.duplicate_pending (409) on P2002', async () => {

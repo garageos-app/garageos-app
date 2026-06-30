@@ -51,9 +51,9 @@ describe('GET /v1/attachments/:id/view-url', () => {
   // -----------------------------------------------------------------------
 
   async function setupCaller(suffix: string) {
-    const { tenantId, locationId } = await createTenantWithLocation(suffix);
+    const { tenantId } = await createTenantWithLocation(suffix);
     const cognitoSub = `vu-caller-${suffix.slice(0, 20)}`;
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,

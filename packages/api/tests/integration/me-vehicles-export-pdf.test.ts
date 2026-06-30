@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the S3 helper so no real AWS/PDF rendering happens; the integration
@@ -48,7 +48,6 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
 
   async function seedShopIntervention(args: {
     tenantId: string;
-    locationId: string;
     userId: string;
     vehicleId: string;
     status?: 'active' | 'disputed' | 'cancelled';
@@ -57,7 +56,6 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
     const type = await ensureSystemInterventionType('TAGLIANDO');
     return createIntervention({
       tenantId: args.tenantId,
-      locationId: args.locationId,
       userId: args.userId,
       vehicleId: args.vehicleId,
       interventionTypeId: type.id,
@@ -71,12 +69,12 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
   }
 
   it('200 — owner: returns pdf_download_url, S3 called once with the vehicleId', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-pdf-owner');
-    const { userId } = await createUser({ tenantId, cognitoSub: 'mech-me-pdf-owner', locationId });
+    const { tenantId } = await createTenantWithLocation('me-pdf-owner');
+    const { userId } = await createUser({ tenantId, cognitoSub: 'mech-me-pdf-owner' });
     const { customerId } = await createCustomer({ cognitoSub: 'cust-me-pdf-owner' });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
-    await seedShopIntervention({ tenantId, locationId, userId, vehicleId });
+    await seedShopIntervention({ tenantId, userId, vehicleId });
 
     const token = await signTestToken({ pool: 'clienti', sub: 'cust-me-pdf-owner', customerId });
     const res = await app.inject({
@@ -96,12 +94,12 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
   });
 
   it('404 — non-owner customer: me.vehicle.not_found, S3 not called', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-pdf-iso');
-    const { userId } = await createUser({ tenantId, cognitoSub: 'mech-me-pdf-iso', locationId });
+    const { tenantId } = await createTenantWithLocation('me-pdf-iso');
+    const { userId } = await createUser({ tenantId, cognitoSub: 'mech-me-pdf-iso' });
     const { customerId } = await createCustomer({ cognitoSub: 'cust-me-pdf-iso' });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
-    await seedShopIntervention({ tenantId, locationId, userId, vehicleId });
+    await seedShopIntervention({ tenantId, userId, vehicleId });
 
     const { customerId: otherId } = await createCustomer({ cognitoSub: 'cust-me-pdf-other' });
     const token = await signTestToken({
@@ -121,8 +119,8 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
   });
 
   it('404 — ex-owner (endedAt set): me.vehicle.not_found', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('me-pdf-ex');
-    const { userId } = await createUser({ tenantId, cognitoSub: 'mech-me-pdf-ex', locationId });
+    const { tenantId } = await createTenantWithLocation('me-pdf-ex');
+    const { userId } = await createUser({ tenantId, cognitoSub: 'mech-me-pdf-ex' });
     const { customerId } = await createCustomer({ cognitoSub: 'cust-me-pdf-ex' });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({
@@ -130,7 +128,7 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
       customerId,
       endedAt: new Date('2025-01-01T00:00:00.000Z'),
     });
-    await seedShopIntervention({ tenantId, locationId, userId, vehicleId });
+    await seedShopIntervention({ tenantId, userId, vehicleId });
 
     const token = await signTestToken({ pool: 'clienti', sub: 'cust-me-pdf-ex', customerId });
     const res = await app.inject({
@@ -150,12 +148,10 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
     const userA = await createUser({
       tenantId: a.tenantId,
       cognitoSub: 'mech-xtA',
-      locationId: a.locationId,
     });
     const userB = await createUser({
       tenantId: b.tenantId,
       cognitoSub: 'mech-xtB',
-      locationId: b.locationId,
     });
     const { customerId } = await createCustomer({ cognitoSub: 'cust-me-pdf-xt' });
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
@@ -163,21 +159,18 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
 
     await seedShopIntervention({
       tenantId: a.tenantId,
-      locationId: a.locationId,
       userId: userA.userId,
       vehicleId,
       date: '2026-01-10',
     });
     await seedShopIntervention({
       tenantId: b.tenantId,
-      locationId: b.locationId,
       userId: userB.userId,
       vehicleId,
       date: '2026-03-10',
     });
     await seedShopIntervention({
       tenantId: a.tenantId,
-      locationId: a.locationId,
       userId: userA.userId,
       vehicleId,
       date: '2026-04-10',

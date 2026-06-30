@@ -1,5 +1,5 @@
 // F-OFF-004 admin-view DTO for users. Includes admin-only fields
-// (status, deletedAt, role, locationId) but never cognitoSub.
+// (status, deletedAt, role) but never cognitoSub.
 
 import type { Prisma, UserRole, UserStatus } from '@garageos/database';
 
@@ -9,7 +9,6 @@ export const USER_ADMIN_SELECT = {
   firstName: true,
   lastName: true,
   role: true,
-  locationId: true,
   status: true,
   phone: true,
   avatarUrl: true,
@@ -29,7 +28,6 @@ export type UserAdminWireDto = {
   firstName: string;
   lastName: string;
   role: UserRole;
-  locationId: string | null;
   status: UserStatus;
   phone: string | null;
   avatarUrl: string | null;
@@ -46,7 +44,6 @@ export function serializeUserAdmin(row: UserAdminRow): UserAdminWireDto {
     firstName: row.firstName,
     lastName: row.lastName,
     role: row.role,
-    locationId: row.locationId,
     status: row.status,
     phone: row.phone,
     avatarUrl: row.avatarUrl,

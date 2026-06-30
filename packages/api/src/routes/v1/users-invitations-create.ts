@@ -2,7 +2,6 @@
 //
 // Creates an internal_user invitation row and sends a magic-link email via
 // SES (best-effort). Implements:
-//   BR-204: mechanic role requires a valid locationId
 //   BR-206: partial unique index prevents duplicate pending internal_user
 //           invitations for the same (tenant, email) pair
 //
@@ -45,7 +44,6 @@ const InviteBodySchema = z.object({
     .max(100)
     .transform((s) => s.trim()),
   role: z.enum(['super_admin', 'mechanic']),
-  locationId: z.string().uuid().nullable(),
 });
 
 export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
@@ -67,15 +65,6 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
       const parsed = InviteBodySchema.safeParse(request.body);
       if (!parsed.success) throw parsed.error;
       const body = parsed.data;
-
-      // BR-204: mechanic role requires a location assignment.
-      if (body.role === 'mechanic' && !body.locationId) {
-        throw businessError(
-          'user.location_required_for_mechanic',
-          422,
-          'Un meccanico deve essere assegnato a una sede.',
-        );
-      }
 
       const tenantId = request.tenantId!;
       // request.userId is the Cognito sub (opaque string) — see tenant-context.ts.
@@ -148,24 +137,9 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
         );
       }
 
-      // ─── Block 2 (DB tx): steps 2 (location) + 3 (token/invitation) + 4-5 (audit) ─
+      // ─── Block 2 (DB tx): steps 2 (token/invitation) + 3-4 (audit) ─────────
       const txResult = await app.withContext({ role: 'admin' as const }, async (tx) => {
-        // 2) Optional: validate that locationId belongs to the caller's tenant.
-        if (body.locationId) {
-          const loc = await tx.location.findFirst({
-            where: { id: body.locationId, tenantId, status: 'active', deletedAt: null },
-            select: { id: true },
-          });
-          if (!loc) {
-            throw businessError(
-              'user.invitation.location_invalid',
-              422,
-              'Sede non valida o inattiva.',
-            );
-          }
-        }
-
-        // 3) Generate token + insert invitation row. P2002 on the partial
+        // 2) Generate token + insert invitation row. P2002 on the partial
         //    unique index (uq_invitations_pending_internal, BR-206) is mapped
         //    to duplicate_pending inside createInternalInvitation.
         const { invitation, tokenPlaintext } = await createInternalInvitation(tx, {
@@ -174,10 +148,9 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
           firstName: body.firstName,
           lastName: body.lastName,
           role: body.role,
-          locationId: body.locationId,
         });
 
-        // 4) Look up the inviting user's DB UUID so the audit row is
+        // 3) Look up the inviting user's DB UUID so the audit row is
         //    traceable to the Super Admin who triggered the action.
         //    actorCognitoSub is an opaque Cognito string, not a UUID —
         //    cannot be stored directly in the UUID audit_logs.actor_id column.
@@ -186,7 +159,7 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
           select: { id: true },
         });
 
-        // 5) Audit log — same transaction so it rolls back atomically if
+        // 4) Audit log — same transaction so it rolls back atomically if
         //    the invitation insert had failed above (defensive ordering).
         await tx.auditLog.create({
           data: {
@@ -200,7 +173,6 @@ export const usersInvitationsCreateRoutes: FastifyPluginAsync = async (app) => {
               actorCognitoSub,
               targetEmail: body.email,
               role: body.role,
-              locationId: body.locationId,
             },
             ipAddress: request.ip,
           },

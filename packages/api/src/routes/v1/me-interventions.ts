@@ -46,7 +46,6 @@ const meInterventionsRoutes: FastifyPluginAsync = async (app) => {
             status: true,
             interventionType: { select: { code: true, nameIt: true } },
             tenant: { select: { businessName: true } },
-            location: { select: { city: true } },
             // Deadlines this intervention generated (BR-067 source link).
             // Cancelled ones are noise; the customer already sees these shop
             // deadlines via /v1/me/deadlines, so no extra visibility gate is

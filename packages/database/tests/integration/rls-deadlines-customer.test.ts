@@ -19,7 +19,7 @@ describe('RLS — deadlines customer SELECT (post-migration H3)', () => {
   });
 
   /**
-   * Seed: tenant, location, vehicle, intervention_type, deadline.
+   * Seed: tenant, vehicle, intervention_type, deadline.
    * Optionally attach customer as owner (active or expired).
    */
   async function seedContext(opts: {
@@ -27,7 +27,6 @@ describe('RLS — deadlines customer SELECT (post-migration H3)', () => {
     withExpiredOwnership?: boolean;
   }): Promise<{
     tenantId: string;
-    locationId: string;
     vehicleId: string;
     customerId: string;
     otherCustomerId: string;
@@ -40,18 +39,6 @@ describe('RLS — deadlines customer SELECT (post-migration H3)', () => {
        RETURNING id`,
     );
     const tenantId = tRows[0]!.id;
-
-    const { rows: lRows } = await pgAdmin.query<{ id: string }>(
-      `INSERT INTO locations
-         (id, tenant_id, name, address_line, city, province, postal_code,
-          country, is_primary, status, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), $1, 'Sede', 'Via 1', 'Milano', 'MI', '20100',
-          'IT', true, 'active'::"LocationStatus", NOW(), NOW())
-       RETURNING id`,
-      [tenantId],
-    );
-    const locationId = lRows[0]!.id;
 
     const { rows: vRows } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO vehicles
@@ -111,20 +98,19 @@ describe('RLS — deadlines customer SELECT (post-migration H3)', () => {
     // Insert a deadline for the vehicle (chk_deadline_has_criterion: needs due_date OR due_odometer_km)
     const { rows: dRows } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO deadlines
-         (id, tenant_id, location_id, vehicle_id, intervention_type_id,
+         (id, tenant_id, vehicle_id, intervention_type_id,
           due_date, status, is_recurring, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, $4,
+         (gen_random_uuid(), $1, $2, $3,
           CURRENT_DATE + INTERVAL '90 days', 'open'::"DeadlineStatus",
           false, NOW(), NOW())
        RETURNING id`,
-      [tenantId, locationId, vehicleId, interventionTypeId],
+      [tenantId, vehicleId, interventionTypeId],
     );
     const deadlineId = dRows[0]!.id;
 
     return {
       tenantId,
-      locationId,
       vehicleId,
       customerId,
       otherCustomerId,
@@ -176,7 +162,7 @@ describe('RLS — deadlines customer SELECT (post-migration H3)', () => {
   // Test 4a: customer CANNOT INSERT deadlines (defense-in-depth)
   // -----------------------------------------------------------------------
   it('customer cannot INSERT a deadline (deadlines are officina-managed)', async () => {
-    const { customerId, tenantId, locationId, vehicleId, interventionTypeId } = await seedContext({
+    const { customerId, tenantId, vehicleId, interventionTypeId } = await seedContext({
       withActiveOwnership: true,
     });
 
@@ -187,7 +173,6 @@ describe('RLS — deadlines customer SELECT (post-migration H3)', () => {
         tx.deadline.create({
           data: {
             tenantId,
-            locationId,
             vehicleId,
             interventionTypeId,
             dueDate: new Date('2027-01-01'),

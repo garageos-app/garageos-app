@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createTenantWithLocation, getSystemInterventionTypeId, resetDb } from './helpers.js';
+import { createTenant, getSystemInterventionTypeId, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 
 describe('CHECK constraints and partial unique indexes', () => {
@@ -12,7 +12,7 @@ describe('CHECK constraints and partial unique indexes', () => {
 
   describe('BR-020 garage_code format', () => {
     it('rejects a vehicle with malformed garage_code', async () => {
-      const { tenantId } = await createTenantWithLocation();
+      const { tenantId } = await createTenant();
 
       // Length 11 fits VARCHAR(12); the format is invalid because
       // NNN contains 0/1 (BR-020 forbids). status='certified' plus
@@ -51,7 +51,7 @@ describe('CHECK constraints and partial unique indexes', () => {
 
   describe('BR-007 vehicle year range', () => {
     it('rejects a vehicle with year below 1900', async () => {
-      const { tenantId } = await createTenantWithLocation();
+      const { tenantId } = await createTenant();
 
       await expect(
         pgAdmin.query(
@@ -70,7 +70,7 @@ describe('CHECK constraints and partial unique indexes', () => {
 
   describe('BR-100 deadline needs at least one criterion', () => {
     it('rejects a deadline with neither due_date nor due_odometer_km', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation();
+      const { tenantId } = await createTenant();
       const { rows: vehicleRows } = await pgAdmin.query<{ id: string }>(
         `INSERT INTO vehicles
            (id, vin, plate, make, model, year, vehicle_type, fuel_type, status,
@@ -88,12 +88,12 @@ describe('CHECK constraints and partial unique indexes', () => {
       await expect(
         pgAdmin.query(
           `INSERT INTO deadlines
-             (id, tenant_id, location_id, vehicle_id, intervention_type_id,
+             (id, tenant_id, vehicle_id, intervention_type_id,
               status, is_recurring, created_at, updated_at)
            VALUES
-             (gen_random_uuid(), $1, $2, $3, $4, 'open'::"DeadlineStatus",
+             (gen_random_uuid(), $1, $2, $3, 'open'::"DeadlineStatus",
               false, NOW(), NOW())`,
-          [tenantId, locationId, vehicleId, interventionTypeId],
+          [tenantId, vehicleId, interventionTypeId],
         ),
       ).rejects.toThrow(/chk_deadline_has_criterion/);
     });
@@ -101,7 +101,7 @@ describe('CHECK constraints and partial unique indexes', () => {
 
   describe('BR-180 attachment size limit', () => {
     it('rejects an attachment larger than 10 MB', async () => {
-      const { tenantId } = await createTenantWithLocation();
+      const { tenantId } = await createTenant();
 
       await expect(
         pgAdmin.query(
@@ -120,7 +120,7 @@ describe('CHECK constraints and partial unique indexes', () => {
 
   describe('BR-040 single active ownership per vehicle', () => {
     async function setupVehicleAndOwners() {
-      const { tenantId } = await createTenantWithLocation();
+      const { tenantId } = await createTenant();
       const { rows: vRows } = await pgAdmin.query<{ id: string }>(
         `INSERT INTO vehicles
            (id, vin, plate, make, model, year, vehicle_type, fuel_type, status,
@@ -198,18 +198,17 @@ describe('CHECK constraints and partial unique indexes', () => {
     }
 
     // Helper: create a user under tenantId (super_admin role).
-    async function createUserForTenant(tenantId: string, locationId: string): Promise<string> {
+    async function createUserForTenant(tenantId: string): Promise<string> {
       const { rows } = await pgAdmin.query<{ id: string }>(
         `INSERT INTO users
-           (id, tenant_id, location_id, cognito_sub, email, role,
+           (id, tenant_id, cognito_sub, email, role,
             first_name, last_name, status, created_at, updated_at)
          VALUES
-           (gen_random_uuid(), $1, $2, $3, $4, 'super_admin'::"UserRole",
+           (gen_random_uuid(), $1, $2, $3, 'super_admin'::"UserRole",
             'Test', 'User', 'active'::"UserStatus", NOW(), NOW())
          RETURNING id`,
         [
           tenantId,
-          locationId,
           `cog-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`,
         ],
@@ -218,7 +217,7 @@ describe('CHECK constraints and partial unique indexes', () => {
     }
 
     it('accepts customer-uploaded dispute attachment (customer_id set, tenant_id set, uploaded_by_customer_id set)', async () => {
-      const { tenantId } = await createTenantWithLocation();
+      const { tenantId } = await createTenant();
       const customerId = await createBareCustomer();
       const interventionId = randomUUID();
 
@@ -239,8 +238,8 @@ describe('CHECK constraints and partial unique indexes', () => {
     });
 
     it('accepts officina-uploaded dispute attachment (customer_id NULL, tenant_id set, uploaded_by_user_id set)', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation();
-      const userId = await createUserForTenant(tenantId, locationId);
+      const { tenantId } = await createTenant();
+      const userId = await createUserForTenant(tenantId);
       const interventionId = randomUUID();
 
       const s3Key = `attachments/intervention_dispute/${interventionId}/x.jpg`;
@@ -260,8 +259,8 @@ describe('CHECK constraints and partial unique indexes', () => {
     });
 
     it('rejects intervention_dispute with both uploader columns set', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation();
-      const userId = await createUserForTenant(tenantId, locationId);
+      const { tenantId } = await createTenant();
+      const userId = await createUserForTenant(tenantId);
       const customerId = await createBareCustomer();
       const interventionId = randomUUID();
 
@@ -281,7 +280,7 @@ describe('CHECK constraints and partial unique indexes', () => {
     });
 
     it('rejects intervention_dispute customer-uploaded with customer_id NULL', async () => {
-      const { tenantId } = await createTenantWithLocation();
+      const { tenantId } = await createTenant();
       const customerId = await createBareCustomer();
       const interventionId = randomUUID();
 
@@ -301,8 +300,8 @@ describe('CHECK constraints and partial unique indexes', () => {
     });
 
     it('rejects intervention_dispute officina-uploaded with customer_id set', async () => {
-      const { tenantId, locationId } = await createTenantWithLocation();
-      const userId = await createUserForTenant(tenantId, locationId);
+      const { tenantId } = await createTenant();
+      const userId = await createUserForTenant(tenantId);
       const customerId = await createBareCustomer();
       const interventionId = randomUUID();
 

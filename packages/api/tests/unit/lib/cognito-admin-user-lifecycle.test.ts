@@ -22,7 +22,7 @@ describe('Cognito officine user lifecycle helpers', () => {
     _resetCognitoClientForTests();
   });
 
-  it('createOfficineCognitoUser issues AdminCreateUser with SUPPRESS + correct attrs', async () => {
+  it('createOfficineCognitoUser issues AdminCreateUser with SUPPRESS + correct attrs (no location)', async () => {
     cognitoMock.on(AdminCreateUserCommand).resolves({
       User: { Attributes: [{ Name: 'sub', Value: 'sub-12345' }] },
     });
@@ -33,7 +33,6 @@ describe('Cognito officine user lifecycle helpers', () => {
       lastName: 'Rossi',
       tenantId: 'tenant-1',
       role: 'mechanic',
-      locationId: 'loc-1',
     });
     expect(result.cognitoSub).toBe('sub-12345');
     const sentCommand = cognitoMock.commandCalls(AdminCreateUserCommand)[0]?.args[0];
@@ -46,25 +45,9 @@ describe('Cognito officine user lifecycle helpers', () => {
         { Name: 'family_name', Value: 'Rossi' },
         { Name: 'custom:tenant_id', Value: 'tenant-1' },
         { Name: 'custom:role', Value: 'mechanic' },
-        { Name: 'custom:location_id', Value: 'loc-1' },
       ]),
     );
-  });
-
-  it('createOfficineCognitoUser omits custom:location_id when role=super_admin + null locationId', async () => {
-    cognitoMock.on(AdminCreateUserCommand).resolves({
-      User: { Attributes: [{ Name: 'sub', Value: 'sub-9' }] },
-    });
-    await createOfficineCognitoUser({
-      poolId: 'pool-officine',
-      email: 'admin@example.com',
-      firstName: 'A',
-      lastName: 'B',
-      tenantId: 'tenant-1',
-      role: 'super_admin',
-      locationId: null,
-    });
-    const sentCommand = cognitoMock.commandCalls(AdminCreateUserCommand)[0]?.args[0];
+    // sede-unica: custom:location_id is never written
     const attrs = sentCommand?.input.UserAttributes ?? [];
     expect(attrs.find((a) => a.Name === 'custom:location_id')).toBeUndefined();
   });
@@ -81,38 +64,21 @@ describe('Cognito officine user lifecycle helpers', () => {
     expect(sentCommand?.input.Password).toBe('Secret123!');
   });
 
-  it('updateOfficineUserRoleAndLocation issues AdminUpdateUserAttributes with both attrs when given', async () => {
+  it('updateOfficineUserRoleAndLocation issues AdminUpdateUserAttributes with role when given', async () => {
     cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
     await updateOfficineUserRoleAndLocation({
       poolId: 'pool-officine',
       email: 'mario@example.com',
       role: 'super_admin',
-      locationId: null,
     });
     const sentCommand = cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)[0]?.args[0];
     const attrs = sentCommand?.input.UserAttributes ?? [];
-    expect(attrs).toEqual(
-      expect.arrayContaining([
-        { Name: 'custom:role', Value: 'super_admin' },
-        { Name: 'custom:location_id', Value: '' },
-      ]),
-    );
+    expect(attrs).toEqual(expect.arrayContaining([{ Name: 'custom:role', Value: 'super_admin' }]));
+    // sede-unica: custom:location_id is never written
+    expect(attrs.find((a) => a.Name === 'custom:location_id')).toBeUndefined();
   });
 
-  it('updateOfficineUserRoleAndLocation skips role attr when role arg is undefined', async () => {
-    cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
-    await updateOfficineUserRoleAndLocation({
-      poolId: 'pool-officine',
-      email: 'mario@example.com',
-      locationId: 'loc-99',
-    });
-    const sentCommand = cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)[0]?.args[0];
-    const attrs = sentCommand?.input.UserAttributes ?? [];
-    expect(attrs.find((a) => a.Name === 'custom:role')).toBeUndefined();
-    expect(attrs.find((a) => a.Name === 'custom:location_id')?.Value).toBe('loc-99');
-  });
-
-  it('updateOfficineUserRoleAndLocation makes no API call when both role and locationId are undefined', async () => {
+  it('updateOfficineUserRoleAndLocation makes no API call when role is undefined', async () => {
     cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
     await updateOfficineUserRoleAndLocation({
       poolId: 'pool-officine',

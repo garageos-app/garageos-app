@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { withContext } from '../../src/index.js';
 
-import { createCustomerWithRelation, createTenantWithLocation, resetDb } from './helpers.js';
+import { createCustomerWithRelation, createTenant, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 
 // BR-151 write gate — the `customers_write_by_related_tenant` RLS
@@ -20,7 +20,7 @@ describe('BR-151 — customer PII write gate (RLS)', () => {
   });
 
   it('allows UPDATE when the tenant has an active customer_tenant_relation', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { customerId } = await createCustomerWithRelation(tenantId);
 
     await expect(
@@ -37,8 +37,8 @@ describe('BR-151 — customer PII write gate (RLS)', () => {
     // tenantA creates the relation; tenantB has none. The RLS policy
     // returns zero rows to tenantB, which Prisma surfaces as a not-
     // found error on update-by-unique.
-    const { tenantId: tenantA } = await createTenantWithLocation();
-    const { tenantId: tenantB } = await createTenantWithLocation();
+    const { tenantId: tenantA } = await createTenant();
+    const { tenantId: tenantB } = await createTenant();
     const { customerId } = await createCustomerWithRelation(tenantA);
 
     await expect(
@@ -59,7 +59,7 @@ describe('BR-151 — customer PII write gate (RLS)', () => {
   });
 
   it('admin role bypasses the policy', async () => {
-    const { tenantId: tenantA } = await createTenantWithLocation();
+    const { tenantId: tenantA } = await createTenant();
     const { customerId } = await createCustomerWithRelation(tenantA);
 
     await expect(
@@ -73,7 +73,7 @@ describe('BR-151 — customer PII write gate (RLS)', () => {
   });
 
   it("deleting the relation removes the tenant's write access", async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { customerId, relationId } = await createCustomerWithRelation(tenantId);
 
     // Confirm the relation initially opens the write path.

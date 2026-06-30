@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { mockClient } from 'aws-sdk-client-mock';
@@ -48,14 +48,13 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('200 wiki window: edits description without creating a revision', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -69,7 +68,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -90,14 +88,13 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('422 intervention.modification.cancelled when status is cancelled', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -111,7 +108,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -129,14 +125,13 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('422 intervention.modification.disputed when status is disputed', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -150,7 +145,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -168,15 +162,14 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('200 post-lock (>48h): creates a revision row with diff and reason', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -191,7 +184,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -218,14 +210,13 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('200 post-lock (firstSeenByCustomerAt): creates a revision row', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -240,7 +231,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -258,15 +248,14 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('200 post-lock — diff includes only changed fields, no-op fields skipped', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -283,7 +272,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -307,15 +295,14 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('400 intervention.modification.revision_reason_required when post-lock without reason', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -329,7 +316,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -347,14 +333,13 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('200 wiki window: reason is ignored if provided', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -368,7 +353,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -386,15 +370,14 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('200 post-lock — persists wiki_locked_at when transitioning from wiki to locked', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -414,7 +397,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -436,14 +418,13 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('404 NOT_FOUND when changing interventionTypeId to a non-existent id', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -456,7 +437,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -477,18 +457,15 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const userA = await createUser({
       tenantId: tenantA.tenantId,
       cognitoSub: cognitoSubA,
-      locationId: tenantA.locationId,
     });
     await createUser({
       tenantId: tenantB.tenantId,
       cognitoSub: cognitoSubB,
-      locationId: tenantB.locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantA.tenantId });
     const { interventionId } = await createIntervention({
       tenantId: tenantA.tenantId,
-      locationId: tenantA.locationId,
       userId: userA.userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -502,7 +479,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSubB,
       tenantId: tenantB.tenantId,
       role: 'mechanic',
-      locationId: tenantB.locationId,
     });
 
     const res = await app.inject({
@@ -516,16 +492,15 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('404 NOT_FOUND for non-existent intervention id', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
 
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -539,14 +514,13 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('400 ZodError when body contains an immutable field (BR-061)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -559,7 +533,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -574,14 +547,13 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('400 ZodError when body is empty', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -594,7 +566,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -608,15 +579,14 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('200 internalNotes only, post-lock — revision contains only that field', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -631,7 +601,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -650,14 +619,13 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
   });
 
   it('200 wiki window — writes access_logs row action="update" on parent vehicle (BR-154)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -670,7 +638,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -698,13 +665,12 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     async function setupWikiLockedScenario(
       opts: { customerPrefs?: object; withOwnership?: boolean } = {},
     ): Promise<{ token: string; interventionId: string }> {
-      const { tenantId, locationId } = await createTenantWithLocation();
+      const { tenantId } = await createTenantWithLocation();
       const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
       const { userId } = await createUser({
         tenantId,
         cognitoSub,
         role: 'super_admin',
-        locationId,
       });
       const type = await ensureSystemInterventionType('TAGLIANDO');
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -724,7 +690,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       const oldDate = new Date(Date.now() - 49 * 60 * 60 * 1000);
       const { interventionId } = await createIntervention({
         tenantId,
-        locationId,
         userId,
         vehicleId,
         interventionTypeId: type.id,
@@ -739,7 +704,6 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
         sub: cognitoSub,
         tenantId,
         role: 'super_admin',
-        locationId,
       });
 
       return { token, interventionId };

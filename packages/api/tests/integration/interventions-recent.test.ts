@@ -1,10 +1,9 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
 import {
   createIntervention,
-  createLocation,
   createTenantWithLocation,
   createUser,
   createVehicle,
@@ -35,8 +34,8 @@ describe('GET /v1/interventions/recent (integration)', () => {
   });
 
   it('returns only interventions of the calling tenant (RLS isolation)', async () => {
-    const { tenantId: tA, locationId: lA } = await createTenantWithLocation('rec-iso-A');
-    const { tenantId: tB, locationId: lB } = await createTenantWithLocation('rec-iso-B');
+    const { tenantId: tA } = await createTenantWithLocation('rec-iso-A');
+    const { tenantId: tB } = await createTenantWithLocation('rec-iso-B');
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     const { userId: uA } = await createUser({ tenantId: tA, cognitoSub });
     const { userId: uB } = await createUser({
@@ -49,7 +48,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
 
     await createIntervention({
       tenantId: tA,
-      locationId: lA,
       userId: uA,
       vehicleId: vA,
       interventionTypeId: typeId,
@@ -59,7 +57,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     });
     await createIntervention({
       tenantId: tB,
-      locationId: lB,
       userId: uB,
       vehicleId: vB,
       interventionTypeId: typeId,
@@ -86,7 +83,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
   });
 
   it('excludes cancelled interventions; includes active and disputed', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rec-status');
+    const { tenantId } = await createTenantWithLocation('rec-status');
     const cognitoSub = '33333333-3333-4333-8333-333333333333';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -94,7 +91,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
 
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -105,7 +101,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     });
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -116,7 +111,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     });
     await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -145,7 +139,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
   });
 
   it('orders by createdAt DESC with id DESC tiebreaker', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rec-order');
+    const { tenantId } = await createTenantWithLocation('rec-order');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -155,7 +149,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     const sharedCreatedAt = new Date('2026-05-23T10:00:00.000Z');
     const { interventionId: i1 } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -166,7 +159,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     });
     const { interventionId: i2 } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -178,7 +170,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     // Newer createdAt — must appear first regardless of id.
     const { interventionId: i3 } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -209,7 +200,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
   });
 
   it('respects limit query param (cap 50, default 10)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rec-limit');
+    const { tenantId } = await createTenantWithLocation('rec-limit');
     const cognitoSub = '55555555-5555-4555-8555-555555555555';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -218,7 +209,6 @@ describe('GET /v1/interventions/recent (integration)', () => {
     for (let i = 0; i < 12; i++) {
       await createIntervention({
         tenantId,
-        locationId,
         userId,
         vehicleId,
         interventionTypeId: typeId,
@@ -270,7 +260,10 @@ describe('GET /v1/interventions/recent (integration)', () => {
   });
 });
 
-describe('GET /v1/interventions/recent — location filter (F-OFF-503)', () => {
+describe('GET /v1/interventions/recent — BR-205 relaxed (sede unica)', () => {
+  // BR-205 is relaxed: mechanics now see all tenant interventions regardless
+  // of which location an intervention was originally registered at.
+  // Tenant isolation is unchanged (a mechanic in tenant A cannot see tenant B's interventions).
   const LOC_IP = '10.20.41.2';
   let app: FastifyInstance;
   beforeAll(async () => {
@@ -283,38 +276,38 @@ describe('GET /v1/interventions/recent — location filter (F-OFF-503)', () => {
     await resetDb();
   });
 
-  async function seed() {
-    const { tenantId, locationId: locPrimary } = await createTenantWithLocation('rec-loc');
-    const { locationId: locSecondary } = await createLocation({ tenantId });
+  it('mechanic sees all tenant interventions (BR-205 relaxed — sede unica)', async () => {
+    const { tenantId } = await createTenantWithLocation('rec-all');
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
-    const mkInt = async (locationId: string, userId: string, title: string) =>
-      createIntervention({
-        tenantId,
-        locationId,
-        userId,
-        vehicleId,
-        interventionTypeId: typeId,
-        interventionDate: '2026-05-20',
-        odometerKm: 50000,
-        title,
-      });
-    return { tenantId, locPrimary, locSecondary, mkInt };
-  }
-
-  it('mechanic sees only own-location interventions (BR-205)', async () => {
-    const { tenantId, locPrimary, locSecondary, mkInt } = await seed();
     const cognitoSub = '10000000-0000-4000-8000-000000000001';
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId: locPrimary });
-    await mkInt(locPrimary, userId, 'In primary');
-    await mkInt(locSecondary, userId, 'In secondary');
+    const { userId } = await createUser({ tenantId, cognitoSub });
+
+    // Create two interventions — both should be visible to the mechanic.
+    await createIntervention({
+      tenantId,
+      userId,
+      vehicleId,
+      interventionTypeId: typeId,
+      interventionDate: '2026-05-20',
+      odometerKm: 50000,
+      title: 'First intervention',
+    });
+    await createIntervention({
+      tenantId,
+      userId,
+      vehicleId,
+      interventionTypeId: typeId,
+      interventionDate: '2026-05-21',
+      odometerKm: 51000,
+      title: 'Second intervention',
+    });
 
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId: locPrimary,
     });
     const res = await app.inject({
       method: 'GET',
@@ -323,71 +316,8 @@ describe('GET /v1/interventions/recent — location filter (F-OFF-503)', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { items: Array<{ summary: string }> };
-    expect(body.items.map((i) => i.summary)).toEqual(['In primary']);
-  });
-
-  it('mechanic location_id param is ignored (forced to own location)', async () => {
-    const { tenantId, locPrimary, locSecondary, mkInt } = await seed();
-    const cognitoSub = '10000000-0000-4000-8000-000000000002';
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId: locPrimary });
-    await mkInt(locPrimary, userId, 'In primary');
-    await mkInt(locSecondary, userId, 'In secondary');
-
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: cognitoSub,
-      tenantId,
-      role: 'mechanic',
-      locationId: locPrimary,
-    });
-    const res = await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/recent?location_id=${locSecondary}`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
-    });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as { items: Array<{ summary: string }> };
-    expect(body.items.map((i) => i.summary)).toEqual(['In primary']);
-  });
-
-  it('super_admin without param sees all locations; with param narrows', async () => {
-    const { tenantId, locPrimary, locSecondary, mkInt } = await seed();
-    const cognitoSub = '10000000-0000-4000-8000-000000000003';
-    // super_admin user row has no location (BR-204); mechanic user owns the interventions.
-    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const { userId: mech } = await createUser({
-      tenantId,
-      cognitoSub: '10000000-0000-4000-8000-00000000000a',
-      locationId: locPrimary,
-    });
-    await mkInt(locPrimary, mech, 'In primary');
-    await mkInt(locSecondary, mech, 'In secondary');
-
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: cognitoSub,
-      tenantId,
-      role: 'super_admin',
-    });
-
-    const resAll = await app.inject({
-      method: 'GET',
-      url: '/v1/interventions/recent',
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
-    });
-    const all = (resAll.json() as { items: Array<{ summary: string }> }).items
-      .map((i) => i.summary)
-      .sort();
-    expect(all).toEqual(['In primary', 'In secondary']);
-
-    const resNarrow = await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/recent?location_id=${locSecondary}`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
-    });
-    const narrow = (resNarrow.json() as { items: Array<{ summary: string }> }).items.map(
-      (i) => i.summary,
+    expect(body.items.map((i) => i.summary).sort()).toEqual(
+      ['First intervention', 'Second intervention'].sort(),
     );
-    expect(narrow).toEqual(['In secondary']);
   });
 });

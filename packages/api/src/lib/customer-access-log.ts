@@ -1,8 +1,9 @@
 // BR-155 — the owning customer sees the audit trail of accesses to their
-// vehicle in a strictly redacted shape: tenant name, location city,
-// action type, timestamp, and (only if a customer_tenant_relation exists,
-// BR-151) the mechanic's name. IP address, user agent, and all internal
-// ids are never exposed.
+// vehicle in a strictly redacted shape: tenant name, action type, timestamp,
+// and (only if a customer_tenant_relation exists, BR-151) the mechanic's name.
+// IP address, user agent, and all internal ids are never exposed.
+//
+// sede-unica: location city removed (Location table dropped in migration).
 //
 // Pure function: the route resolves the relation set and passes it in, so
 // this stays DB-free and unit-testable.
@@ -12,7 +13,6 @@ export type CustomerAccessAction = 'view' | 'new_intervention';
 export interface CustomerAccessLogEntry {
   action: CustomerAccessAction;
   tenantName: string;
-  locationCity: string | null;
   occurredAt: string;
   mechanicName?: string;
 }
@@ -23,7 +23,6 @@ export interface RawCustomerAccessLogRow {
   action: string;
   createdAt: Date;
   tenant: { id: string; businessName: string };
-  location: { city: string } | null;
   user: { firstName: string; lastName: string };
 }
 
@@ -35,7 +34,6 @@ export function serializeCustomerAccessLog(
     const entry: CustomerAccessLogEntry = {
       action: r.action === 'view' ? 'view' : 'new_intervention',
       tenantName: r.tenant.businessName,
-      locationCity: r.location?.city ?? null,
       occurredAt: r.createdAt.toISOString(),
     };
     // BR-151/BR-155: mechanic name only for tenants the customer relates to.

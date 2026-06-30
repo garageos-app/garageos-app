@@ -1,17 +1,14 @@
-// PATCH /v1/users/:id — F-OFF-004 admin update user role/location/status.
+// PATCH /v1/users/:id — F-OFF-004 admin update user role/status.
 //
 // Auth chain: requireAuth → requireOfficinaPool → tenantContext → requireSuperAdmin
 // RLS context: role: 'admin' required for writes.
 //
 // Business rules enforced (delegated to updateOfficineUser helper):
 //   BR-203 — last super_admin guard
-//   BR-204 — mechanic location required
 //
 // Error codes:
 //   user.not_found                       — 404: target missing or cross-tenant
 //   user.last_super_admin                — 409: BR-203 violation
-//   user.location_required_for_mechanic  — 422: BR-204 violation
-//   user.location_invalid                — 422: locationId not in tenant or inactive
 
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
@@ -27,11 +24,10 @@ const ParamsSchema = z.object({ id: z.string().uuid() });
 const BodySchema = z
   .object({
     role: z.enum(['super_admin', 'mechanic']).optional(),
-    locationId: z.string().uuid().nullable().optional(),
     status: z.enum(['active', 'inactive']).optional(),
   })
-  .refine((d) => d.role !== undefined || d.locationId !== undefined || d.status !== undefined, {
-    message: 'At least one field (role, locationId, status) must be present',
+  .refine((d) => d.role !== undefined || d.status !== undefined, {
+    message: 'At least one field (role, status) must be present',
   });
 
 export const usersAdminUpdateRoutes: FastifyPluginAsync = async (app) => {

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import {
   CreateScheduleCommand,
@@ -50,7 +50,6 @@ const TEST_IP = '10.20.31.5';
 // fields so the auto-create-next branch can be exercised directly.
 async function seedDeadline(params: {
   tenantId: string;
-  locationId: string;
   vehicleId: string;
   interventionTypeId: string;
   dueDate: string; // YYYY-MM-DD
@@ -63,7 +62,6 @@ async function seedDeadline(params: {
 }): Promise<{ deadlineId: string }> {
   const {
     tenantId,
-    locationId,
     vehicleId,
     interventionTypeId,
     dueDate,
@@ -76,17 +74,16 @@ async function seedDeadline(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO deadlines
-       (id, tenant_id, location_id, vehicle_id, intervention_type_id,
+       (id, tenant_id, vehicle_id, intervention_type_id,
         due_date, due_odometer_km, description,
         is_recurring, recurring_months, recurring_km,
         status, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, $7,
-        $8, $9, $10,
-        $11::"DeadlineStatus", NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4::date, $5, $6,
+        $7, $8, $9,
+        $10::"DeadlineStatus", NOW(), NOW())
      RETURNING id`,
     [
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId,
       dueDate,
@@ -188,7 +185,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
     dueDate?: string;
   }): Promise<{
     tenantId: string;
-    locationId: string;
     cognitoSub: string;
     userId: string;
     vehicleId: string;
@@ -196,20 +192,18 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
     notificationIds: string[];
     typeId: string;
   }> {
-    const { tenantId, locationId } = await createTenantWithLocation(opts.tenantSuffix);
+    const { tenantId } = await createTenantWithLocation(opts.tenantSuffix);
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const dueDate = opts.dueDate ?? farFutureDueDateIso();
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate,
@@ -246,7 +240,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
 
     return {
       tenantId,
-      locationId,
       cognitoSub,
       userId,
       vehicleId,
@@ -264,7 +257,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -312,7 +304,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -384,7 +375,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -412,7 +402,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId: seed.tenantId,
-      locationId: seed.locationId,
       userId: seed.userId,
       vehicleId: seed.vehicleId,
       interventionTypeId: seed.typeId,
@@ -425,7 +414,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -449,14 +437,13 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
   });
 
   it('409 deadline.complete.not_open when status is already completed', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('complete-already-completed');
+    const { tenantId } = await createTenantWithLocation('complete-already-completed');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -468,7 +455,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -488,14 +474,13 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
   });
 
   it('409 deadline.complete.not_open when status is cancelled', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('complete-cancelled');
+    const { tenantId } = await createTenantWithLocation('complete-cancelled');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -507,7 +492,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -529,7 +513,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
     });
     const { interventionId } = await createIntervention({
       tenantId: seed.tenantId,
-      locationId: seed.locationId,
       userId: seed.userId,
       vehicleId: otherVehicleId,
       interventionTypeId: seed.typeId,
@@ -542,7 +525,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -576,14 +558,12 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       tenantId: other.tenantId,
       cognitoSub: `office-other-${randomUUID().slice(0, 8)}`,
       role: 'super_admin',
-      locationId: other.locationId,
     });
     const { vehicleId: otherVehicleId } = await createVehicle({
       createdByTenantId: other.tenantId,
     });
     const { interventionId } = await createIntervention({
       tenantId: other.tenantId,
-      locationId: other.locationId,
       userId: otherUserId,
       vehicleId: otherVehicleId,
       interventionTypeId: seed.typeId,
@@ -596,7 +576,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -622,7 +601,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId: a.tenantId,
-      locationId: a.locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -634,7 +612,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       tenantId: b.tenantId,
       cognitoSub: bSub,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const token = await signTestToken({
@@ -642,7 +619,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: bSub,
       tenantId: b.tenantId,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const res = await app.inject({
@@ -671,7 +647,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     // Deliberately omit payload — the route accepts an empty/absent body.
@@ -706,7 +681,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: seed.cognitoSub,
       tenantId: seed.tenantId,
       role: 'super_admin',
-      locationId: seed.locationId,
     });
 
     const res = await app.inject({
@@ -737,14 +711,13 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
     // Sent rows must NEVER be touched by cancelPendingReminders. Seed
     // 1 sent + 2 pending, complete the deadline, verify the sent row is
     // intact and only the 2 pending rows got DeleteSchedule.
-    const { tenantId, locationId } = await createTenantWithLocation('complete-sent-preserved');
+    const { tenantId } = await createTenantWithLocation('complete-sent-preserved');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
-      locationId,
       vehicleId,
       interventionTypeId: type.id,
       dueDate: farFutureDueDateIso(),
@@ -777,7 +750,6 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { signTestToken } from '../helpers/jwt.js';
@@ -73,9 +73,9 @@ describe('POST /v1/vehicles/:id/certify (integration)', () => {
   }
 
   async function workshop(prefix: string) {
-    const { tenantId, locationId } = await createTenantWithLocation(prefix);
+    const { tenantId } = await createTenantWithLocation(prefix);
     const cognitoSub = `${prefix}-` + Math.random().toString(36).slice(2, 10);
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,

@@ -30,7 +30,6 @@ export interface RawInterventionRow {
   status: string;
   interventionType: { code: string; nameIt: string };
   tenant: { businessName: string };
-  location: { city: string } | null;
   sourceDeadlines: RawSourceDeadlineRow[];
 }
 
@@ -58,7 +57,7 @@ export interface ShopInterventionDetailDto {
     partsReplacedCount: number;
     status: string;
     isDisputed: boolean;
-    tenant: { businessName: string; locationCity: string | null };
+    tenant: { businessName: string };
     attachmentsCount: number;
     generatedDeadlines: Array<{
       id: string;
@@ -100,7 +99,7 @@ export function projectShopInterventionDetail(
       partsReplacedCount: parts.length,
       status: row.status,
       isDisputed: row.status === 'disputed',
-      tenant: { businessName: row.tenant.businessName, locationCity: row.location?.city ?? null },
+      tenant: { businessName: row.tenant.businessName },
       attachmentsCount,
       generatedDeadlines: row.sourceDeadlines.map((d) => ({
         id: d.id,

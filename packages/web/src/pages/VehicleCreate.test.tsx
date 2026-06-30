@@ -89,16 +89,6 @@ describe('VehicleCreate', () => {
     filterRef.current = { isSuperAdmin: false, locations: [], selectedLocationId: null };
   });
 
-  it('blocks a mechanic with no assigned location', () => {
-    profileRef.current = {
-      data: { role: 'mechanic', locationId: null },
-      isPending: false,
-      isError: false,
-    };
-    renderAt('/vehicles/new');
-    expect(screen.getByText(/non è associato a una sede/i)).toBeInTheDocument();
-  });
-
   it('shows validation errors and does not submit an empty form', async () => {
     renderAt('/vehicles/new');
     await userEvent.click(screen.getByRole('button', { name: /censisci veicolo/i }));
@@ -117,7 +107,7 @@ describe('VehicleCreate', () => {
     const body = mockMutateAsync.mock.calls[0][0];
     expect(body.vehicle.vin).toBe('1HGCM82633A004352');
     expect(body.customer).toMatchObject({ mode: 'create_new', firstName: 'Mario' });
-    expect(body.locationId).toBe(MECHANIC.locationId);
+    expect(body).not.toHaveProperty('locationId');
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/vehicles/v1'));
     expect(mockToastSuccess).toHaveBeenCalledWith(expect.stringContaining('GO-AB12CD'));
   });

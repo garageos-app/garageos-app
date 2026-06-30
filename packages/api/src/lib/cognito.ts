@@ -167,7 +167,6 @@ export interface CreateOfficineCognitoUserArgs {
   lastName: string;
   tenantId: string;
   role: UserRole;
-  locationId: string | null;
 }
 
 export async function createOfficineCognitoUser(
@@ -181,9 +180,6 @@ export async function createOfficineCognitoUser(
     { Name: 'custom:tenant_id', Value: args.tenantId },
     { Name: 'custom:role', Value: args.role },
   ];
-  if (args.locationId) {
-    attributes.push({ Name: 'custom:location_id', Value: args.locationId });
-  }
 
   try {
     const client = getCognitoClient();
@@ -237,26 +233,16 @@ export async function setOfficineCognitoPassword(args: {
   }
 }
 
-// Update role and/or location on an existing officine Cognito user.
+// Update role on an existing officine Cognito user.
 // Callers pass undefined for a field they don't want to touch.
-// null on locationId means "clear" — Cognito attributes can't be unset,
-// so we set the empty string. The tenant-context Zod schema treats
-// empty string and undefined identically (custom:location_id optional).
 export async function updateOfficineUserRoleAndLocation(args: {
   poolId: string;
   email: string;
   role?: UserRole;
-  locationId?: string | null;
 }): Promise<void> {
   const attributes: { Name: string; Value: string }[] = [];
   if (args.role !== undefined) {
     attributes.push({ Name: 'custom:role', Value: args.role });
-  }
-  if (args.locationId !== undefined) {
-    attributes.push({
-      Name: 'custom:location_id',
-      Value: args.locationId === null ? '' : args.locationId,
-    });
   }
   if (attributes.length === 0) return;
 

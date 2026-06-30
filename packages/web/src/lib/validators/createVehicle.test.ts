@@ -32,7 +32,6 @@ const base: VehicleFormValues = {
   powerKw: '',
   color: '',
   odometerKm: '45000',
-  locationId: '11111111-1111-4111-8111-111111111111',
 };
 
 describe('transformToPayload', () => {

@@ -31,7 +31,6 @@ const s3Mock = mockClient(S3Client);
 
 async function seedScenario(suffix: string): Promise<{
   tenantId: string;
-  locationId: string;
   userId: string;
   vehicleId: string;
   customerId: string;
@@ -39,9 +38,9 @@ async function seedScenario(suffix: string): Promise<{
   interventionId: string;
   interventionTypeId: string;
 }> {
-  const { tenantId, locationId } = await createTenantWithLocation(suffix);
+  const { tenantId } = await createTenantWithLocation(suffix);
   const userCognitoSub = `mech-${suffix}`;
-  const { userId } = await createUser({ tenantId, cognitoSub: userCognitoSub, locationId });
+  const { userId } = await createUser({ tenantId, cognitoSub: userCognitoSub });
   const cognitoSub = `cust-${suffix}`;
   const { customerId } = await createCustomer({ cognitoSub });
   const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -49,7 +48,6 @@ async function seedScenario(suffix: string): Promise<{
   const tagliando = await ensureSystemInterventionType('TAGLIANDO');
   const { interventionId } = await createIntervention({
     tenantId,
-    locationId,
     userId,
     vehicleId,
     interventionTypeId: tagliando.id,
@@ -59,7 +57,6 @@ async function seedScenario(suffix: string): Promise<{
   });
   return {
     tenantId,
-    locationId,
     userId,
     vehicleId,
     customerId,

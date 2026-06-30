@@ -59,15 +59,6 @@ export const TENANT = {
   email: personaEmail('officina'),
 };
 
-export const LOCATION = {
-  name: 'Sede unica',
-  addressLine: 'Via Roma 1',
-  city: 'Padova',
-  province: 'PD',
-  postalCode: '35100',
-  country: 'IT',
-};
-
 export const CUSTOMERS: DemoCustomer[] = [
   {
     email: personaEmail('mario'),

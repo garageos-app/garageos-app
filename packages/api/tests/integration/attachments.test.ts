@@ -1,4 +1,4 @@
-// packages/api/tests/integration/attachments.test.ts
+﻿// packages/api/tests/integration/attachments.test.ts
 //
 // Integration tests for POST /v1/attachments/upload-url (phase 1) and
 // POST /v1/attachments/:id/confirm (phase 2).
@@ -55,17 +55,15 @@ beforeEach(async () => {
 // Setup helper: create a tenant + intervention so attachments can target it.
 async function setupTenantWithIntervention(): Promise<{
   tenantId: string;
-  locationId: string;
   userId: string;
   cognitoSub: string;
   interventionId: string;
   token: string;
 }> {
-  const { tenantId, locationId } = await createTenantWithLocation();
+  const { tenantId } = await createTenantWithLocation();
   const cognitoSub = crypto.randomUUID();
   const { userId } = await createUser({
     tenantId,
-    locationId,
     cognitoSub,
     role: 'super_admin',
   });
@@ -75,7 +73,6 @@ async function setupTenantWithIntervention(): Promise<{
   const { id: interventionTypeId } = await ensureSystemInterventionType('TAGLIANDO');
   const { interventionId } = await createIntervention({
     tenantId,
-    locationId,
     userId,
     vehicleId,
     interventionTypeId,
@@ -87,13 +84,11 @@ async function setupTenantWithIntervention(): Promise<{
     sub: cognitoSub,
     tenantId,
     role: 'super_admin',
-    locationId,
     pool: 'officine',
   });
 
   return {
     tenantId,
-    locationId,
     userId,
     cognitoSub,
     interventionId,
@@ -642,10 +637,9 @@ describe('POST /v1/attachments/upload-url — private_intervention (integration)
 
   it('403 when officina-pool attempts owner_type=private_intervention', async () => {
     const cognitoSub = 'att-pi-officina-' + Math.random().toString(36).slice(2, 10);
-    const { tenantId, locationId } = await createTenantWithLocation('att-pi-officina');
+    const { tenantId } = await createTenantWithLocation('att-pi-officina');
     const { userId } = await createUser({
       tenantId,
-      locationId,
       cognitoSub,
       role: 'mechanic',
     });

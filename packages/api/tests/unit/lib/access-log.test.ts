@@ -11,7 +11,6 @@ import { recordVehicleAccess, recordVehiclesBatch } from '../../../src/lib/acces
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const USER = '22222222-2222-4222-8222-222222222222';
 const VEHICLE = '33333333-3333-4333-8333-333333333333';
-const LOCATION = '44444444-4444-4444-8444-444444444444';
 const IP = '203.0.113.42';
 
 describe('recordVehicleAccess', () => {
@@ -25,7 +24,6 @@ describe('recordVehicleAccess', () => {
       vehicleId: VEHICLE,
       tenantId: TENANT,
       userId: USER,
-      locationId: LOCATION,
       action: 'view',
       ipAddress: IP,
     });
@@ -36,7 +34,6 @@ describe('recordVehicleAccess', () => {
         vehicleId: VEHICLE,
         tenantId: TENANT,
         userId: USER,
-        locationId: LOCATION,
         action: 'view',
         ipAddress: IP,
       },
@@ -119,7 +116,6 @@ describe('recordVehiclesBatch', () => {
       vehicleIds: [],
       tenantId: TENANT,
       userId: USER,
-      locationId: LOCATION,
       action: 'search_match',
       ipAddress: IP,
     });
@@ -138,7 +134,6 @@ describe('recordVehiclesBatch', () => {
       vehicleIds: [VEHICLE_A, VEHICLE_B, VEHICLE_C],
       tenantId: TENANT,
       userId: USER,
-      locationId: LOCATION,
       action: 'search_match',
       ipAddress: IP,
     });
@@ -152,7 +147,6 @@ describe('recordVehiclesBatch', () => {
         tenantId: string;
         action: string;
         ipAddress?: string;
-        locationId?: string;
       }>;
     };
     expect(createArg.data).toHaveLength(3);
@@ -160,7 +154,7 @@ describe('recordVehiclesBatch', () => {
     expect(ids).toEqual([VEHICLE_A, VEHICLE_B, VEHICLE_C].sort());
     expect(createArg.data.every((r) => r.userId === USER && r.tenantId === TENANT)).toBe(true);
     expect(createArg.data.every((r) => r.action === 'search_match')).toBe(true);
-    expect(createArg.data.every((r) => r.ipAddress === IP && r.locationId === LOCATION)).toBe(true);
+    expect(createArg.data.every((r) => r.ipAddress === IP)).toBe(true);
   });
 
   it('skips already-deduped vehicleIds in the bulk insert', async () => {

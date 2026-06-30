@@ -1,4 +1,4 @@
-// Integration tests for POST /v1/invitations/:token/accept — F-OFF-004 accept.
+﻿// Integration tests for POST /v1/invitations/:token/accept — F-OFF-004 accept.
 // Public (no auth) endpoint; token is the credential.
 //
 // Cognito is stubbed with aws-sdk-client-mock (same pattern as auth-signup.test.ts).
@@ -61,7 +61,6 @@ async function createInvitation(params: {
   firstName?: string;
   lastName?: string;
   role?: 'super_admin' | 'mechanic';
-  locationId?: string | null;
   token: string;
   expiresAt?: Date;
   acceptedAt?: Date | null;
@@ -72,7 +71,6 @@ async function createInvitation(params: {
     firstName = 'Test',
     lastName = 'User',
     role = 'mechanic',
-    locationId = null,
     token,
     expiresAt = new Date(Date.now() + 7 * 86400000),
     acceptedAt = null,
@@ -81,21 +79,11 @@ async function createInvitation(params: {
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO invitations
        (id, tenant_id, invitation_type, target_email, first_name, last_name,
-        role, location_id, token_hash, expires_at, accepted_at, created_at)
+        role, token_hash, expires_at, accepted_at, created_at)
      VALUES (gen_random_uuid(), $1, 'internal_user'::"InvitationType", $2, $3, $4,
-        $5::"UserRole", $6, $7, $8, $9, NOW())
+        $5::"UserRole", $6, $7, $8, NOW())
      RETURNING id`,
-    [
-      tenantId,
-      targetEmail,
-      firstName,
-      lastName,
-      role,
-      locationId,
-      tokenHash,
-      expiresAt,
-      acceptedAt,
-    ],
+    [tenantId, targetEmail, firstName, lastName, role, tokenHash, expiresAt, acceptedAt],
   );
   return { invitationId: rows[0]!.id };
 }
@@ -106,7 +94,7 @@ describe('POST /v1/invitations/:token/accept — happy path', () => {
   const TEST_IP = '10.30.40.1';
 
   it('creates User row, consumes invitation, returns user (no cognitoSub), audit log', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('accept-ok');
+    const { tenantId } = await createTenantWithLocation('accept-ok');
 
     const { invitationId } = await createInvitation({
       tenantId,
@@ -114,7 +102,6 @@ describe('POST /v1/invitations/:token/accept — happy path', () => {
       firstName: 'Mario',
       lastName: 'Rossi',
       role: 'mechanic',
-      locationId,
       token: 'accept-tok-1',
     });
 
@@ -347,12 +334,11 @@ describe('POST /v1/invitations/:token/accept — email race 409', () => {
   const TEST_IP = '10.30.40.4';
 
   it('returns 409 email_already_active when an active User with same email already exists', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('accept-race');
+    const { tenantId } = await createTenantWithLocation('accept-race');
     await createInvitation({
       tenantId,
       targetEmail: 'race@x.com',
       role: 'mechanic',
-      locationId,
       token: 'race-tok',
     });
     // Pre-seed an active user with the same email (simulates race condition).

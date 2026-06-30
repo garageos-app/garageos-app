@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -7,7 +7,6 @@ import {
   createCustomerTenantRelation,
   createDispute,
   createIntervention,
-  createLocation,
   createTenantWithLocation,
   createUser,
   createVehicle,
@@ -40,8 +39,8 @@ describe('GET /v1/disputes/open (integration)', () => {
   });
 
   it('returns only disputes of the calling tenant (RLS isolation via intervention)', async () => {
-    const { tenantId: tA, locationId: lA } = await createTenantWithLocation('do-iso-A');
-    const { tenantId: tB, locationId: lB } = await createTenantWithLocation('do-iso-B');
+    const { tenantId: tA } = await createTenantWithLocation('do-iso-A');
+    const { tenantId: tB } = await createTenantWithLocation('do-iso-B');
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     const { userId: uA } = await createUser({ tenantId: tA, cognitoSub });
     const { userId: uB } = await createUser({
@@ -57,7 +56,6 @@ describe('GET /v1/disputes/open (integration)', () => {
     await createCustomerTenantRelation({ tenantId: tB, customerId: cB });
     const { interventionId: iA } = await createIntervention({
       tenantId: tA,
-      locationId: lA,
       userId: uA,
       vehicleId: vA,
       interventionTypeId: typeId,
@@ -67,7 +65,6 @@ describe('GET /v1/disputes/open (integration)', () => {
     });
     const { interventionId: iB } = await createIntervention({
       tenantId: tB,
-      locationId: lB,
       userId: uB,
       vehicleId: vB,
       interventionTypeId: typeId,
@@ -98,7 +95,7 @@ describe('GET /v1/disputes/open (integration)', () => {
   });
 
   it('classifies 5 dispute statuses correctly (open → pending; responded+escalated → inProgress; resolved+closed excluded)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('do-status');
+    const { tenantId } = await createTenantWithLocation('do-status');
     const cognitoSub = '33333333-3333-4333-8333-333333333333';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -109,7 +106,6 @@ describe('GET /v1/disputes/open (integration)', () => {
     async function mkIntervention(km: number) {
       const { interventionId } = await createIntervention({
         tenantId,
-        locationId,
         userId,
         vehicleId,
         interventionTypeId: typeId,
@@ -165,7 +161,7 @@ describe('GET /v1/disputes/open (integration)', () => {
   });
 
   it('falls back to "Cliente" when CustomerTenantRelation is missing (BR-151)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('do-pii');
+    const { tenantId } = await createTenantWithLocation('do-pii');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -178,7 +174,6 @@ describe('GET /v1/disputes/open (integration)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -207,7 +202,7 @@ describe('GET /v1/disputes/open (integration)', () => {
   });
 
   it('uses businessName when isBusiness=true and relation visible', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('do-biz');
+    const { tenantId } = await createTenantWithLocation('do-biz');
     const cognitoSub = '55555555-5555-4555-8555-555555555555';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -223,7 +218,6 @@ describe('GET /v1/disputes/open (integration)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: typeId,
@@ -255,7 +249,7 @@ describe('GET /v1/disputes/open (integration)', () => {
     // LIMIT_PER_GROUP=20 in src/routes/v1/disputes-open.ts; +2 to assert
     // truncation: count reflects full group while items[] caps at the limit.
     const TOTAL_DISPUTES = 22;
-    const { tenantId, locationId } = await createTenantWithLocation('do-limit');
+    const { tenantId } = await createTenantWithLocation('do-limit');
     const cognitoSub = '66666666-6666-4666-8666-666666666666';
     const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
@@ -266,7 +260,6 @@ describe('GET /v1/disputes/open (integration)', () => {
     for (let i = 0; i < TOTAL_DISPUTES; i++) {
       const { interventionId } = await createIntervention({
         tenantId,
-        locationId,
         userId,
         vehicleId,
         interventionTypeId: typeId,
@@ -305,7 +298,10 @@ describe('GET /v1/disputes/open (integration)', () => {
   });
 });
 
-describe('GET /v1/disputes/open — location filter (F-OFF-503)', () => {
+describe('GET /v1/disputes/open — BR-205 relaxed (sede unica)', () => {
+  // BR-205 is relaxed: mechanics now see all tenant disputes regardless
+  // of which location the underlying intervention was registered at.
+  // Tenant isolation is unchanged.
   const LOC_IP = '10.20.43.2';
   let app: FastifyInstance;
   beforeAll(async () => {
@@ -318,17 +314,19 @@ describe('GET /v1/disputes/open — location filter (F-OFF-503)', () => {
     await resetDb();
   });
 
-  async function seed() {
-    const { tenantId, locationId: locPrimary } = await createTenantWithLocation('do-loc');
-    const { locationId: locSecondary } = await createLocation({ tenantId });
+  it('mechanic sees all tenant disputes (BR-205 relaxed — sede unica)', async () => {
+    const { tenantId } = await createTenantWithLocation('do-all');
+    const cognitoSub = '30000000-0000-4000-8000-000000000001';
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
-    const { customerId } = await createCustomer({ email: 'do-loc@test.it' });
+    const { customerId } = await createCustomer({ email: 'do-all@test.it' });
     await createCustomerTenantRelation({ tenantId, customerId });
-    const mkDispute = async (locationId: string, userId: string, km: number) => {
+
+    // Create two disputes — both should be visible to the mechanic.
+    const mkDispute = async (km: number) => {
       const { interventionId } = await createIntervention({
         tenantId,
-        locationId,
         userId,
         vehicleId,
         interventionTypeId: typeId,
@@ -337,73 +335,24 @@ describe('GET /v1/disputes/open — location filter (F-OFF-503)', () => {
         title: `int-${km}`,
       });
       await createDispute({ interventionId, customerId, status: 'open' });
-      return interventionId;
     };
-    return { tenantId, locPrimary, locSecondary, mkDispute, customerId };
-  }
-
-  it('mechanic sees only own-location disputes (BR-205); param ignored', async () => {
-    const { tenantId, locPrimary, locSecondary, mkDispute } = await seed();
-    const cognitoSub = '30000000-0000-4000-8000-000000000001';
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId: locPrimary });
-    const iPrimary = await mkDispute(locPrimary, userId, 10000);
-    await mkDispute(locSecondary, userId, 10001);
+    await mkDispute(10000);
+    await mkDispute(10001);
 
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId: locPrimary,
     });
     const res = await app.inject({
-      method: 'GET',
-      url: `/v1/disputes/open?location_id=${locSecondary}`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
-    });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as {
-      pendingResponse: { count: number; items: Array<{ interventionId: string }> };
-    };
-    expect(body.pendingResponse.count).toBe(1);
-    expect(body.pendingResponse.items.map((i) => i.interventionId)).toEqual([iPrimary]);
-  });
-
-  it('super_admin: all sedi without param, narrows with param', async () => {
-    const { tenantId, locPrimary, locSecondary, mkDispute } = await seed();
-    const adminSub = '30000000-0000-4000-8000-000000000002';
-    await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
-    const { userId: mech } = await createUser({
-      tenantId,
-      cognitoSub: '30000000-0000-4000-8000-00000000000a',
-      locationId: locPrimary,
-    });
-    await mkDispute(locPrimary, mech, 10000);
-    const iSecondary = await mkDispute(locSecondary, mech, 10001);
-
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: adminSub,
-      tenantId,
-      role: 'super_admin',
-    });
-
-    const resAll = await app.inject({
       method: 'GET',
       url: '/v1/disputes/open',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
     });
-    expect((resAll.json() as { pendingResponse: { count: number } }).pendingResponse.count).toBe(2);
-
-    const resNarrow = await app.inject({
-      method: 'GET',
-      url: `/v1/disputes/open?location_id=${locSecondary}`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
-    });
-    const narrow = resNarrow.json() as {
-      pendingResponse: { count: number; items: Array<{ interventionId: string }> };
-    };
-    expect(narrow.pendingResponse.count).toBe(1);
-    expect(narrow.pendingResponse.items.map((i) => i.interventionId)).toEqual([iSecondary]);
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { pendingResponse: { count: number; items: unknown[] } };
+    expect(body.pendingResponse.count).toBe(2);
+    expect(body.pendingResponse.items).toHaveLength(2);
   });
 });

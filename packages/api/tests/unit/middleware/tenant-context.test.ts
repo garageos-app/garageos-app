@@ -11,7 +11,6 @@ import { registerErrorHandler } from '../../../src/plugins/error-handler.js';
 // `z.uuid()` accepts them. Matches the convention in
 // packages/api/tests/integration/helpers.ts.
 const TENANT_ID = '00000000-0000-4000-8000-00000000000a';
-const LOCATION_ID = '00000000-0000-4000-8000-00000000000c';
 const COGNITO_SUB = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 
 type JwtStub = Partial<CognitoIdTokenPayload> | undefined;
@@ -45,7 +44,6 @@ async function buildApp(jwt: JwtStub): Promise<FastifyInstance> {
       tenantId: request.tenantId,
       userId: request.userId,
       userRole: request.userRole,
-      locationId: request.locationId ?? null,
     }),
   );
   return app;
@@ -78,24 +76,6 @@ describe('tenantContext middleware (JWT-backed)', () => {
       tenantId: TENANT_ID,
       userId: COGNITO_SUB,
       userRole: 'mechanic',
-      locationId: null,
-    });
-  });
-
-  it('populates locationId when custom:location_id is present', async () => {
-    app = await buildApp({
-      sub: COGNITO_SUB,
-      'custom:tenant_id': TENANT_ID,
-      'custom:role': 'super_admin',
-      'custom:location_id': LOCATION_ID,
-    });
-
-    const res = await app.inject({ method: 'GET', url: '/_probe' });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({
-      locationId: LOCATION_ID,
-      userRole: 'super_admin',
     });
   });
 
@@ -108,7 +88,7 @@ describe('tenantContext middleware (JWT-backed)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/_probe' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ userRole: 'super_admin', locationId: null });
+    expect(res.json()).toMatchObject({ userRole: 'super_admin' });
   });
 
   it('returns 401 Problem Details when request.jwt is missing', async () => {
@@ -163,39 +143,12 @@ describe('tenantContext middleware (JWT-backed)', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('returns 401 when custom:location_id is present but not a UUID', async () => {
-    app = await buildApp({
-      sub: COGNITO_SUB,
-      'custom:tenant_id': TENANT_ID,
-      'custom:role': 'super_admin',
-      'custom:location_id': 'not-a-uuid',
-    });
-    const res = await app.inject({ method: 'GET', url: '/_probe' });
-    expect(res.statusCode).toBe(401);
-  });
-
   it('does not interfere with routes that do not register it', async () => {
     app = await buildApp(undefined);
     app.get('/_public', async () => ({ ok: true }));
     const res = await app.inject({ method: 'GET', url: '/_public' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
-  });
-
-  it('treats custom:location_id empty string as absent (F-OFF-004 clear)', async () => {
-    // updateOfficineUserRoleAndLocation sets custom:location_id='' to
-    // "clear" the attribute (Cognito does not support unsetting attrs).
-    // The middleware must accept '' and leave request.locationId undefined.
-    app = await buildApp({
-      sub: COGNITO_SUB,
-      'custom:tenant_id': TENANT_ID,
-      'custom:role': 'super_admin',
-      'custom:location_id': '',
-    });
-
-    const res = await app.inject({ method: 'GET', url: '/_probe' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ userRole: 'super_admin', locationId: null });
   });
 
   describe('user status lookup (F-OFF-004 follow-ups Item 1)', () => {

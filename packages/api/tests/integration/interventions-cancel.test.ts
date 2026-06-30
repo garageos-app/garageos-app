@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { mockClient } from 'aws-sdk-client-mock';
@@ -52,19 +52,17 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('200 happy path: super_admin cancels an active intervention with no disputes', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -78,7 +76,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -125,19 +122,17 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('403 permission_denied: mechanic role cannot cancel', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'mechanic',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -150,7 +145,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
 
     const res = await app.inject({
@@ -173,19 +167,17 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('400 reason_too_short: rejects 19-char reason', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -198,7 +190,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -214,19 +205,17 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('409 already_cancelled: re-cancel returns conflict', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -240,7 +229,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -256,16 +244,15 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('404 unknown intervention id', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, role: 'super_admin', locationId });
+    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
 
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -286,13 +273,11 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       tenantId: a.tenantId,
       cognitoSub: aSub,
       role: 'super_admin',
-      locationId: a.locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     const { interventionId } = await createIntervention({
       tenantId: a.tenantId,
-      locationId: a.locationId,
       userId: aUserId,
       vehicleId,
       interventionTypeId: type.id,
@@ -307,14 +292,12 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       tenantId: b.tenantId,
       cognitoSub: bSub,
       role: 'super_admin',
-      locationId: b.locationId,
     });
     const token = await signTestToken({
       pool: 'officine',
       sub: bSub,
       tenantId: b.tenantId,
       role: 'super_admin',
-      locationId: b.locationId,
     });
 
     const res = await app.inject({
@@ -335,13 +318,12 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('200 BR-130: cancel of a disputed intervention flips a single open dispute to resolved_by_cancellation', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -349,7 +331,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
     await createOwnership({ vehicleId, customerId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -368,7 +349,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -399,13 +379,12 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('200 BR-130: flips multiple active disputes (open + responded), leaves already-resolved untouched', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -415,7 +394,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
     await createOwnership({ vehicleId, customerId: c1 });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -446,7 +424,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -473,13 +450,12 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('200 BR-130: cancel scoped to interventionId — unrelated intervention disputes untouched', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -487,7 +463,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
     await createOwnership({ vehicleId, customerId });
     const { interventionId: targetId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -496,7 +471,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
     });
     const { interventionId: noiseId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -511,7 +485,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -536,19 +509,17 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('BR-154 access_log: writes a row with action=cancel on success', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -561,7 +532,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -587,19 +557,17 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
     // a subsequent GET /vehicles/:id by the same user should NOT add a
     // 'view' row because dedup is keyed on (vehicleId, userId), not on
     // (vehicleId, userId, action).
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -612,7 +580,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const cancelRes = await app.inject({
@@ -640,18 +607,16 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('401 unauthenticated: missing Bearer is rejected', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const { userId } = await createUser({
       tenantId,
       cognitoSub: `office-${randomUUID().slice(0, 8)}`,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -668,19 +633,17 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('403 clienti-pool token is rejected by requireOfficinaPool', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -707,19 +670,17 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('400 validation.error: missing reason field', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -731,7 +692,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -744,19 +704,17 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
   });
 
   it('400 validation.error: extra field rejected by .strict()', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
       role: 'super_admin',
-      locationId,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -768,7 +726,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       sub: cognitoSub,
       tenantId,
       role: 'super_admin',
-      locationId,
     });
 
     const res = await app.inject({
@@ -784,13 +741,12 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
     async function setupCancellableScenario(
       opts: { customerPrefs?: object } = {},
     ): Promise<{ token: string; interventionId: string }> {
-      const { tenantId, locationId } = await createTenantWithLocation();
+      const { tenantId } = await createTenantWithLocation();
       const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
       const { userId } = await createUser({
         tenantId,
         cognitoSub,
         role: 'super_admin',
-        locationId,
       });
       const type = await ensureSystemInterventionType('TAGLIANDO');
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
@@ -804,7 +760,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
 
       const { interventionId } = await createIntervention({
         tenantId,
-        locationId,
         userId,
         vehicleId,
         interventionTypeId: type.id,
@@ -818,7 +773,6 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
         sub: cognitoSub,
         tenantId,
         role: 'super_admin',
-        locationId,
       });
 
       return { token, interventionId };

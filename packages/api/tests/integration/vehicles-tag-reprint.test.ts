@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock getOrCreateTagPresignedUrl at module level so no real S3 or PDF
@@ -59,16 +59,16 @@ describe('POST /v1/vehicles/:id/tag-reprint (integration)', () => {
   // Helper: set up a caller (tenant + user + signed token).
   // -----------------------------------------------------------------------
   async function setupCaller(suffix: string, role: 'mechanic' | 'super_admin' = 'mechanic') {
-    const { tenantId, locationId } = await createTenantWithLocation(suffix);
+    const { tenantId } = await createTenantWithLocation(suffix);
     const cognitoSub = `reprint-caller-${suffix.slice(0, 18)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId, role });
+    const { userId } = await createUser({ tenantId, cognitoSub, role });
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role,
     });
-    return { tenantId, locationId, userId, token, cognitoSub };
+    return { tenantId, userId, token, cognitoSub };
   }
 
   // -----------------------------------------------------------------------

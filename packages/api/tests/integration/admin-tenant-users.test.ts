@@ -7,7 +7,6 @@
 //
 // Business rules tested:
 //   BR-203 — last super_admin guard (role + status paths, cross-tenant)
-//   BR-204 — mechanic location required (with primary-location defaulting)
 //
 // Cognito stubbed with aws-sdk-client-mock + _resetCognitoClientForTests()
 // to avoid hitting AWS. Follows the same pattern as users-admin-update.test.ts.
@@ -27,7 +26,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { _resetCognitoClientForTests } from '../../src/lib/cognito.js';
 import { buildTestServer } from './fixtures.js';
-import { createTenantWithLocation, createUser, createLocation, resetDb } from './helpers.js';
+import { createTenantWithLocation, createUser, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
@@ -120,15 +119,13 @@ describe('PATCH cross-tenant scoping — SECURITY CORE', () => {
 
   it('returns user.not_found 404 when userId belongs to a different tenant', async () => {
     // Tenant A: has mechanic user targetted by the malicious request.
-    const { tenantId: tenantAId, locationId: locAId } =
-      await createTenantWithLocation('atu-xt-tenantA');
+    const { tenantId: tenantAId } = await createTenantWithLocation('atu-xt-tenantA');
     const { userId: userOfAId } = await createUser({
       tenantId: tenantAId,
       cognitoSub: `sa-atu-xtA-${crypto.randomUUID()}`,
       email: 'user-xt-a@test.it',
       role: 'super_admin',
     });
-    void locAId; // created for FK integrity; userId belongs to tenantA
 
     // Tenant B: the platform-admin issues a PATCH scoped to tenant B but
     // supplies userOfA's id — cross-tenant probe.
@@ -162,7 +159,7 @@ describe('PATCH cross-tenant scoping — SECURITY CORE', () => {
 describe('GET /v1/admin/tenants/:id/users — scoping + happy path', () => {
   it('returns only the path tenant users (excludes other tenants)', async () => {
     // Tenant A: 2 users; Tenant B: 1 user. GET A must return exactly 2.
-    const { tenantId: tenantAId, locationId: locAId } = await createTenantWithLocation('atu-get-A');
+    const { tenantId: tenantAId } = await createTenantWithLocation('atu-get-A');
     await createUser({
       tenantId: tenantAId,
       cognitoSub: `sa-atu-get-A1-${crypto.randomUUID()}`,
@@ -174,7 +171,6 @@ describe('GET /v1/admin/tenants/:id/users — scoping + happy path', () => {
       cognitoSub: `sa-atu-get-A2-${crypto.randomUUID()}`,
       email: 'a2@test.it',
       role: 'mechanic',
-      locationId: locAId,
     });
 
     const { tenantId: tenantBId } = await createTenantWithLocation('atu-get-B');
@@ -244,6 +240,7 @@ describe('PATCH /v1/admin/tenants/:id/users/:userId — not-found paths', () => 
 
   it('returns user.not_found 404 for an unknown userId (valid tenant)', async () => {
     const { tenantId } = await createTenantWithLocation('atu-patch-user-nf');
+
     const token = await signTestToken({ pool: 'platform-admins' });
     const res = await app.inject({
       method: 'PATCH',
@@ -286,7 +283,7 @@ describe('PATCH — BR-203 last super_admin guard (cross-tenant)', () => {
   });
 
   it('returns 409 user.last_super_admin on {role:mechanic} when only one admin exists', async () => {
-    // BR-204 defaulting kicks in (primary location is injected), then BR-203 fires.
+    // BR-203 fires when role is demoted and only one super_admin remains.
     const { tenantId } = await createTenantWithLocation('atu-br203-role');
     const { userId: adminId } = await createUser({
       tenantId,
@@ -297,7 +294,6 @@ describe('PATCH — BR-203 last super_admin guard (cross-tenant)', () => {
 
     const token = await signTestToken({ pool: 'platform-admins' });
 
-    // No locationId in body — defaulting injects primary. BR-203 then fires.
     const res = await app.inject({
       method: 'PATCH',
       url: `/v1/admin/tenants/${tenantId}/users/${adminId}`,
@@ -328,7 +324,7 @@ describe('PATCH — BR-203 last super_admin guard (cross-tenant)', () => {
 
     const token = await signTestToken({ pool: 'platform-admins' });
 
-    // Demote adminA to mechanic; defaulting injects primary location.
+    // Demote adminA to mechanic; BR-203 is satisfied because adminB is still active.
     const res = await app.inject({
       method: 'PATCH',
       url: `/v1/admin/tenants/${tenantId}/users/${adminAId}`,
@@ -343,108 +339,18 @@ describe('PATCH — BR-203 last super_admin guard (cross-tenant)', () => {
   });
 });
 
-// ─── 7. BR-204 cross-tenant — primary-location defaulting ────────────────────
-
-describe('PATCH — BR-204 primary-location defaulting (cross-tenant)', () => {
-  const TEST_IP = '10.30.40.40';
-
-  it('injects primary location when demoting super_admin to mechanic with no locationId', async () => {
-    // Two super_admins: adminA (target) + adminB (keeps BR-203 satisfied).
-    const { tenantId, locationId: primaryLocationId } =
-      await createTenantWithLocation('atu-br204-def');
-    const { userId: adminAId } = await createUser({
-      tenantId,
-      cognitoSub: `sa-atu-br204a-${crypto.randomUUID()}`,
-      email: 'admin-br204a@test.it',
-      role: 'super_admin',
-    });
-    await createUser({
-      tenantId,
-      cognitoSub: `sa-atu-br204b-${crypto.randomUUID()}`,
-      email: 'admin-br204b@test.it',
-      role: 'super_admin',
-    });
-
-    const adminSub = `plat-atu-br204-${crypto.randomUUID()}`;
-    const token = await signTestToken({ pool: 'platform-admins', sub: adminSub });
-
-    // body has role=mechanic and no locationId — defaulting should inject primaryLocationId.
-    const res = await app.inject({
-      method: 'PATCH',
-      url: `/v1/admin/tenants/${tenantId}/users/${adminAId}`,
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      remoteAddress: TEST_IP,
-      payload: JSON.stringify({ role: 'mechanic' }),
-    });
-
-    expect(res.statusCode).toBe(200);
-    type UserDto = { role: string; locationId: string | null };
-    const body = res.json() as { user: UserDto };
-    expect(body.user.role).toBe('mechanic');
-    // locationId must equal the primary location resolved by the route handler.
-    expect(body.user.locationId).toBe(primaryLocationId);
-  });
-
-  it('does NOT relocate a mechanic already at a secondary location when role is re-sent without locationId', async () => {
-    // Regression: the old route-level defaulting fired whenever body had
-    // role:'mechanic' and no locationId — regardless of the user's current
-    // location. This test proves the fix: effective-location gating in
-    // updateOfficineUser prevents silent relocation.
-    const { tenantId, locationId: primaryLocationId } =
-      await createTenantWithLocation('atu-br204-norelo');
-    const { locationId: secondaryLocationId } = await createLocation({
-      tenantId,
-      name: 'Sede Secondaria',
-    });
-
-    await createUser({
-      tenantId,
-      cognitoSub: `sa-atu-br204-norelo-${crypto.randomUUID()}`,
-      email: 'admin-br204-norelo@test.it',
-      role: 'super_admin',
-    });
-    const { userId: mechId } = await createUser({
-      tenantId,
-      cognitoSub: `mech-atu-br204-norelo-${crypto.randomUUID()}`,
-      email: 'mech-br204-norelo@test.it',
-      role: 'mechanic',
-      locationId: secondaryLocationId,
-    });
-    void primaryLocationId; // ensure primary exists so defaulting could fire if buggy
-
-    const token = await signTestToken({ pool: 'platform-admins' });
-
-    // body { role: 'mechanic' } with no locationId — must NOT relocate to primary.
-    const res = await app.inject({
-      method: 'PATCH',
-      url: `/v1/admin/tenants/${tenantId}/users/${mechId}`,
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      remoteAddress: TEST_IP,
-      payload: JSON.stringify({ role: 'mechanic' }),
-    });
-
-    expect(res.statusCode).toBe(200);
-    type UserDto2 = { role: string; locationId: string | null };
-    const body2 = res.json() as { user: UserDto2 };
-    expect(body2.user.role).toBe('mechanic');
-    // Must remain at the secondary location — NOT relocated to the primary.
-    expect(body2.user.locationId).toBe(secondaryLocationId);
-  });
-});
-
-// ─── 8. Disable + reactivate lifecycle ────────────────────────────────────────
+// ─── 7. Disable + reactivate lifecycle ────────────────────────────────────────
 
 describe('PATCH — disable then reactivate lifecycle (cross-tenant)', () => {
   const TEST_IP = '10.30.40.50';
 
   it('sets status=inactive then back to active, returning correct status each time', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('atu-lifecycle');
+    const { tenantId } = await createTenantWithLocation('atu-lifecycle');
     const { userId: mechId } = await createUser({
       tenantId,
       cognitoSub: `mech-atu-lc-${crypto.randomUUID()}`,
       email: 'mech-atu-lc@test.it',
       role: 'mechanic',
-      locationId,
     });
     // Need a super_admin so BR-203 is not triggered for the mechanic (not relevant
     // here, but having one avoids confusion).
@@ -501,13 +407,12 @@ describe('PATCH — audit rows with actorType:system and actorCognitoSub', () =>
   const TEST_IP = '10.30.40.60';
 
   it('writes audit row with actorType=system and metadata.actorCognitoSub from JWT', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('atu-audit');
+    const { tenantId } = await createTenantWithLocation('atu-audit');
     const { userId: mechId } = await createUser({
       tenantId,
       cognitoSub: `mech-atu-audit-${crypto.randomUUID()}`,
       email: 'mech-atu-audit@test.it',
       role: 'mechanic',
-      locationId,
     });
     await createUser({
       tenantId,

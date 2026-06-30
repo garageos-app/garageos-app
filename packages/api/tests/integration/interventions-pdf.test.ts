@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock generateInterventionPdfPresignedUrl at module level so no real S3 or
@@ -83,16 +83,16 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
   // Helper: create a tenant + location + mechanic user + signed token.
   // -----------------------------------------------------------------------
   async function setupCaller(suffix: string) {
-    const { tenantId, locationId } = await createTenantWithLocation(suffix);
+    const { tenantId } = await createTenantWithLocation(suffix);
     const cognitoSub = `pdf-caller-${suffix.slice(0, 18)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
     });
-    return { tenantId, locationId, userId, token };
+    return { tenantId, userId, token };
   }
 
   // -----------------------------------------------------------------------
@@ -100,7 +100,6 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
   // -----------------------------------------------------------------------
   async function setupIntervention(args: {
     tenantId: string;
-    locationId: string;
     userId: string;
     status?: 'active' | 'disputed' | 'cancelled';
   }) {
@@ -108,7 +107,6 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: args.tenantId });
     const { interventionId } = await createIntervention({
       tenantId: args.tenantId,
-      locationId: args.locationId,
       userId: args.userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -129,7 +127,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
   // called once with the correct tenantId + interventionId.
   // -----------------------------------------------------------------------
   it('200 — owner with CustomerTenantRelation: PII visible, returns pdf_download_url, S3 called once', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('pdf-owner-vis');
+    const { tenantId, userId, token } = await setupCaller('pdf-owner-vis');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { customerId } = await createCustomer({ firstName: 'Mario', lastName: 'Rossi' });
     // BR-040: active owner = endedAt null.
@@ -140,7 +138,6 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -186,10 +183,9 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
   // Assert: 404 code=intervention.not_found; S3 NOT called.
   // -----------------------------------------------------------------------
   it('404 — cross-tenant: intervention.not_found, S3 not called', async () => {
-    const { tenantId: tenantA, locationId: locA, userId: userA } = await setupCaller('pdf-xtA');
+    const { tenantId: tenantA, userId: userA } = await setupCaller('pdf-xtA');
     const { interventionId } = await setupIntervention({
       tenantId: tenantA,
-      locationId: locA,
       userId: userA,
     });
 
@@ -218,7 +214,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
   // value is the DB path completing without error.)
   // -----------------------------------------------------------------------
   it('200 — owner without CustomerTenantRelation: BR-151 placeholder, still generates PDF', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('pdf-no-rel');
+    const { tenantId, userId, token } = await setupCaller('pdf-no-rel');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { customerId } = await createCustomer({});
     // Active ownership exists (BR-040).
@@ -228,7 +224,6 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -260,10 +255,9 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
   // Assert: 200; S3 called once.
   // -----------------------------------------------------------------------
   it('200 — cancelled intervention: PDF still exportable, S3 called once', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('pdf-cancel');
+    const { tenantId, userId, token } = await setupCaller('pdf-cancel');
     const { interventionId } = await setupIntervention({
       tenantId,
-      locationId,
       userId,
       status: 'cancelled',
     });
@@ -285,7 +279,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
   // Assert: 200; S3 called once.
   // -----------------------------------------------------------------------
   it('200 — no active ownership (endedAt set): customerName null, still generates PDF', async () => {
-    const { tenantId, locationId, userId, token } = await setupCaller('pdf-no-own');
+    const { tenantId, userId, token } = await setupCaller('pdf-no-own');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { customerId } = await createCustomer({});
     // Ownership row exists but has endedAt set → not active by BR-040.
@@ -298,7 +292,6 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -341,14 +334,9 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
       baseTenantId,
     ]);
 
-    // Create location, user, vehicle, intervention under this patched tenant.
-    const { rows: locRows } = await pgAdmin.query<{ id: string }>(
-      `SELECT id FROM locations WHERE tenant_id = $1 LIMIT 1`,
-      [baseTenantId],
-    );
-    const locationId = locRows[0]!.id;
+    // Create user, vehicle, intervention under this patched tenant.
     const cognitoSub = 'pdf-logo-miss-sub';
-    const { userId } = await createUser({ tenantId: baseTenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId: baseTenantId, cognitoSub });
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
@@ -360,7 +348,6 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { interventionId } = await createIntervention({
       tenantId: baseTenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,

@@ -1,5 +1,4 @@
 export { TenantFactory, suspendedTenant } from './tenant.factory.js';
-export { LocationFactory, secondaryLocation } from './location.factory.js';
 export { UserFactory, mechanicUser, invitedUser } from './user.factory.js';
 export { CustomerFactory, businessCustomer, activeCustomer } from './customer.factory.js';
 export {

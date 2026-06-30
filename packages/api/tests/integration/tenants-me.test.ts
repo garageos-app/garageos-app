@@ -71,16 +71,15 @@ describe('GET /v1/tenants/me (integration)', () => {
   });
 
   it('does not expose settings, logoUrl, or deletedAt', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('tenants-me-shape');
+    const { tenantId } = await createTenantWithLocation('tenants-me-shape');
     const sub = `mech-shape-${crypto.randomUUID()}`;
-    await createUser({ tenantId, cognitoSub: sub, role: 'mechanic', locationId });
+    await createUser({ tenantId, cognitoSub: sub, role: 'mechanic' });
 
     const token = await signTestToken({
       pool: 'officine',
       sub,
       tenantId,
       role: 'mechanic',
-      locationId,
     });
     const res = await app.inject({
       method: 'GET',

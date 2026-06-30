@@ -60,7 +60,6 @@ const revisionSelect = {
   intervention: {
     select: {
       tenant: { select: { businessName: true } },
-      location: { select: { city: true } },
     },
   },
 } as const;
@@ -182,7 +181,6 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
             ...base,
             tenant: {
               business_name: row.intervention.tenant.businessName,
-              location_city: row.intervention.location.city,
             },
           };
         });

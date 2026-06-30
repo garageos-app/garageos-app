@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -32,9 +32,9 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('404 when intervention id does not exist', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-404');
+    const { tenantId } = await createTenantWithLocation('rev-404');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
 
     const token = await signTestToken({
       pool: 'officine',
@@ -61,9 +61,9 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('400 when id is not a UUID', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-400');
+    const { tenantId } = await createTenantWithLocation('rev-400');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId, cognitoSub, locationId });
+    await createUser({ tenantId, cognitoSub });
 
     const token = await signTestToken({
       pool: 'officine',
@@ -81,12 +81,11 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 officina happy path: 3 revisions with full user shape, descending order', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-off-happy');
+    const { tenantId } = await createTenantWithLocation('rev-off-happy');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
-      locationId,
       firstName: 'Mario',
       lastName: 'Rossi',
     });
@@ -94,7 +93,6 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -160,15 +158,14 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 officina cross-tenant: REDACTED — internalNotes stripped, operator identity hidden (BR-153/BR-151)', async () => {
-    const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('rev-off-A');
-    const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('rev-off-B');
+    const { tenantId: tenantA } = await createTenantWithLocation('rev-off-A');
+    const { tenantId: tenantB } = await createTenantWithLocation('rev-off-B');
     const subA = `office-${randomUUID().slice(0, 8)}`;
     const subB = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId: tenantA, cognitoSub: subA, locationId: locA });
+    await createUser({ tenantId: tenantA, cognitoSub: subA });
     const { userId: userB } = await createUser({
       tenantId: tenantB,
       cognitoSub: subB,
-      locationId: locB,
       firstName: 'Bruno',
       lastName: 'Bianchi',
     });
@@ -176,7 +173,6 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantB });
     const { interventionId } = await createIntervention({
       tenantId: tenantB,
-      locationId: locB,
       userId: userB,
       vehicleId,
       interventionTypeId: type.id,
@@ -227,21 +223,19 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 officina cross-tenant: revision with ONLY internalNotes is dropped (BR-153)', async () => {
-    const { tenantId: tenantA, locationId: locA } = await createTenantWithLocation('rev-offx-A');
-    const { tenantId: tenantB, locationId: locB } = await createTenantWithLocation('rev-offx-B');
+    const { tenantId: tenantA } = await createTenantWithLocation('rev-offx-A');
+    const { tenantId: tenantB } = await createTenantWithLocation('rev-offx-B');
     const subA = `office-${randomUUID().slice(0, 8)}`;
     const subB = `office-${randomUUID().slice(0, 8)}`;
-    await createUser({ tenantId: tenantA, cognitoSub: subA, locationId: locA });
+    await createUser({ tenantId: tenantA, cognitoSub: subA });
     const { userId: userB } = await createUser({
       tenantId: tenantB,
       cognitoSub: subB,
-      locationId: locB,
     });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantB });
     const { interventionId } = await createIntervention({
       tenantId: tenantB,
-      locationId: locB,
       userId: userB,
       vehicleId,
       interventionTypeId: type.id,
@@ -283,12 +277,11 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 officina OWNER: full audit trail with user identity (not redacted)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-owner-full');
+    const { tenantId } = await createTenantWithLocation('rev-owner-full');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
-      locationId,
       firstName: 'Mario',
       lastName: 'Rossi',
     });
@@ -296,7 +289,6 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -336,14 +328,13 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 officina with no revisions: empty data array', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-off-empty');
+    const { tenantId } = await createTenantWithLocation('rev-off-empty');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -369,12 +360,11 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 cliente owner happy path: tenant shape, no user', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-happy');
+    const { tenantId } = await createTenantWithLocation('rev-cli-happy');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({
       tenantId,
       cognitoSub,
-      locationId,
       firstName: 'Mario',
       lastName: 'Rossi',
     });
@@ -387,7 +377,6 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -418,21 +407,21 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       data: Array<{
         reason: string | null;
         changes: Record<string, unknown>;
-        tenant?: { business_name: string; location_city: string };
+        tenant?: { business_name: string };
         user?: unknown;
       }>;
     };
     expect(body.data).toHaveLength(1);
     expect(body.data[0]!.reason).toBe('visible to customer');
     expect(body.data[0]!.tenant?.business_name).toContain('Test Tenant');
-    expect(body.data[0]!.tenant?.location_city).toBe('Milano');
+    // sede-unica: location_city no longer in the tenant shape on revisions.
     expect(body.data[0]!.user).toBeUndefined();
   });
 
   it('403 cliente non-owner: never had any ownership on this vehicle', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-403');
+    const { tenantId } = await createTenantWithLocation('rev-cli-403');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -444,7 +433,6 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -475,9 +463,9 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('403 cliente past-owner: ownership ended_at is set', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-past');
+    const { tenantId } = await createTenantWithLocation('rev-cli-past');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -490,7 +478,6 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -519,9 +506,9 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 cliente: revision with mixed changes → internalNotes stripped from response', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-strip');
+    const { tenantId } = await createTenantWithLocation('rev-cli-strip');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -531,7 +518,6 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -569,9 +555,9 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 cliente: revision with only internalNotes → row dropped from data', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-drop');
+    const { tenantId } = await createTenantWithLocation('rev-cli-drop');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -581,7 +567,6 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -620,9 +605,9 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 cliente: shrunk page can be smaller than limit, has_more reflects DB fetch', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-cli-shrink');
+    const { tenantId } = await createTenantWithLocation('rev-cli-shrink');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -632,7 +617,6 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
 
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -672,14 +656,13 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 cancelled intervention: revisions still visible (BR-066 audit)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-cancelled');
+    const { tenantId } = await createTenantWithLocation('rev-cancelled');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -711,14 +694,13 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 disputed intervention: revisions still visible', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-disputed');
+    const { tenantId } = await createTenantWithLocation('rev-disputed');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -750,14 +732,13 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 bogus cursor: returns first page tolerantly', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-bogus-cur');
+    const { tenantId } = await createTenantWithLocation('rev-bogus-cur');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,
@@ -788,14 +769,13 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
   });
 
   it('200 cursor pagination: 8 revisions with limit=3 traverses 3 pages correctly', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('rev-pagi');
+    const { tenantId } = await createTenantWithLocation('rev-pagi');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
-    const { userId } = await createUser({ tenantId, cognitoSub, locationId });
+    const { userId } = await createUser({ tenantId, cognitoSub });
     const type = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId: type.id,

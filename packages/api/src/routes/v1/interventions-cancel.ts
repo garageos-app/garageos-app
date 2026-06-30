@@ -41,7 +41,7 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
         // (cognitoSub, tenantId) lookup post-0004 — see users.ts header.
         const user = await tx.user.findFirstOrThrow({
           where: { cognitoSub, tenantId },
-          select: { id: true, role: true, locationId: true },
+          select: { id: true, role: true },
         });
 
         // Cross-tenant masked by interventions_update RLS (USING +
@@ -121,7 +121,6 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
           vehicleId: existing.vehicleId,
           tenantId,
           userId: user.id,
-          ...(user.locationId ? { locationId: user.locationId } : {}),
           action: 'cancel',
           ipAddress: request.ip,
           log: request.log,
@@ -148,7 +147,6 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
           select: {
             id: true,
             tenantId: true,
-            locationId: true,
             userId: true,
             vehicleId: true,
             interventionTypeId: true,

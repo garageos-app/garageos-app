@@ -32,7 +32,6 @@ const TABLES_TO_WIPE = [
   'invitations',
   'push_tokens',
   'users',
-  'locations',
   'tenants',
 ];
 
@@ -41,57 +40,27 @@ export async function resetDb(): Promise<void> {
   await pgAdmin.query(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
 }
 
-export async function createTenantWithLocation(
+// sede-unica: location concept removed (Task 1 dropped the Location table).
+// Renamed from createTenantWithLocation (Task 5 cleanup).
+export async function createTenant(
   suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-): Promise<{ tenantId: string; locationId: string }> {
-  return pgAdmin.tx(async (client) => {
-    const { rows: tenantRows } = await client.query<{ id: string }>(
-      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
-       RETURNING id`,
-      [`Test Tenant ${suffix}`, `${Math.floor(Math.random() * 1e11)}`, `t-${suffix}@test.it`],
-    );
-    const tenantId = tenantRows[0]!.id;
-    const { rows: locationRows } = await client.query<{ id: string }>(
-      `INSERT INTO locations
-         (id, tenant_id, name, address_line, city, province, postal_code,
-          country, is_primary, status, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), $1, 'Sede', 'Via Test 1', 'Milano', 'MI',
-          '20100', 'IT', true, 'active'::"LocationStatus", NOW(), NOW())
-       RETURNING id`,
-      [tenantId],
-    );
-    return { tenantId, locationId: locationRows[0]!.id };
-  });
+): Promise<{ tenantId: string }> {
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
+     RETURNING id`,
+    [`Test Tenant ${suffix}`, `${Math.floor(Math.random() * 1e11)}`, `t-${suffix}@test.it`],
+  );
+  return { tenantId: rows[0]!.id };
 }
 
-// Insert an additional (secondary) location into an existing tenant.
-// Superuser insert (bypasses RLS) — mirrors createTenantWithLocation.
-// Defaults to a non-primary active location so BR-201's partial unique
-// index (one primary per tenant) is never violated.
-export async function createLocation(params: {
-  tenantId: string;
-  name?: string;
-  isPrimary?: boolean;
-}): Promise<{ locationId: string }> {
-  const { tenantId, name = 'Sede Secondaria', isPrimary = false } = params;
-  const { rows } = await pgAdmin.query<{ id: string }>(
-    `INSERT INTO locations
-       (id, tenant_id, name, address_line, city, province, postal_code,
-        country, is_primary, status, created_at, updated_at)
-     VALUES
-       (gen_random_uuid(), $1, $2, 'Via Test 2', 'Roma', 'RM',
-        '00100', 'IT', $3, 'active'::"LocationStatus", NOW(), NOW())
-     RETURNING id`,
-    [tenantId, name, isPrimary],
-  );
-  return { locationId: rows[0]!.id };
-}
+/** @deprecated Use createTenant instead */
+export const createTenantWithLocation = createTenant;
 
 // Insert a users row via pgAdmin (superuser — bypasses RLS) for
 // integration-test fixtures. The HTTP call under test goes through
 // app_test (non-superuser) so RLS still runs at query time.
+// sede-unica: locationId removed — the users table has no location_id column.
 export async function createUser(params: {
   tenantId: string;
   cognitoSub: string;
@@ -99,7 +68,6 @@ export async function createUser(params: {
   firstName?: string;
   lastName?: string;
   role?: 'super_admin' | 'mechanic';
-  locationId?: string | null;
 }): Promise<{ userId: string }> {
   const {
     tenantId,
@@ -108,16 +76,15 @@ export async function createUser(params: {
     firstName = 'Test',
     lastName = 'User',
     role = 'mechanic',
-    locationId = null,
   } = params;
 
   const { rows } = await pgAdmin.query<{ id: string }>(
-    `INSERT INTO users (id, tenant_id, location_id, cognito_sub, email, first_name,
+    `INSERT INTO users (id, tenant_id, cognito_sub, email, first_name,
        last_name, role, status, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::"UserRole",
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::"UserRole",
        'active'::"UserStatus", NOW(), NOW())
      RETURNING id`,
-    [tenantId, locationId, cognitoSub, email, firstName, lastName, role],
+    [tenantId, cognitoSub, email, firstName, lastName, role],
   );
   return { userId: rows[0]!.id };
 }
@@ -448,7 +415,6 @@ export async function createCustomerTenantRelation(params: {
 // array so timeline `parts_replaced_count` is non-zero.
 export async function createIntervention(params: {
   tenantId: string;
-  locationId: string;
   userId: string;
   vehicleId: string;
   interventionTypeId: string;
@@ -470,7 +436,6 @@ export async function createIntervention(params: {
 }): Promise<{ interventionId: string }> {
   const {
     tenantId,
-    locationId,
     userId,
     vehicleId,
     interventionTypeId,
@@ -484,15 +449,14 @@ export async function createIntervention(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO interventions
-       (id, tenant_id, location_id, user_id, vehicle_id, intervention_type_id,
+       (id, tenant_id, user_id, vehicle_id, intervention_type_id,
         intervention_date, odometer_km, title, description, parts_replaced,
         internal_notes, status, km_anomaly, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::date, $7, $8, $9,
-        $10::jsonb, $11, $12::"InterventionStatus", false, NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, $7, $8,
+        $9::jsonb, $10, $11::"InterventionStatus", false, NOW(), NOW())
      RETURNING id`,
     [
       tenantId,
-      locationId,
       userId,
       vehicleId,
       interventionTypeId,
