@@ -19,7 +19,6 @@ import {
 } from '@/lib/validators/createVehicle';
 import { useCreateVehicle, type CreateVehicleBody } from '@/queries/vehicleCreate';
 import { useProfileMe } from '@/queries/profileMe';
-import { useLocationFilter } from '@/location-filter/useLocationFilter';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,14 +60,8 @@ const FUEL_TYPE_LABELS: Record<string, string> = {
   other: 'Altro',
 };
 
-interface LocationOption {
-  id: string;
-  name: string;
-}
-
 export function VehicleCreate() {
   const profile = useProfileMe();
-  const { isSuperAdmin, locations, selectedLocationId } = useLocationFilter();
 
   if (profile.isPending) {
     return (
@@ -88,47 +81,7 @@ export function VehicleCreate() {
     );
   }
 
-  // Resolve location by role.
-  let locationOptions: LocationOption[];
-  let lockedLocationId: string | null;
-  let defaultLocationId: string;
-
-  if (isSuperAdmin) {
-    locationOptions = (locations as LocationOption[]).map((l) => ({ id: l.id, name: l.name }));
-    lockedLocationId = null;
-    defaultLocationId =
-      selectedLocationId ?? (locationOptions.length === 1 ? locationOptions[0].id : '');
-  } else {
-    const own = profile.data.locationId;
-    if (!own) {
-      return (
-        <div className="p-4 md:p-8">
-          <Alert variant="destructive">
-            <AlertDescription>
-              Il tuo account non è associato a una sede. Contatta l&apos;amministratore.
-            </AlertDescription>
-          </Alert>
-        </div>
-      );
-    }
-    locationOptions = [];
-    lockedLocationId = own;
-    defaultLocationId = own;
-  }
-
-  return (
-    <VehicleCreateForm
-      locationOptions={locationOptions}
-      lockedLocationId={lockedLocationId}
-      defaultLocationId={defaultLocationId}
-    />
-  );
-}
-
-interface FormProps {
-  locationOptions: LocationOption[];
-  lockedLocationId: string | null;
-  defaultLocationId: string;
+  return <VehicleCreateForm />;
 }
 
 interface PendingConfirm {
@@ -137,7 +90,7 @@ interface PendingConfirm {
   plate: string;
 }
 
-function VehicleCreateForm({ locationOptions, lockedLocationId, defaultLocationId }: FormProps) {
+function VehicleCreateForm() {
   const navigate = useNavigate();
   const routerLocation = useLocation();
   const [params] = useSearchParams();
@@ -173,7 +126,6 @@ function VehicleCreateForm({ locationOptions, lockedLocationId, defaultLocationI
       vehicleType: 'car',
       fuelType: 'petrol',
       odometerKm: '',
-      locationId: defaultLocationId,
     },
   });
 
@@ -181,7 +133,6 @@ function VehicleCreateForm({ locationOptions, lockedLocationId, defaultLocationI
   const isBusiness = watch('isBusiness');
   const vehicleType = watch('vehicleType');
   const fuelType = watch('fuelType');
-  const locationId = watch('locationId');
 
   async function submit(body: CreateVehicleBody) {
     try {
@@ -486,39 +437,8 @@ function VehicleCreateForm({ locationOptions, lockedLocationId, defaultLocationI
           </div>
         </section>
 
-        {/* ── Sede + invito ───────────────────────────────────── */}
+        {/* ── Invito ─────────────────────────────────────────── */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold">Sede</h2>
-          {lockedLocationId ? (
-            <p className="text-sm text-muted-foreground">
-              Il veicolo sarà registrato sulla tua sede assegnata.
-            </p>
-          ) : locationOptions.length > 1 ? (
-            <div>
-              <Label>Sede</Label>
-              <Select
-                value={locationId}
-                onValueChange={(v) => setValue('locationId', v, { shouldValidate: true })}
-              >
-                <SelectTrigger aria-label="Sede">
-                  <SelectValue placeholder="Seleziona una sede" />
-                </SelectTrigger>
-                <SelectContent>
-                  {locationOptions.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {err('locationId')}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {locationOptions[0]?.name ?? 'Sede unica'}
-            </p>
-          )}
-
           <div className="flex items-center gap-2 opacity-60">
             <Switch id="vc-invite" checked={false} disabled aria-label="Invia invito all'app" />
             <Label htmlFor="vc-invite" title="Disponibile a breve">

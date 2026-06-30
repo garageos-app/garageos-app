@@ -31,7 +31,6 @@ const canonical = {
     email: 'mario@example.it',
     isBusiness: false,
   },
-  locationId: '11111111-1111-4111-8111-111111111111',
 };
 
 describe('CreateVehiclePayloadSchema parity (web mirror vs backend)', () => {
