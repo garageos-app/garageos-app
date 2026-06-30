@@ -2766,6 +2766,7 @@ L'`owner_type=intervention` resta officina-only.
 | GET | `/v1/admin/tenants/:id/users` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.8]** Lista utenti del tenant (inclusi soft-deleted) |
 | PATCH | `/v1/admin/tenants/:id/users/:userId` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.9]** Modifica ruolo/sede/stato utente cross-tenant (BR-203, BR-204) |
 | POST | `/v1/admin/tenants/:id/users/invitations` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.10]** Invita nuovo utente nel tenant; rate-limit 30/h |
+| GET | `/v1/admin/metrics` | Slice 4 | Platform Admin | **[DETTAGLIATO §3.12.11]** Metriche aggregate cross-tenant per dashboard admin |
 | GET | `/admin/tenants` | F-ADM-001 | Admin | Lista tutti i tenant |
 | POST | `/admin/tenants/:id/suspend` | F-ADM-002 | Admin | Sospendi tenant |
 | POST | `/admin/tenants/:id/activate` | F-ADM-002 | Admin | Riattiva tenant |
@@ -3301,6 +3302,53 @@ Invia un invito magic-link a un nuovo utente (meccanico o super_admin) nel tenan
 - `409 user.invitation.email_in_other_tenant` — email già registrata in Cognito (altro tenant) o con invito pendente in altro tenant
 - `429 admin.tenant.rate_limited` — oltre 30 richieste/ora per platform-admin
 - `502 auth.cognito_unavailable` — Cognito non raggiungibile durante il pre-check email
+
+#### 3.12.11 `GET /v1/admin/metrics` — Metriche aggregate piattaforma
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno (solo lettura)
+**Shipped:** Slice 4
+
+Restituisce le metriche aggregate cross-tenant per la dashboard della console di piattaforma. Tutti i conteggi sono calcolati in un unico round-trip SQL sotto il contesto admin RLS (`withContext({ role: 'admin' })`), senza filtraggio per tenant.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant.
+
+**Response `200 OK`:**
+
+```json
+{
+  "tenants": { "total": 7, "active": 5, "suspended": 2 },
+  "usersTotal": 19,
+  "interventions": { "total": 420, "last30d": 33 },
+  "vehiclesTotal": 88,
+  "customersTotal": 64,
+  "trend": [
+    { "week": "2026-05-12", "count": 38 },
+    { "week": "2026-05-19", "count": 41 }
+  ]
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `tenants.total` | `number` | Tenant totali non eliminati |
+| `tenants.active` | `number` | Tenant con `status = 'active'` |
+| `tenants.suspended` | `number` | Tenant con `status = 'suspended'` |
+| `usersTotal` | `number` | Utenti officine totali non eliminati (cross-tenant) |
+| `interventions.total` | `number` | Interventi totali non eliminati (cross-tenant) |
+| `interventions.last30d` | `number` | Interventi creati negli ultimi 30 giorni |
+| `vehiclesTotal` | `number` | Veicoli totali nel sistema |
+| `customersTotal` | `number` | Clienti registrati totali |
+| `trend` | `WeeklyTrendPoint[]` | Interventi per settimana ISO — esattamente 8 voci in ordine crescente |
+| `trend[].week` | `string` (YYYY-MM-DD) | Lunedì della settimana ISO |
+| `trend[].count` | `number` | Conteggio interventi (0 per settimane senza dati) |
+
+`trend` copre la settimana corrente e le 7 precedenti. Le settimane senza interventi sono incluse con `count: 0` (zero-fill). `week` è sempre il lunedì della settimana ISO (formato YYYY-MM-DD). Tutti i dati sono calcolati cross-tenant nel contesto admin.
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
 
 ### 3.13 Public
 
