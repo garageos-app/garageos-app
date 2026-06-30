@@ -92,6 +92,19 @@ describe('PlatformConsole page', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 
+  it('shows a profile error alert when GET /v1/admin/me fails', async () => {
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/v1/admin/me') return Promise.reject(new Error('profile error'));
+      if (path === '/v1/admin/metrics') return Promise.resolve(METRICS);
+      return Promise.reject(new Error(`unexpected path ${path}`));
+    });
+    render(<PlatformConsole />, { wrapper: makeWrapper() });
+
+    expect(
+      await screen.findByText('Errore nel caricamento del profilo. Riprova.'),
+    ).toBeInTheDocument();
+  });
+
   it('calls signOut when the Esci button is clicked', async () => {
     routeApiFetch();
     const { default: userEvent } = await import('@testing-library/user-event');

@@ -65,6 +65,12 @@ export function PlatformConsole() {
           </Card>
         )}
 
+        {meQuery.error && (
+          <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive mb-8">
+            Errore nel caricamento del profilo. Riprova.
+          </div>
+        )}
+
         {metricsQuery.isLoading && <p className="text-muted-foreground">Caricamento metriche...</p>}
 
         {metricsQuery.error && (

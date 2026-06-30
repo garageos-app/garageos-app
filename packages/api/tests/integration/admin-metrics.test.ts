@@ -216,4 +216,81 @@ describe('GET /v1/admin/metrics — aggregate counts (integration)', () => {
     const earlierWithOne = body.trend.slice(0, body.trend.length - 1).filter((p) => p.count === 1);
     expect(earlierWithOne).toHaveLength(1);
   });
+
+  it('excludes soft-deleted users/customers and cancelled interventions from counts and trend', async () => {
+    const itype = await ensureSystemInterventionType('tagliando');
+    const { tenantId } = await createTenant('metrics-excl');
+
+    // Users: active (counted) + inactive non-deleted (counted) + deleted (NOT counted).
+    const { userId: userActiveId } = await createUser({
+      tenantId,
+      cognitoSub: 'sub-excl-active',
+      role: 'super_admin',
+    });
+    const { userId: inactiveUserId } = await createUser({
+      tenantId,
+      cognitoSub: 'sub-excl-inactive',
+      role: 'mechanic',
+    });
+    const { userId: deletedUserId } = await createUser({
+      tenantId,
+      cognitoSub: 'sub-excl-deleted',
+      role: 'mechanic',
+    });
+    // Soft-delete one; demote one to inactive to confirm non-active-but-non-deleted IS counted.
+    await pgAdmin.query(`UPDATE users SET deleted_at = NOW() WHERE id = $1`, [deletedUserId]);
+    await pgAdmin.query(`UPDATE users SET status = 'inactive'::"UserStatus" WHERE id = $1`, [
+      inactiveUserId,
+    ]);
+
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Interventions: 1 active (counted in total + trend) + 1 cancelled (NOT counted).
+    await createIntervention({
+      tenantId,
+      userId: userActiveId,
+      vehicleId,
+      interventionTypeId: itype.id,
+      interventionDate: today,
+      odometerKm: 10000,
+      status: 'active',
+    });
+    await createIntervention({
+      tenantId,
+      userId: userActiveId,
+      vehicleId,
+      interventionTypeId: itype.id,
+      interventionDate: today,
+      odometerKm: 10100,
+      status: 'cancelled',
+    });
+
+    // Customers: 1 live (counted) + 1 soft-deleted (NOT counted).
+    await createCustomer({ email: 'excl-live@test.it' });
+    const { customerId: deletedCustomerId } = await createCustomer({ email: 'excl-dead@test.it' });
+    await pgAdmin.query(`UPDATE customers SET deleted_at = NOW() WHERE id = $1`, [
+      deletedCustomerId,
+    ]);
+
+    const token = await signTestToken({ pool: 'platform-admins' });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/metrics',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as PlatformMetrics;
+
+    // 1 non-cancelled intervention.
+    expect(body.interventions.total).toBe(1);
+    // 2 non-deleted users (active + inactive; soft-deleted excluded).
+    expect(body.usersTotal).toBe(2);
+    // 1 non-deleted customer.
+    expect(body.customersTotal).toBe(1);
+    // Trend sum equals non-cancelled interventions only.
+    const trendTotal = body.trend.reduce((acc, p) => acc + p.count, 0);
+    expect(trendTotal).toBe(1);
+  });
 });
