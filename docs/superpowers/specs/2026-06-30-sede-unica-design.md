@@ -136,7 +136,7 @@ Slice large → **spec formale + subagent-driven** (questo doc + plan + ledger `
 ## 10. Processo, review, smoke, PR size
 
 - **Esecuzione subagent-driven** (plan da `docs/superpowers/PLAN_TEMPLATE.md`, pre-flight grep checklist obbligatoria). Per-task review solo sui task a rischio (migration, security/visibilità).
-- **Final whole-branch review:** `/code-review high` minimo; **valutare `/code-review ultra`** data la migration distruttiva e l'ampiezza cross-layer.
+- **Final whole-branch review:** **`/code-review ultra`** (deciso dall'utente 2026-06-30) data la migration distruttiva e l'ampiezza cross-layer.
 - **Smoke prod obbligatorio** (UI officine: niente tab Sedi, indirizzo da tab Officina, invito meccanico senza sede; + esecuzione runbook migration A→deploy→B con verifica `/health` e dati).
 - **PR size:** grande ma in larga parte **deletion**. Target 1 PR; se supera l'hard-limit 1500 LOC → **size-exception** da approvare con l'utente (come Slice 2/3), oppure split expand-PR / contract-PR.
 - **Local gate:** `pnpm -r typecheck` pre-push; resto su CI.
