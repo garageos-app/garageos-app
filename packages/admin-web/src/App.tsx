@@ -8,6 +8,7 @@ import { PlatformConsole } from '@/pages/PlatformConsole';
 import { CreateTenant } from '@/pages/CreateTenant';
 import { TenantDetail } from '@/pages/TenantDetail';
 import { TenantList } from '@/pages/TenantList';
+import { AuditLogs } from '@/pages/AuditLogs';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +39,7 @@ export function App() {
                   swallowed by the param — react-router v6 ranks static > dynamic,
                   but explicit order makes intent clear. */}
               <Route path="/officine/:id" element={<TenantDetail />} />
+              <Route path="/audit" element={<AuditLogs />} />
             </Route>
 
             {/* Fallback redirect */}
