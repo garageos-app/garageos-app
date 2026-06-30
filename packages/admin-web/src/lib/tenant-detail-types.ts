@@ -27,7 +27,6 @@ export interface AdminUser {
   firstName: string;
   lastName: string;
   role: 'super_admin' | 'mechanic';
-  locationId: string | null;
   status: 'active' | 'inactive';
   phone: string | null;
   avatarUrl: string | null;

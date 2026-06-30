@@ -10,8 +10,6 @@ export const ACTION_ERROR_MESSAGES: Record<string, string> = {
   'admin.tenant.rate_limited': 'Troppe richieste, riprova tra poco.',
   'user.last_super_admin':
     "Non puoi rimuovere l'ultimo amministratore. Promuovi prima un altro utente.",
-  'user.location_required_for_mechanic': 'Un meccanico deve essere assegnato a una sede.',
-  'user.location_invalid': 'Sede non valida o inattiva.',
   'user.not_found': 'Utente non trovato.',
   'tenant.vat_number_duplicate': 'P.IVA già in uso.',
   'tenant.vat_number_invalid': 'P.IVA non valida (11 cifre).',
