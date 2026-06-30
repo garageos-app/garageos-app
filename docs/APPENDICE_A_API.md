@@ -2767,6 +2767,7 @@ L'`owner_type=intervention` resta officina-only.
 | PATCH | `/v1/admin/tenants/:id/users/:userId` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.9]** Modifica ruolo/sede/stato utente cross-tenant (BR-203, BR-204) |
 | POST | `/v1/admin/tenants/:id/users/invitations` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.10]** Invita nuovo utente nel tenant; rate-limit 30/h |
 | GET | `/v1/admin/metrics` | Slice 4 | Platform Admin | **[DETTAGLIATO §3.12.11]** Metriche aggregate cross-tenant per dashboard admin |
+| GET | `/v1/admin/tenants/:id/metrics` | Slice 4 | Platform Admin | **[DETTAGLIATO §3.12.12]** Metriche per-officina (conteggi + attività + scadenze + inviti) |
 | GET | `/admin/tenants` | F-ADM-001 | Admin | Lista tutti i tenant |
 | POST | `/admin/tenants/:id/suspend` | F-ADM-002 | Admin | Sospendi tenant |
 | POST | `/admin/tenants/:id/activate` | F-ADM-002 | Admin | Riattiva tenant |
@@ -3349,6 +3350,48 @@ Restituisce le metriche aggregate cross-tenant per la dashboard della console di
 
 - `401` — token mancante o non valido (`requireAuth`)
 - `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+
+#### 3.12.12 `GET /v1/admin/tenants/:id/metrics` — Metriche per-officina
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno (solo lettura)
+**Shipped:** Slice 4
+
+Metriche operative della singola officina, per il blocco "Metriche" di TenantDetail. Tutti i conteggi sono calcolati sotto il contesto admin RLS (`withContext({ role: 'admin' })`), senza necessità di tenant context nello JWT.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant.
+
+**Response `200 OK`:**
+
+```json
+{
+  "interventions": { "total": 84, "last30d": 12, "lastAt": "2026-06-27T09:14:00.000Z" },
+  "usersTotal": 3,
+  "vehiclesTotal": 61,
+  "customersTotal": 52,
+  "openDeadlines": 7,
+  "pendingInvitations": 1
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `interventions.total` | `number` | Interventi non annullati dell'officina |
+| `interventions.last30d` | `number` | Interventi creati negli ultimi 30 giorni |
+| `interventions.lastAt` | `string \| null` (ISO 8601) | Data dell'ultimo intervento non annullato; `null` se nessuno |
+| `usersTotal` | `number` | Utenti staff con `deletedAt` nullo |
+| `vehiclesTotal` | `number` | Veicoli creati o certificati dall'officina |
+| `customersTotal` | `number` | Relazioni cliente non eliminate |
+| `openDeadlines` | `number` | Scadenze con stato `open` o `overdue` |
+| `pendingInvitations` | `number` | Inviti `internal_user` non accettati e non scaduti |
+
+Tutti i conteggi escludono i record eliminati (soft-delete). `interventions` esclude gli interventi con stato `cancelled`. `lastAt` è `null` se l'officina non ha ancora interventi non annullati.
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 tenant.not_found` — UUID sconosciuto o formato non valido (anti-enumeration)
 
 ### 3.13 Public
 
