@@ -4,14 +4,15 @@
 // and keyset pagination. Auth: requireAuth → requirePlatformAdminsPool.
 // No rate-limit (read-only forensic tool, low-volume usage by platform admins).
 //
-// Cursor precision note: the cursor carries millisecond-precision createdAt
-// via toISOString(), while Postgres stores timestamptz at microsecond
-// precision. Two rows created within the same millisecond but different
-// microseconds may, at a page boundary, be ordered by µs in the DB but
-// compared at ms in the cursor. For a forensic admin log with at most a
-// handful of concurrent admins this is a negligible documented limitation.
-// The id tiebreaker makes same-millisecond pages deterministic in the
-// common case.
+// Cursor precision: the LIST query runs as parameterized raw SQL so the
+// cursor carries a MICROSECOND-precision createdAt (formatted by to_char with
+// the 'US' pattern) and the keyset comparison is a full-precision row-value
+// `(created_at, id) < (cursor.createdAt::timestamptz, cursor.id)`. This avoids
+// silently skipping rows that share a boundary millisecond but differ in
+// microseconds (rows written in one transaction share an identical µs
+// timestamp). The global (created_at DESC, id DESC) index supports the
+// no-tenant-filter ordering. Every placeholder carries an explicit `::` cast
+// because the Prisma 7 pg adapter's type inference otherwise fails (42P08).
 //
 // Tenant resolution: no deletedAt filter — audit history outlives
 // soft-deleted tenants. Rows whose tenantId matches no tenant row
@@ -23,24 +24,48 @@ import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
 import {
-  AUDIT_LOG_SELECT,
   decodeAuditCursor,
   encodeAuditCursor,
   serializeAuditLogItem,
   type AuditLogPage,
+  type AuditLogRow,
 } from '../../lib/dtos/audit-log.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requirePlatformAdminsPool } from '../../middleware/require-platform-admins-pool.js';
 
-const QuerySchema = z.object({
-  tenantId: z.union([z.literal('platform'), z.string().uuid()]).optional(),
-  action: z.string().min(1).max(100).optional(),
-  actorType: z.enum(['user', 'customer', 'system', 'admin']).optional(),
-  from: z.string().datetime().optional(), // ISO 8601; createdAt >= from
-  to: z.string().datetime().optional(), // ISO 8601; createdAt <= to
-  cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
+// Raw row shape returned by the parameterized LIST query. snake_case mirrors
+// the selected columns exactly; created_at_cursor is the microsecond-precision
+// ISO string used to build the keyset cursor.
+interface RawAuditRow {
+  id: string;
+  tenant_id: string | null;
+  actor_type: 'user' | 'customer' | 'system' | 'admin';
+  actor_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  ip_address: string | null;
+  // Json column returned already parsed by the pg adapter; typed as JsonValue
+  // (not unknown) so it maps cleanly into AuditLogRow without a cast.
+  metadata: Prisma.JsonValue;
+  created_at: Date;
+  created_at_cursor: string;
+}
+
+const QuerySchema = z
+  .object({
+    tenantId: z.union([z.literal('platform'), z.string().uuid()]).optional(),
+    action: z.string().min(1).max(100).optional(),
+    actorType: z.enum(['user', 'customer', 'system', 'admin']).optional(),
+    from: z.string().datetime().optional(), // ISO 8601; createdAt >= from
+    to: z.string().datetime().optional(), // ISO 8601; createdAt <= to
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  // An inverted range (from > to) is a client error, not an empty result set.
+  .refine((q) => !q.from || !q.to || new Date(q.from) <= new Date(q.to), {
+    message: 'from must be <= to',
+  });
 
 export const adminAuditLogsRoutes: FastifyPluginAsync = async (app) => {
   app.get(
@@ -61,50 +86,85 @@ export const adminAuditLogsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const page = await app.withContext({ role: 'admin' as const }, async (tx) => {
-        // Build filter predicates incrementally to avoid undefined values
-        // in the object (exactOptionalPropertyTypes compliance).
-        const filterWhere: Prisma.AuditLogWhereInput = {};
+        // Build the LIST query as parameterized raw SQL. Every value is bound
+        // (no string interpolation of user input) and every placeholder carries
+        // an explicit `::` cast — the Prisma 7 pg adapter's type inference
+        // otherwise fails with 42P08 (see feedback_pg_param_type_inference_cast).
+        const conditions: string[] = [];
+        const params: unknown[] = [];
+        let p = 0;
         if (tenantId === 'platform') {
           // 'platform' sentinel → WHERE tenant_id IS NULL.
-          filterWhere.tenantId = null;
+          conditions.push('tenant_id IS NULL');
         } else if (tenantId !== undefined) {
-          filterWhere.tenantId = tenantId;
+          params.push(tenantId);
+          conditions.push(`tenant_id = $${++p}::uuid`);
         }
-        if (action !== undefined) filterWhere.action = action;
-        if (actorType !== undefined) filterWhere.actorType = actorType;
-        if (from !== undefined || to !== undefined) {
-          filterWhere.createdAt = {
-            ...(from !== undefined ? { gte: new Date(from) } : {}),
-            ...(to !== undefined ? { lte: new Date(to) } : {}),
-          };
+        if (action !== undefined) {
+          params.push(action);
+          conditions.push(`action = $${++p}::text`);
         }
-
-        // Keyset cursor expansion: (createdAt DESC, id DESC) newest-first.
-        // The OR-form correctly handles ties at millisecond boundaries via
-        // the id tiebreaker. See header comment for precision note.
-        const cursorWhere: Prisma.AuditLogWhereInput =
-          cursor !== null
-            ? {
-                OR: [
-                  { createdAt: { lt: new Date(cursor.createdAt) } },
-                  { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } },
-                ],
-              }
-            : {};
-
-        const orderBy = [{ createdAt: 'desc' as const }, { id: 'desc' as const }];
-
+        if (actorType !== undefined) {
+          params.push(actorType);
+          conditions.push(`actor_type = $${++p}::"AuditActorType"`);
+        }
+        if (from !== undefined) {
+          params.push(from);
+          conditions.push(`created_at >= $${++p}::timestamptz`);
+        }
+        if (to !== undefined) {
+          params.push(to);
+          conditions.push(`created_at <= $${++p}::timestamptz`);
+        }
+        if (cursor !== null) {
+          // Full-precision keyset comparison: newest-first (created_at DESC,
+          // id DESC) means "older than the cursor" is a row-value `<`.
+          params.push(cursor.createdAt);
+          const a = ++p;
+          params.push(cursor.id);
+          const b = ++p;
+          conditions.push(`(created_at, id) < ($${a}::timestamptz, $${b}::uuid)`);
+        }
+        const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
         // Fetch limit + 1 to detect a next page without an extra COUNT query.
-        const rows = await tx.auditLog.findMany({
-          where: { AND: [filterWhere, cursorWhere] },
-          orderBy,
-          take: limit + 1,
-          select: AUDIT_LOG_SELECT,
-        });
+        params.push(limit + 1);
+        const limitParam = p + 1; // last placeholder; p is not reused after this
 
-        const hasMore = rows.length > limit;
-        const pageRows = hasMore ? rows.slice(0, limit) : rows;
-        const nextCursor = hasMore ? encodeAuditCursor(pageRows[pageRows.length - 1]!) : null;
+        // created_at_cursor: canonical UTC ISO with MICROSECOND precision. It
+        // casts back to the same instant via ::timestamptz on the next page.
+        const sql = `
+          SELECT id, tenant_id, actor_type, actor_id, action, entity_type, entity_id,
+                 ip_address::text AS ip_address, metadata, created_at,
+                 to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_cursor
+          FROM audit_logs
+          ${whereSql}
+          ORDER BY created_at DESC, id DESC
+          LIMIT $${limitParam}::int
+        `;
+        const rawRows = await tx.$queryRawUnsafe<RawAuditRow[]>(sql, ...params);
+
+        const hasMore = rawRows.length > limit;
+        const pageRaw = hasMore ? rawRows.slice(0, limit) : rawRows;
+
+        // Map snake_case raw rows to the camelCase shape the serializer expects.
+        const pageRows: AuditLogRow[] = pageRaw.map((r) => ({
+          id: r.id,
+          tenantId: r.tenant_id,
+          actorType: r.actor_type,
+          actorId: r.actor_id,
+          action: r.action,
+          entityType: r.entity_type,
+          entityId: r.entity_id,
+          ipAddress: r.ip_address,
+          metadata: r.metadata,
+          createdAt: r.created_at,
+        }));
+
+        const last = pageRaw[pageRaw.length - 1];
+        const nextCursor =
+          hasMore && last !== undefined
+            ? encodeAuditCursor({ createdAt: last.created_at_cursor, id: last.id })
+            : null;
 
         // Batch-resolve tenant names — no N+1 query.
         // No deletedAt filter: audit history outlives soft-deleted tenants.

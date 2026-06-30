@@ -1,11 +1,13 @@
 // DTO module for the platform-admin audit-log viewer.
 //
 // Cursor design: keyset pagination ordered by (createdAt DESC, id DESC).
-// The cursor carries millisecond precision via `toISOString()` — Postgres
-// `timestamptz` stores up to microseconds, but Prisma returns a JS Date
-// (millisecond precision), so no precision is lost in the round-trip.
-// Task 2 must query: createdAt < cursor.createdAt OR
-//   (createdAt = cursor.createdAt AND id < cursor.id).
+// The cursor carries a MICROSECOND-precision ISO string formatted directly
+// from Postgres via to_char(... 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), not from a
+// JS Date (which truncates to milliseconds). This avoids silently skipping
+// rows that share a boundary millisecond but differ in microseconds — e.g.
+// rows written in the same transaction share an identical microsecond
+// timestamp. The route's raw SQL applies a full-precision row-value
+// comparison: (created_at, id) < (cursor.createdAt::timestamptz, cursor.id).
 
 import type { Prisma } from '@garageos/database';
 
@@ -54,7 +56,7 @@ export interface AuditLogPage {
 // ─── Cursor codec ─────────────────────────────────────────────────────────────
 
 export interface AuditCursor {
-  /** ISO-8601 timestamp matching the last row's createdAt. */
+  /** Microsecond-precision ISO-8601 timestamp matching the last row's createdAt. */
   createdAt: string;
   /** UUID of the last row. */
   id: string;
@@ -63,9 +65,13 @@ export interface AuditCursor {
 /**
  * Encodes a cursor from the last row of a page.
  * Produces a base64url-safe opaque token safe for use in query strings.
+ *
+ * `createdAt` must already be a full-precision (microsecond) ISO string,
+ * formatted by the route's raw SQL (`to_char(... 'US"Z"')`). It is encoded
+ * verbatim — no `Date` round-trip that would truncate to milliseconds.
  */
-export function encodeAuditCursor(row: { createdAt: Date; id: string }): string {
-  const payload = JSON.stringify({ c: row.createdAt.toISOString(), i: row.id });
+export function encodeAuditCursor(row: { createdAt: string; id: string }): string {
+  const payload = JSON.stringify({ c: row.createdAt, i: row.id });
   return Buffer.from(payload, 'utf8').toString('base64url');
 }
 

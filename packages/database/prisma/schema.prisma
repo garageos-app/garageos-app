@@ -746,6 +746,10 @@ model AuditLog {
 
   @@index([tenantId, createdAt(sort: Desc)], map: "idx_audit_tenant_date")
   @@index([entityType, entityId], map: "idx_audit_entity")
+  // Global ordering index for the platform-admin audit viewer's cross-tenant
+  // keyset pagination (no tenant filter). See migration
+  // 20260630130000_audit_global_order_index.
+  @@index([createdAt(sort: Desc), id(sort: Desc)], map: "idx_audit_created_at")
   @@map("audit_logs")
 }
 

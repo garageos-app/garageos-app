@@ -43,16 +43,20 @@ const INITIAL_FILTERS: AuditFilters = {
 
 // Builds the paginated query URL from filter state and optional cursor.
 // Date params are converted to full-day ISO ranges; empty controls are omitted.
+// Boundaries are built in LOCAL time (no 'Z') so they align with the table's
+// `toLocaleString('it-IT')` rendering — a UTC-day range would disagree with
+// the visible date column near midnight. toISOString() still sends a valid UTC
+// instant; only the wall-clock interpretation matches the operator's locale.
 function buildUrl(filters: AuditFilters, cursor: string | undefined): string {
   const params = new URLSearchParams();
   if (filters.tenantId) params.set('tenantId', filters.tenantId);
   if (filters.action) params.set('action', filters.action);
   if (filters.actorType) params.set('actorType', filters.actorType);
   if (filters.from) {
-    params.set('from', new Date(filters.from + 'T00:00:00.000Z').toISOString());
+    params.set('from', new Date(filters.from + 'T00:00:00.000').toISOString());
   }
   if (filters.to) {
-    params.set('to', new Date(filters.to + 'T23:59:59.999Z').toISOString());
+    params.set('to', new Date(filters.to + 'T23:59:59.999').toISOString());
   }
   if (cursor) params.set('cursor', cursor);
   const qs = params.toString();

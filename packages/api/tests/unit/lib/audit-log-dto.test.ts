@@ -8,11 +8,20 @@ import {
 describe('audit cursor codec', () => {
   it('round-trips createdAt + id', () => {
     const row = {
-      createdAt: new Date('2026-06-30T14:02:03.456Z'),
+      createdAt: '2026-06-30T14:02:03.456Z',
       id: 'a1b2c3d4-0000-0000-0000-000000000001',
     };
     const decoded = decodeAuditCursor(encodeAuditCursor(row));
     expect(decoded).toEqual({ createdAt: '2026-06-30T14:02:03.456Z', id: row.id });
+  });
+  it('preserves microsecond precision byte-for-byte', () => {
+    // The cursor must carry full µs precision (a JS Date would truncate to ms).
+    const row = {
+      createdAt: '2026-06-30T14:02:03.123456Z',
+      id: 'a1b2c3d4-0000-0000-0000-000000000002',
+    };
+    const decoded = decodeAuditCursor(encodeAuditCursor(row));
+    expect(decoded).toEqual({ createdAt: '2026-06-30T14:02:03.123456Z', id: row.id });
   });
   it('returns null on garbage', () => {
     expect(decodeAuditCursor('not-base64!!!')).toBeNull();
