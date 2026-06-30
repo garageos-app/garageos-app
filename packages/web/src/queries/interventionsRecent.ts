@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useApiFetch } from '@/lib/api-client';
-import { useLocationFilter } from '@/location-filter/useLocationFilter';
 
 export interface RecentIntervention {
   id: string;
@@ -26,13 +25,11 @@ export interface InterventionsRecentResponse {
 
 export function useInterventionsRecent(limit = 10) {
   const apiFetch = useApiFetch();
-  const { selectedLocationId } = useLocationFilter();
   return useQuery({
-    queryKey: ['interventions-recent', limit, selectedLocationId] as const,
+    queryKey: ['interventions-recent', limit] as const,
     queryFn: async (): Promise<RecentIntervention[]> => {
       const params = new URLSearchParams();
       params.set('limit', String(limit));
-      if (selectedLocationId) params.set('location_id', selectedLocationId);
       const res = await apiFetch<InterventionsRecentResponse>(
         `/v1/interventions/recent?${params.toString()}`,
       );

@@ -12,7 +12,6 @@ export interface AdminUser {
   firstName: string;
   lastName: string;
   role: 'super_admin' | 'mechanic';
-  locationId: string | null;
   status: 'active' | 'inactive';
   createdAt: string;
   deletedAt: string | null;
@@ -24,7 +23,6 @@ export interface Invitation {
   firstName: string;
   lastName: string;
   role: 'super_admin' | 'mechanic';
-  locationId: string | null;
   expiresAt: string;
   createdAt: string;
 }
@@ -35,22 +33,8 @@ export interface InvitationPublicView {
   firstName: string;
   lastName: string;
   role: 'super_admin' | 'mechanic';
-  locationName: string | null;
   tenantName: string;
   expiresAt: string;
-}
-
-export interface TenantLocation {
-  id: string;
-  name: string;
-  addressLine: string;
-  city: string;
-  province: string;
-  postalCode: string;
-  country: string;
-  phone: string | null;
-  email: string | null;
-  isPrimary: boolean;
 }
 
 export interface InviteUserBody {
@@ -58,18 +42,15 @@ export interface InviteUserBody {
   firstName: string;
   lastName: string;
   role: 'super_admin' | 'mechanic';
-  locationId: string | null;
 }
 
 export interface UpdateUserBody {
   role?: 'super_admin' | 'mechanic';
-  locationId?: string | null;
   status?: 'active' | 'inactive';
 }
 
 export interface ReactivateUserBody {
   role?: 'super_admin' | 'mechanic';
-  locationId?: string | null;
 }
 
 export interface AcceptInvitationBody {
@@ -77,16 +58,6 @@ export interface AcceptInvitationBody {
 }
 
 // ─── Query hooks ──────────────────────────────────────────────────────────────
-
-/** GET /v1/tenants/me/locations — list active locations for the tenant (super_admin only). */
-export function useLocations(options?: { enabled?: boolean }) {
-  const apiFetch = useApiFetch();
-  return useQuery({
-    queryKey: ['tenant-locations'],
-    queryFn: () => apiFetch<{ locations: TenantLocation[] }>('/v1/tenants/me/locations'),
-    enabled: options?.enabled ?? true,
-  });
-}
 
 /** GET /v1/users — list all tenant users (super_admin only). */
 export function useUsers() {

@@ -53,12 +53,6 @@ function makeIntervention(overrides: Partial<InterventionDetail> = {}): Interven
       id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
       business_name: 'Officina Rossi',
     },
-    location: {
-      id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-      name: 'Sede principale',
-      city: 'Milano',
-      address: 'Via Roma 1',
-    },
     vehicle: {
       id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
       garage_code: 'ROS-001',

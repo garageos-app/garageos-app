@@ -45,9 +45,7 @@ export function TimelineRow({ item, vehicleId, color }: Props) {
   const title = isShop
     ? (item.title ?? item.type.name_it)
     : (item.custom_type ?? 'Intervento privato');
-  const subtitle = isShop
-    ? `${item.tenant.business_name}${item.tenant.location_city ? ' · ' + item.tenant.location_city : ''}`
-    : 'Cliente';
+  const subtitle = isShop ? item.tenant.business_name : 'Cliente';
   const isDisputed = isShop && item.is_disputed;
   // The "Disputa" badge stays visible cross-tenant (status transparency),
   // but only the owner may open the response dialog.

@@ -17,7 +17,6 @@ import { PasswordForm } from '@/components/settings/PasswordForm';
 import { ProfileForm } from '@/components/settings/ProfileForm';
 import { TenantForm } from '@/components/settings/TenantForm';
 import { UserManagement } from '@/pages/UserManagement';
-import { LocationManagement } from '@/pages/LocationManagement';
 import { useAuth } from '@/auth/useAuth';
 import { useProfileMe } from '@/queries/profileMe';
 import { useTenantMe } from '@/queries/tenantMe';
@@ -25,11 +24,10 @@ import type { ChangePasswordFormValues } from '@/lib/validators/password';
 import type { ProfileFormValues, ProfileFormParsed } from '@/lib/validators/profile';
 import type { TenantFormValues, TenantFormParsed } from '@/lib/validators/tenant';
 
-type TabId = 'profile' | 'security' | 'tenant' | 'users' | 'locations';
+type TabId = 'profile' | 'security' | 'tenant' | 'users';
 
 function pathnameToTab(pathname: string): TabId {
   if (pathname === '/settings/users') return 'users';
-  if (pathname === '/settings/locations') return 'locations';
   return 'profile';
 }
 
@@ -68,7 +66,6 @@ export function Settings() {
 
   function tabToPath(tab: TabId): string {
     if (tab === 'users') return '/settings/users';
-    if (tab === 'locations') return '/settings/locations';
     return '/settings';
   }
 
@@ -103,7 +100,6 @@ export function Settings() {
           <TabsTrigger value="security">Sicurezza</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="tenant">Officina</TabsTrigger>}
           {isSuperAdmin && <TabsTrigger value="users">Utenti</TabsTrigger>}
-          {isSuperAdmin && <TabsTrigger value="locations">Sedi</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="profile" className="mt-6">
@@ -147,12 +143,6 @@ export function Settings() {
         {isSuperAdmin && (
           <TabsContent value="users" className="mt-6">
             <UserManagement />
-          </TabsContent>
-        )}
-
-        {isSuperAdmin && (
-          <TabsContent value="locations" className="mt-6">
-            <LocationManagement />
           </TabsContent>
         )}
       </Tabs>

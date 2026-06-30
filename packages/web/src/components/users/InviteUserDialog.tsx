@@ -1,9 +1,7 @@
 // InviteUserDialog — F-OFF-004 Super Admin invite flow.
 //
 // Mirrors EditInterventionDialog.tsx for the shadcn Dialog + react-hook-form
-// + zod-resolver pattern. Key rule enforced here:
-//   BR-204: mechanic role requires a locationId (Zod .refine + server 422
-//           defensive surface at the locationId field).
+// + zod-resolver pattern.
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -31,35 +29,28 @@ import {
 } from '@/components/ui/select';
 import { ApiError } from '@/lib/api-client';
 import { translateError } from '@/lib/error-messages';
-import { useInviteUser, useLocations } from '@/queries/users-admin';
+import { useInviteUser } from '@/queries/users-admin';
 
 // ─── Zod schema ───────────────────────────────────────────────────────────────
 
-const InviteUserFormSchema = z
-  .object({
-    email: z
-      .string()
-      .min(1, 'Email obbligatoria')
-      .email('Email non valida')
-      .max(255, 'Email troppo lunga (max 255 caratteri)'),
-    firstName: z
-      .string()
-      .min(1, 'Nome obbligatorio')
-      .max(100, 'Nome troppo lungo (max 100 caratteri)'),
-    lastName: z
-      .string()
-      .min(1, 'Cognome obbligatorio')
-      .max(100, 'Cognome troppo lungo (max 100 caratteri)'),
-    role: z.enum(['super_admin', 'mechanic'], {
-      error: 'Ruolo obbligatorio',
-    }),
-    locationId: z.string().uuid().nullable(),
-  })
-  // BR-204: mechanic requires a location assignment.
-  .refine((data) => !(data.role === 'mechanic' && !data.locationId), {
-    message: 'La sede è obbligatoria per il ruolo Meccanico',
-    path: ['locationId'],
-  });
+const InviteUserFormSchema = z.object({
+  email: z
+    .string()
+    .min(1, 'Email obbligatoria')
+    .email('Email non valida')
+    .max(255, 'Email troppo lunga (max 255 caratteri)'),
+  firstName: z
+    .string()
+    .min(1, 'Nome obbligatorio')
+    .max(100, 'Nome troppo lungo (max 100 caratteri)'),
+  lastName: z
+    .string()
+    .min(1, 'Cognome obbligatorio')
+    .max(100, 'Cognome troppo lungo (max 100 caratteri)'),
+  role: z.enum(['super_admin', 'mechanic'], {
+    error: 'Ruolo obbligatorio',
+  }),
+});
 
 type InviteUserFormValues = z.infer<typeof InviteUserFormSchema>;
 
@@ -74,7 +65,6 @@ interface Props {
 
 export function InviteUserDialog({ open, onOpenChange }: Props) {
   const mutation = useInviteUser();
-  const locationsQ = useLocations();
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
@@ -82,7 +72,6 @@ export function InviteUserDialog({ open, onOpenChange }: Props) {
     handleSubmit,
     watch,
     setValue,
-    setError,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<InviteUserFormValues>({
@@ -92,7 +81,6 @@ export function InviteUserDialog({ open, onOpenChange }: Props) {
       firstName: '',
       lastName: '',
       role: undefined,
-      locationId: null,
     },
   });
 
@@ -114,7 +102,6 @@ export function InviteUserDialog({ open, onOpenChange }: Props) {
         firstName: values.firstName,
         lastName: values.lastName,
         role: values.role,
-        locationId: values.locationId,
       });
       // useInviteUser's onSuccess already fires toast.success('Invito inviato').
       // Show a personalised message with the email to confirm the recipient.
@@ -122,15 +109,6 @@ export function InviteUserDialog({ open, onOpenChange }: Props) {
       handleClose(false);
     } catch (err) {
       if (err instanceof ApiError) {
-        // Defensive: surface server 422 location_required at the field level
-        // in case client-side BR-204 check is bypassed.
-        if (err.code === 'user.location_required_for_mechanic') {
-          setError('locationId', {
-            type: 'server',
-            message: 'La sede è obbligatoria per il ruolo Meccanico',
-          });
-          return;
-        }
         setFormError(translateError(err.code, err.message));
       } else {
         setFormError('Errore imprevisto, riprova.');
@@ -198,32 +176,6 @@ export function InviteUserDialog({ open, onOpenChange }: Props) {
               </SelectContent>
             </Select>
             {errors.role && <p className="text-sm text-red-600 mt-1">{errors.role.message}</p>}
-          </div>
-
-          <div>
-            <Label htmlFor="invite-location">
-              Sede{selectedRole === 'mechanic' ? ' *' : ' (opzionale)'}
-            </Label>
-            <Select
-              value={watch('locationId') ?? ''}
-              onValueChange={(v) => setValue('locationId', v || null, { shouldValidate: true })}
-            >
-              <SelectTrigger id="invite-location">
-                <SelectValue placeholder="Seleziona sede…" />
-              </SelectTrigger>
-              <SelectContent>
-                {(locationsQ.data?.locations ?? []).map((loc) => (
-                  <SelectItem key={loc.id} value={loc.id}>
-                    {loc.name}
-                    {loc.city ? ` — ${loc.city}` : ''}
-                    {loc.isPrimary ? ' (principale)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.locationId && (
-              <p className="text-sm text-red-600 mt-1">{errors.locationId.message}</p>
-            )}
           </div>
 
           <DialogFooter>

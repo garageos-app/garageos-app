@@ -11,11 +11,6 @@ vi.mock('@/lib/api-client', () => ({
   useApiFetch: () => apiFetchMock,
 }));
 
-const filterRef = { current: { selectedLocationId: null as string | null } };
-vi.mock('@/location-filter/useLocationFilter', () => ({
-  useLocationFilter: () => filterRef.current,
-}));
-
 function wrap({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
@@ -43,17 +38,5 @@ describe('useDeadlinesList', () => {
     expect(apiFetchMock).toHaveBeenCalledWith(
       `/v1/deadlines?status=open&intervention_type_id=${typeId}&limit=50`,
     );
-  });
-
-  it('appends location_id and keys the query by the selected sede', async () => {
-    filterRef.current = { selectedLocationId: 'loc-b' };
-    apiFetchMock.mockClear();
-    apiFetchMock.mockResolvedValueOnce(EMPTY);
-    const { result } = renderHook(() => useDeadlinesList({}), { wrapper: wrap });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      '/v1/deadlines?status=open&limit=50&location_id=loc-b',
-    );
-    filterRef.current = { selectedLocationId: null };
   });
 });

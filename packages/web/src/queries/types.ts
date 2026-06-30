@@ -94,7 +94,7 @@ export interface ShopTimelineItem {
    */
   wiki_window_open: boolean;
   // `id` keys the per-officina color in the timeline (and the filter).
-  tenant: { id: string; business_name: string; location_city: string };
+  tenant: { id: string; business_name: string };
   /**
    * false when the caller's tenant did not create this intervention. The
    * timeline is cross-tenant for officine (BR-150/BR-153), but edit and
@@ -441,7 +441,6 @@ export interface InterventionDetail {
   parts_replaced: InterventionPartReplaced[];
   type: { id: string; code: string; name_it: string };
   tenant: { id: string; business_name: string };
-  location: { id: string; name: string | null; city: string; address: string | null };
   vehicle: { id: string; garage_code: string; plate: string; make: string; model: string };
   created_by: { id: string; first_name: string; last_name: string } | null;
   attachments: InterventionAttachment[];

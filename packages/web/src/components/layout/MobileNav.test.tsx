@@ -11,17 +11,6 @@ vi.mock('@/queries/profileMe', () => ({
   useProfileMe: () => ({ data: undefined }),
 }));
 
-// LocationFilterProvider calls useLocations (react-query); stub the whole context
-// module so AppLayout doesn't need a real server or real query infrastructure.
-vi.mock('@/location-filter/LocationFilterContext', () => ({
-  LocationFilterProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-
-// LocationSelector is stubbed — its own behavior is covered elsewhere.
-vi.mock('@/location-filter/LocationSelector', () => ({
-  LocationSelector: () => null,
-}));
-
 // ThemeToggle is irrelevant for these tests.
 vi.mock('@/theme/ThemeToggle', () => ({
   ThemeToggle: () => null,

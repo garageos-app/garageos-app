@@ -19,13 +19,11 @@ const baseProfile: ProfileMeDto = {
   lastName: 'Rossi',
   role: 'mechanic',
   tenantId: 't-1',
-  locationId: null,
   avatarUrl: null,
   phone: '+39 333 1112233',
   status: 'active',
   createdAt: '2026-05-15T00:00:00Z',
   tenant: { businessName: 'Matula' },
-  location: null,
 };
 
 function wrap(ui: React.ReactNode) {

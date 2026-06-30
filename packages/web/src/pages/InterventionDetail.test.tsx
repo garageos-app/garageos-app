@@ -89,7 +89,6 @@ const BASE_DETAIL: InterventionDetailDto = {
   parts_replaced: [],
   type: { id: 'type-tagliando', code: 'TAGLIANDO', name_it: 'Tagliando' },
   tenant: { id: TENANT_ID, business_name: 'Officina Rossi' },
-  location: { id: 'loc-1', name: 'Sede centrale', city: 'Milano', address: null },
   vehicle: {
     id: VEHICLE_ID,
     garage_code: 'GO-234-ABCD',
@@ -221,7 +220,6 @@ describe('InterventionDetail', () => {
 
     // stats tiles
     expect(screen.getByText('Officina Rossi')).toBeInTheDocument();
-    expect(screen.getByText(/Milano/)).toBeInTheDocument();
     expect(screen.getByText('Mario Bianchi')).toBeInTheDocument();
 
     // description card

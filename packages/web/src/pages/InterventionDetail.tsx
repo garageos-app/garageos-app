@@ -50,11 +50,6 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
     tenant: {
       id: d.tenant.id,
       business_name: d.tenant.business_name,
-      // location.city is non-nullable in the InterventionDetail DTO
-      // (queries/types.ts). EditInterventionDialog does not render this
-      // field, but the surrounding ShopTimeline component does — passed
-      // here for the slice contract.
-      location_city: d.location.city,
     },
     viewer_is_owner: d.viewer_is_owner,
     has_attachments: d.attachments.length > 0,
@@ -179,13 +174,9 @@ export function InterventionDetail() {
         onCancelClick={() => setCancelOpen(true)}
       />
 
-      {/* 4-tile stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* 3-tile stats grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <Tile label="Officina" value={i.tenant.business_name} />
-        <Tile
-          label="Sede"
-          value={`${i.location.city}${i.location.name ? ' · ' + i.location.name : ''}`}
-        />
         <Tile
           label="Operatore"
           value={i.created_by ? `${i.created_by.first_name} ${i.created_by.last_name}` : '—'}
