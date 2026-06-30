@@ -99,7 +99,6 @@ Idempotency-Key: 01HKXM9...
     "tax_code": "RSSMRA80A01H501Z",
     "is_business": false
   },
-  "location_id": "01HKXP3...",
   "send_invitation_email": true
 }
 ```
@@ -148,7 +147,6 @@ Se `mode = "create_new"`:
 Altri campi nel root:
 | Campo | Tipo | Obbligatorio | Note |
 |---|---|---|---|
-| `location_id` | UUID | sì | Deve appartenere al tenant del JWT |
 | `send_invitation_email` | boolean | no (default true) | Se false, niente email al cliente |
 
 #### Response `201 Created`
@@ -208,7 +206,6 @@ Altri campi nel root:
 | 400 | `invalid_plate_format` | Formato targa non valido per il paese |
 | 409 | `duplicate_vin` | Esiste già un veicolo con questo VIN |
 | 409 | `duplicate_plate_warning` | Esiste targa identica ma VIN diverso (richiede conferma esplicita con `force: true`) |
-| 422 | `location_not_in_tenant` | La location indicata non appartiene al tenant |
 
 #### Note di implementazione
 
@@ -317,7 +314,6 @@ Authorization: Bearer <officine_user_jwt>
   "intervention": {
     "id": "01HKXQ...",
     "tenantId": "01HKXL0...",
-    "locationId": "01HKXP3...",
     "userId": "01HKXP8...",
     "vehicleId": "01HKXN5...",
     "interventionTypeId": "01HSYS...",
@@ -359,7 +355,6 @@ Authorization: Bearer <officine_user_jwt>
 | 403 | `FORBIDDEN` | Token clienti pool su route officine |
 | 404 | `NOT_FOUND` | Veicolo o tipo intervento non trovato/non accessibile |
 | 409 | `intervention.creation.odometer_decrease_warning` | Km inferiori al massimo storico (BR-068) — recoverable: re-POST con `forceKmDecrease=true` |
-| 422 | `intervention.creation.user_no_location` | Utente autenticato senza locationId |
 | 422 | `vehicle.modification.archived` | Veicolo in stato `archived` (BR-061) |
 
 ---
@@ -1738,7 +1733,7 @@ Authorization: Bearer <tenant_user_jwt>
 
 #### Descrizione
 
-Restituisce il DTO completo di un singolo intervento officina, inclusi tipo, tenant, location, veicolo, operatore che ha creato il record, e lista degli allegati confermati. Pensato per popolare la detail page dell'intervento nella web app officina.
+Restituisce il DTO completo di un singolo intervento officina, inclusi tipo, tenant, veicolo, operatore che ha creato il record, e lista degli allegati confermati. Pensato per popolare la detail page dell'intervento nella web app officina.
 
 `wiki_window_open` è computato server-side come predicato composito BR-062: `wikiLockedAt IS NULL AND firstSeenByCustomerAt IS NULL AND now() - createdAt < 48h`. Non viene esposto il raw `wikiLockedAt` per evitare che il client ri-derivi la logica con bug di time-zone (vedi memory `feedback_compute_composite_br_predicates_server_side.md`).
 
@@ -1784,12 +1779,6 @@ Authorization: Bearer <officina_user_jwt>
     "id": "01HKXL0...",
     "business_name": "Officina Rossi S.r.l."
   },
-  "location": {
-    "id": "01HKXP3...",
-    "name": "Sede Milano",
-    "city": "Milano",
-    "address": "Via Roma 1"               // string | null
-  },
   "vehicle": {
     "id": "01HKXN5...",
     "garage_code": "GO-482-KXRT",
@@ -1834,7 +1823,6 @@ Authorization: Bearer <officina_user_jwt>
 | `parts_replaced` | array | no | Array vuoto se nessun ricambio |
 | `type` | object | no | Tipo intervento (`id`, `code`, `name_it`) |
 | `tenant` | object | no | Tenant owner (`id`, `business_name`) |
-| `location` | object | no | Location di esecuzione |
 | `vehicle` | object | no | Veicolo target |
 | `created_by` | object | sì | `null` se l'utente è stato cancellato (FK `SetNull` on delete) **oppure** se il viewer non è il tenant proprietario (BR-151) |
 | `attachments` | array | no | Solo `processed=true` e `deletedAt=null`. Upload pendenti e soft-deleted sono nascosti. |
@@ -2053,10 +2041,6 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 |---|---|---|---|---|
 | GET | `/tenants/me` | F-OFF-007 | Tenant User | Info tenant corrente. Include `onboardingCompletedAt` (ISO string o `null`) — flag inerte, wizard rimosso |
 | PATCH | `/tenants/me` | F-OFF-007 | Super Admin | **[DETTAGLIATO sotto]** Aggiorna dati tenant |
-| GET | `/tenants/me/locations` | F-OFF-003, F-OFF-004 | Tenant User (Super Admin for F-OFF-004 scope) | **[DETTAGLIATO sotto per F-OFF-004]** Lista location attive (usata anche da InviteUserDialog) |
-| POST | `/tenants/me/locations` | F-OFF-003 | Super Admin | Crea location |
-| PATCH | `/tenants/me/locations/:id` | F-OFF-003 | Super Admin | Modifica location |
-| DELETE | `/tenants/me/locations/:id` | F-OFF-003 | Super Admin | Disattiva location (soft delete) |
 | GET | `/tenants/me/billing` | F-OFF-008 | Super Admin | Info billing (piano, prossima fattura) |
 | GET | `/tenants/me/export` | F-OFF-704 | Super Admin | Export completo dati tenant (async, ritorna job ID) |
 | GET | `/tenants/me/export/:job_id` | F-OFF-704 | Super Admin | Stato export + URL download se pronto |
@@ -2144,9 +2128,10 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 
 **200 response:** same shape as `GET /v1/users/me`.
 
-**`GET /v1/users/me` / `PATCH /v1/users/me` response shape** (camelCase wire): `id`, `email`, `firstName`, `lastName`, `role`, `tenantId`, `locationId`, `avatarUrl` (presigned URL or `null`), `phone`, `status`, `createdAt`, plus the brand-strip names:
+**`GET /v1/users/me` / `PATCH /v1/users/me` response shape** (camelCase wire): `id`, `email`, `firstName`, `lastName`, `role`, `tenantId`, `avatarUrl` (presigned URL or `null`), `phone`, `status`, `createdAt`, plus the brand-strip names:
 - `tenant`: `{ "businessName": "Officina Matula" }` — nome dell'officina del chiamante.
-- `location`: `{ "name": "Sede Milano", "city": "Milano" }` o `null` se l'utente non ha una sede assegnata.
+
+> **Nota sede-unica (2026-06-30):** `locationId` e `location` rimossi dalla response — la tabella `locations` è stata eliminata.
 
 **Errors:**
 - `400 VALIDATION_ERROR` — field validation failure
@@ -2220,7 +2205,6 @@ Il DTO **UserAdmin** usato nelle risposte ha la seguente shape:
   "firstName": "Marco",
   "lastName": "Rossi",
   "role": "super_admin",
-  "locationId": "uuid | null",
   "status": "active",
   "phone": "+39 333 1234567 | null",
   "avatarUrl": "https://presigned-url... | null",
@@ -2240,7 +2224,6 @@ Il DTO **InvitationAdmin** usato nelle risposte ha la seguente shape:
   "firstName": "Luca | null",
   "lastName": "Ferrari | null",
   "role": "mechanic | null",
-  "locationId": "uuid | null",
   "expiresAt": "2026-05-26T10:00:00.000Z",
   "acceptedAt": "null | ISO8601",
   "createdAt": "2026-05-19T10:00:00.000Z"
@@ -2269,7 +2252,6 @@ Restituisce tutti gli utenti del tenant del chiamante (attivi, inattivi e soft-d
       "firstName": "Marco",
       "lastName": "Rossi",
       "role": "super_admin",
-      "locationId": null,
       "status": "active",
       "phone": null,
       "avatarUrl": null,
@@ -2303,8 +2285,7 @@ Crea un `invitation` row di tipo `internal_user` e invia email magic-link via Re
   "email": "nuovo@officina.it",
   "firstName": "Luca",
   "lastName": "Ferrari",
-  "role": "mechanic",
-  "locationId": "b2c3d4e5-..."
+  "role": "mechanic"
 }
 ```
 
@@ -2312,7 +2293,8 @@ Campi:
 - `email` — email dell'invitato (trim + lowercase)
 - `firstName` / `lastName` — max 100 caratteri
 - `role` — `"super_admin"` | `"mechanic"`
-- `locationId` — UUID della sede, `null` se `role=super_admin`; **obbligatorio** se `role=mechanic` (BR-204)
+
+> **Nota sede-unica (2026-06-30):** `locationId` rimosso — la tabella `locations` è stata eliminata (BR-204 superseded).
 
 **Response 201:**
 ```json
@@ -2323,7 +2305,6 @@ Campi:
     "firstName": "Luca",
     "lastName": "Ferrari",
     "role": "mechanic",
-    "locationId": "b2c3d4e5-...",
     "expiresAt": "2026-05-26T10:00:00.000Z",
     "acceptedAt": null,
     "createdAt": "2026-05-19T10:00:00.000Z"
@@ -2339,8 +2320,6 @@ Campi:
 - `409 user.invitation.duplicate_pending` — esiste già un invito pendente per (tenant, email) — BR-206
 - `409 user.invitation.email_in_other_tenant` — email registrata in altro tenant (Cognito hit) — BR-213
 - `409 user.invitation.email_soft_deleted_in_tenant` — email appartiene a utente soft-deleted same-tenant. Operator deve usare /reactivate — BR-212
-- `422 user.location_required_for_mechanic` — role=mechanic ma locationId assente — BR-204
-- `422 user.invitation.location_invalid` — locationId non appartiene al tenant o non attiva
 - `502 auth.cognito_unavailable` — Cognito `AdminGetUser` lookup failed (early-check pre-invitation)
 
 ---
@@ -2363,7 +2342,6 @@ Restituisce gli inviti `internal_user` non ancora accettati e non scaduti del te
       "firstName": "Luca",
       "lastName": "Ferrari",
       "role": "mechanic",
-      "locationId": "b2c3d4e5-...",
       "expiresAt": "2026-05-26T10:00:00.000Z",
       "acceptedAt": null,
       "createdAt": "2026-05-19T10:00:00.000Z"
@@ -2412,13 +2390,12 @@ Endpoint pubblico (nessun JWT). Restituisce i campi necessari al form di accetta
     "lastName": "Ferrari",
     "role": "mechanic",
     "tenantName": "Officina Verdi",
-    "locationName": "Sede Milano",
     "expiresAt": "2026-05-26T10:00:00.000Z"
   }
 }
 ```
 
-Campi interni (`id`, `locationId`, `tenantId`, `acceptedAt`, `createdAt`, `token`) NON esposti.
+Campi interni (`id`, `tenantId`, `acceptedAt`, `createdAt`, `token`) NON esposti.
 
 **Errori:**
 - `404 user.invitation.not_found` — anti-enum: token non trovato, tipo errato, scaduto o già consumato
@@ -2452,7 +2429,6 @@ Endpoint pubblico (nessun JWT). Il bearer dell'URL è il token stesso. Crea l'ac
     "firstName": "Luca",
     "lastName": "Ferrari",
     "role": "mechanic",
-    "locationId": "b2c3d4e5-...",
     "status": "active",
     "phone": null,
     "avatarUrl": null,
@@ -2481,7 +2457,7 @@ Endpoint pubblico (nessun JWT). Il bearer dell'URL è il token stesso. Crea l'ac
 
 #### PATCH /v1/users/:id — Modifica utente (admin)
 
-Modifica `role`, `locationId` e/o `status` di un utente del tenant. Almeno un campo richiesto. Cognito attributi sincronizzati best-effort dopo il commit DB.
+Modifica `role` e/o `status` di un utente del tenant. Almeno un campo richiesto. Cognito attributi sincronizzati best-effort dopo il commit DB.
 
 **Auth:** Super Admin.
 
@@ -2492,15 +2468,15 @@ Modifica `role`, `locationId` e/o `status` di un utente del tenant. Almeno un ca
 ```json
 {
   "role": "super_admin",
-  "locationId": "b2c3d4e5-...",
   "status": "inactive"
 }
 ```
 
 Campi:
 - `role` — `"super_admin"` | `"mechanic"` (optional)
-- `locationId` — UUID | `null` (optional)
 - `status` — `"active"` | `"inactive"` (optional)
+
+> **Nota sede-unica (2026-06-30):** `locationId` rimosso — BR-204 superseded, la tabella `locations` è stata eliminata.
 
 **Response 200:**
 ```json
@@ -2515,8 +2491,6 @@ Campi:
 - `403 auth.forbidden.super_admin_required` — JWT role != super_admin
 - `404 user.not_found` — utente non trovato o cross-tenant
 - `409 user.last_super_admin` — modifica lascerebbe il tenant senza super_admin attivi — BR-203
-- `422 user.location_required_for_mechanic` — role=mechanic ma locationId risultante è null — BR-204
-- `422 user.location_invalid` — locationId non appartiene al tenant o non attiva
 
 ---
 
@@ -2548,12 +2522,13 @@ Imposta `status=inactive` e `deletedAt=now()`. Non cancella fisicamente. L'utent
 
 ```json
 {
-  "role": "super_admin" | "mechanic",
-  "locationId": "uuid | null"
+  "role": "super_admin" | "mechanic"
 }
 ```
 
-Body vuoto `{}` valido: ripristina role/locationId originali (validati). `locationId: null` esplicito ammesso solo se nuovo `role === 'super_admin'` (BR-204).
+Body vuoto `{}` valido: ripristina il role originale. 
+
+> **Nota sede-unica (2026-06-30):** `locationId` rimosso — BR-204 superseded, la tabella `locations` è stata eliminata.
 
 **Response 200:**
 
@@ -2570,121 +2545,8 @@ Body vuoto `{}` valido: ripristina role/locationId originali (validati). `locati
 | 403 | `auth.forbidden.super_admin_required` | Caller non super_admin |
 | 404 | `user.not_found` | Target non esiste, è in altro tenant, o non è soft-deleted |
 | 422 | `user.already_active` | Race/replay defensive (BR-212) |
-| 422 | `user.location_required_for_mechanic` | BR-204 |
-| 422 | `user.location_invalid` | Sede stale o cross-tenant |
 
 **Business rules**: BR-212 (Riattivazione).
-
----
-
-#### GET /v1/tenants/me/locations — Lista location attive (F-OFF-004 scope)
-
-Restituisce le location `status=active` non soft-deleted del tenant corrente. Usato da `InviteUserDialog` per popolare il select sede al momento dell'invito.
-
-**Auth:** Super Admin (per utilizzo F-OFF-004; il medesimo endpoint è listato anche in F-OFF-003 per Tenant User).
-
-**Response 200:**
-```json
-{
-  "locations": [
-    {
-      "id": "b2c3d4e5-...",
-      "name": "Sede Milano",
-      "addressLine": "Via Milano 1",
-      "city": "Milano",
-      "province": "MI",
-      "postalCode": "20100",
-      "country": "IT",
-      "phone": "+39 02 1234567",
-      "email": "milano@officina.it",
-      "isPrimary": true
-    }
-  ]
-}
-```
-
-> Nota (F-OFF-003 PR2, 2026-06-01): i campi indirizzo completi (`addressLine`, `province`, `postalCode`, `country`, `phone`, `email`) sono stati aggiunti alla response per popolare il form di modifica nella UI gestione sedi. Il consumer F-OFF-004 (`InviteUserDialog`) ne legge solo un sottoinsieme.
-
-Ordine: sede primaria prima (`isPrimary DESC`), poi alfabetico per nome.
-
-**Errori:**
-- `401 UNAUTHORIZED` — JWT mancante/invalido
-- `403 auth.forbidden.super_admin_required` — JWT role != super_admin
-
----
-
-#### POST /v1/tenants/me/locations — Crea sede (F-OFF-003)
-
-Crea una sede **secondaria** per il tenant corrente. La sede nasce sempre `isPrimary=false` e `status=active`; per designare la primaria si usa il PATCH (`isPrimary:true`). Vedi BR-200/BR-201.
-
-**Auth:** Super Admin (`requireAuth → requireOfficinaPool → tenantContext → requireSuperAdmin`).
-
-**Request body:**
-```json
-{
-  "name": "Sede Roma",
-  "addressLine": "Via Roma 1",
-  "city": "Roma",
-  "province": "RM",
-  "postalCode": "00100",
-  "country": "IT",
-  "phone": "+39 06 1234567",
-  "email": "roma@officina.it"
-}
-```
-
-Validazione: `name` (1–200, obbligatorio), `addressLine` (1–255, obbligatorio), `city` (1–100, obbligatorio), `province` (2 lettere, uppercased, obbligatorio), `postalCode` (5 cifre, obbligatorio), `country` (2 lettere, default `IT`), `phone` (opzionale/null), `email` (opzionale/null). `isPrimary` **non accettato** → `422 tenants.me.locations.update.unknown_field`.
-
-**Response 201:**
-```json
-{
-  "location": {
-    "id": "b2c3d4e5-...",
-    "name": "Sede Roma",
-    "addressLine": "Via Roma 1",
-    "city": "Roma",
-    "province": "RM",
-    "postalCode": "00100",
-    "country": "IT",
-    "phone": "+39 06 1234567",
-    "email": "roma@officina.it",
-    "isPrimary": false,
-    "status": "active",
-    "createdAt": "2026-06-01T10:00:00.000Z",
-    "updatedAt": "2026-06-01T10:00:00.000Z"
-  }
-}
-```
-
-#### PATCH /v1/tenants/me/locations/:id — Modifica sede / designa primaria (F-OFF-003)
-
-Modifica i campi indirizzo e/o promuove la sede a primaria. Almeno un campo richiesto. Body `.partial()`, stessi campi del POST **+ `isPrimary`**.
-
-- `isPrimary:true` → **swap atomico**: la primaria corrente viene demota (`isPrimary=false`) e questa sede promossa, in un'unica transazione (rispetta il partial-unique-index BR-201).
-- `isPrimary:false` esplicito → `422 tenants.me.locations.cannot_unset_primary` (non si lascia il tenant senza primaria; per cambiarla, promuovi un'altra sede).
-
-**Auth:** Super Admin.
-
-**Response 200:** stesso shape `{ "location": { … } }` del POST.
-
-**Errori:**
-- `404 tenants.me.locations.not_found` — `:id` non appartiene al tenant o è soft-deleted
-- `422 tenants.me.locations.update.empty_body` — body `{}`
-- `422 tenants.me.locations.update.unknown_field` — chiave non in schema
-- `422 tenants.me.locations.cannot_unset_primary` — `isPrimary:false`
-
-#### DELETE /v1/tenants/me/locations/:id — Disattiva sede (F-OFF-003)
-
-Soft delete: `status=inactive` + `deletedAt=now()`. Gli interventi storici conservano il loro `location_id` (nessuna cancellazione dati).
-
-**Auth:** Super Admin.
-
-**Response 200:** `{ "location": { … } }` con `status: "inactive"`.
-
-**Errori:**
-- `404 tenants.me.locations.not_found` — `:id` non del tenant o già disattivata
-- `422 tenants.me.locations.cannot_delete_primary` — la sede è la primaria (designa prima un'altra primaria) — BR-201
-- `422 tenants.me.locations.has_active_users` — esistono meccanici attivi assegnati a questa sede (riassegnali prima) — BR-204
 
 ---
 
@@ -3295,7 +3157,6 @@ Anti-enumerazione: UUID non valido nel formato e ID sconosciuto restituiscono en
       "firstName": "Marco",
       "lastName": "Rossi",
       "role": "super_admin",
-      "locationId": null,
       "status": "active",
       "phone": null,
       "avatarUrl": null,
@@ -3322,11 +3183,11 @@ Shape per-elemento: DTO **UserAdmin** (definito in §3.3).
 **Rate limit:** standard
 **Shipped:** Slice 3
 
-Modifica ruolo, sede e/o stato di un utente nel tenant indicato. Delega tutta la logica di business a `updateOfficineUser` (identico al percorso officine `PATCH /v1/users/:id`): le stesse guardie BR-203 (ultimo super_admin) e BR-204 (meccanico senza sede) si applicano in modo identico. `actorType:'system'` nel log di audit; il Cognito sub del platform-admin è catturato in `metadata`.
+Modifica ruolo e/o stato di un utente nel tenant indicato. Delega tutta la logica di business a `updateOfficineUser` (identico al percorso officine `PATCH /v1/users/:id`): la stessa guardia BR-203 (ultimo super_admin) si applica in modo identico. `actorType:'system'` nel log di audit; il Cognito sub del platform-admin è catturato in `metadata`.
 
 Anti-enumerazione: UUID non valido nel formato per `:id` o `:userId` → `404 tenant.not_found`.
 
-Se `role='mechanic'` e `locationId` è assente nel body, l'endpoint tenta auto-default alla sede primaria attiva del tenant (BR-204 defaulting). Se non esiste, `updateOfficineUser` solleva `user.location_required_for_mechanic 422`.
+> **Nota sede-unica (2026-06-30):** BR-204 (meccanico senza sede) e auto-default alla sede primaria sono stati rimossi con l'eliminazione della tabella `locations`.
 
 **Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant.
 
@@ -3342,7 +3203,6 @@ Se `role='mechanic'` e `locationId` è assente nel body, l'endpoint tenta auto-d
 ```json
 {
   "role": "super_admin",
-  "locationId": "b2c3d4e5-...",
   "status": "inactive"
 }
 ```
@@ -3350,8 +3210,9 @@ Se `role='mechanic'` e `locationId` è assente nel body, l'endpoint tenta auto-d
 | Campo | Tipo | Note |
 |---|---|---|
 | `role` | `"super_admin"` \| `"mechanic"` | optional |
-| `locationId` | UUID \| `null` | optional |
 | `status` | `"active"` \| `"inactive"` | optional |
+
+> **Nota sede-unica (2026-06-30):** `locationId` rimosso — BR-204 superseded.
 
 **Response `200 OK`:**
 
@@ -3367,8 +3228,6 @@ Se `role='mechanic'` e `locationId` è assente nel body, l'endpoint tenta auto-d
 - `404 tenant.not_found` — UUID tenant non valido o inesistente/eliminato (anti-enum)
 - `404 user.not_found` — utente non trovato o cross-tenant
 - `409 user.last_super_admin` — modifica lascerebbe il tenant senza super_admin attivi — BR-203
-- `422 user.location_required_for_mechanic` — `role=mechanic` ma `locationId` risultante è null — BR-204
-- `422 user.location_invalid` — `locationId` non appartiene al tenant o non attiva
 
 #### 3.12.10 `POST /v1/admin/tenants/:id/users/invitations` — Invita utente nel tenant
 
@@ -3410,7 +3269,7 @@ Invia un invito magic-link a un nuovo utente (meccanico o super_admin) nel tenan
 | `lastName` | string | sì | Max 100 caratteri |
 | `role` | `"super_admin"` \| `"mechanic"` | sì | |
 
-> **BR-204:** Se `role='mechanic'`, la `locationId` viene auto-assegnata alla sede primaria attiva del tenant. Se non esiste una sede primaria → `422 user.location_required_for_mechanic`.
+> **Nota sede-unica (2026-06-30):** BR-204 (auto-assegnazione sede) è stato rimosso con l'eliminazione della tabella `locations`.
 
 **Response `200 OK`:**
 
@@ -3442,7 +3301,6 @@ Invia un invito magic-link a un nuovo utente (meccanico o super_admin) nel tenan
 - `404 tenant.not_found` — UUID non valido o tenant inesistente/eliminato (anti-enum)
 - `409 user.invitation.duplicate_pending` — invito pendente già esistente per questa email nel tenant
 - `409 user.invitation.email_in_other_tenant` — email già registrata in Cognito (altro tenant) o con invito pendente in altro tenant
-- `422 user.location_required_for_mechanic` — `role=mechanic` ma nessuna sede primaria attiva nel tenant — BR-204
 - `429 admin.tenant.rate_limited` — oltre 30 richieste/ora per platform-admin
 - `502 auth.cognito_unavailable` — Cognito non raggiungibile durante il pre-check email
 

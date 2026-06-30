@@ -1,3 +1,5 @@
+> **SUPERSEDED by sede-unica (2026-06-30)** — multi-location removed; locations table dropped; tenant address is now the single source of officina address.
+
 # F-OFF-003 — Gestione location (CRUD) — Design
 
 **Date:** 2026-06-01 · **Feature:** F-OFF-003 (GarageOS-Specifiche §3, 🟢 MUST) · **Status:** approved

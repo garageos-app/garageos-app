@@ -368,7 +368,6 @@ model Tenant {
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz
 
-  locations       Location[]
   users           User[]
   customerRelations CustomerTenantRelation[]
   interventions   Intervention[]
@@ -384,39 +383,19 @@ model Tenant {
   @@map("tenants")
 }
 
-model Location {
-  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId     String         @map("tenant_id") @db.Uuid
-  name         String         @db.VarChar(150)
-  addressLine  String         @map("address_line") @db.VarChar(255)
-  city         String         @db.VarChar(100)
-  province     String         @db.VarChar(2)
-  postalCode   String         @map("postal_code") @db.VarChar(10)
-  country      String         @default("IT") @db.VarChar(2)
-  latitude     Decimal?       @db.Decimal(10, 7)
-  longitude    Decimal?       @db.Decimal(10, 7)
-  phone        String?        @db.VarChar(30)
-  email        String?        @db.VarChar(255)
-  isPrimary    Boolean        @default(false) @map("is_primary")
-  status       LocationStatus @default(active)
-  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt    DateTime?      @map("deleted_at") @db.Timestamptz
-
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users         User[]
-  interventions Intervention[]
-  accessLogs    AccessLog[]
-  deadlines     Deadline[]
-
-  @@index([tenantId], map: "idx_locations_tenant_id")
-  @@map("locations")
-}
+// ---------------------------------------------------
+// NOTA sede-unica (2026-06-30): il model Location è stato RIMOSSO.
+// La tabella `locations` è stata droppata. L'indirizzo dell'officina
+// (addressLine, city, province, postalCode, phone) è ora memorizzato
+// direttamente su Tenant — unica fonte. BR-200/BR-201 sono SUPERSEDED.
+// location_id è stato rimosso da: users, interventions, deadlines,
+// access_logs, invitations.
+// ---------------------------------------------------
 
 model User {
   id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId     String     @map("tenant_id") @db.Uuid
-  locationId   String?    @map("location_id") @db.Uuid
+  // locationId removed — sede-unica 2026-06-30 (BR-204 superseded)
   cognitoSub   String     @unique @map("cognito_sub") @db.VarChar(100)
   email        String     @db.VarChar(255)
   firstName    String     @map("first_name") @db.VarChar(100)
@@ -431,7 +410,6 @@ model User {
   deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz
 
   tenant              Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  location            Location?      @relation(fields: [locationId], references: [id], onDelete: SetNull)
   interventions       Intervention[] @relation("PerformedBy")
   cancelledInterventions Intervention[] @relation("CancelledBy")
   revisions           InterventionRevision[]
@@ -624,7 +602,7 @@ model InterventionType {
 model Intervention {
   id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                String              @map("tenant_id") @db.Uuid
-  locationId              String              @map("location_id") @db.Uuid
+  // locationId removed — sede-unica 2026-06-30
   userId                  String              @map("user_id") @db.Uuid
   vehicleId               String              @map("vehicle_id") @db.Uuid
   interventionTypeId      String              @map("intervention_type_id") @db.Uuid
@@ -645,7 +623,6 @@ model Intervention {
   updatedAt               DateTime            @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  location          Location               @relation(fields: [locationId], references: [id], onDelete: Restrict)
   user              User                   @relation("PerformedBy", fields: [userId], references: [id], onDelete: Restrict)
   vehicle           Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   interventionType  InterventionType       @relation(fields: [interventionTypeId], references: [id], onDelete: Restrict)
@@ -756,7 +733,7 @@ model Attachment {
 model Deadline {
   id                         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                   String          @map("tenant_id") @db.Uuid
-  locationId                 String          @map("location_id") @db.Uuid
+  // locationId removed — sede-unica 2026-06-30
   vehicleId                  String          @map("vehicle_id") @db.Uuid
   interventionTypeId         String          @map("intervention_type_id") @db.Uuid
   sourceInterventionId       String?         @map("source_intervention_id") @db.Uuid
@@ -773,7 +750,6 @@ model Deadline {
   updatedAt                  DateTime        @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant                  Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  location                Location               @relation(fields: [locationId], references: [id], onDelete: Restrict)
   vehicle                 Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   interventionType        InterventionType       @relation(fields: [interventionTypeId], references: [id], onDelete: Restrict)
   sourceIntervention      Intervention?          @relation("SourceIntervention", fields: [sourceInterventionId], references: [id], onDelete: SetNull)
@@ -812,7 +788,7 @@ model AccessLog {
   id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   vehicleId  String          @map("vehicle_id") @db.Uuid
   tenantId   String          @map("tenant_id") @db.Uuid
-  locationId String?         @map("location_id") @db.Uuid
+  // locationId removed — sede-unica 2026-06-30
   userId     String          @map("user_id") @db.Uuid
   action     AccessLogAction
   ipAddress  String?         @map("ip_address") @db.Inet
@@ -821,7 +797,6 @@ model AccessLog {
 
   vehicle  Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([vehicleId, createdAt(sort: Desc)], map: "idx_access_log_vehicle")
@@ -859,7 +834,7 @@ model Invitation {
   vehicleId       String?        @map("vehicle_id") @db.Uuid
   customerId      String?        @map("customer_id") @db.Uuid
   role            UserRole?
-  locationId      String?        @map("location_id") @db.Uuid
+  // locationId removed — sede-unica 2026-06-30 (BR-204 superseded)
   token           String         @unique @db.VarChar(100)
   expiresAt       DateTime       @map("expires_at") @db.Timestamptz
   acceptedAt      DateTime?      @map("accepted_at") @db.Timestamptz
@@ -1033,7 +1008,8 @@ DO $$
 DECLARE
     t text;
     tables text[] := ARRAY[
-        'tenants', 'locations', 'users', 'customers', 'customer_tenant_relations',
+        -- 'locations' rimossa (sede-unica 2026-06-30)
+        'tenants', 'users', 'customers', 'customer_tenant_relations',
         'vehicles', 'vehicle_transfers', 'intervention_types', 'interventions',
         'intervention_disputes', 'private_interventions', 'deadlines'
     ];
@@ -1083,10 +1059,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_transfer_vehicle_active
 ON vehicle_transfers (vehicle_id)
 WHERE status IN ('pending_recipient', 'pending_seller_confirmation', 'pending_validation');
 
--- BR-201: Una sola location primaria per tenant
-CREATE UNIQUE INDEX IF NOT EXISTS uq_locations_tenant_primary
-ON locations (tenant_id)
-WHERE is_primary = true AND status = 'active' AND deleted_at IS NULL;
+-- BR-201 (SUPERSEDED sede-unica 2026-06-30): uq_locations_tenant_primary rimosso insieme alla tabella locations.
 
 -- Customer cognito_sub only when not null
 CREATE UNIQUE INDEX IF NOT EXISTS uq_customers_cognito_sub_notnull
@@ -1394,21 +1367,13 @@ USING (is_admin_role() OR tenant_id = current_tenant_id())
 WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
 
 -- =====================================================
--- LOCATIONS (post migration 0003): SELECT cross-pool, WRITE
--- tenant-scoped (BR-150 timeline joina city cross-tenant).
+-- LOCATIONS — RIMOSSA (sede-unica 2026-06-30)
+-- La tabella locations è stata eliminata con la sede-unica migration.
+-- BR-200/BR-201 SUPERSEDED. Le policy RLS qui di seguito erano:
+--   locations_read: FOR SELECT USING (true)  [cross-tenant read]
+--   locations_write: FOR ALL USING/WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id())
+-- Non più applicabili.
 -- =====================================================
-
-ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS locations_read ON locations;
-CREATE POLICY locations_read ON locations
-FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS locations_write ON locations;
-CREATE POLICY locations_write ON locations
-FOR ALL
-USING (is_admin_role() OR tenant_id = current_tenant_id())
-WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
 
 -- =====================================================
 -- PRIVATE_INTERVENTIONS: solo il customer proprietario
@@ -1764,25 +1729,18 @@ async function seedDevData() {
     return;
   }
 
-  // Tenant demo
+  // Tenant demo (sede-unica 2026-06-30: indirizzo su Tenant, no locations)
   const tenant = await prisma.tenant.create({
     data: {
       businessName: 'Officina Demo',
       vatNumber: '12345678901',
       email: 'demo@officina.test',
       status: 'active',
-      locations: {
-        create: {
-          name: 'Sede Principale',
-          addressLine: 'Via Roma 1',
-          city: 'Milano',
-          province: 'MI',
-          postalCode: '20100',
-          isPrimary: true,
-        },
-      },
+      addressLine: 'Via Roma 1',
+      city: 'Milano',
+      province: 'MI',
+      postalCode: '20100',
     },
-    include: { locations: true },
   });
 
   // Super Admin demo
@@ -1921,7 +1879,7 @@ export const CreateVehicleSchema = z.object({
       { message: 'businessName e vatNumber obbligatori per clienti aziendali' }
     ),
   ]),
-  locationId: z.uuid(),
+  // locationId removed — sede-unica 2026-06-30
   sendInvitationEmail: z.boolean().default(true),
   forceNonstandardVin: z.boolean().default(false), // BR-001 eccezione
 });
@@ -2022,7 +1980,8 @@ export async function withContext<T>(
 import { prisma, withContext } from '@garageos/database';
 
 export async function createInterventionService(
-  ctx: { tenantId: string; userId: string; locationId: string },
+  // Note: locationId removed from ctx — sede-unica 2026-06-30 (BR-204 superseded)
+  ctx: { tenantId: string; userId: string },
   input: CreateInterventionInput & { vehicleId: string }
 ) {
   return withContext({ tenantId: ctx.tenantId }, async (tx) => {
@@ -2046,7 +2005,7 @@ export async function createInterventionService(
     const intervention = await tx.intervention.create({
       data: {
         tenantId: ctx.tenantId,
-        locationId: ctx.locationId,
+        // locationId removed — sede-unica 2026-06-30
         userId: ctx.userId,
         vehicleId: input.vehicleId,
         interventionTypeId: input.interventionTypeId,

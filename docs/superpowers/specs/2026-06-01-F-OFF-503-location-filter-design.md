@@ -1,3 +1,5 @@
+> **SUPERSEDED by sede-unica (2026-06-30)** — multi-location removed; per-location filtering no longer needed; mechanic now sees all tenant interventions/deadlines.
+
 # F-OFF-503 — Filtri per location (design)
 
 ## What

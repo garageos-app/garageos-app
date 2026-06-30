@@ -819,15 +819,13 @@ In v1, non c'è scansione dei contenuti degli allegati (niente virus scan, nient
 
 ## 10. Regole sui tenant e utenti
 
-### BR-200 — Un tenant ha sempre una location
-Al momento della creazione di un tenant, viene creata automaticamente **una location primaria** (`is_primary=true`) usando i dati inseriti dal titolare nel form di signup.
+### BR-200 — Un tenant ha sempre una location *(SUPERSEDED — sede-unica, 2026-06-30)*
 
-### BR-201 — Una sola location primaria
-Per ogni tenant esiste **esattamente una** location con `is_primary=true` e `status=active`.
+> **Storico (pre sede-unica):** Al momento della creazione di un tenant, veniva creata automaticamente una location primaria (`is_primary=true`) usando i dati del titolare. La tabella `locations` è stata rimossa nella sede-unica migration (2026-06-30); l'indirizzo dell'officina è ora memorizzato direttamente sul `Tenant` (`addressLine`, `city`, `province`, `postalCode`, `phone`). Questa regola non è più applicabile.
 
-**Enforcement:** partial unique index `UNIQUE (tenant_id) WHERE is_primary=true AND status='active'`.
+### BR-201 — Una sola location primaria *(SUPERSEDED — sede-unica, 2026-06-30)*
 
-Se il Super Admin disattiva la location primaria, deve prima designare un'altra location come primaria.
+> **Storico (pre sede-unica):** Per ogni tenant esisteva esattamente una location con `is_primary=true` e `status=active`, enforced da partial unique index. La tabella `locations` è stata rimossa; il concetto di "sede primaria" non esiste più. Questa regola non è più applicabile.
 
 ### BR-202 — Primo utente è Super Admin
 Il primo utente creato con il tenant (dal flusso di signup) è automaticamente `role=super_admin`.
@@ -844,20 +842,15 @@ Un tenant deve sempre avere **almeno un `user` con `role=super_admin` e `status=
 
 **Enforcement cross-tenant (Slice 3, 2026-06-29):** La stessa guardia è applicata da `PATCH /v1/admin/tenants/:id/users/:userId` tramite delega a `updateOfficineUser` — identico al percorso officine `PATCH /v1/users/:id`. Il codice di errore `user.last_super_admin 409` è sollevato dalla logica condivisa.
 
-### BR-204 — Super Admin senza location specifica
-Un Super Admin può avere `location_id=NULL` (amministra tutto il tenant).
+### BR-204 — Super Admin senza location specifica *(SUPERSEDED — sede-unica, 2026-06-30)*
 
-Un Meccanico **deve** avere `location_id` popolato (assegnato a una sede specifica).
+> **Storico (pre sede-unica):** Un Super Admin poteva avere `location_id=NULL`; un Meccanico doveva avere `location_id` popolato. Con la rimozione della tabella `locations` e della colonna `location_id` da `users`, questa distinzione non è più applicabile: tutti gli utenti del tenant (sia super_admin che mechanic) vedono l'intero tenant. I codici errore `user.location_required_for_mechanic` e `user.location_invalid` sono stati rimossi.
 
-**Enforcement cross-tenant (Slice 3, 2026-06-29):** La stessa guardia è applicata da `PATCH /v1/admin/tenants/:id/users/:userId` (via `updateOfficineUser`) e da `POST /v1/admin/tenants/:id/users/invitations`. Entrambe le route tentano auto-default alla sede primaria attiva del tenant quando `role='mechanic'`; se non esiste, sollevano `user.location_required_for_mechanic 422`.
+### BR-205 — Visibilità cross-location *(SUPERSEDED — sede-unica, 2026-06-30)*
 
-### BR-205 — Visibilità cross-location
-**Super Admin:** vede tutti gli interventi, veicoli, clienti di qualsiasi location del proprio tenant.
-
-**Meccanico:** vede solo gli interventi effettuati nella propria `location_id`. Può però:
-- Cercare veicoli (la ricerca è cross-tenant per definizione)
-- Vedere lo storico completo di un veicolo (indipendentemente dalla location)
-- Registrare interventi solo nella propria location
+> **Storico (pre sede-unica):** Super Admin vedeva tutti gli interventi del tenant; Meccanico vedeva solo gli interventi della propria `location_id`. Con la rimozione di `location_id` da `interventions`, `deadlines`, e `users`, la distinzione per sede non esiste più.
+>
+> **Regola attuale (sede-unica):** Sia Super Admin che Meccanico vedono **tutti** gli interventi, le scadenze e i clienti dell'intero tenant. Il filtro è solo tenant-scoped (via `tenantId`). Non esiste più alcuna restrizione per-sede sulla visibilità dei dati.
 
 ### BR-206 — Invito utenti
 Il Super Admin può invitare nuovi utenti via email. Il flusso effettivo (F-OFF-004):
@@ -912,7 +905,7 @@ Super Admin può riattivare un utente soft-deleted (`status=inactive`, `deleted_
 - Audit log `action='user_reactivated'`
 
 **Vincoli:**
-- BR-204 ricontrollato: mechanic richiede location active obbligatoria
+- BR-204 (SUPERSEDED sede-unica 2026-06-30): il vincolo `location active` non si applica più; il mechanic non richiede una sede assegnata
 - BR-203 non applicabile (reactivate aggiunge un super_admin, mai sottrae)
 
 **Limitazione cross-tenant**: BR-212 risolve solo same-tenant. Per cross-tenant cohabitation vedi BR-213 (out-of-scope v1).
