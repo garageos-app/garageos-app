@@ -1,7 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
-import { resolveLocationFilter } from '../../lib/location-filter.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -24,7 +23,6 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 
 export const recentQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
-  location_id: z.uuid().optional(),
 });
 
 const SUMMARY_MAX = 100;
@@ -49,20 +47,14 @@ const interventionRecentRoutes: FastifyPluginAsync = async (app) => {
     '/v1/interventions/recent',
     { preHandler: [requireAuth, requireOfficinaPool, tenantContext] },
     async (request) => {
-      const { limit, location_id } = recentQuerySchema.parse(request.query);
+      const { limit } = recentQuerySchema.parse(request.query);
       const tenantId = request.tenantId!;
-      const effectiveLocationId = resolveLocationFilter(
-        request.userRole!,
-        request.locationId,
-        location_id,
-      );
 
       return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
         const rows = await tx.intervention.findMany({
           where: {
             tenantId,
             status: { in: ['active', 'disputed'] },
-            ...(effectiveLocationId ? { locationId: effectiveLocationId } : {}),
           },
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           take: limit,

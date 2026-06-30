@@ -5,7 +5,6 @@ import { buildTestServer } from './fixtures.js';
 import {
   createCustomer,
   createCustomerTenantRelation,
-  createLocation,
   createOwnership,
   createTenantWithLocation,
   createUser,
@@ -386,7 +385,10 @@ describe('GET /v1/deadlines (integration)', () => {
   });
 });
 
-describe('GET /v1/deadlines — location filter (F-OFF-503)', () => {
+describe('GET /v1/deadlines — BR-205 relaxed (sede unica)', () => {
+  // BR-205 is relaxed: mechanics now see all tenant deadlines regardless
+  // of the location originally attached to a deadline record.
+  // Tenant isolation is unchanged.
   const LOC_IP = '10.20.42.2';
   let app: FastifyInstance;
   beforeAll(async () => {
@@ -399,80 +401,45 @@ describe('GET /v1/deadlines — location filter (F-OFF-503)', () => {
     await resetDb();
   });
 
-  async function seed() {
-    const { tenantId, locationId: locPrimary } = await createTenantWithLocation('dl-loc');
-    const { locationId: locSecondary } = await createLocation({ tenantId });
+  it('mechanic sees all tenant deadlines (BR-205 relaxed — sede unica)', async () => {
+    const { tenantId, locationId } = await createTenantWithLocation('dl-all');
+    const cognitoSub = '20000000-0000-4000-8000-000000000001';
+    await createUser({ tenantId, cognitoSub });
     const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+
     await seedDeadline({
       tenantId,
-      locationId: locPrimary,
+      locationId,
       vehicleId,
       interventionTypeId: typeId,
       dueDate: new Date('2026-08-01'),
-      description: 'primary-dl',
+      description: 'deadline-one',
     });
     await seedDeadline({
       tenantId,
-      locationId: locSecondary,
+      locationId,
       vehicleId,
       interventionTypeId: typeId,
       dueDate: new Date('2026-08-02'),
-      description: 'secondary-dl',
+      description: 'deadline-two',
     });
-    return { tenantId, locPrimary, locSecondary };
-  }
 
-  it('mechanic sees only own-location deadlines (BR-205); param ignored', async () => {
-    const { tenantId, locPrimary, locSecondary } = await seed();
-    const cognitoSub = '20000000-0000-4000-8000-000000000001';
-    await createUser({ tenantId, cognitoSub, locationId: locPrimary });
     const token = await signTestToken({
       pool: 'officine',
       sub: cognitoSub,
       tenantId,
       role: 'mechanic',
-      locationId: locPrimary,
     });
     const res = await app.inject({
-      method: 'GET',
-      url: `/v1/deadlines?location_id=${locSecondary}`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
-    });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as { deadlines: Array<{ description: string | null }> };
-    expect(body.deadlines.map((d) => d.description)).toEqual(['primary-dl']);
-  });
-
-  it('super_admin: all sedi without param, narrows with param', async () => {
-    const { tenantId, locSecondary } = await seed();
-    const cognitoSub = '20000000-0000-4000-8000-000000000002';
-    await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: cognitoSub,
-      tenantId,
-      role: 'super_admin',
-    });
-
-    const resAll = await app.inject({
       method: 'GET',
       url: '/v1/deadlines',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
     });
-    const all = (resAll.json() as { deadlines: Array<{ description: string | null }> }).deadlines
-      .map((d) => d.description)
-      .sort();
-    expect(all).toEqual(['primary-dl', 'secondary-dl']);
-
-    const resNarrow = await app.inject({
-      method: 'GET',
-      url: `/v1/deadlines?location_id=${locSecondary}`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': LOC_IP },
-    });
-    const narrow = (
-      resNarrow.json() as { deadlines: Array<{ description: string | null }> }
-    ).deadlines.map((d) => d.description);
-    expect(narrow).toEqual(['secondary-dl']);
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { deadlines: Array<{ description: string | null }> };
+    expect(body.deadlines.map((d) => d.description).sort()).toEqual(
+      ['deadline-one', 'deadline-two'].sort(),
+    );
   });
 });
