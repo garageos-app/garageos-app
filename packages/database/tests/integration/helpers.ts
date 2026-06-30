@@ -250,7 +250,7 @@ export async function createUser(opts: {
     `INSERT INTO users
        (id, tenant_id, cognito_sub, email, first_name, last_name,
         role, status, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::"UserRole",
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::"UserRole",
              'active'::"UserStatus", NOW(), NOW())
      RETURNING id`,
     [tenantId, cognitoSub, userEmail, firstName, lastName, role],
