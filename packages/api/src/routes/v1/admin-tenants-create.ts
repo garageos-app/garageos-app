@@ -122,7 +122,8 @@ export const adminTenantsCreateRoutes: FastifyPluginAsync = async (app) => {
         );
       }
 
-      // ─── DB transaction: tenant → location → invitation → audit ─────────────
+      // ─── DB transaction: tenant → invitation → audit ─────────────────────────
+      // sede-unica: no separate Location row — tenant address is on the tenant.
       const txResult = await app.withContext({ role: 'admin' as const }, async (tx) => {
         // Step 1: create tenant. Rely on schema defaults for status /
         // billingStatus / plan. P2002 on vatNumber unique index → duplicate.
