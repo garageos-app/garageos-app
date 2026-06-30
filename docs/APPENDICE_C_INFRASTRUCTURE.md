@@ -2158,43 +2158,25 @@ Runbook operativo per attivare la console di piattaforma in produzione. Da esegu
 
 La sede-unica slice rimuove la tabella `locations` e i campi `location_id` da `interventions`, `deadlines`, `users`, `access_logs`, `invitations`. Il rollout prod avviene in due migration (A = expand/nullable, B = contract/drop), da applicare manualmente con `DIRECT_URL`.
 
-> **Situazione attuale (out-of-order):** il codice `feat/sede-unica` è già stato deployato su prod prima delle migration (l'ordine ideale è A→deploy→B; in questo rollout il codice è già il finale). Applicare **entrambe le migration in sequenza** (A poi B) per allineare il DB allo schema finale del codice già live.
+> **Situazione attuale (out-of-order):** il codice `feat/sede-unica` è già stato deployato su prod prima delle migration (l'ordine ideale è A→deploy→B; in questo rollout il codice è già il finale). Applicare **entrambe le migration in un'unica run** di `migrate deploy` (le applica in ordine di timestamp: A expand poi B contract) per allineare il DB allo schema finale del codice già live.
 
 **Procedura:**
 
 1. **Snapshot DB prod** (backup point-in-time o `pg_dump`) — la migration B è irreversibile.
 
-2. **Applica migration A** (expand — rende NOT NULL nullable, backfilla dati):
+2. **Applica le migration** (un'unica run: A expand → B contract, in ordine di timestamp):
    ```bash
    DIRECT_URL=<url-prod> pnpm --filter @garageos/database exec prisma migrate deploy
-   # applica solo le migration pending (migration A sarà la prima)
-   # oppure, per controllo fine, eseguire il file SQL di migration A direttamente:
-   # psql $DIRECT_URL -f packages/database/prisma/migrations/<timestamp>_sede_unica_a/migration.sql
    ```
-   Questo passaggio rimuove i vincoli NOT NULL su `location_id` nelle tabelle, permettendo la creazione di interventi e scadenze senza sede.
+   `migrate deploy` applica **tutte** le migration pending nell'ordine dei timestamp: prima `20260630120000_sede_unica_expand` (rende `location_id` nullable + backfilla l'indirizzo da `locations` a `tenants`), poi `20260630120100_sede_unica_contract` (droppa le colonne `location_id`, la tabella `locations` e l'enum `LocationStatus`). Ogni migration gira nella propria transazione, nell'ordine corretto. Il codice sede-unica è già live, quindi non serve un deploy intermedio.
 
-3. **Deploy del codice** (già avvenuto — il codice sede-unica è live):
-   ```bash
-   # Se necessario forzare un cold-start per ri-leggere secrets:
-   aws lambda update-function-configuration --function-name garageos-api \
-     --description "sede-unica code already deployed — bump to force cold start"
-   ```
-
-4. **Smoke:** `GET /health` → `database:ok`; crea un intervento senza sede dalla web app officine; verifica indirizzo officina dal tab Officina (deve mostrare i dati da `tenants.address_line/city/province`).
-
-5. **Applica migration B** (contract — droppa colonne e tabella `locations`):
-   ```bash
-   DIRECT_URL=<url-prod> pnpm --filter @garageos/database exec prisma migrate deploy
-   # applica la migration B (seconda pending)
-   ```
-
-6. **Smoke finale:**
+3. **Smoke:** `GET /health` → `database:ok`; crea un intervento senza sede dalla web app officine; verifica l'indirizzo officina dal tab Officina (dati da `tenants.address_line/city/province`); poi:
    ```sql
-   -- Verifica che la tabella locations non esista più:
-   SELECT to_regclass('public.locations');
-   -- Deve restituire NULL
+   SELECT to_regclass('public.locations');  -- deve restituire NULL
    ```
-   App officine funzionante (interventi, scadenze, utenti senza location_id).
+   App officine funzionante (interventi, scadenze, utenti senza `location_id`).
+
+> **Nota — rollout phased "ideale" (NON questo caso):** se il codice non fosse già live, l'ordine corretto sarebbe expand → deploy → contract. Poiché `migrate deploy` applica tutte le pending insieme, per fermarsi dopo A si applicherebbe la sola migration A con `psql $DIRECT_URL -f packages/database/prisma/migrations/20260630120000_sede_unica_expand/migration.sql`, si deploya il codice, si fa smoke, e solo dopo si lancia `migrate deploy` per la B. In questo rollout il codice è già finale → si va diretti al punto 2.
 
 > **Nota dev/CI:** in sviluppo e CI entrambe le migration si applicano insieme (schema finale). Il phasing A→deploy→B è SOLO per il rollout prod dove i dati live richiedono la finestra di compatibilità.
 

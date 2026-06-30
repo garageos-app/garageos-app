@@ -17,7 +17,6 @@ export interface CognitoIdTokenPayload extends JWTPayload {
   family_name?: string;
   'custom:tenant_id'?: string;
   'custom:role'?: string;
-  'custom:location_id'?: string;
   'custom:customer_id'?: string;
 }
 

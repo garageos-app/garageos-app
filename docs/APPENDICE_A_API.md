@@ -716,7 +716,7 @@ Restituisce un singolo intervento officina e il **thread delle contestazioni del
     "partsReplacedCount": 3,
     "status": "disputed",
     "isDisputed": true,
-    "tenant": { "businessName": "Officina Rossi", "locationCity": "Milano" },
+    "tenant": { "businessName": "Officina Rossi" },
     "attachmentsCount": 2
   },
   "disputes": [
@@ -989,8 +989,7 @@ Authorization: Bearer <any_user_jwt>
       "viewer_is_owner": true,
       "tenant": {
         "id": "01HKXL0...",
-        "business_name": "Officina Rossi S.r.l.",
-        "location_city": "Milano"
+        "business_name": "Officina Rossi S.r.l."
       },
       "has_attachments": true,
       "attachments_count": 2
@@ -2607,7 +2606,6 @@ Risposta `200`:
     {
       "action": "view",            // "view" | "new_intervention"
       "tenantName": "Officina Rossi",
-      "locationCity": "Bologna",   // string | null
       "occurredAt": "2026-06-04T14:32:10.123Z",
       "mechanicName": "Mario Bianchi"  // presente solo se esiste un customer_tenant_relation (BR-151)
     }
@@ -2758,7 +2756,7 @@ L'`owner_type=intervention` resta officina-only.
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | GET | `/v1/admin/me` | Slice 0 | Platform Admin | **[DETTAGLIATO §3.12.1]** Identità admin autenticato (JWT claims, no DB) |
-| POST | `/v1/admin/tenants` | Slice 1 | Platform Admin | **[DETTAGLIATO §3.12.2]** Crea nuovo tenant (officina), location primaria e invito owner |
+| POST | `/v1/admin/tenants` | Slice 1 | Platform Admin | **[DETTAGLIATO §3.12.2]** Crea nuovo tenant (officina) e invito owner |
 | GET | `/v1/admin/tenants` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.3]** Lista tutti i tenant con stato e owner summary |
 | POST | `/v1/admin/tenants/:id/suspend` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.4]** Sospendi tenant (BR-210) |
 | POST | `/v1/admin/tenants/:id/reactivate` | Slice 2 | Platform Admin | **[DETTAGLIATO §3.12.4]** Riattiva tenant (BR-210) |
@@ -2820,7 +2818,7 @@ Restituisce i campi di identità estratti direttamente dal JWT verificato, senza
 **Rate limit:** standard
 **Shipped:** Slice 1
 
-Crea un nuovo tenant (officina) con location primaria (placeholder indirizzo) e un invito `super_admin` (tipo `internal_user`, scadenza 7 giorni). Invia il magic-link di onboarding all'`ownerEmail` via Resend. Sostituisce `scripts/rebuild-tenants.mjs` per i nuovi tenant in produzione.
+Crea un nuovo tenant (officina) e un invito `super_admin` (tipo `internal_user`, scadenza 7 giorni). Invia il magic-link di onboarding all'`ownerEmail` via Resend. Sostituisce `scripts/rebuild-tenants.mjs` per i nuovi tenant in produzione.
 
 **Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant — l'endpoint opera a livello piattaforma.
 

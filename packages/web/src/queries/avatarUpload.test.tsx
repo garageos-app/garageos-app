@@ -97,7 +97,6 @@ const PROFILE_OK = {
   lastName: 'Rossi',
   role: 'mechanic' as const,
   tenantId: '22222222-2222-2222-2222-222222222222',
-  locationId: null,
   avatarUrl: 'https://s3.example.com/avatars/signed-url',
   phone: null,
   status: 'active',

@@ -2132,7 +2132,6 @@ export async function getVehicleTimeline(
         include: {
           interventionType: true,
           tenant: { select: { businessName: true } },
-          location: { select: { city: true } },
           disputes: { where: { status: { in: ['open', 'responded'] } } },
         },
         orderBy: { interventionDate: 'desc' },
