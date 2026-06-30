@@ -143,25 +143,7 @@ export const adminTenantsCreateRoutes: FastifyPluginAsync = async (app) => {
           throw err;
         }
 
-        // Step 2: create primary location with placeholder values. The workshop
-        // owner fills in real address data during the onboarding wizard (F-OFF-003).
-        // Placeholder values satisfy NOT NULL + VarChar length constraints only —
-        // there are no CHECK constraints on these columns.
-        const location = await tx.location.create({
-          data: {
-            tenantId: tenant.id,
-            name: 'Sede principale',
-            addressLine: 'Da definire',
-            city: 'Da definire',
-            province: 'NA',
-            postalCode: '00100',
-            country: 'IT',
-            isPrimary: true,
-          },
-          select: { id: true },
-        });
-
-        // Step 3: generate token + insert invitation row. P2002 on the partial
+        // Step 2: generate token + insert invitation row. P2002 on the partial
         // unique index (same pattern as users-invitations-create.ts, BR-206) is
         // mapped to duplicate_pending inside createInternalInvitation.
         const { invitation, tokenPlaintext } = await createInternalInvitation(tx, {
@@ -170,7 +152,6 @@ export const adminTenantsCreateRoutes: FastifyPluginAsync = async (app) => {
           firstName: body.ownerFirstName,
           lastName: body.ownerLastName,
           role: 'super_admin',
-          locationId: location.id,
         });
 
         // Step 4: audit log — same transaction so it rolls back atomically with

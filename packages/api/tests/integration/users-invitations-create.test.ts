@@ -43,7 +43,7 @@ describe('POST /v1/users/invitations', () => {
     // intercepts the fresh CognitoIdentityProviderClient. Default behavior
     // is "user not in pool" — the step 1bis cross-tenant check then
     // treats the email as new and continues the flow (status quo for the
-    // happy-path / BR-204 / duplicate-pending / SES-fail cases that
+    // happy-path / duplicate-pending / SES-fail cases that
     // predate the cross-tenant guard).
     cognitoMock.reset();
     _resetCognitoClientForTests();
@@ -53,7 +53,7 @@ describe('POST /v1/users/invitations', () => {
   });
 
   it('creates an invitation + sends SES email (happy path)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('inv-create-ok');
+    const { tenantId } = await createTenantWithLocation('inv-create-ok');
     const adminSub = `sa-inv-${crypto.randomUUID()}`;
     await createUser({
       tenantId,
@@ -78,7 +78,6 @@ describe('POST /v1/users/invitations', () => {
         firstName: 'Mario',
         lastName: 'Rossi',
         role: 'mechanic',
-        locationId,
       },
     });
 
@@ -86,7 +85,6 @@ describe('POST /v1/users/invitations', () => {
     const body = res.json() as { invitation: Record<string, unknown> };
     expect(body.invitation.targetEmail).toBe('mario@example.com');
     expect(body.invitation.role).toBe('mechanic');
-    expect(body.invitation.locationId).toBe(locationId);
     expect(body.invitation.expiresAt).toBeDefined();
     // Plaintext token must never be exposed in the response (security invariant).
     expect(body.invitation).not.toHaveProperty('token');
@@ -137,40 +135,6 @@ describe('POST /v1/users/invitations', () => {
     expect(auditRows[0]!.actor_id).not.toBeNull();
   });
 
-  it('rejects mechanic role without locationId (BR-204)', async () => {
-    const { tenantId } = await createTenantWithLocation('inv-br204');
-    const adminSub = `sa-br204-${crypto.randomUUID()}`;
-    await createUser({
-      tenantId,
-      cognitoSub: adminSub,
-      email: 'sa-br204@test.it',
-      role: 'super_admin',
-    });
-
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: adminSub,
-      tenantId,
-      role: 'super_admin',
-    });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/users/invitations',
-      headers: { authorization: `Bearer ${token}` },
-      payload: {
-        email: 'a@b.com',
-        firstName: 'A',
-        lastName: 'B',
-        role: 'mechanic',
-        locationId: null,
-      },
-    });
-
-    expect(res.statusCode).toBe(422);
-    expect(res.json().code).toBe('user.location_required_for_mechanic');
-  });
-
   it('rejects email collision with an existing active user (409)', async () => {
     const { tenantId } = await createTenantWithLocation('inv-collision');
     const adminSub = `sa-col-${crypto.randomUUID()}`;
@@ -204,7 +168,6 @@ describe('POST /v1/users/invitations', () => {
         firstName: 'X',
         lastName: 'Y',
         role: 'super_admin',
-        locationId: null,
       },
     });
 
@@ -213,7 +176,7 @@ describe('POST /v1/users/invitations', () => {
   });
 
   it('rejects duplicate pending invitation — partial unique index (BR-206)', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('inv-dup');
+    const { tenantId } = await createTenantWithLocation('inv-dup');
     const adminSub = `sa-dup-${crypto.randomUUID()}`;
     await createUser({
       tenantId,
@@ -233,7 +196,6 @@ describe('POST /v1/users/invitations', () => {
       firstName: 'Mario',
       lastName: 'Rossi',
       role: 'mechanic' as const,
-      locationId,
     };
 
     // First invite — should succeed.
@@ -260,7 +222,7 @@ describe('POST /v1/users/invitations', () => {
     // Override mock: SES throws on send.
     sesMock.on(SendEmailCommand).rejects(new Error('SES sandbox'));
 
-    const { tenantId, locationId } = await createTenantWithLocation('inv-ses-fail');
+    const { tenantId } = await createTenantWithLocation('inv-ses-fail');
     const adminSub = `sa-sesfail-${crypto.randomUUID()}`;
     await createUser({
       tenantId,
@@ -285,7 +247,6 @@ describe('POST /v1/users/invitations', () => {
         firstName: 'No',
         lastName: 'Mail',
         role: 'mechanic',
-        locationId,
       },
     });
 
@@ -330,7 +291,6 @@ describe('POST /v1/users/invitations', () => {
         firstName: 'A',
         lastName: 'B',
         role: 'mechanic',
-        locationId: null,
       },
     });
 
@@ -366,7 +326,7 @@ describe('POST /v1/users/invitations — cross-tenant detection (F-OFF-004 react
   });
 
   it('Cognito hit + no DB user → 409 user.invitation.email_in_other_tenant, no invitation row, no SES send', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('crosstenant');
+    const { tenantId } = await createTenantWithLocation('crosstenant');
     const adminSub = `sa-crosstenant-${crypto.randomUUID()}`;
     await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
 
@@ -394,7 +354,6 @@ describe('POST /v1/users/invitations — cross-tenant detection (F-OFF-004 react
         firstName: 'A',
         lastName: 'B',
         role: 'mechanic',
-        locationId,
       },
     });
 
@@ -410,7 +369,7 @@ describe('POST /v1/users/invitations — cross-tenant detection (F-OFF-004 react
   });
 
   it('Cognito throws → 502 auth.cognito_unavailable, no invitation row', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('cogfail');
+    const { tenantId } = await createTenantWithLocation('cogfail');
     const adminSub = `sa-cogfail-${crypto.randomUUID()}`;
     await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
 
@@ -432,7 +391,6 @@ describe('POST /v1/users/invitations — cross-tenant detection (F-OFF-004 react
         firstName: 'A',
         lastName: 'B',
         role: 'mechanic',
-        locationId,
       },
     });
 
@@ -446,7 +404,7 @@ describe('POST /v1/users/invitations — cross-tenant detection (F-OFF-004 react
   });
 
   it('Same-tenant soft-deleted user → 409 user.invitation.email_soft_deleted_in_tenant, Cognito NOT called', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('softdel-reinvite');
+    const { tenantId } = await createTenantWithLocation('softdel-reinvite');
     const adminSub = `sa-softdel-${crypto.randomUUID()}`;
     await createUser({ tenantId, cognitoSub: adminSub, role: 'super_admin' });
     const { userId: mechId } = await createUser({
@@ -454,7 +412,6 @@ describe('POST /v1/users/invitations — cross-tenant detection (F-OFF-004 react
       cognitoSub: `mech-softdel-${crypto.randomUUID()}`,
       email: 'softdel@x.test',
       role: 'mechanic',
-      locationId,
     });
     // Soft-delete the mechanic.
     await pgAdmin.query(
@@ -481,7 +438,6 @@ describe('POST /v1/users/invitations — cross-tenant detection (F-OFF-004 react
         firstName: 'A',
         lastName: 'B',
         role: 'mechanic',
-        locationId,
       },
     });
 

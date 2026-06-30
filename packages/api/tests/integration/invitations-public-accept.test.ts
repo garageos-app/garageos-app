@@ -106,7 +106,7 @@ describe('POST /v1/invitations/:token/accept — happy path', () => {
   const TEST_IP = '10.30.40.1';
 
   it('creates User row, consumes invitation, returns user (no cognitoSub), audit log', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('accept-ok');
+    const { tenantId } = await createTenantWithLocation('accept-ok');
 
     const { invitationId } = await createInvitation({
       tenantId,
@@ -114,7 +114,6 @@ describe('POST /v1/invitations/:token/accept — happy path', () => {
       firstName: 'Mario',
       lastName: 'Rossi',
       role: 'mechanic',
-      locationId,
       token: 'accept-tok-1',
     });
 
@@ -347,12 +346,11 @@ describe('POST /v1/invitations/:token/accept — email race 409', () => {
   const TEST_IP = '10.30.40.4';
 
   it('returns 409 email_already_active when an active User with same email already exists', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation('accept-race');
+    const { tenantId } = await createTenantWithLocation('accept-race');
     await createInvitation({
       tenantId,
       targetEmail: 'race@x.com',
       role: 'mechanic',
-      locationId,
       token: 'race-tok',
     });
     // Pre-seed an active user with the same email (simulates race condition).

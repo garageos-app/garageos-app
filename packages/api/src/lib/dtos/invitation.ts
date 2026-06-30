@@ -11,7 +11,6 @@ export const INVITATION_ADMIN_SELECT = {
   firstName: true,
   lastName: true,
   role: true,
-  locationId: true,
   expiresAt: true,
   acceptedAt: true,
   createdAt: true,
@@ -28,7 +27,6 @@ export type InvitationAdminWireDto = {
   firstName: string | null;
   lastName: string | null;
   role: UserRole | null;
-  locationId: string | null;
   expiresAt: string;
   acceptedAt: string | null;
   createdAt: string;
@@ -41,7 +39,6 @@ export function serializeInvitationAdmin(row: InvitationAdminRow): InvitationAdm
     firstName: row.firstName,
     lastName: row.lastName,
     role: row.role,
-    locationId: row.locationId,
     expiresAt: row.expiresAt.toISOString(),
     acceptedAt: row.acceptedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
@@ -49,13 +46,12 @@ export function serializeInvitationAdmin(row: InvitationAdminRow): InvitationAdm
 }
 
 // Public-view shape for GET /v1/invitations/:token — does NOT leak
-// id, locationId, createdAt, acceptedAt. Just what the accept form needs.
+// id, createdAt, acceptedAt. Just what the accept form needs.
 export interface InvitationPublicView {
   targetEmail: string;
   firstName: string;
   lastName: string;
   role: 'super_admin' | 'mechanic';
-  locationName: string | null;
   tenantName: string;
   expiresAt: string;
 }

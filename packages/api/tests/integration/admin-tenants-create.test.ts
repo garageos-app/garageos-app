@@ -235,29 +235,17 @@ describe('POST /v1/admin/tenants — business cases (integration)', () => {
     expect(tenantRows[0]!.billing_status).toBe('manual');
     expect(tenantRows[0]!.plan).toBe('starter');
 
-    // ── DB: locations row — primary location with handler placeholder values ─
-    const { rows: locationRows } = await pgAdmin.query<{
-      id: string;
-      name: string;
-      is_primary: boolean;
-    }>(`SELECT id, name, is_primary FROM locations WHERE tenant_id = $1`, [tenantId]);
-    expect(locationRows).toHaveLength(1);
-    expect(locationRows[0]!.name).toBe('Sede principale');
-    expect(locationRows[0]!.is_primary).toBe(true);
-    const locationId = locationRows[0]!.id;
-
     // ── DB: invitations row ─────────────────────────────────────────────────
     const now = Date.now();
     const { rows: invRows } = await pgAdmin.query<{
       invitation_type: string;
       role: string;
-      location_id: string;
       token_hash: string;
       accepted_at: Date | null;
       expires_at: Date;
       target_email: string;
     }>(
-      `SELECT invitation_type, role, location_id, token_hash,
+      `SELECT invitation_type, role, token_hash,
               accepted_at, expires_at, target_email
          FROM invitations WHERE tenant_id = $1`,
       [tenantId],
@@ -265,7 +253,6 @@ describe('POST /v1/admin/tenants — business cases (integration)', () => {
     expect(invRows).toHaveLength(1);
     expect(invRows[0]!.invitation_type).toBe('internal_user');
     expect(invRows[0]!.role).toBe('super_admin');
-    expect(invRows[0]!.location_id).toBe(locationId);
     // token_hash is a 64-char hex SHA-256 digest; plaintext never stored.
     expect(invRows[0]!.token_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(invRows[0]!.accepted_at).toBeNull();
@@ -405,7 +392,7 @@ describe('POST /v1/admin/tenants — business cases (integration)', () => {
       [otherTenantId],
     );
     // Insert a pending invitation for ownerEmail in the other tenant.
-    // location_id is nullable; token_hash is a fixed 64-char hex string.
+    // token_hash is a fixed 64-char hex string.
     await pgAdmin.query(
       `INSERT INTO invitations
          (id, tenant_id, invitation_type, target_email, first_name, last_name,

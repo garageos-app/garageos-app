@@ -16,7 +16,6 @@ const USER_ROW = {
   lastName: 'Verdi',
   role: 'mechanic' as const,
   tenantId: TENANT_ID,
-  locationId: null,
   avatarUrl: null,
   phone: null,
   status: 'active' as const,
@@ -117,14 +116,12 @@ describe('GET /v1/users/me', () => {
       lastName: true,
       role: true,
       tenantId: true,
-      locationId: true,
       avatarUrl: true,
       phone: true,
       status: true,
       createdAt: true,
-      // Brand-strip names for the top bar (F-OFF-007 follow-up).
+      // Tenant name for the officina brand strip (F-OFF-007 follow-up).
       tenant: { select: { businessName: true } },
-      location: { select: { name: true, city: true } },
     });
     // Must NOT expose these fields
     expect(call.select).not.toHaveProperty('cognitoSub');

@@ -7,14 +7,13 @@
 // Test groups:
 //   1. Isolation matrix — no-auth 401, officine 403, clienti 403.
 //   2. Mechanic happy path — 200, DB rows (invitations / audit_logs) verified,
-//      locationId = primary location, magicLinkUrl present, hash ≠ plaintext.
-//   3. super_admin happy path — 200, locationId null.
+//      magicLinkUrl present, hash ≠ plaintext.
+//   3. super_admin happy path — 200, invitation row created.
 //   4. Duplicate pending (same tenant + email) → user.invitation.duplicate_pending 409.
 //   5. Owner-email in Cognito pool → user.invitation.email_in_other_tenant 409.
 //   6. Pending invitation in another tenant → user.invitation.email_in_other_tenant 409.
 //   7. Unknown tenant → tenant.not_found 404.
-//   8. Mechanic + no primary location → user.location_required_for_mechanic 422.
-//   9. Rate-limit — 31st call from the same admin JWT sub → 429
+//   8. Rate-limit — 31st call from the same admin JWT sub → 429
 //      admin.tenant.rate_limited; unique adminSub per describe block for isolation
 //      (feedback_integration_test_rate_limit_isolation.md).
 //
@@ -127,12 +126,11 @@ describe('POST /v1/admin/tenants/:id/users/invitations — auth isolation (integ
   });
 });
 
-// ─── 2–8. Business cases ──────────────────────────────────────────────────────
+// ─── 2–9. Business cases ──────────────────────────────────────────────────────
 
 describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integration)', () => {
   let app: FastifyInstance;
   let tenantId: string;
-  let primaryLocationId: string;
 
   beforeAll(async () => {
     app = await buildTestServer();
@@ -143,10 +141,8 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
   beforeEach(async () => {
     await resetDb();
 
-    // Seed a tenant with a primary location for each test.
-    const result = await createTenantWithLocation();
-    tenantId = result.tenantId;
-    primaryLocationId = result.locationId;
+    // Seed a tenant for each test (sede-unica: no location seeded).
+    ({ tenantId } = await createTenantWithLocation());
 
     // Reset SES singleton + mock — same pattern as admin-tenants-create.test.ts.
     _resetSesClientForTests();
@@ -164,7 +160,7 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
   });
 
   // ── 2. Mechanic happy path ──────────────────────────────────────────────────
-  it('invites a mechanic: 200, invitation row with role=mechanic and primaryLocationId, magicLinkUrl present, hash ≠ plaintext', async () => {
+  it('invites a mechanic: 200, invitation row with role=mechanic, magicLinkUrl present, hash ≠ plaintext', async () => {
     const adminSub = 'admin-sub-mechanic-happy';
     const token = await signTestToken({
       pool: 'platform-admins',
@@ -205,13 +201,12 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
     const { rows: invRows } = await pgAdmin.query<{
       invitation_type: string;
       role: string;
-      location_id: string;
       token_hash: string;
       accepted_at: Date | null;
       expires_at: Date;
       target_email: string;
     }>(
-      `SELECT invitation_type, role, location_id, token_hash,
+      `SELECT invitation_type, role, token_hash,
               accepted_at, expires_at, target_email
          FROM invitations WHERE tenant_id = $1`,
       [tenantId],
@@ -219,8 +214,6 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
     expect(invRows).toHaveLength(1);
     expect(invRows[0]!.invitation_type).toBe('internal_user');
     expect(invRows[0]!.role).toBe('mechanic');
-    // mechanic must be assigned to the primary location.
-    expect(invRows[0]!.location_id).toBe(primaryLocationId);
     // token_hash is a 64-char hex SHA-256 digest; plaintext never stored.
     expect(invRows[0]!.token_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(invRows[0]!.accepted_at).toBeNull();
@@ -275,7 +268,7 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
   });
 
   // ── 3. super_admin happy path ───────────────────────────────────────────────
-  it('invites a super_admin: 200, invitation row with role=super_admin and locationId=null', async () => {
+  it('invites a super_admin: 200, invitation row with role=super_admin', async () => {
     const token = await signTestToken({ pool: 'platform-admins' });
 
     const res = await app.inject({
@@ -294,14 +287,12 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
     expect(body.invitation.role).toBe('super_admin');
     expect(body.invitation.magicLinkUrl).toMatch(/\/invitations\//);
 
-    // ── DB: invitation row — super_admin must have locationId=null ────────────
+    // ── DB: invitation row ────────────────────────────────────────────────────
     const { rows: invRows } = await pgAdmin.query<{
       role: string;
-      location_id: string | null;
-    }>(`SELECT role, location_id FROM invitations WHERE tenant_id = $1`, [tenantId]);
+    }>(`SELECT role FROM invitations WHERE tenant_id = $1`, [tenantId]);
     expect(invRows).toHaveLength(1);
     expect(invRows[0]!.role).toBe('super_admin');
-    expect(invRows[0]!.location_id).toBeNull();
   });
 
   // ── 4. Duplicate pending for same (tenant, email) ───────────────────────────
@@ -438,37 +429,7 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
     expect((res.json() as { code: string }).code).toBe('tenant.not_found');
   });
 
-  // ── 8. Mechanic + no primary location ──────────────────────────────────────
-  it('returns 422 user.location_required_for_mechanic when the tenant has no primary active location', async () => {
-    // Create a tenant WITHOUT any location.
-    const { rows: tenantRows } = await pgAdmin.query<{ id: string }>(
-      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
-       VALUES (gen_random_uuid(), 'Senza Sede SRL', '11111111111', 'senzasede@test.it', NOW(), NOW())
-       RETURNING id`,
-    );
-    const noLocationTenantId = tenantRows[0]!.id;
-
-    const token = await signTestToken({ pool: 'platform-admins' });
-    const res = await app.inject({
-      method: 'POST',
-      url: `${BASE_URL}/${noLocationTenantId}/users/invitations`,
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      payload: VALID_MECHANIC_BODY,
-    });
-
-    expect(res.statusCode).toBe(422);
-    expect(res.headers['content-type']).toContain(PROBLEM_JSON_CONTENT_TYPE);
-    expect((res.json() as { code: string }).code).toBe('user.location_required_for_mechanic');
-
-    // No invitation row written.
-    const { rows } = await pgAdmin.query<{ c: string }>(
-      `SELECT COUNT(*)::text AS c FROM invitations WHERE tenant_id = $1`,
-      [noLocationTenantId],
-    );
-    expect(rows[0]!.c).toBe('0');
-  });
-
-  // ── 9a. Same-tenant active user ─────────────────────────────────────────────
+  // ── 8. Same-tenant active user ─────────────────────────────────────────────
   // Regression: before the fix, this would fall through to the Cognito check
   // and return email_in_other_tenant 409 instead of email_already_active 409.
   it('returns 409 user.invitation.email_already_active when the email belongs to an active user in the same tenant', async () => {
@@ -478,7 +439,6 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
       cognitoSub: `existing-active-${crypto.randomUUID()}`,
       email: targetEmail,
       role: 'mechanic',
-      locationId: primaryLocationId,
     });
 
     const token = await signTestToken({ pool: 'platform-admins' });
@@ -512,11 +472,11 @@ describe('POST /v1/admin/tenants/:id/users/invitations — business cases (integ
     // as other direct-insert fixtures in this file).
     await pgAdmin.query(
       `INSERT INTO users
-         (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+         (id, tenant_id, cognito_sub, email, first_name, last_name,
           role, status, deleted_at, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, 'Soft', 'Deleted',
+       VALUES (gen_random_uuid(), $1, $2, $3, 'Soft', 'Deleted',
                'mechanic'::"UserRole", 'inactive'::"UserStatus", NOW(), NOW(), NOW())`,
-      [tenantId, primaryLocationId, `soft-del-sub-${crypto.randomUUID()}`, targetEmail],
+      [tenantId, `soft-del-sub-${crypto.randomUUID()}`, targetEmail],
     );
 
     const token = await signTestToken({ pool: 'platform-admins' });

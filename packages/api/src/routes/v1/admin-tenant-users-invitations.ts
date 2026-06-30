@@ -12,9 +12,6 @@
 // - Cognito pre-check (getOfficineUserByEmail) runs OUTSIDE the DB transaction
 //   to avoid holding an open Postgres connection during a network call (P2028
 //   risk — see feedback_cognito_call_outside_postgres_tx.md).
-// - mechanic role: locationId defaults to the tenant's primary active location
-//   (BR-204 defaulting). If none exists → 422 user.location_required_for_mechanic.
-// - super_admin role: locationId = null (owner-level role, not location-specific).
 // - The plaintext token appears ONLY in the response magicLinkUrl — it is never
 //   stored in the DB (only the SHA-256 hash lands in invitation.tokenHash), never
 //   logged, and never placed in the audit metadata. See SECURITY note below.
@@ -173,31 +170,11 @@ export const adminTenantUsersInvitationsRoutes: FastifyPluginAsync = async (app)
         );
       }
 
-      // ─── DB transaction: resolve location + invitation + audit ───────────────
+      // ─── DB transaction: invitation + audit ─────────────────────────────────
       const { invitation, tokenPlaintext } = await app.withContext(
         { role: 'admin' as const },
         async (tx) => {
-          // Step 1: resolve locationId based on role.
-          // mechanic — auto-default to the tenant's primary active location;
-          //   422 if none exists (BR-204 mechanic-requires-location).
-          // super_admin — owner-level role, not location-specific → null.
-          let locationId: string | null = null;
-          if (role === 'mechanic') {
-            const primaryLocation = await tx.location.findFirst({
-              where: { tenantId: id, isPrimary: true, status: 'active', deletedAt: null },
-              select: { id: true },
-            });
-            if (!primaryLocation) {
-              throw businessError(
-                'user.location_required_for_mechanic',
-                422,
-                'Un meccanico deve essere assegnato a una sede.',
-              );
-            }
-            locationId = primaryLocation.id;
-          }
-
-          // Step 2: generate token + insert invitation row.
+          // Generate token + insert invitation row.
           // createInternalInvitation maps P2002 on the partial unique index
           // uq_invitations_pending_internal → user.invitation.duplicate_pending 409
           // (BR-206 — no duplicate pending internal_user invitations per tenant+email).
@@ -207,7 +184,6 @@ export const adminTenantUsersInvitationsRoutes: FastifyPluginAsync = async (app)
             firstName,
             lastName,
             role,
-            locationId,
           });
 
           // Step 3: audit log — same transaction so it rolls back atomically with

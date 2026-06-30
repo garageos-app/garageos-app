@@ -73,7 +73,6 @@ export const invitationsPublicAcceptRoutes: FastifyPluginAsync = async (app) => 
             firstName: true,
             lastName: true,
             role: true,
-            locationId: true,
             acceptedAt: true,
             expiresAt: true,
             // BR-210: load tenant status so we can block accept for suspended tenants.
@@ -137,7 +136,9 @@ export const invitationsPublicAcceptRoutes: FastifyPluginAsync = async (app) => 
           tenantId: invitation.tenantId,
           // role is non-null for internal_user invitations (validated at invite creation).
           role: invitation.role!,
-          locationId: invitation.locationId,
+          // locationId: seats are gone (sede-unica); cognito.ts still expects
+          // the field (Task 5 removes it from the Cognito attribute sync).
+          locationId: null,
         });
         cognitoSub = created.cognitoSub;
       } catch (err) {
@@ -211,7 +212,6 @@ export const invitationsPublicAcceptRoutes: FastifyPluginAsync = async (app) => 
               firstName: invitation.firstName ?? '',
               lastName: invitation.lastName ?? '',
               role: invitation.role!,
-              locationId: invitation.locationId,
               status: 'active',
             },
             select: USER_ADMIN_SELECT,

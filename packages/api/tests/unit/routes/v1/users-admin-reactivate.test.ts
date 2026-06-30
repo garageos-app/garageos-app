@@ -32,7 +32,6 @@ const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const ACTOR_COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 const ACTOR_DB_ID = '33333333-3333-4333-8333-333333333333';
 const TARGET_ID = '44444444-4444-4444-8444-444444444444';
-const LOCATION_ID = '55555555-5555-4555-8555-555555555555';
 
 const cognitoMock = mockClient(CognitoIdentityProviderClient);
 
@@ -40,7 +39,6 @@ interface SoftDeletedUserTarget {
   id: string;
   email: string;
   role: 'super_admin' | 'mechanic';
-  locationId: string | null;
   status: 'active' | 'inactive';
   cognitoSub: string;
   deletedAt: Date;
@@ -52,7 +50,6 @@ interface UpdatedUserRow {
   firstName: string;
   lastName: string;
   role: 'super_admin' | 'mechanic';
-  locationId: string | null;
   status: 'active' | 'inactive';
   phone: string | null;
   avatarUrl: string | null;
@@ -67,7 +64,6 @@ interface FakePrisma {
     findFirst: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
-  location: { findFirst: ReturnType<typeof vi.fn> };
   auditLog: { create: ReturnType<typeof vi.fn> };
 }
 
@@ -76,7 +72,6 @@ function baseTarget(overrides: Partial<SoftDeletedUserTarget> = {}): SoftDeleted
     id: TARGET_ID,
     email: 'target@officina.it',
     role: 'mechanic',
-    locationId: LOCATION_ID,
     status: 'inactive',
     cognitoSub: 'target-cognito-sub',
     deletedAt: new Date('2026-05-10T12:00:00Z'),
@@ -91,7 +86,6 @@ function baseUpdatedRow(overrides: Partial<UpdatedUserRow> = {}): UpdatedUserRow
     firstName: 'Mario',
     lastName: 'Rossi',
     role: 'mechanic',
-    locationId: LOCATION_ID,
     status: 'active',
     phone: null,
     avatarUrl: null,
@@ -106,13 +100,11 @@ function baseUpdatedRow(overrides: Partial<UpdatedUserRow> = {}): UpdatedUserRow
 interface FakePrismaConfig {
   target?: SoftDeletedUserTarget | null;
   updatedRow?: UpdatedUserRow;
-  location?: { id: string } | null;
 }
 
 function buildFakePrisma(config: FakePrismaConfig = {}): FakePrisma {
   const target = config.target === undefined ? baseTarget() : config.target;
   const updatedRow = config.updatedRow ?? baseUpdatedRow();
-  const location = config.location === undefined ? { id: LOCATION_ID } : config.location;
 
   return {
     user: {
@@ -141,9 +133,6 @@ function buildFakePrisma(config: FakePrismaConfig = {}): FakePrisma {
         return null;
       }),
       update: vi.fn().mockResolvedValue(updatedRow),
-    },
-    location: {
-      findFirst: vi.fn().mockResolvedValue(location),
     },
     auditLog: {
       create: vi.fn().mockResolvedValue(undefined),
@@ -217,9 +206,8 @@ describe('POST /v1/users/:id/reactivate', () => {
     };
     expect(updateCall.where).toEqual({ id: TARGET_ID });
     expect(updateCall.data).toMatchObject({ deletedAt: null, status: 'active' });
-    // No role / locationId override fields present when body is empty
+    // No role override field present when body is empty
     expect(updateCall.data).not.toHaveProperty('role');
-    expect(updateCall.data).not.toHaveProperty('locationId');
 
     // Verify Cognito AdminEnableUser fired exactly once
     const enableCalls = cognitoMock.commandCalls(AdminEnableUserCommand);
@@ -238,7 +226,6 @@ describe('POST /v1/users/:id/reactivate', () => {
     expect(auditCall.data.actorId).toBe(ACTOR_DB_ID);
     expect(auditCall.data.metadata).toMatchObject({
       roleOverridden: false,
-      locationOverridden: false,
     });
   });
 
@@ -259,9 +246,10 @@ describe('POST /v1/users/:id/reactivate', () => {
     expect(cognitoMock.commandCalls(AdminEnableUserCommand)).toHaveLength(0);
   });
 
-  it('returns 422 user.location_required_for_mechanic when override locationId=null on mechanic', async () => {
+  it('override role: 200, audit metadata flags, AdminUpdateUserAttributesCommand once', async () => {
     const prisma = buildFakePrisma({
-      target: baseTarget({ role: 'mechanic', locationId: LOCATION_ID }),
+      target: baseTarget({ role: 'mechanic' }),
+      updatedRow: baseUpdatedRow({ role: 'super_admin' }),
     });
     app = await buildApp({ prisma });
 
@@ -269,50 +257,12 @@ describe('POST /v1/users/:id/reactivate', () => {
       method: 'POST',
       url: `/v1/users/${TARGET_ID}/reactivate`,
       headers: { authorization: 'Bearer x', 'content-type': 'application/json' },
-      payload: { locationId: null },
-    });
-
-    expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({ code: 'user.location_required_for_mechanic' });
-    expect(prisma.user.update).not.toHaveBeenCalled();
-  });
-
-  it('returns 422 user.location_invalid when locationId stale (location.findFirst returns null)', async () => {
-    const prisma = buildFakePrisma({
-      target: baseTarget({ role: 'mechanic', locationId: LOCATION_ID }),
-      location: null,
-    });
-    app = await buildApp({ prisma });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/users/${TARGET_ID}/reactivate`,
-      headers: { authorization: 'Bearer x', 'content-type': 'application/json' },
-      payload: {},
-    });
-
-    expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({ code: 'user.location_invalid' });
-    expect(prisma.user.update).not.toHaveBeenCalled();
-  });
-
-  it('override role+locationId: 200, audit metadata flags, AdminUpdateUserAttributesCommand once', async () => {
-    const prisma = buildFakePrisma({
-      target: baseTarget({ role: 'mechanic', locationId: LOCATION_ID }),
-      updatedRow: baseUpdatedRow({ role: 'super_admin', locationId: null }),
-    });
-    app = await buildApp({ prisma });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/users/${TARGET_ID}/reactivate`,
-      headers: { authorization: 'Bearer x', 'content-type': 'application/json' },
-      payload: { role: 'super_admin', locationId: null },
+      payload: { role: 'super_admin' },
     });
 
     expect(res.statusCode).toBe(200);
 
-    // The DB update includes both override fields
+    // The DB update includes the role override
     const updateCall = prisma.user.update.mock.calls[0]![0] as {
       data: Record<string, unknown>;
     };
@@ -320,7 +270,6 @@ describe('POST /v1/users/:id/reactivate', () => {
       deletedAt: null,
       status: 'active',
       role: 'super_admin',
-      locationId: null,
     });
 
     // Audit flags set
@@ -329,9 +278,7 @@ describe('POST /v1/users/:id/reactivate', () => {
     };
     expect(auditCall.data.metadata).toMatchObject({
       roleOverridden: true,
-      locationOverridden: true,
       newRole: 'super_admin',
-      newLocationId: null,
     });
 
     // Cognito attribute sync fired exactly once
