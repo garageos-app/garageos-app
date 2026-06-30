@@ -134,12 +134,7 @@ describe('GET /v1/interventions/:id (officina)', () => {
     expect(typeof tenant.id).toBe('string');
     expect(typeof tenant.business_name).toBe('string');
 
-    // Nested relation: location
-    const location = body.location as Record<string, unknown>;
-    expect(typeof location.id).toBe('string');
-    expect(typeof location.name).toBe('string');
-    expect(typeof location.city).toBe('string');
-    expect(typeof location.address).toBe('string');
+    // sede-unica: location relation removed from intervention DTO.
 
     // Nested relation: vehicle
     const vehicle = body.vehicle as Record<string, unknown>;

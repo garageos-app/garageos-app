@@ -129,7 +129,6 @@ describe('GET /v1/invitations/:token', () => {
         lastName: string;
         role: string;
         tenantName: string;
-        locationName: string | null;
         expiresAt: string;
       };
     };
@@ -140,7 +139,7 @@ describe('GET /v1/invitations/:token', () => {
     expect(body.invitation.role).toBe('mechanic');
     // tenantName is sourced from tenant.businessName (see adaptation note).
     expect(body.invitation.tenantName).toBe(expectedTenantName);
-    expect(body.invitation.locationName).toBeNull();
+    // sede-unica: locationName removed from invitation public read response.
     expect(body.invitation.expiresAt).toBeDefined();
 
     // Response must NOT expose internal fields (anti-enum).

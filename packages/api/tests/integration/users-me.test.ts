@@ -26,7 +26,7 @@ describe('GET /v1/users/me (integration)', () => {
     await resetDb();
   });
 
-  it('returns the caller user with tenant + location names for the matching tenant', async () => {
+  it('returns the caller user with tenant info for the matching tenant', async () => {
     const { tenantId } = await createTenantWithLocation('users-me-ok');
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     const { userId } = await createUser({
@@ -61,14 +61,15 @@ describe('GET /v1/users/me (integration)', () => {
       status: 'active',
       // Brand-strip names (F-OFF-007 follow-up).
       tenant: { businessName: 'Test Tenant users-me-ok' },
-      location: { name: 'Sede', city: 'Milano' },
     });
   });
 
-  it('returns location: null when the user has no assigned sede', async () => {
+  it('response does not expose a location field (sede-unica)', async () => {
+    // sede-unica: users no longer have a location_id; /me response must not
+    // include a "location" key at all (not even null).
     const { tenantId } = await createTenantWithLocation('users-me-nosede');
     const cognitoSub = '66666666-6666-4666-8666-666666666666';
-    await createUser({ tenantId, cognitoSub }); // no locationId
+    await createUser({ tenantId, cognitoSub });
 
     const token = await signTestToken({
       pool: 'officine',
@@ -83,8 +84,8 @@ describe('GET /v1/users/me (integration)', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { location: unknown; tenant: { businessName: string } };
-    expect(body.location).toBeNull();
+    const body = res.json() as { tenant: { businessName: string } };
+    expect(body).not.toHaveProperty('location');
     expect(body.tenant.businessName).toBe('Test Tenant users-me-nosede');
   });
 

@@ -407,14 +407,14 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       data: Array<{
         reason: string | null;
         changes: Record<string, unknown>;
-        tenant?: { business_name: string; location_city: string };
+        tenant?: { business_name: string };
         user?: unknown;
       }>;
     };
     expect(body.data).toHaveLength(1);
     expect(body.data[0]!.reason).toBe('visible to customer');
     expect(body.data[0]!.tenant?.business_name).toContain('Test Tenant');
-    expect(body.data[0]!.tenant?.location_city).toBe('Milano');
+    // sede-unica: location_city no longer in the tenant shape on revisions.
     expect(body.data[0]!.user).toBeUndefined();
   });
 
