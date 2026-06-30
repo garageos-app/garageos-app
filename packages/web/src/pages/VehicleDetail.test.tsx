@@ -77,7 +77,7 @@ const TIMELINE_FIXTURE: TimelineResponse = {
       status: 'active',
       is_disputed: false,
       wiki_window_open: true,
-      tenant: { id: 'tenant-rossi', business_name: 'Officina Rossi', location_city: 'Milano' },
+      tenant: { id: 'tenant-rossi', business_name: 'Officina Rossi' },
       viewer_is_owner: true,
       has_attachments: true,
       attachments_count: 2,

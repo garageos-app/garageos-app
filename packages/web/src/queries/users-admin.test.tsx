@@ -56,7 +56,6 @@ const mockUser: AdminUser = {
   firstName: 'Mario',
   lastName: 'Rossi',
   role: 'mechanic',
-  locationId: null,
   status: 'active',
   createdAt: '2026-05-19T10:00:00Z',
   deletedAt: null,
@@ -68,7 +67,6 @@ const mockInvitation: Invitation = {
   firstName: 'Luigi',
   lastName: 'Verdi',
   role: 'mechanic',
-  locationId: null,
   expiresAt: '2026-05-26T10:00:00Z',
   createdAt: '2026-05-19T10:00:00Z',
 };
@@ -120,7 +118,6 @@ describe('useInviteUser', () => {
       firstName: 'Luigi',
       lastName: 'Verdi',
       role: 'mechanic',
-      locationId: null,
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -145,7 +142,6 @@ describe('useInviteUser', () => {
       firstName: 'Fail',
       lastName: 'Test',
       role: 'mechanic',
-      locationId: null,
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
@@ -226,7 +222,7 @@ describe('useReactivateUser', () => {
     });
   });
 
-  it('POST con role + locationId override invia il payload corretto', async () => {
+  it('POST con role override invia il payload corretto', async () => {
     apiFetchMock.mockResolvedValueOnce({
       user: { ...mockUser, status: 'active', deletedAt: null },
     });
@@ -236,12 +232,12 @@ describe('useReactivateUser', () => {
 
     await result.current.mutateAsync({
       id: 'user-id-1',
-      body: { role: 'super_admin', locationId: null },
+      body: { role: 'super_admin' },
     });
 
     expect(apiFetchMock).toHaveBeenCalledWith('/v1/users/user-id-1/reactivate', {
       method: 'POST',
-      body: JSON.stringify({ role: 'super_admin', locationId: null }),
+      body: JSON.stringify({ role: 'super_admin' }),
     });
   });
 });

@@ -5,9 +5,6 @@ describe('vehicle.creation error strings', () => {
   it('maps duplicate VIN to an Italian message', () => {
     expect(translateError('vehicle.creation.duplicate_vin', 'x')).toMatch(/VIN/i);
   });
-  it('maps location_not_in_tenant to an Italian message', () => {
-    expect(translateError('vehicle.creation.location_not_in_tenant', 'x')).toMatch(/sede/i);
-  });
   it('falls back for unknown codes', () => {
     expect(translateError('vehicle.creation.unknown', 'fallback')).toBe('fallback');
   });
@@ -29,7 +26,6 @@ describe('translateError', () => {
   });
 
   it('contains expected keys', () => {
-    expect(ERROR_MESSAGES['intervention.creation.user_no_location']).toBeDefined();
     expect(ERROR_MESSAGES['intervention.creation.date_before_registration']).toBeDefined();
     expect(ERROR_MESSAGES['NOT_FOUND']).toBeDefined();
     expect(ERROR_MESSAGES['VALIDATION_ERROR']).toBeDefined();

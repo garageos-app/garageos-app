@@ -2,15 +2,12 @@
 //
 // Per memory feedback_radix_tabs_user_event_not_fire_event: Radix Select
 // portals do not open in JSDOM via fireEvent. We test Selects indirectly.
-// The BR-204 Zod refine is tested via a standalone schema unit-test suite.
 // The UI submit-path tests cover:
 //   1. Required field validation — submit empty form → errors.
 //   2. Role required error gates submission.
 //   3. Annulla closes dialog.
 //   4. Dialog does not render when open=false.
-// Plus a pure Zod schema suite for BR-204 coverage (no DOM needed).
 
-import { z } from 'zod';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -21,11 +18,10 @@ import { InviteUserDialog } from './InviteUserDialog';
 
 // ─── Hoisted mocks ────────────────────────────────────────────────────────────
 
-const { mockMutateAsync, mockToastSuccess, mockToastError, mockUseLocations } = vi.hoisted(() => ({
+const { mockMutateAsync, mockToastSuccess, mockToastError } = vi.hoisted(() => ({
   mockMutateAsync: vi.fn(),
   mockToastSuccess: vi.fn(),
   mockToastError: vi.fn(),
-  mockUseLocations: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
@@ -40,7 +36,7 @@ vi.mock('sonner', () => ({
   toast: { success: mockToastSuccess, error: mockToastError },
 }));
 
-// Module-level mock for useInviteUser + useLocations — no network needed.
+// Module-level mock for useInviteUser — no network needed.
 vi.mock('@/queries/users-admin', async () => {
   const actual =
     await vi.importActual<typeof import('@/queries/users-admin')>('@/queries/users-admin');
@@ -50,7 +46,6 @@ vi.mock('@/queries/users-admin', async () => {
       mutateAsync: mockMutateAsync,
       isPending: false,
     }),
-    useLocations: mockUseLocations,
   };
 });
 
@@ -63,11 +58,6 @@ function wrap({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-const LOCATIONS = [
-  { id: 'loc-1', name: 'Officina Nord', city: 'Milano', isPrimary: true },
-  { id: 'loc-2', name: 'Officina Sud', city: 'Roma', isPrimary: false },
-];
-
 // ─── UI Tests ─────────────────────────────────────────────────────────────────
 
 describe('InviteUserDialog UI', () => {
@@ -75,11 +65,6 @@ describe('InviteUserDialog UI', () => {
     mockMutateAsync.mockReset();
     mockToastSuccess.mockReset();
     mockToastError.mockReset();
-    mockUseLocations.mockReturnValue({
-      data: { locations: LOCATIONS },
-      isPending: false,
-      isError: false,
-    });
   });
 
   it('renders all fields when open=true', () => {
@@ -88,7 +73,7 @@ describe('InviteUserDialog UI', () => {
     // firstName and lastName share the /nome/ pattern — query by exact label or by id.
     expect(screen.getByLabelText('Nome')).toBeInTheDocument();
     expect(screen.getByLabelText('Cognome')).toBeInTheDocument();
-    // Role and Location are Radix Select — verify by label text presence.
+    // Role is Radix Select — verify by label text presence.
     expect(screen.getByText('Ruolo')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /invia invito/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /annulla/i })).toBeInTheDocument();
@@ -163,146 +148,5 @@ describe('InviteUserDialog UI', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
     expect(mockMutateAsync).not.toHaveBeenCalled();
-  });
-});
-
-// ─── BR-204 Zod schema unit tests ────────────────────────────────────────────
-//
-// These tests verify the business rule directly on the schema without DOM.
-// The canonical schema lives in InviteUserDialog.tsx; we re-implement it
-// here to decouple the pure logic test from the component tree.
-
-const InviteSchema = z
-  .object({
-    email: z.string().min(1, 'Email obbligatoria').email('Email non valida').max(255),
-    firstName: z.string().min(1, 'Nome obbligatorio').max(100),
-    lastName: z.string().min(1, 'Cognome obbligatorio').max(100),
-    role: z.enum(['super_admin', 'mechanic'], { error: 'Ruolo obbligatorio' }),
-    locationId: z.string().uuid().nullable(),
-  })
-  .refine((d) => !(d.role === 'mechanic' && !d.locationId), {
-    message: 'La sede è obbligatoria per il ruolo Meccanico',
-    path: ['locationId'],
-  });
-
-describe('InviteUserDialog Zod schema — BR-204', () => {
-  it('super_admin without locationId is valid', () => {
-    const result = InviteSchema.safeParse({
-      email: 'admin@example.com',
-      firstName: 'Anna',
-      lastName: 'Verdi',
-      role: 'super_admin',
-      locationId: null,
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('super_admin with locationId is valid', () => {
-    const result = InviteSchema.safeParse({
-      email: 'admin@example.com',
-      firstName: 'Anna',
-      lastName: 'Verdi',
-      role: 'super_admin',
-      locationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('mechanic with locationId is valid', () => {
-    const result = InviteSchema.safeParse({
-      email: 'mech@example.com',
-      firstName: 'Marco',
-      lastName: 'Neri',
-      role: 'mechanic',
-      locationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  // BR-204 core assertion
-  it('BR-204: mechanic without locationId fails with locationId path error', () => {
-    const result = InviteSchema.safeParse({
-      email: 'mech@example.com',
-      firstName: 'Marco',
-      lastName: 'Neri',
-      role: 'mechanic',
-      locationId: null,
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const locationError = result.error.issues.find((i) => i.path.includes('locationId'));
-      expect(locationError).toBeDefined();
-      expect(locationError?.message).toMatch(/sede.*obbligatoria/i);
-    }
-  });
-
-  it('invalid email format fails', () => {
-    const result = InviteSchema.safeParse({
-      email: 'not-an-email',
-      firstName: 'A',
-      lastName: 'B',
-      role: 'super_admin',
-      locationId: null,
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const emailError = result.error.issues.find((i) => i.path.includes('email'));
-      expect(emailError).toBeDefined();
-    }
-  });
-
-  it('empty firstName fails', () => {
-    const result = InviteSchema.safeParse({
-      email: 'a@b.com',
-      firstName: '',
-      lastName: 'B',
-      role: 'super_admin',
-      locationId: null,
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const firstNameError = result.error.issues.find((i) => i.path.includes('firstName'));
-      expect(firstNameError).toBeDefined();
-      expect(firstNameError?.message).toMatch(/nome obbligatorio/i);
-    }
-  });
-
-  it('empty lastName fails', () => {
-    const result = InviteSchema.safeParse({
-      email: 'a@b.com',
-      firstName: 'A',
-      lastName: '',
-      role: 'super_admin',
-      locationId: null,
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const lastNameError = result.error.issues.find((i) => i.path.includes('lastName'));
-      expect(lastNameError).toBeDefined();
-      expect(lastNameError?.message).toMatch(/cognome obbligatorio/i);
-    }
-  });
-
-  it('invalid role enum fails', () => {
-    const result = InviteSchema.safeParse({
-      email: 'a@b.com',
-      firstName: 'A',
-      lastName: 'B',
-      role: 'owner' as 'super_admin',
-      locationId: null,
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('email exceeding 255 chars fails', () => {
-    const longEmail = 'a'.repeat(250) + '@b.com';
-    const result = InviteSchema.safeParse({
-      email: longEmail,
-      firstName: 'A',
-      lastName: 'B',
-      role: 'super_admin',
-      locationId: null,
-    });
-    expect(result.success).toBe(false);
   });
 });

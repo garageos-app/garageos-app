@@ -20,12 +20,6 @@ vi.mock('@/theme/ThemeToggle', () => ({
   ThemeToggle: () => <button type="button">theme</button>,
 }));
 
-// LocationSelector pulls from LocationFilterProvider (not mounted in these
-// unit tests); stub it — its own behavior is covered in LocationSelector.test.tsx.
-vi.mock('@/location-filter/LocationSelector', () => ({
-  LocationSelector: () => null,
-}));
-
 // Per-test override of useProfileMe
 const profileQueryRef = { current: { data: undefined as unknown } };
 vi.mock('@/queries/profileMe', () => ({
@@ -52,7 +46,6 @@ describe('TopBar', () => {
         lastName: 'Rossi',
         avatarUrl: 'https://signed-url',
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper });
@@ -61,34 +54,17 @@ describe('TopBar', () => {
     expect(img.src).toBe('https://signed-url/');
   });
 
-  it('renders officina business name and assigned sede in the brand strip', () => {
+  it('renders officina business name in the brand strip', () => {
     profileQueryRef.current = {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper });
     expect(screen.getByText('Officina Matula')).toBeInTheDocument();
-    expect(screen.getByText(/Sede Milano/)).toBeInTheDocument();
-  });
-
-  it('shows only the officina name when the user has no assigned sede', () => {
-    profileQueryRef.current = {
-      data: {
-        firstName: 'Mario',
-        lastName: 'Rossi',
-        avatarUrl: null,
-        tenant: { businessName: 'Matula' },
-        location: null,
-      },
-    };
-    render(<TopBar onMenuClick={noop} />, { wrapper });
-    expect(screen.getByText('Officina Matula')).toBeInTheDocument();
-    expect(screen.queryByText(/Sede/)).not.toBeInTheDocument();
   });
 
   it('renders initials fallback when avatarUrl is null', () => {
@@ -98,7 +74,6 @@ describe('TopBar', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper });
@@ -118,7 +93,6 @@ describe('TopBar', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper });
@@ -164,7 +138,6 @@ describe('<TopBar /> global search', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper });
@@ -180,7 +153,6 @@ describe('<TopBar /> global search', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
@@ -201,7 +173,6 @@ describe('<TopBar /> global search', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
@@ -222,7 +193,6 @@ describe('<TopBar /> global search', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
@@ -243,7 +213,6 @@ describe('<TopBar /> global search', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
@@ -264,7 +233,6 @@ describe('<TopBar /> global search', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
@@ -285,7 +253,6 @@ describe('<TopBar /> global search', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });
@@ -308,7 +275,6 @@ describe('<TopBar /> global search', () => {
         lastName: 'Rossi',
         avatarUrl: null,
         tenant: { businessName: 'Matula' },
-        location: { name: 'Sede Milano', city: 'Milano' },
       },
     };
     render(<TopBar onMenuClick={noop} />, { wrapper: makeWrapperWithLocation(loc) });

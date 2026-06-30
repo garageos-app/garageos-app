@@ -11,11 +11,6 @@ vi.mock('@/lib/api-client', () => ({
   useApiFetch: () => apiFetchMock,
 }));
 
-const filterRef = { current: { selectedLocationId: null as string | null } };
-vi.mock('@/location-filter/useLocationFilter', () => ({
-  useLocationFilter: () => filterRef.current,
-}));
-
 function makeDeadline(overrides: Partial<TenantDeadline> = {}): TenantDeadline {
   return {
     id: overrides.id ?? 'd1',
@@ -171,15 +166,5 @@ describe('useDeadlinesUpcoming', () => {
     expect(url).toContain('status=open');
     expect(url).toContain('limit=50');
     expect(url).not.toContain('location_id');
-  });
-
-  it('appends location_id when a sede is selected', async () => {
-    filterRef.current = { selectedLocationId: 'loc-b' };
-    apiFetchMock.mockResolvedValueOnce({ deadlines: [], nextCursor: null });
-    renderHook(() => useDeadlinesUpcoming(7), { wrapper });
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
-    const url = apiFetchMock.mock.calls[0][0] as string;
-    expect(url).toContain('location_id=loc-b');
-    filterRef.current = { selectedLocationId: null };
   });
 });

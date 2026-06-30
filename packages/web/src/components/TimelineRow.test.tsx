@@ -43,7 +43,7 @@ const SHOP_ITEM: ShopTimelineItem = {
   status: 'active',
   is_disputed: false,
   wiki_window_open: true,
-  tenant: { id: 'tenant-rossi', business_name: 'Officina Rossi', location_city: 'Milano' },
+  tenant: { id: 'tenant-rossi', business_name: 'Officina Rossi' },
   viewer_is_owner: true,
   has_attachments: true,
   attachments_count: 2,
@@ -92,7 +92,7 @@ describe('TimelineRow — compact rendering', () => {
   it('renders shop row with title, subtitle, kind badge, no dispute', () => {
     renderRow(SHOP_ITEM);
     expect(screen.getByText('Tagliando 30000 km')).toBeInTheDocument();
-    expect(screen.getByText(/Officina Rossi.*Milano/)).toBeInTheDocument();
+    expect(screen.getByText(/Officina Rossi/)).toBeInTheDocument();
     expect(screen.getByText('Officina')).toBeInTheDocument();
     expect(screen.queryByText('Disputa')).not.toBeInTheDocument();
   });

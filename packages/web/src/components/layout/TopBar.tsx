@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronDown, LogOut, Menu, Search, X } from 'lucide-react';
 
 import { useAuth } from '@/auth/useAuth';
-import { LocationSelector } from '@/location-filter/LocationSelector';
 import { getInitials } from '@/lib/initials';
 import { useProfileMe } from '@/queries/profileMe';
 import { ThemeToggle } from '@/theme/ThemeToggle';
@@ -37,10 +36,9 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
   const profile = profileQuery.data;
   const avatarUrl = profile?.avatarUrl ?? null;
   const initials = profile ? getInitials(profile.firstName, profile.lastName) : '?';
-  // Brand strip: officina business name + the user's assigned sede.
+  // Brand strip: officina business name.
   // Falls back to a neutral label until the profile query resolves.
   const officinaName = profile ? `Officina ${profile.tenant.businessName}` : 'GarageOS';
-  const sedeName = profile?.location?.name ?? null;
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -70,7 +68,6 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
       {/* Brand — hidden on the narrowest screens to save room */}
       <div className="hidden sm:block text-xs font-medium uppercase tracking-wider shrink-0 truncate max-w-[40vw]">
         <span className="text-foreground">{officinaName}</span>
-        {sedeName && <span className="text-muted-foreground"> · {sedeName}</span>}
       </div>
 
       {/* Desktop inline search */}
@@ -120,7 +117,6 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
         >
           <Search size={18} />
         </button>
-        <LocationSelector />
         <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 text-sm text-foreground hover:opacity-80 transition">

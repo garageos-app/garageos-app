@@ -1,13 +1,11 @@
 // EditUserDialog — F-OFF-004 Super Admin edit user flow.
 //
-// Three action sections (no tabs — simpler layout):
-//   1. Change Role   — BR-204: mechanic requires a locationId.
-//   2. Change Location — set/reassign a user's location.
-//   3. Deactivate    — two-step confirm before calling useDeleteUser.
+// Two action sections (no tabs — simpler layout):
+//   1. Change Role
+//   2. Deactivate — two-step confirm before calling useDeleteUser.
 //
 // Inline error handling:
 //   409 user.last_super_admin  → red banner (BR-203).
-//   422 user.location_required_for_mechanic → field-level error at locationId.
 //   Other ApiError → form-level banner.
 
 import { useState } from 'react';
@@ -34,30 +32,18 @@ import {
 } from '@/components/ui/select';
 import { ApiError } from '@/lib/api-client';
 import { translateError } from '@/lib/error-messages';
-import { type AdminUser, useUpdateUser, useDeleteUser, useLocations } from '@/queries/users-admin';
+import { type AdminUser, useUpdateUser, useDeleteUser } from '@/queries/users-admin';
 import { ReactivateSection } from './ReactivateSection';
 
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
 
-const ChangeRoleSchema = z
-  .object({
-    role: z.enum(['super_admin', 'mechanic'], {
-      error: 'Ruolo obbligatorio',
-    }),
-    locationId: z.string().uuid().nullable(),
-  })
-  // BR-204: mechanic requires a location assignment.
-  .refine((data) => !(data.role === 'mechanic' && !data.locationId), {
-    message: 'La sede è obbligatoria per il ruolo Meccanico',
-    path: ['locationId'],
-  });
-
-const ChangeLocationSchema = z.object({
-  locationId: z.string().uuid({ message: 'Seleziona una sede valida' }),
+const ChangeRoleSchema = z.object({
+  role: z.enum(['super_admin', 'mechanic'], {
+    error: 'Ruolo obbligatorio',
+  }),
 });
 
 type ChangeRoleValues = z.infer<typeof ChangeRoleSchema>;
-type ChangeLocationValues = z.infer<typeof ChangeLocationSchema>;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -72,7 +58,6 @@ interface Props {
 export function EditUserDialog({ user, open, onOpenChange }: Props) {
   const updateMut = useUpdateUser();
   const deleteMut = useDeleteUser();
-  const locationsQ = useLocations();
 
   // Deactivate two-step confirm state.
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
@@ -84,26 +69,14 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
     resolver: zodResolver(ChangeRoleSchema),
     defaultValues: {
       role: user.role,
-      locationId: user.locationId,
     },
   });
   const selectedRole = roleForm.watch('role');
 
-  // Change-Location section.
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const locationForm = useForm<ChangeLocationValues>({
-    resolver: zodResolver(ChangeLocationSchema),
-    defaultValues: {
-      locationId: user.locationId ?? '',
-    },
-  });
-
   function handleClose(nextOpen: boolean) {
     if (!nextOpen) {
-      roleForm.reset({ role: user.role, locationId: user.locationId });
-      locationForm.reset({ locationId: user.locationId ?? '' });
+      roleForm.reset({ role: user.role });
       setRoleError(null);
-      setLocationError(null);
       setConfirmDeactivate(false);
       setDeactivateError(null);
     }
@@ -119,9 +92,6 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
         id: user.id,
         body: {
           role: values.role,
-          // Only send locationId when switching to mechanic — avoids clearing
-          // an existing location when just updating the role to super_admin.
-          ...(values.role === 'mechanic' ? { locationId: values.locationId } : {}),
         },
       });
       // useUpdateUser.onSuccess fires toast.success('Utente aggiornato').
@@ -136,36 +106,9 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
           );
           return;
         }
-        // BR-204 server defensive surface.
-        if (err.code === 'user.location_required_for_mechanic') {
-          roleForm.setError('locationId', {
-            type: 'server',
-            message: 'La sede è obbligatoria per il ruolo Meccanico',
-          });
-          return;
-        }
         setRoleError(translateError(err.code, err.message));
       } else {
         setRoleError('Errore imprevisto, riprova.');
-      }
-    }
-  }
-
-  // ── Change Location submit ──────────────────────────────────────────────────
-
-  async function onLocationSubmit(values: ChangeLocationValues) {
-    setLocationError(null);
-    try {
-      await updateMut.mutateAsync({
-        id: user.id,
-        body: { locationId: values.locationId },
-      });
-      handleClose(false);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setLocationError(translateError(err.code, err.message));
-      } else {
-        setLocationError('Errore imprevisto, riprova.');
       }
     }
   }
@@ -196,9 +139,7 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
     }
   }
 
-  const locations = locationsQ.data?.locations ?? [];
   const roleErrors = roleForm.formState.errors;
-  const locationErrors = locationForm.formState.errors;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -212,11 +153,7 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
 
         <div className="space-y-6">
           {user.status === 'inactive' ? (
-            <ReactivateSection
-              user={user}
-              locations={locations}
-              onSuccess={() => handleClose(false)}
-            />
+            <ReactivateSection user={user} onSuccess={() => handleClose(false)} />
           ) : (
             <>
               {/* ── Section 1: Change Role ──────────────────────────────────────── */}
@@ -260,35 +197,6 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
                     )}
                   </div>
 
-                  {/* Location selector only shown when role is mechanic — BR-204. */}
-                  {selectedRole === 'mechanic' && (
-                    <div>
-                      <Label htmlFor="edit-role-location">Sede *</Label>
-                      <Select
-                        value={roleForm.watch('locationId') ?? ''}
-                        onValueChange={(v) =>
-                          roleForm.setValue('locationId', v || null, { shouldValidate: true })
-                        }
-                      >
-                        <SelectTrigger id="edit-role-location">
-                          <SelectValue placeholder="Seleziona sede…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {locations.map((loc) => (
-                            <SelectItem key={loc.id} value={loc.id}>
-                              {loc.name}
-                              {loc.city ? ` — ${loc.city}` : ''}
-                              {loc.isPrimary ? ' (principale)' : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {roleErrors.locationId && (
-                        <p className="text-sm text-red-600 mt-1">{roleErrors.locationId.message}</p>
-                      )}
-                    </div>
-                  )}
-
                   <Button type="submit" size="sm" disabled={roleForm.formState.isSubmitting}>
                     {roleForm.formState.isSubmitting ? 'Salvataggio…' : 'Salva ruolo'}
                   </Button>
@@ -297,61 +205,7 @@ export function EditUserDialog({ user, open, onOpenChange }: Props) {
 
               <hr />
 
-              {/* ── Section 2: Change Location ─────────────────────────────────── */}
-              <section>
-                <h3 className="font-medium mb-3">Cambia sede</h3>
-                <form
-                  onSubmit={locationForm.handleSubmit(onLocationSubmit)}
-                  noValidate
-                  className="space-y-3"
-                >
-                  {locationError && (
-                    <div
-                      className="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 rounded-md p-3 text-sm"
-                      role="alert"
-                      data-testid="location-error"
-                    >
-                      {locationError}
-                    </div>
-                  )}
-
-                  <div>
-                    <Label htmlFor="edit-location">Sede</Label>
-                    <Select
-                      value={locationForm.watch('locationId') ?? ''}
-                      onValueChange={(v) =>
-                        locationForm.setValue('locationId', v, { shouldValidate: true })
-                      }
-                    >
-                      <SelectTrigger id="edit-location">
-                        <SelectValue placeholder="Seleziona sede…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {locations.map((loc) => (
-                          <SelectItem key={loc.id} value={loc.id}>
-                            {loc.name}
-                            {loc.city ? ` — ${loc.city}` : ''}
-                            {loc.isPrimary ? ' (principale)' : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {locationErrors.locationId && (
-                      <p className="text-sm text-red-600 mt-1">
-                        {locationErrors.locationId.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <Button type="submit" size="sm" disabled={locationForm.formState.isSubmitting}>
-                    {locationForm.formState.isSubmitting ? 'Salvataggio…' : 'Salva sede'}
-                  </Button>
-                </form>
-              </section>
-
-              <hr />
-
-              {/* ── Section 3: Deactivate ───────────────────────────────────────── */}
+              {/* ── Section 2: Deactivate ───────────────────────────────────────── */}
               <section>
                 <h3 className="font-medium mb-3">Disattiva utente</h3>
 

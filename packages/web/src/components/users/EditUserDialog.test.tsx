@@ -29,7 +29,6 @@ const {
   mockReactivateMutateAsync,
   mockToastSuccess,
   mockToastError,
-  mockUseLocations,
 } = vi.hoisted(() => ({
   mockUpdateMutateAsync: vi.fn(),
   mockDeleteMutateAsync: vi.fn(),
@@ -37,7 +36,6 @@ const {
   mockReactivateMutateAsync: vi.fn(),
   mockToastSuccess: vi.fn(),
   mockToastError: vi.fn(),
-  mockUseLocations: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
@@ -52,7 +50,7 @@ vi.mock('sonner', () => ({
   toast: { success: mockToastSuccess, error: mockToastError },
 }));
 
-// Module-level mock for useUpdateUser, useDeleteUser, useLocations.
+// Module-level mock for useUpdateUser, useDeleteUser, useReactivateUser.
 vi.mock('@/queries/users-admin', async () => {
   const actual =
     await vi.importActual<typeof import('@/queries/users-admin')>('@/queries/users-admin');
@@ -72,7 +70,6 @@ vi.mock('@/queries/users-admin', async () => {
       isError: false,
       error: null,
     }),
-    useLocations: mockUseLocations,
   };
 });
 
@@ -85,18 +82,12 @@ function wrap({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-const LOCATIONS = [
-  { id: 'loc-1', name: 'Officina Nord', city: 'Milano', isPrimary: true },
-  { id: 'loc-2', name: 'Officina Sud', city: 'Roma', isPrimary: false },
-];
-
 const SUPER_ADMIN_USER: AdminUser = {
   id: 'user-super-1',
   email: 'admin@officina.it',
   firstName: 'Anna',
   lastName: 'Verdi',
   role: 'super_admin',
-  locationId: null,
   status: 'active',
   createdAt: '2026-01-01T00:00:00Z',
   deletedAt: null,
@@ -108,7 +99,6 @@ const MECHANIC_USER: AdminUser = {
   firstName: 'Marco',
   lastName: 'Rossi',
   role: 'mechanic',
-  locationId: 'loc-1',
   status: 'active',
   createdAt: '2026-01-01T00:00:00Z',
   deletedAt: null,
@@ -120,7 +110,6 @@ const INACTIVE_USER: AdminUser = {
   firstName: 'Lucia',
   lastName: 'Bianchi',
   role: 'mechanic',
-  locationId: 'loc-1',
   status: 'inactive',
   createdAt: '2026-01-01T00:00:00Z',
   deletedAt: '2026-05-20T07:50:00Z',
@@ -136,11 +125,6 @@ describe('EditUserDialog UI', () => {
     mockReactivateMutateAsync.mockReset();
     mockToastSuccess.mockReset();
     mockToastError.mockReset();
-    mockUseLocations.mockReturnValue({
-      data: { locations: LOCATIONS },
-      isPending: false,
-      isError: false,
-    });
   });
 
   // ── Dialog visibility ──────────────────────────────────────────────────────
@@ -161,12 +145,12 @@ describe('EditUserDialog UI', () => {
     expect(screen.getByText(SUPER_ADMIN_USER.email)).toBeInTheDocument();
   });
 
-  it('renders the three action sections', () => {
+  it('renders the two action sections', () => {
     render(<EditUserDialog user={SUPER_ADMIN_USER} open={true} onOpenChange={() => {}} />, {
       wrapper: wrap,
     });
     expect(screen.getByText('Cambia ruolo')).toBeInTheDocument();
-    expect(screen.getByText('Cambia sede')).toBeInTheDocument();
+    expect(screen.queryByText('Cambia sede')).not.toBeInTheDocument();
     // "Disattiva utente" is the section heading (h3) AND the button text.
     // Confirm both are present via testid for the button.
     expect(screen.getByTestId('deactivate-button')).toBeInTheDocument();
@@ -329,7 +313,7 @@ describe('EditUserDialog UI', () => {
   // the dialog mounts the section when status='inactive' and hides the
   // role/location/deactivate sections (which would 404 against deletedAt:null).
 
-  it('renders ReactivateSection for inactive user, hides role/location/deactivate sections', () => {
+  it('renders ReactivateSection for inactive user, hides role/deactivate sections', () => {
     render(<EditUserDialog user={INACTIVE_USER} open={true} onOpenChange={() => {}} />, {
       wrapper: wrap,
     });

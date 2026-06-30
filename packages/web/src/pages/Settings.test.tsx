@@ -99,13 +99,11 @@ const profile: ProfileMeDto = {
   lastName: 'Rossi',
   role: 'super_admin',
   tenantId: 't-1',
-  locationId: null,
   avatarUrl: null,
   phone: null,
   status: 'active',
   createdAt: '2026-05-15T00:00:00Z',
   tenant: { businessName: 'Matula' },
-  location: null,
 };
 
 const tenant: TenantMeDto = {
@@ -193,7 +191,7 @@ describe('Settings page', () => {
     render(wrap(<Settings />));
     expect(screen.getByRole('tab', { name: 'Profilo' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Officina' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Sedi' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Sedi' })).not.toBeInTheDocument();
   });
 
   it('renders only Profilo tab for mechanic', () => {

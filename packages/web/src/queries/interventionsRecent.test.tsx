@@ -11,11 +11,6 @@ vi.mock('@/lib/api-client', () => ({
   useApiFetch: () => apiFetchMock,
 }));
 
-const filterRef = { current: { selectedLocationId: null as string | null } };
-vi.mock('@/location-filter/useLocationFilter', () => ({
-  useLocationFilter: () => filterRef.current,
-}));
-
 function wrap({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
@@ -53,17 +48,5 @@ describe('useInterventionsRecent', () => {
     const { result } = renderHook(() => useInterventionsRecent(), { wrapper: wrap });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([ITEM]);
-  });
-
-  it('appends location_id when a sede is selected', async () => {
-    filterRef.current = { selectedLocationId: 'loc-b' };
-    apiFetchMock.mockClear();
-    apiFetchMock.mockResolvedValueOnce({ items: [] } satisfies InterventionsRecentResponse);
-    const { result } = renderHook(() => useInterventionsRecent(), { wrapper: wrap });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      '/v1/interventions/recent?limit=10&location_id=loc-b',
-    );
-    filterRef.current = { selectedLocationId: null };
   });
 });

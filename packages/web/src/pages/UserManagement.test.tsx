@@ -24,7 +24,6 @@ const mockUser: AdminUser = {
   firstName: 'Mario',
   lastName: 'Rossi',
   role: 'mechanic',
-  locationId: null,
   status: 'active',
   createdAt: '2026-05-19T10:00:00Z',
   deletedAt: null,
@@ -36,7 +35,6 @@ const mockInvitation: Invitation = {
   firstName: 'Luigi',
   lastName: 'Verdi',
   role: 'mechanic',
-  locationId: null,
   expiresAt: '2026-05-26T10:00:00Z',
   createdAt: '2026-05-19T10:00:00Z',
 };
@@ -90,19 +88,12 @@ function mockQueries({
     isSuccess: false,
   } as unknown as ReturnType<typeof usersAdminModule.useRevokeInvitation>);
 
-  // InviteUserDialog is now rendered by UserManagement (T15). Mock both hooks
+  // InviteUserDialog is now rendered by UserManagement (T15). Mock the hook
   // it uses so the dialog renders without AuthProvider or network.
   vi.spyOn(usersAdminModule, 'useInviteUser').mockReturnValue({
     mutateAsync: vi.fn(),
     isPending: false,
   } as unknown as ReturnType<typeof usersAdminModule.useInviteUser>);
-
-  vi.spyOn(usersAdminModule, 'useLocations').mockReturnValue({
-    data: { locations: [] },
-    isPending: false,
-    isError: false,
-    isSuccess: true,
-  } as unknown as ReturnType<typeof usersAdminModule.useLocations>);
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -173,7 +164,6 @@ describe('UserManagement page', () => {
     firstName: 'Lucia',
     lastName: 'Bianchi',
     role: 'mechanic',
-    locationId: null,
     status: 'inactive',
     createdAt: '2026-05-01T10:00:00Z',
     deletedAt: '2026-05-20T07:50:00Z',

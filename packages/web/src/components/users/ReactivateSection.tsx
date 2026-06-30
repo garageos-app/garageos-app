@@ -1,28 +1,15 @@
 // ReactivateSection — F-OFF-004 reactivation slice (BR-212).
 //
 // Section embedded in EditUserDialog when user.status === 'inactive'.
-// 2-step UI: primary button → confirm step con preview + Select condizionale
-// se la sede originale (user.locationId) non è più active nel tenant.
+// 2-step UI: primary button → confirm step con preview.
 //
 // Submits POST /v1/users/:id/reactivate via useReactivateUser hook.
 
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { ApiError } from '@/lib/api-client';
-import {
-  useReactivateUser,
-  type AdminUser,
-  type TenantLocation,
-  type ReactivateUserBody,
-} from '@/queries/users-admin';
+import { useReactivateUser, type AdminUser, type ReactivateUserBody } from '@/queries/users-admin';
 
 const ROLE_LABEL: Record<'super_admin' | 'mechanic', string> = {
   super_admin: 'Super Admin',
@@ -31,32 +18,20 @@ const ROLE_LABEL: Record<'super_admin' | 'mechanic', string> = {
 
 interface Props {
   user: AdminUser;
-  locations: TenantLocation[];
   onSuccess: () => void;
 }
 
-export function ReactivateSection({ user, locations, onSuccess }: Props) {
+export function ReactivateSection({ user, onSuccess }: Props) {
   const reactivateMut = useReactivateUser();
 
   const [confirming, setConfirming] = useState(false);
-  const [overrideLocationId, setOverrideLocationId] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Derive current location from the locations list (AdminUser carries only
-  // locationId — name is resolved client-side).
-  const currentLocation = locations.find((l) => l.id === user.locationId);
-  const locationDisplayName = currentLocation?.name ?? '—';
-
-  // Stale = mechanic with a locationId pointing to a location that is no longer
-  // present in the tenant's active locations list. Super admins keep null
-  // locationId per BR-204, so they never appear stale here.
-  const locationStale = user.role === 'mechanic' && user.locationId !== null && !currentLocation;
-
-  const confirmDisabled = reactivateMut.isPending || (locationStale && !overrideLocationId);
+  const confirmDisabled = reactivateMut.isPending;
 
   async function handleConfirm() {
     setErrorMessage(null);
-    const body: ReactivateUserBody = overrideLocationId ? { locationId: overrideLocationId } : {};
+    const body: ReactivateUserBody = {};
     try {
       await reactivateMut.mutateAsync({ id: user.id, body });
       onSuccess();
@@ -79,7 +54,6 @@ export function ReactivateSection({ user, locations, onSuccess }: Props) {
 
   function handleCancel() {
     setConfirming(false);
-    setOverrideLocationId('');
     setErrorMessage(null);
   }
 
@@ -93,9 +67,6 @@ export function ReactivateSection({ user, locations, onSuccess }: Props) {
         </p>
         <p>
           <span className="font-medium text-foreground">Ruolo:</span> {ROLE_LABEL[user.role]}
-        </p>
-        <p>
-          <span className="font-medium text-foreground">Sede:</span> {locationDisplayName}
         </p>
       </div>
 
@@ -115,28 +86,6 @@ export function ReactivateSection({ user, locations, onSuccess }: Props) {
         </Button>
       ) : (
         <div className="space-y-3">
-          {locationStale && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Sede non valida o inattiva. Seleziona una nuova sede:
-              </p>
-              <Select value={overrideLocationId} onValueChange={(v) => setOverrideLocationId(v)}>
-                <SelectTrigger id="reactivate-location" data-testid="reactivate-location-select">
-                  <SelectValue placeholder="Seleziona sede…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {locations.map((loc) => (
-                    <SelectItem key={loc.id} value={loc.id}>
-                      {loc.name}
-                      {loc.city ? ` — ${loc.city}` : ''}
-                      {loc.isPrimary ? ' (principale)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           <div className="flex gap-2">
             <Button
               size="sm"

@@ -8,21 +8,15 @@ import type { ReactNode } from 'react';
 import { VehicleCreate } from './VehicleCreate';
 import { ApiError } from '@/lib/api-client';
 
-const { mockMutateAsync, mockToastSuccess, mockToastError, mockNavigate, profileRef, filterRef } =
-  vi.hoisted(() => ({
+const { mockMutateAsync, mockToastSuccess, mockToastError, mockNavigate, profileRef } = vi.hoisted(
+  () => ({
     mockMutateAsync: vi.fn(),
     mockToastSuccess: vi.fn(),
     mockToastError: vi.fn(),
     mockNavigate: vi.fn(),
     profileRef: { current: { data: undefined as unknown, isPending: false, isError: false } },
-    filterRef: {
-      current: {
-        isSuperAdmin: false,
-        locations: [] as unknown[],
-        selectedLocationId: null as string | null,
-      },
-    },
-  }));
+  }),
+);
 
 vi.mock('sonner', () => ({ toast: { success: mockToastSuccess, error: mockToastError } }));
 vi.mock('react-router-dom', async () => {
@@ -33,9 +27,6 @@ vi.mock('@/queries/vehicleCreate', () => ({
   useCreateVehicle: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
 }));
 vi.mock('@/queries/profileMe', () => ({ useProfileMe: () => profileRef.current }));
-vi.mock('@/location-filter/useLocationFilter', () => ({
-  useLocationFilter: () => filterRef.current,
-}));
 // Stub the autocomplete: expose a button that selects a fixed customer.
 vi.mock('@/components/CustomerAutocomplete', () => ({
   CustomerAutocomplete: ({ onSelect }: { onSelect: (c: { id: string }) => void }) => (
@@ -63,7 +54,7 @@ function renderAt(url: string) {
   );
 }
 
-const MECHANIC = { role: 'mechanic', locationId: '11111111-1111-4111-8111-111111111111' };
+const MECHANIC = { role: 'mechanic' };
 
 async function fillVehicle() {
   await userEvent.type(screen.getByLabelText(/VIN/i), '1HGCM82633A004352');
@@ -86,7 +77,6 @@ describe('VehicleCreate', () => {
     mockToastError.mockReset();
     mockNavigate.mockReset();
     profileRef.current = { data: MECHANIC, isPending: false, isError: false };
-    filterRef.current = { isSuperAdmin: false, locations: [], selectedLocationId: null };
   });
 
   it('shows validation errors and does not submit an empty form', async () => {
