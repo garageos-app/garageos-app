@@ -18,7 +18,6 @@ export const UserFactory = Factory.define<Prisma.UserUncheckedCreateInput>(
     return {
       id: randomUUID(),
       tenantId: randomUUID(),
-      locationId: null,
       cognitoSub: `cognito-test-${sequence}`,
       email: `user-${sequence}@test.local`,
       firstName: 'Mario',

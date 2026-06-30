@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   createCustomer,
-  createTenantWithLocation,
+  createTenant,
   createUser,
   createVehicle,
   createVehicleOwnership,
@@ -69,8 +69,8 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   }
 
   it('performs atomic swap: closes old ownership and opens new', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
-    const actor = await createUser({ tenantId, locationId });
+    const { tenantId } = await createTenant();
+    const actor = await createUser({ tenantId });
     const cedente = await createCustomer({ tenantId });
     const cessionario = await createCustomer({ tenantId, email: `new-${Date.now()}@example.com` });
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
@@ -102,8 +102,8 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   });
 
   it('BR-040: exactly one active ownership after transfer', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
-    const actor = await createUser({ tenantId, locationId });
+    const { tenantId } = await createTenant();
+    const actor = await createUser({ tenantId });
     const cedente = await createCustomer({ tenantId });
     const cessionario = await createCustomer({ tenantId, email: `new-${Date.now()}@example.com` });
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
@@ -128,8 +128,8 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   });
 
   it('writes VehicleTransfer audit row with method=officina_mediated, status=completed', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
-    const actor = await createUser({ tenantId, locationId });
+    const { tenantId } = await createTenant();
+    const actor = await createUser({ tenantId });
     const cedente = await createCustomer({ tenantId });
     const cessionario = await createCustomer({ tenantId, email: `new-${Date.now()}@example.com` });
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
@@ -159,8 +159,8 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   });
 
   it('writes AccessLog with action=ownership_transfer', async () => {
-    const { tenantId, locationId } = await createTenantWithLocation();
-    const actor = await createUser({ tenantId, locationId });
+    const { tenantId } = await createTenant();
+    const actor = await createUser({ tenantId });
     const cedente = await createCustomer({ tenantId });
     const cessionario = await createCustomer({ tenantId, email: `new-${Date.now()}@example.com` });
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
@@ -187,7 +187,7 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   });
 
   it('BR-047: rejects insert of second active VehicleTransfer on same vehicle', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const cedente = await createCustomer({ tenantId });
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
     await createVehicleOwnership({ vehicleId, customerId: cedente.id });
@@ -216,7 +216,7 @@ describe('BR-049 — officina-mediated single-step transfer', () => {
   });
 
   it('accepts officina_mediated enum value', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
 
     await expect(

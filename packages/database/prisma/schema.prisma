@@ -35,11 +35,6 @@ enum BillingStatus {
   stripe_past_due
 }
 
-enum LocationStatus {
-  active
-  inactive
-}
-
 enum UserRole {
   super_admin
   mechanic
@@ -240,7 +235,6 @@ model Tenant {
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz
 
-  locations       Location[]
   users           User[]
   customerRelations CustomerTenantRelation[]
   interventions   Intervention[]
@@ -257,39 +251,9 @@ model Tenant {
   @@map("tenants")
 }
 
-model Location {
-  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId     String         @map("tenant_id") @db.Uuid
-  name         String         @db.VarChar(150)
-  addressLine  String         @map("address_line") @db.VarChar(255)
-  city         String         @db.VarChar(100)
-  province     String         @db.VarChar(2)
-  postalCode   String         @map("postal_code") @db.VarChar(10)
-  country      String         @default("IT") @db.VarChar(2)
-  latitude     Decimal?       @db.Decimal(10, 7)
-  longitude    Decimal?       @db.Decimal(10, 7)
-  phone        String?        @db.VarChar(30)
-  email        String?        @db.VarChar(255)
-  isPrimary    Boolean        @default(false) @map("is_primary")
-  status       LocationStatus @default(active)
-  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt    DateTime?      @map("deleted_at") @db.Timestamptz
-
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users         User[]
-  interventions Intervention[]
-  accessLogs    AccessLog[]
-  deadlines     Deadline[]
-
-  @@index([tenantId], map: "idx_locations_tenant_id")
-  @@map("locations")
-}
-
 model User {
   id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId     String     @map("tenant_id") @db.Uuid
-  locationId   String?    @map("location_id") @db.Uuid
   cognitoSub   String     @unique @map("cognito_sub") @db.VarChar(100)
   email        String     @db.VarChar(255)
   firstName    String     @map("first_name") @db.VarChar(100)
@@ -304,7 +268,6 @@ model User {
   deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz
 
   tenant              Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  location            Location?      @relation(fields: [locationId], references: [id], onDelete: SetNull)
   interventions       Intervention[] @relation("PerformedBy")
   cancelledInterventions Intervention[] @relation("CancelledBy")
   revisions           InterventionRevision[]
@@ -517,7 +480,6 @@ model InterventionType {
 model Intervention {
   id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                String              @map("tenant_id") @db.Uuid
-  locationId              String              @map("location_id") @db.Uuid
   userId                  String              @map("user_id") @db.Uuid
   vehicleId               String              @map("vehicle_id") @db.Uuid
   interventionTypeId      String              @map("intervention_type_id") @db.Uuid
@@ -538,7 +500,6 @@ model Intervention {
   updatedAt               DateTime            @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  location          Location               @relation(fields: [locationId], references: [id], onDelete: Restrict)
   user              User                   @relation("PerformedBy", fields: [userId], references: [id], onDelete: Restrict)
   vehicle           Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   interventionType  InterventionType       @relation(fields: [interventionTypeId], references: [id], onDelete: Restrict)
@@ -654,7 +615,6 @@ model Attachment {
 model Deadline {
   id                         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                   String          @map("tenant_id") @db.Uuid
-  locationId                 String          @map("location_id") @db.Uuid
   vehicleId                  String          @map("vehicle_id") @db.Uuid
   interventionTypeId         String          @map("intervention_type_id") @db.Uuid
   sourceInterventionId       String?         @map("source_intervention_id") @db.Uuid
@@ -671,7 +631,6 @@ model Deadline {
   updatedAt                  DateTime        @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant                  Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  location                Location               @relation(fields: [locationId], references: [id], onDelete: Restrict)
   vehicle                 Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   interventionType        InterventionType       @relation(fields: [interventionTypeId], references: [id], onDelete: Restrict)
   sourceIntervention      Intervention?          @relation("SourceIntervention", fields: [sourceInterventionId], references: [id], onDelete: SetNull)
@@ -758,7 +717,6 @@ model AccessLog {
   id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   vehicleId  String          @map("vehicle_id") @db.Uuid
   tenantId   String          @map("tenant_id") @db.Uuid
-  locationId String?         @map("location_id") @db.Uuid
   userId     String          @map("user_id") @db.Uuid
   action     AccessLogAction
   ipAddress  String?         @map("ip_address") @db.Inet
@@ -767,7 +725,6 @@ model AccessLog {
 
   vehicle  Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([vehicleId, createdAt(sort: Desc)], map: "idx_access_log_vehicle")
@@ -805,7 +762,6 @@ model Invitation {
   vehicleId       String?        @map("vehicle_id") @db.Uuid
   customerId      String?        @map("customer_id") @db.Uuid
   role            UserRole?
-  locationId      String?        @map("location_id") @db.Uuid
   firstName       String?        @map("first_name") @db.VarChar(100)
   lastName        String?        @map("last_name") @db.VarChar(100)
   tokenHash       String?        @unique @map("token_hash") @db.VarChar(64)

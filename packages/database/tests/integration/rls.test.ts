@@ -30,25 +30,6 @@ describe('RLS — tenant isolation (smoke)', () => {
     );
     const tenantAId = a[0]!.id;
     const tenantBId = b[0]!.id;
-
-    await pgAdmin.query(
-      `INSERT INTO locations
-         (id, tenant_id, name, address_line, city, province, postal_code, country,
-          is_primary, status, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), $1, 'Sede A', 'Via A 1', 'Milano', 'MI', '20100', 'IT',
-          true, 'active'::"LocationStatus", NOW(), NOW())`,
-      [tenantAId],
-    );
-    await pgAdmin.query(
-      `INSERT INTO locations
-         (id, tenant_id, name, address_line, city, province, postal_code, country,
-          is_primary, status, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), $1, 'Sede B', 'Via B 1', 'Roma', 'RM', '00100', 'IT',
-          true, 'active'::"LocationStatus", NOW(), NOW())`,
-      [tenantBId],
-    );
     return { tenantAId, tenantBId };
   }
 
@@ -71,9 +52,6 @@ describe('RLS — tenant isolation (smoke)', () => {
 
     const all = await withContext({ role: 'admin' }, (tx) => tx.tenant.findMany());
     expect(all.length).toBeGreaterThanOrEqual(2);
-
-    const allLocations = await withContext({ role: 'admin' }, (tx) => tx.location.findMany());
-    expect(allLocations.length).toBeGreaterThanOrEqual(2);
   });
 
   it('customers are readable cross-tenant (BR-150 + customers_read policy)', async () => {
@@ -123,7 +101,6 @@ describe('RLS — interventions/attachments split (post-migration 0003)', () => 
   async function seedInterventionForTenantA(): Promise<{
     tenantAId: string;
     tenantBId: string;
-    locationAId: string;
     userAId: string;
     customerId: string;
     vehicleId: string;
@@ -143,27 +120,15 @@ describe('RLS — interventions/attachments split (post-migration 0003)', () => 
     const tenantAId = tA[0]!.id;
     const tenantBId = tB[0]!.id;
 
-    const { rows: lA } = await pgAdmin.query<{ id: string }>(
-      `INSERT INTO locations
-         (id, tenant_id, name, address_line, city, province, postal_code, country,
-          is_primary, status, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), $1, 'Sede A', 'Via A 1', 'Milano', 'MI', '20100', 'IT',
-          true, 'active'::"LocationStatus", NOW(), NOW())
-       RETURNING id`,
-      [tenantAId],
-    );
-    const locationAId = lA[0]!.id;
-
     const { rows: uA } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO users
-         (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+         (id, tenant_id, cognito_sub, email, first_name, last_name,
           role, status, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, 'mech@a.it', 'Mech', 'A',
+         (gen_random_uuid(), $1, $2, 'mech@a.it', 'Mech', 'A',
           'mechanic'::"UserRole", 'active'::"UserStatus", NOW(), NOW())
        RETURNING id`,
-      [tenantAId, locationAId, `sub-rls-split-${Date.now()}`],
+      [tenantAId, `sub-rls-split-${Date.now()}`],
     );
     const userAId = uA[0]!.id;
 
@@ -202,22 +167,21 @@ describe('RLS — interventions/attachments split (post-migration 0003)', () => 
 
     const { rows: iv } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO interventions
-         (id, tenant_id, location_id, user_id, vehicle_id, intervention_type_id,
+         (id, tenant_id, user_id, vehicle_id, intervention_type_id,
           intervention_date, odometer_km, title, description, parts_replaced,
           status, km_anomaly, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, $4, $5, '2026-04-15'::date, 45000,
+         (gen_random_uuid(), $1, $2, $3, $4, '2026-04-15'::date, 45000,
           'Tagliando A', 'Test', '[]'::jsonb, 'active'::"InterventionStatus",
           false, NOW(), NOW())
        RETURNING id`,
-      [tenantAId, locationAId, userAId, vehicleId, interventionTypeId],
+      [tenantAId, userAId, vehicleId, interventionTypeId],
     );
     const interventionId = iv[0]!.id;
 
     return {
       tenantAId,
       tenantBId,
-      locationAId,
       userAId,
       customerId,
       vehicleId,
@@ -243,7 +207,7 @@ describe('RLS — interventions/attachments split (post-migration 0003)', () => 
   });
 
   it('cross-tenant INSERT on interventions is blocked', async () => {
-    const { tenantAId, tenantBId, locationAId, userAId, vehicleId, interventionTypeId } =
+    const { tenantAId, tenantBId, userAId, vehicleId, interventionTypeId } =
       await seedInterventionForTenantA();
 
     // tenant B tries to insert an intervention pretending to belong to
@@ -253,7 +217,6 @@ describe('RLS — interventions/attachments split (post-migration 0003)', () => 
         tx.intervention.create({
           data: {
             tenantId: tenantAId,
-            locationId: locationAId,
             userId: userAId,
             vehicleId,
             interventionTypeId,
@@ -338,19 +301,6 @@ describe('RLS — interventions/attachments split (post-migration 0003)', () => 
     );
     expect(seenByB?.id).toBe(tenantAId);
     expect(seenByB?.businessName).toBe('Officina A');
-  });
-
-  it('cross-tenant SELECT on locations is permissive (timeline join needs city)', async () => {
-    const { tenantBId, locationAId } = await seedInterventionForTenantA();
-
-    const seenByB = await withContext({ tenantId: tenantBId }, (tx) =>
-      tx.location.findUnique({
-        where: { id: locationAId },
-        select: { id: true, city: true },
-      }),
-    );
-    expect(seenByB?.id).toBe(locationAId);
-    expect(seenByB?.city).toBe('Milano');
   });
 
   it('cross-tenant SELECT on intervention_types is permissive', async () => {
@@ -498,7 +448,6 @@ describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)'
   async function seedInterventionWithRevision(): Promise<{
     tenantAId: string;
     tenantBId: string;
-    locationAId: string;
     userAId: string;
     customerId: string;
     vehicleId: string;
@@ -518,27 +467,15 @@ describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)'
     const tenantAId = tA[0]!.id;
     const tenantBId = tB[0]!.id;
 
-    const { rows: lA } = await pgAdmin.query<{ id: string }>(
-      `INSERT INTO locations
-         (id, tenant_id, name, address_line, city, province, postal_code, country,
-          is_primary, status, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), $1, 'Sede A', 'Via A 1', 'Milano', 'MI', '20100', 'IT',
-          true, 'active'::"LocationStatus", NOW(), NOW())
-       RETURNING id`,
-      [tenantAId],
-    );
-    const locationAId = lA[0]!.id;
-
     const { rows: uA } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO users
-         (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+         (id, tenant_id, cognito_sub, email, first_name, last_name,
           role, status, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, 'mech-rev@a.it', 'Mech', 'A',
+         (gen_random_uuid(), $1, $2, 'mech-rev@a.it', 'Mech', 'A',
           'mechanic'::"UserRole", 'active'::"UserStatus", NOW(), NOW())
        RETURNING id`,
-      [tenantAId, locationAId, `sub-rev-${Date.now()}`],
+      [tenantAId, `sub-rev-${Date.now()}`],
     );
     const userAId = uA[0]!.id;
 
@@ -577,15 +514,15 @@ describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)'
 
     const { rows: iv } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO interventions
-         (id, tenant_id, location_id, user_id, vehicle_id, intervention_type_id,
+         (id, tenant_id, user_id, vehicle_id, intervention_type_id,
           intervention_date, odometer_km, title, description, parts_replaced,
           status, km_anomaly, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, $4, $5, '2026-04-15'::date, 45000,
+         (gen_random_uuid(), $1, $2, $3, $4, '2026-04-15'::date, 45000,
           'Tagliando A', 'Test', '[]'::jsonb, 'active'::"InterventionStatus",
           false, NOW(), NOW())
        RETURNING id`,
-      [tenantAId, locationAId, userAId, vehicleId, interventionTypeId],
+      [tenantAId, userAId, vehicleId, interventionTypeId],
     );
     const interventionId = iv[0]!.id;
 
@@ -604,7 +541,6 @@ describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)'
     return {
       tenantAId,
       tenantBId,
-      locationAId,
       userAId,
       customerId,
       vehicleId,
@@ -726,7 +662,6 @@ describe('RLS — attachments intervention_dispute branch (post-migration 0010)'
   async function seedDisputeContext(): Promise<{
     tenantAId: string;
     tenantBId: string;
-    locationAId: string;
     userAId: string;
     customerAId: string;
     customerBId: string;
@@ -744,27 +679,15 @@ describe('RLS — attachments intervention_dispute branch (post-migration 0010)'
     const tenantAId = tA[0]!.id;
     const tenantBId = tB[0]!.id;
 
-    const { rows: lA } = await pgAdmin.query<{ id: string }>(
-      `INSERT INTO locations
-         (id, tenant_id, name, address_line, city, province, postal_code,
-          country, is_primary, status, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), $1, 'Sede', 'Via 1', 'Milano', 'MI', '20100',
-          'IT', true, 'active'::"LocationStatus", NOW(), NOW())
-       RETURNING id`,
-      [tenantAId],
-    );
-    const locationAId = lA[0]!.id;
-
     const { rows: uA } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO users
-         (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+         (id, tenant_id, cognito_sub, email, first_name, last_name,
           role, status, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, 'mech@a.it', 'M', 'A',
+         (gen_random_uuid(), $1, $2, 'mech@a.it', 'M', 'A',
           'mechanic'::"UserRole", 'active'::"UserStatus", NOW(), NOW())
        RETURNING id`,
-      [tenantAId, locationAId, `sub-rls-dispute-${Date.now()}`],
+      [tenantAId, `sub-rls-dispute-${Date.now()}`],
     );
     const userAId = uA[0]!.id;
 
@@ -810,15 +733,15 @@ describe('RLS — attachments intervention_dispute branch (post-migration 0010)'
 
     const { rows: iv } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO interventions
-         (id, tenant_id, location_id, user_id, vehicle_id, intervention_type_id,
+         (id, tenant_id, user_id, vehicle_id, intervention_type_id,
           intervention_date, odometer_km, title, description, parts_replaced,
           status, km_anomaly, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, $4, $5, '2026-04-15'::date, 45000,
+         (gen_random_uuid(), $1, $2, $3, $4, '2026-04-15'::date, 45000,
           'Tagliando', 'Test', '[]'::jsonb, 'active'::"InterventionStatus",
           false, NOW(), NOW())
        RETURNING id`,
-      [tenantAId, locationAId, userAId, vehicleId, interventionTypeId],
+      [tenantAId, userAId, vehicleId, interventionTypeId],
     );
     const interventionId = iv[0]!.id;
 
@@ -838,7 +761,6 @@ describe('RLS — attachments intervention_dispute branch (post-migration 0010)'
     return {
       tenantAId,
       tenantBId,
-      locationAId,
       userAId,
       customerAId,
       customerBId,

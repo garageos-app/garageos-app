@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { withContext } from '../../src/index.js';
 
-import { createTenantWithLocation, createVehicle, resetDb } from './helpers.js';
+import { createTenant, createVehicle, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 
 // BR-040 extended coverage — the smoke case ("second active ownership
@@ -35,7 +35,7 @@ describe('BR-040 — single active ownership (edge cases)', () => {
   }
 
   it('allows the same customer to own multiple different vehicles', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { vehicleId: v1 } = await createVehicle({ tenantId });
     const { vehicleId: v2 } = await createVehicle({ tenantId });
     const customerId = await createCustomer('multi-vehicle@test.local');
@@ -45,7 +45,7 @@ describe('BR-040 — single active ownership (edge cases)', () => {
   });
 
   it('allows a customer to re-own the same vehicle after the previous ownership ended', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { vehicleId } = await createVehicle({ tenantId });
     const customer1 = await createCustomer('first@test.local');
     const customer2 = await createCustomer('second@test.local');
@@ -68,7 +68,7 @@ describe('BR-040 — single active ownership (edge cases)', () => {
   });
 
   it('allows arbitrarily many historical (ended_at NOT NULL) ownerships for the same vehicle', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { vehicleId } = await createVehicle({ tenantId });
     const c1 = await createCustomer('hist1@test.local');
     const c2 = await createCustomer('hist2@test.local');
@@ -99,7 +99,7 @@ describe('BR-040 — single active ownership (edge cases)', () => {
     // disables RLS filtering via is_admin_role(), but partial unique
     // indexes are core PostgreSQL constraints — unaffected by row-
     // level security. The insert must still fail.
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { vehicleId } = await createVehicle({ tenantId });
     const customer1 = await createCustomer('admin-bypass-1@test.local');
     const customer2 = await createCustomer('admin-bypass-2@test.local');

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createTenantWithLocation, resetDb } from './helpers.js';
+import { createTenant, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 
 // BR-001 — VIN è univoco globalmente. Enforcement: `@unique` in
@@ -30,8 +30,8 @@ describe('BR-001 — VIN uniqueness (global)', () => {
   }
 
   it('rejects duplicate VIN across different tenants', async () => {
-    const { tenantId: tenantA } = await createTenantWithLocation();
-    const { tenantId: tenantB } = await createTenantWithLocation();
+    const { tenantId: tenantA } = await createTenant();
+    const { tenantId: tenantB } = await createTenant();
 
     await insertVehicle(tenantA, SHARED_VIN);
 
@@ -39,7 +39,7 @@ describe('BR-001 — VIN uniqueness (global)', () => {
   });
 
   it('rejects duplicate VIN within the same tenant', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
 
     await insertVehicle(tenantId, SHARED_VIN);
 
@@ -49,7 +49,7 @@ describe('BR-001 — VIN uniqueness (global)', () => {
   it('rejects a new vehicle with the same VIN as an archived one', async () => {
     // BR-008 (archive) does not free the VIN. Schema `@unique` has no
     // partial clause, so archived rows still occupy the slot.
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
 
     await pgAdmin.query(
       `INSERT INTO vehicles
@@ -70,7 +70,7 @@ describe('BR-001 — VIN uniqueness (global)', () => {
     // uppercase VIN required at input). The DB does not enforce
     // casefold uniqueness, and this test documents that boundary so a
     // future reader understands why `abc…` and `ABC…` coexist.
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const lower = 'zfa16900000099992';
     const upper = 'ZFA16900000099992';
 

@@ -22,7 +22,6 @@ export const InterventionFactory = Factory.define<Prisma.InterventionUncheckedCr
     return {
       id: randomUUID(),
       tenantId: randomUUID(),
-      locationId: randomUUID(),
       userId: randomUUID(),
       vehicleId: randomUUID(),
       interventionTypeId: randomUUID(),

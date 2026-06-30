@@ -26,7 +26,6 @@ const TABLES_TO_WIPE = [
   'invitations',
   'push_tokens',
   'users',
-  'locations',
   'tenants',
   'intervention_types',
   'vehicle_tag_prints',
@@ -243,55 +242,32 @@ export async function createUser(opts: {
   firstName?: string;
   lastName?: string;
   role?: 'super_admin' | 'mechanic';
-  locationId?: string | null;
 }): Promise<{ id: string; email: string; cognitoSub: string }> {
-  const {
-    tenantId,
-    firstName = 'Test',
-    lastName = 'User',
-    role = 'super_admin',
-    locationId = null,
-  } = opts;
+  const { tenantId, firstName = 'Test', lastName = 'User', role = 'super_admin' } = opts;
   const userEmail = opts.email ?? `user-${randomUUID()}@example.com`;
   const cognitoSub = `cognito-${randomUUID()}`;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO users
-       (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+       (id, tenant_id, cognito_sub, email, first_name, last_name,
         role, status, created_at, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::"UserRole",
              'active'::"UserStatus", NOW(), NOW())
      RETURNING id`,
-    [tenantId, locationId, cognitoSub, userEmail, firstName, lastName, role],
+    [tenantId, cognitoSub, userEmail, firstName, lastName, role],
   );
   return { id: rows[0]!.id, email: userEmail, cognitoSub };
 }
 
 /**
- * Create a tenant + a primary location in one transaction so both
- * commit (or roll back) together.
+ * Create a tenant row via pgAdmin. Renamed from createTenantWithLocation as
+ * part of the sede-unica migration: tenants no longer have separate locations.
  */
-export async function createTenantWithLocation(): Promise<{
-  tenantId: string;
-  locationId: string;
-}> {
-  return pgAdmin.tx(async (client) => {
-    const { rows: tenantRows } = await client.query<{ id: string }>(
-      `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
-       RETURNING id`,
-      [`Test Tenant ${Date.now()}`, `${Math.floor(Math.random() * 1e11)}`, 'test@test.it'],
-    );
-    const tenantId = tenantRows[0]!.id;
-    const { rows: locationRows } = await client.query<{ id: string }>(
-      `INSERT INTO locations
-         (id, tenant_id, name, address_line, city, province, postal_code,
-          country, is_primary, status, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), $1, 'Sede', 'Via Test 1', 'Milano', 'MI',
-          '20100', 'IT', true, 'active'::"LocationStatus", NOW(), NOW())
-       RETURNING id`,
-      [tenantId],
-    );
-    return { tenantId, locationId: locationRows[0]!.id };
-  });
+export async function createTenant(): Promise<{ tenantId: string }> {
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
+     RETURNING id`,
+    [`Test Tenant ${Date.now()}`, `${Math.floor(Math.random() * 1e11)}`, 'test@test.it'],
+  );
+  return { tenantId: rows[0]!.id };
 }

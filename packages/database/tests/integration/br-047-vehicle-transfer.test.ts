@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createTenantWithLocation, createVehicle, resetDb } from './helpers.js';
+import { createTenant, createVehicle, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 
 // BR-047 — one active VehicleTransfer per vehicle. Enforcement:
@@ -36,7 +36,7 @@ describe('BR-047 — single active transfer per vehicle', () => {
   it.each(ACTIVE_STATUSES)(
     'rejects a second active transfer when an existing one is in %s',
     async (firstStatus) => {
-      const { tenantId } = await createTenantWithLocation();
+      const { tenantId } = await createTenant();
       const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
 
       await insertTransfer(vehicleId, firstStatus, 1);
@@ -50,7 +50,7 @@ describe('BR-047 — single active transfer per vehicle', () => {
   it.each(TERMINAL_STATUSES)(
     'allows a new active transfer after a previous %s transfer',
     async (terminalStatus) => {
-      const { tenantId } = await createTenantWithLocation();
+      const { tenantId } = await createTenant();
       const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
 
       await insertTransfer(vehicleId, terminalStatus, 1);
@@ -59,7 +59,7 @@ describe('BR-047 — single active transfer per vehicle', () => {
   );
 
   it('allows concurrent active transfers on different vehicles', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { vehicleId: v1 } = await createVehicle({ tenantId, status: 'certified' });
     const { vehicleId: v2 } = await createVehicle({ tenantId, status: 'certified' });
 
@@ -68,7 +68,7 @@ describe('BR-047 — single active transfer per vehicle', () => {
   });
 
   it('transitioning an active transfer to completed frees the slot for a new one', async () => {
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
 
     await insertTransfer(vehicleId, 'pending_recipient', 1);
@@ -87,7 +87,7 @@ describe('BR-047 — single active transfer per vehicle', () => {
     // Demonstrates the index catches the inverse motion too: if a
     // completed transfer is reactivated to `pending_recipient` while
     // another active transfer already exists, the UPDATE must fail.
-    const { tenantId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { vehicleId } = await createVehicle({ tenantId, status: 'certified' });
 
     const { rows } = await pgAdmin.query<{ id: string }>(

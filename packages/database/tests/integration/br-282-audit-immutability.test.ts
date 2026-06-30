@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { withContext } from '../../src/index.js';
 
-import { createTenantWithLocation, createVehicle, resetDb } from './helpers.js';
+import { createTenant, createVehicle, resetDb } from './helpers.js';
 import { pgAdmin } from './setup.js';
 
 // BR-282 extended coverage — the smoke cases (UPDATE/DELETE on
@@ -20,28 +20,28 @@ describe('BR-282 — audit immutability (access_logs + admin + TRUNCATE)', () =>
 
   async function seedAccessLog(): Promise<string> {
     // access_logs requires vehicle_id + tenant_id + user_id FKs.
-    const { tenantId, locationId } = await createTenantWithLocation();
+    const { tenantId } = await createTenant();
     const { vehicleId } = await createVehicle({ tenantId });
 
     const { rows: userRows } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO users
-         (id, tenant_id, location_id, cognito_sub, email, first_name, last_name,
+         (id, tenant_id, cognito_sub, email, first_name, last_name,
           role, status, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, 'u@test.local', 'U', 'T',
+         (gen_random_uuid(), $1, $2, 'u@test.local', 'U', 'T',
           'super_admin'::"UserRole", 'active'::"UserStatus", NOW(), NOW())
        RETURNING id`,
-      [tenantId, locationId, `cognito-${Date.now()}`],
+      [tenantId, `cognito-${Date.now()}`],
     );
     const userId = userRows[0]!.id;
 
     const { rows } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO access_logs
-         (id, vehicle_id, tenant_id, location_id, user_id, action, created_at)
+         (id, vehicle_id, tenant_id, user_id, action, created_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, $4, 'view'::"AccessLogAction", NOW())
+         (gen_random_uuid(), $1, $2, $3, 'view'::"AccessLogAction", NOW())
        RETURNING id`,
-      [vehicleId, tenantId, locationId, userId],
+      [vehicleId, tenantId, userId],
     );
     return rows[0]!.id;
   }
