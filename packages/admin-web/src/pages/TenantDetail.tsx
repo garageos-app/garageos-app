@@ -8,6 +8,8 @@ import { useApiFetch, ApiError } from '@/lib/api-client';
 import { STATUS_BADGE } from '@/lib/tenant-status';
 import { ACTION_ERROR_MESSAGES, GENERIC_ACTION_ERROR } from '@/lib/tenant-actions';
 import type { TenantProfile, AdminUser, InviteResult } from '@/lib/tenant-detail-types';
+import type { TenantMetrics } from '@/lib/metrics-types';
+import { StatCard } from '@/components/StatCard';
 import {
   tenantProfileSchema,
   type TenantProfileValues,
@@ -121,6 +123,19 @@ export function TenantDetail() {
     enabled: !!id,
   });
 
+  // ── Metrics query ────────────────────────────────────────────────────────────
+  // Independent of profile/users — its own loading/error state so a metrics
+  // failure does not block the rest of the page.
+  const {
+    data: metricsData,
+    isLoading: metricsLoading,
+    error: metricsError,
+  } = useQuery<TenantMetrics>({
+    queryKey: ['admin-tenant-metrics', id],
+    queryFn: () => apiFetch(`/v1/admin/tenants/${id!}/metrics`),
+    enabled: !!id,
+  });
+
   // ── Invite form ──────────────────────────────────────────────────────────────
   // Separate form instance so it does not interfere with the profile form above.
   const inviteForm = useForm<UserInviteValues, unknown, UserInviteParsed>({
@@ -228,7 +243,7 @@ export function TenantDetail() {
   if (error) {
     return (
       <div className="min-h-screen bg-background p-8">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <Link
             to="/officine"
             className="text-sm text-muted-foreground hover:underline mb-4 inline-block"
@@ -249,7 +264,7 @@ export function TenantDetail() {
   if (isLoading || !data) {
     return (
       <div className="min-h-screen bg-background p-8">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <Link
             to="/officine"
             className="text-sm text-muted-foreground hover:underline mb-4 inline-block"
@@ -274,7 +289,7 @@ export function TenantDetail() {
 
   return (
     <div className="min-h-screen bg-background p-8">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         <Link
           to="/officine"
           className="text-sm text-muted-foreground hover:underline mb-4 inline-block"
@@ -483,6 +498,43 @@ export function TenantDetail() {
                   })}
                 </TableBody>
               </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Metrics section ───────────────────────────────────────────────── */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Metriche</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {metricsError ? (
+              <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
+                Errore nel caricamento delle metriche.
+              </div>
+            ) : metricsLoading || !metricsData ? (
+              <p className="text-muted-foreground">Caricamento metriche…</p>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <StatCard
+                  label="Interventi"
+                  value={metricsData.interventions.total}
+                  hint={`${metricsData.interventions.last30d} ultimi 30 giorni`}
+                />
+                <StatCard
+                  label="Ultimo intervento"
+                  value={
+                    metricsData.interventions.lastAt
+                      ? new Date(metricsData.interventions.lastAt).toLocaleDateString('it-IT')
+                      : '—'
+                  }
+                />
+                <StatCard label="Utenti" value={metricsData.usersTotal} />
+                <StatCard label="Veicoli" value={metricsData.vehiclesTotal} />
+                <StatCard label="Clienti" value={metricsData.customersTotal} />
+                <StatCard label="Scadenze aperte" value={metricsData.openDeadlines} />
+                <StatCard label="Inviti pendenti" value={metricsData.pendingInvitations} />
+              </div>
             )}
           </CardContent>
         </Card>

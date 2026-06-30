@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TenantDetail } from '@/pages/TenantDetail';
 import type { TenantProfile, AdminUser } from '@/lib/tenant-detail-types';
+import type { TenantMetrics } from '@/lib/metrics-types';
 
 // Hoist shared mocks so they are available inside vi.mock factory closures.
 // ApiError is re-implemented here so that both the component (which imports it
@@ -75,6 +76,15 @@ const TENANT_PROFILE: TenantProfile = {
 };
 
 // ── B3 fixtures ──────────────────────────────────────────────────────────────
+
+const TENANT_METRICS: TenantMetrics = {
+  interventions: { total: 42, last30d: 7, lastAt: '2026-06-27T09:14:00.000Z' },
+  usersTotal: 3,
+  vehiclesTotal: 18,
+  customersTotal: 12,
+  openDeadlines: 5,
+  pendingInvitations: 1,
+};
 
 const USER_ACTIVE: AdminUser = {
   id: 'user-001',
@@ -150,6 +160,7 @@ describe('TenantDetail page', () => {
   it('users section: renders two users from the query', async () => {
     // Route by path: profile query vs. users list query.
     mockApiFetch.mockImplementation((path: string) => {
+      if (path.endsWith('/metrics')) return Promise.resolve(TENANT_METRICS);
       if (typeof path === 'string' && path.endsWith('/users')) {
         return Promise.resolve({ users: [USER_ACTIVE, USER_INACTIVE] });
       }
@@ -165,6 +176,7 @@ describe('TenantDetail page', () => {
 
   it('action gating: Disabilita shows for active user; Riattiva shows for inactive user', async () => {
     mockApiFetch.mockImplementation((path: string) => {
+      if (path.endsWith('/metrics')) return Promise.resolve(TENANT_METRICS);
       if (typeof path === 'string' && path.endsWith('/users')) {
         return Promise.resolve({ users: [USER_ACTIVE, USER_INACTIVE] });
       }
@@ -185,6 +197,7 @@ describe('TenantDetail page', () => {
   it('role-toggle gating: shown for active users, hidden for inactive and soft-deleted users', async () => {
     // Fixture: one active super_admin, one inactive mechanic, one soft-deleted mechanic.
     mockApiFetch.mockImplementation((path: string) => {
+      if (path.endsWith('/metrics')) return Promise.resolve(TENANT_METRICS);
       if (typeof path === 'string' && path.endsWith('/users')) {
         return Promise.resolve({ users: [USER_ACTIVE, USER_INACTIVE, USER_DELETED] });
       }
@@ -200,6 +213,21 @@ describe('TenantDetail page', () => {
     // Inactive mechanic (USER_INACTIVE) and soft-deleted mechanic (USER_DELETED) would both
     // show "Rendi amministratore" if ungated — after the fix neither should appear.
     expect(screen.queryByRole('button', { name: /rendi amministratore/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the per-tenant metrics section', async () => {
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path.endsWith('/metrics')) return Promise.resolve(TENANT_METRICS);
+      if (path.endsWith('/users')) return Promise.resolve({ users: [] as AdminUser[] });
+      return Promise.resolve({ tenant: TENANT_PROFILE });
+    });
+
+    render(<TenantDetail />, { wrapper: makeWrapper() });
+
+    // Metrics card heading + a couple of values.
+    expect(await screen.findByText('Metriche')).toBeInTheDocument();
+    expect(await screen.findByText('42')).toBeInTheDocument(); // interventi total
+    expect(screen.getByText('5')).toBeInTheDocument(); // scadenze aperte
   });
 
   it('invite dialog: submitting the form calls POST /invitations with the correct body', async () => {
@@ -218,6 +246,7 @@ describe('TenantDetail page', () => {
           },
         });
       }
+      if (path.endsWith('/metrics')) return Promise.resolve(TENANT_METRICS);
       // Users list GET.
       if (typeof path === 'string' && path.endsWith('/users')) {
         return Promise.resolve({ users: [] });
