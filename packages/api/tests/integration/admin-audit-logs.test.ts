@@ -9,9 +9,9 @@
 //   6. Filter — date range (boundary inclusivity: row exactly at `from` included).
 //   7. Keyset pagination — no gap / no overlap over 5 rows with limit=2.
 //   8. Invalid params → 400 VALIDATION_ERROR (RFC7807 envelope).
-//   9. Same-timestamp keyset regression — 3 rows sharing an identical µs
-//      createdAt are all returned across pages (no boundary gap). Guards the
-//      full-precision keyset fix (microsecond cursor + row-value comparison).
+//   9. Microsecond-precision keyset regression — 3 rows in the same ms but
+//      different µs are all returned across pages with no gap. Guards the
+//      full-precision cursor fix (to_char µs text + row-value comparison).
 //  10. Inverted range (from > to) → 400 VALIDATION_ERROR.
 //
 // CI-only (Docker / Testcontainers). Do NOT run locally on Windows —
@@ -25,6 +25,7 @@ import type { AuditLogPage } from '../../src/lib/dtos/audit-log.js';
 
 import { buildTestServer } from './fixtures.js';
 import { resetDb, createTenant, createAuditLog } from './helpers.js';
+import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
 // ─── Pool isolation ───────────────────────────────────────────────────────────
@@ -348,46 +349,84 @@ describe('GET /v1/admin/audit-logs — core behaviour (integration)', () => {
     }
   });
 
-  // Case 9: same-timestamp keyset regression (full-precision cursor).
-  // Three rows share an IDENTICAL createdAt (as rows written in one tx do).
-  // With limit=2 the same-timestamp group straddles a page boundary; the
-  // microsecond cursor + (created_at, id) row-value comparison must return all
-  // three with no duplicate and no omission. A ms-truncated cursor would skip
-  // the boundary row.
-  it('returns all rows sharing an identical createdAt across page boundaries', async () => {
-    const sharedTs = new Date('2026-06-30T10:00:00.000Z');
-    const { id: a } = await createAuditLog({ action: 'tie_ev', createdAt: sharedTs });
-    const { id: b } = await createAuditLog({ action: 'tie_ev', createdAt: sharedTs });
-    const { id: c } = await createAuditLog({ action: 'tie_ev', createdAt: sharedTs });
+  // Case 9: microsecond-precision keyset regression guard (finding #1).
+  //
+  // Three rows sit in the SAME millisecond but at different microseconds:
+  //   R1 = …123900Z  (newest)
+  //   R2 = …123500Z
+  //   R3 = …123100Z  (oldest)
+  //
+  // With limit=2 the group straddles a page boundary.  The regression:
+  //   Old cursor: JS Date.toISOString() truncates to ms → cursor for R2
+  //     becomes '…123000Z' instead of '…123500Z'.  The row-value comparison
+  //     (created_at, id) < ('…123000Z'::timestamptz, R2_id) returns FALSE for
+  //     R3 (123100µs > 123000µs) so R3 is silently skipped.
+  //   Fixed cursor: to_char(created_at AT TIME ZONE 'UTC',
+  //     'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') preserves microseconds → cursor
+  //     '…123500Z' → R3 (123100 < 123500) correctly included on page 2.
+  //
+  // createAuditLog passes a JS Date, which is ms-resolution; use a direct
+  // pgAdmin INSERT with explicit ::timestamptz literals to get sub-ms values.
+  it('microsecond-precision keyset: no boundary gap when rows share a millisecond', async () => {
+    // Seed newest-first so insertion order matches expected page order.
+    const microsecondTimestamps = [
+      '2026-06-30T10:00:00.123900Z', // R1 — newest
+      '2026-06-30T10:00:00.123500Z', // R2
+      '2026-06-30T10:00:00.123100Z', // R3 — oldest
+    ] as const;
+
+    const ids: string[] = [];
+    for (const ts of microsecondTimestamps) {
+      const { rows } = await pgAdmin.query<{ id: string }>(
+        `INSERT INTO audit_logs
+           (id, tenant_id, actor_type, actor_id, action, entity_type, entity_id,
+            ip_address, metadata, created_at)
+         VALUES (gen_random_uuid(), NULL, 'admin'::"AuditActorType", NULL,
+           'us_gap_ev', 'tenant', gen_random_uuid(),
+           NULL, '{}'::jsonb, $1::timestamptz)
+         RETURNING id`,
+        [ts],
+      );
+      ids.push(rows[0]!.id);
+    }
+    const r1 = ids[0]!;
+    const r2 = ids[1]!;
+    const r3 = ids[2]!;
 
     const token = await signTestToken({ pool: 'platform-admins' });
 
+    // Page 1: newest-first → R1 (123900µs), R2 (123500µs).
     const res1 = await app.inject({
       method: 'GET',
-      url: '/v1/admin/audit-logs?limit=2&action=tie_ev',
+      url: '/v1/admin/audit-logs?action=us_gap_ev&limit=2',
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res1.statusCode).toBe(200);
     const page1 = res1.json() as AuditLogPage;
     expect(page1.items).toHaveLength(2);
     expect(page1.nextCursor).not.toBeNull();
+    expect(page1.items[0]!.id).toBe(r1);
+    expect(page1.items[1]!.id).toBe(r2);
 
+    // Page 2: cursor built from R2's microsecond ts ('…123500Z') must
+    // satisfy (created_at < '…123500Z') for R3 (123100µs < 123500µs) → R3
+    // returned.  Old ms-truncated cursor ('…123000Z') would make the condition
+    // FALSE for R3 (123100µs > 123000µs) and silently drop it — the bug this
+    // test guards against.
     const res2 = await app.inject({
       method: 'GET',
-      url: `/v1/admin/audit-logs?limit=2&action=tie_ev&cursor=${page1.nextCursor!}`,
+      url: `/v1/admin/audit-logs?action=us_gap_ev&limit=2&cursor=${page1.nextCursor!}`,
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res2.statusCode).toBe(200);
     const page2 = res2.json() as AuditLogPage;
     expect(page2.items).toHaveLength(1);
     expect(page2.nextCursor).toBeNull();
+    expect(page2.items[0]!.id).toBe(r3);
 
+    // Full-set assertion: no gap, no duplicate, correct descending µs order.
     const allIds = [...page1.items.map((i) => i.id), ...page2.items.map((i) => i.id)];
-    expect(allIds).toHaveLength(3);
-    expect(new Set(allIds).size).toBe(3); // no duplicate
-    for (const expected of [a, b, c]) {
-      expect(allIds).toContain(expected); // no omission
-    }
+    expect(allIds).toEqual([r1, r2, r3]);
   });
 
   // Case 10: inverted date range (from > to) → 400 VALIDATION_ERROR.
