@@ -2768,6 +2768,7 @@ L'`owner_type=intervention` resta officina-only.
 | POST | `/v1/admin/tenants/:id/users/invitations` | Slice 3 | Platform Admin | **[DETTAGLIATO §3.12.10]** Invita nuovo utente nel tenant; rate-limit 30/h |
 | GET | `/v1/admin/metrics` | Slice 4 | Platform Admin | **[DETTAGLIATO §3.12.11]** Metriche aggregate cross-tenant per dashboard admin |
 | GET | `/v1/admin/tenants/:id/metrics` | Slice 4 | Platform Admin | **[DETTAGLIATO §3.12.12]** Metriche per-officina (conteggi + attività + scadenze + inviti) |
+| GET | `/v1/admin/audit-logs` | Slice 5 | Platform Admin | **[DETTAGLIATO §3.12.13]** Log di audit globale con filtri e paginazione keyset |
 | GET | `/admin/tenants` | F-ADM-001 | Admin | Lista tutti i tenant |
 | POST | `/admin/tenants/:id/suspend` | F-ADM-002 | Admin | Sospendi tenant |
 | POST | `/admin/tenants/:id/activate` | F-ADM-002 | Admin | Riattiva tenant |
@@ -3392,6 +3393,66 @@ Tutti i conteggi escludono i record eliminati (soft-delete). `interventions` esc
 - `401` — token mancante o non valido (`requireAuth`)
 - `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
 - `404 tenant.not_found` — UUID sconosciuto o formato non valido (anti-enumeration)
+
+#### 3.12.13 `GET /v1/admin/audit-logs` — Log di audit globale
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno (solo lettura)
+**Shipped:** Slice 5 (admin audit viewer)
+
+Log di audit cross-tenant con paginazione keyset, ordinato per `createdAt DESC, id DESC`. Consente alla console admin di visualizzare e filtrare gli eventi di audit di tutte le officine e della piattaforma. La risoluzione dei nomi tenant è batch (no N+1) e non filtra su `deletedAt` — la storia di audit sopravvive alla cancellazione morbida del tenant.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant.
+
+**Query parameters (tutti opzionali):**
+
+| Parametro | Tipo | Vincoli | Note |
+|---|---|---|---|
+| `tenantId` | `'platform' \| UUID` | — | `'platform'` → solo eventi piattaforma (`tenantId IS NULL`); UUID → tenant specifico; assente → tutti |
+| `action` | `string` | 1–100 chars | Filtro per valore esatto del campo `action` |
+| `actorType` | `'user' \| 'customer' \| 'system' \| 'admin'` | — | Filtra per tipo attore |
+| `from` | `string (ISO 8601)` | — | `createdAt >= from` (boundary incluso) |
+| `to` | `string (ISO 8601)` | — | `createdAt <= to` (boundary incluso) |
+| `cursor` | `string (opaque)` | — | Token di paginazione restituito da una risposta precedente |
+| `limit` | `integer` | 1–100, default 50 | Numero di righe per pagina |
+
+**Response `200 OK`:**
+
+```json
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "createdAt": "2026-06-29T14:22:00.000Z",
+      "tenant": { "id": "550e8400-e29b-41d4-a716-446655440002", "businessName": "Officina Rossi" },
+      "actorType": "admin",
+      "actorId": "550e8400-e29b-41d4-a716-446655440003",
+      "action": "tenant_suspended",
+      "entityType": "tenant",
+      "entityId": "550e8400-e29b-41d4-a716-446655440004",
+      "ipAddress": "1.2.3.4",
+      "metadata": {}
+    }
+  ],
+  "nextCursor": "eyJjIjoiMjAyNi0wNi0yOVQxNDoyMjowMC4wMDBaIiwi..."
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `items` | `AuditLogItem[]` | Righe ordinate `createdAt DESC, id DESC` |
+| `nextCursor` | `string \| null` | `null` sull'ultima pagina; passare come `?cursor=` nella richiesta successiva |
+| `items[].tenant` | `{ id, businessName } \| null` | `null` = evento piattaforma (`tenantId IS NULL`); `businessName` può essere `null` se il tenant è stato eliminato definitivamente (hard-delete) |
+| `items[].actorType` | `'user' \| 'customer' \| 'system' \| 'admin'` | Tipo dell'attore che ha generato l'evento |
+| `items[].actorId` | `string \| null` | UUID dell'attore; `null` per eventi di sistema |
+| `items[].ipAddress` | `string \| null` | Indirizzo IP inet dell'attore |
+| `items[].metadata` | `unknown` | Payload JSON libero dell'evento (passato as-is dalla colonna jsonb) |
+
+**Errori:**
+
+- `400 VALIDATION_ERROR` — query non valida: `limit` < 1 o > 100, `actorType` non riconosciuto, `tenantId` non `'platform'` né UUID, `cursor` malformato
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
 
 ### 3.13 Public
 

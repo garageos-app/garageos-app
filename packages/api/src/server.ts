@@ -66,6 +66,7 @@ import { adminTenantsLifecycleRoutes } from './routes/v1/admin-tenants-lifecycle
 import { adminTenantsRegenerateInvitationRoutes } from './routes/v1/admin-tenants-regenerate-invitation.js';
 import { adminTenantDetailRoutes } from './routes/v1/admin-tenant-detail.js';
 import { adminTenantMetricsRoutes } from './routes/v1/admin-tenant-metrics.js';
+import { adminAuditLogsRoutes } from './routes/v1/admin-audit-logs.js';
 import { adminTenantUsersRoutes } from './routes/v1/admin-tenant-users.js';
 import { adminTenantUsersInvitationsRoutes } from './routes/v1/admin-tenant-users-invitations.js';
 import customerCreateRoutes from './routes/v1/customers-create.js';
@@ -185,6 +186,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(adminTenantsRegenerateInvitationRoutes);
   await app.register(adminTenantDetailRoutes);
   await app.register(adminTenantMetricsRoutes);
+  await app.register(adminAuditLogsRoutes);
   await app.register(adminTenantUsersRoutes);
   await app.register(adminTenantUsersInvitationsRoutes);
   await app.register(tenantRoutes);

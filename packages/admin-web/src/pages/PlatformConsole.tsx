@@ -47,6 +47,9 @@ export function PlatformConsole() {
             <Button variant="outline" onClick={() => navigate('/officine')}>
               Officine
             </Button>
+            <Button variant="outline" onClick={() => navigate('/audit')}>
+              Audit
+            </Button>
             <Button onClick={() => navigate('/officine/nuova')}>Crea officina</Button>
             <Button variant="outline" onClick={signOut}>
               Esci

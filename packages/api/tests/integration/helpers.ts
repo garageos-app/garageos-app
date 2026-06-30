@@ -778,6 +778,60 @@ export async function createDispute(params: {
   return { disputeId: rows[0]!.id };
 }
 
+// Direct pgAdmin insert for audit_logs seeding. Bypasses RLS
+// (admin connection) so cross-tenant and backdated rows can be seeded
+// without driving an API call. audit_logs has NO FK on tenant_id — a row
+// with a non-existent tenantId is valid and is used to test the
+// "hard-deleted tenant" serialization branch.
+export async function createAuditLog(opts: {
+  tenantId?: string | null;
+  actorType?: 'user' | 'customer' | 'system' | 'admin';
+  actorId?: string | null;
+  action: string;
+  entityType?: string;
+  entityId?: string;
+  ipAddress?: string | null;
+  metadata?: unknown;
+  // Backdating: pass a Date to override the DB default now(). Used by
+  // date-filter and pagination tests to establish a deterministic order.
+  createdAt?: Date;
+}): Promise<{ id: string }> {
+  const {
+    tenantId = null,
+    actorType = 'admin',
+    actorId = null,
+    action,
+    entityType = 'tenant',
+    ipAddress = null,
+    metadata = {},
+    createdAt,
+  } = opts;
+  // Default entityId to a random UUID so the NOT NULL constraint is satisfied
+  // when the caller does not care about the entity identity.
+  const entityId = opts.entityId ?? randomUUID();
+
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO audit_logs
+       (id, tenant_id, actor_type, actor_id, action, entity_type, entity_id,
+        ip_address, metadata, created_at)
+     VALUES (gen_random_uuid(), $1, $2::"AuditActorType", $3, $4, $5, $6,
+        $7::inet, $8::jsonb, COALESCE($9::timestamptz, now()))
+     RETURNING id`,
+    [
+      tenantId,
+      actorType,
+      actorId,
+      action,
+      entityType,
+      entityId,
+      ipAddress,
+      JSON.stringify(metadata),
+      createdAt ?? null,
+    ],
+  );
+  return { id: rows[0]!.id };
+}
+
 // Direct pgAdmin insert for intervention_revisions seeding. Mirrors
 // createDispute: bypasses RLS so cross-tenant fixtures or backdated
 // revisedAt values can be seeded without driving the public PATCH path.
