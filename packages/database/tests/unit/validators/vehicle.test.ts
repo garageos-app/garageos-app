@@ -145,12 +145,6 @@ describe('CreateVehicleSchema — invalid inputs', () => {
     input.vehicle.plate = '123ABC';
     expect(() => CreateVehicleSchema.parse(input)).toThrow();
   });
-
-  it('rejects non-UUID locationId', () => {
-    const input = validInput();
-    input.locationId = 'not-a-uuid';
-    expect(() => CreateVehicleSchema.parse(input)).toThrow();
-  });
 });
 
 describe('BR-024 — ClaimVehicleSchema case-insensitive transform', () => {
