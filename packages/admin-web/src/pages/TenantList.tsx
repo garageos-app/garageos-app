@@ -152,12 +152,8 @@ export function TenantList() {
   // also undefined, so we must check error before the isLoading||!data guard.
   if (error) {
     return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-6xl mx-auto">
-          <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
-            Errore nel caricamento delle officine.
-          </div>
-        </div>
+      <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
+        Errore nel caricamento delle officine.
       </div>
     );
   }
@@ -165,13 +161,7 @@ export function TenantList() {
   // Loading state — also guards against offline/paused state where data may be
   // undefined even though isLoading is false. See [[feedback_react_query_data_bang_offline_paused]].
   if (isLoading || !data) {
-    return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-muted-foreground">Caricamento…</p>
-        </div>
-      </div>
-    );
+    return <p className="text-muted-foreground">Caricamento…</p>;
   }
 
   // Client-side filter
@@ -179,139 +169,137 @@ export function TenantList() {
     filter === 'all' ? data.tenants : data.tenants.filter((t) => t.status === filter);
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Officine</h1>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Officine</h1>
 
-        {/* Status filter */}
-        <div className="flex gap-2 mb-4">
-          {FILTER_OPTIONS.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => setFilter(value)}
-              className={[
-                'px-3 py-1.5 text-sm rounded-md border transition-colors',
-                filter === value
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background text-foreground border-border hover:bg-muted',
-              ].join(' ')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {filtered.length === 0 ? (
-          <p className="text-muted-foreground">Nessuna officina.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Officina</TableHead>
-                <TableHead>P.IVA</TableHead>
-                <TableHead>Email titolare</TableHead>
-                <TableHead>Stato</TableHead>
-                <TableHead>Invito</TableHead>
-                <TableHead>Creata</TableHead>
-                <TableHead>Azioni</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((tenant) => {
-                const statusBadge = STATUS_BADGE[tenant.status];
-                // Show Rigenera link only for active tenants with an unaccepted invitation.
-                const showRigenera =
-                  tenant.status === 'active' &&
-                  tenant.owner !== null &&
-                  tenant.owner.invitationStatus !== 'accepted';
-
-                return (
-                  <TableRow key={tenant.id}>
-                    <TableCell className="font-medium">
-                      {/* Only the name cell is a link; the actions cell keeps its own click
-                          handlers without stopPropagation since no parent onClick is added. */}
-                      <Link to={`/officine/${tenant.id}`} className="hover:underline">
-                        {tenant.businessName}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{tenant.vatNumber}</TableCell>
-                    <TableCell>{tenant.owner?.email ?? '—'}</TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {tenant.owner ? (
-                        <Badge variant={INVITATION_BADGE[tenant.owner.invitationStatus].variant}>
-                          {INVITATION_BADGE[tenant.owner.invitationStatus].label}
-                        </Badge>
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                    <TableCell>{new Date(tenant.createdAt).toLocaleDateString('it-IT')}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2 flex-wrap">
-                        {tenant.status === 'active' && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            // Disable only the row whose suspend is in flight (Fix 4).
-                            // suspendMutation.variables holds the id passed to mutate().
-                            disabled={
-                              suspendMutation.isPending && suspendMutation.variables === tenant.id
-                            }
-                            onClick={() =>
-                              setSuspendTarget({
-                                id: tenant.id,
-                                businessName: tenant.businessName,
-                              })
-                            }
-                          >
-                            Sospendi
-                          </Button>
-                        )}
-                        {tenant.status === 'suspended' && (
-                          <Button
-                            variant="default"
-                            size="sm"
-                            // Disable only the row whose reactivation is in flight (Fix 4).
-                            disabled={
-                              reactivateMutation.isPending &&
-                              reactivateMutation.variables === tenant.id
-                            }
-                            onClick={() =>
-                              setReactivateTarget({
-                                id: tenant.id,
-                                businessName: tenant.businessName,
-                              })
-                            }
-                          >
-                            Riattiva
-                          </Button>
-                        )}
-                        {showRigenera && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            // Disable only the row whose regeneration is in flight (Fix 4).
-                            disabled={
-                              regenerateMutation.isPending &&
-                              regenerateMutation.variables === tenant.id
-                            }
-                            onClick={() => regenerateMutation.mutate(tenant.id)}
-                          >
-                            Rigenera link
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
+      {/* Status filter */}
+      <div className="flex gap-2 mb-4">
+        {FILTER_OPTIONS.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => setFilter(value)}
+            className={[
+              'px-3 py-1.5 text-sm rounded-md border transition-colors',
+              filter === value
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-background text-foreground border-border hover:bg-muted',
+            ].join(' ')}
+          >
+            {label}
+          </button>
+        ))}
       </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-muted-foreground">Nessuna officina.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Officina</TableHead>
+              <TableHead>P.IVA</TableHead>
+              <TableHead>Email titolare</TableHead>
+              <TableHead>Stato</TableHead>
+              <TableHead>Invito</TableHead>
+              <TableHead>Creata</TableHead>
+              <TableHead>Azioni</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map((tenant) => {
+              const statusBadge = STATUS_BADGE[tenant.status];
+              // Show Rigenera link only for active tenants with an unaccepted invitation.
+              const showRigenera =
+                tenant.status === 'active' &&
+                tenant.owner !== null &&
+                tenant.owner.invitationStatus !== 'accepted';
+
+              return (
+                <TableRow key={tenant.id}>
+                  <TableCell className="font-medium">
+                    {/* Only the name cell is a link; the actions cell keeps its own click
+                          handlers without stopPropagation since no parent onClick is added. */}
+                    <Link to={`/officine/${tenant.id}`} className="hover:underline">
+                      {tenant.businessName}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{tenant.vatNumber}</TableCell>
+                  <TableCell>{tenant.owner?.email ?? '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {tenant.owner ? (
+                      <Badge variant={INVITATION_BADGE[tenant.owner.invitationStatus].variant}>
+                        {INVITATION_BADGE[tenant.owner.invitationStatus].label}
+                      </Badge>
+                    ) : (
+                      '—'
+                    )}
+                  </TableCell>
+                  <TableCell>{new Date(tenant.createdAt).toLocaleDateString('it-IT')}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-2 flex-wrap">
+                      {tenant.status === 'active' && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          // Disable only the row whose suspend is in flight (Fix 4).
+                          // suspendMutation.variables holds the id passed to mutate().
+                          disabled={
+                            suspendMutation.isPending && suspendMutation.variables === tenant.id
+                          }
+                          onClick={() =>
+                            setSuspendTarget({
+                              id: tenant.id,
+                              businessName: tenant.businessName,
+                            })
+                          }
+                        >
+                          Sospendi
+                        </Button>
+                      )}
+                      {tenant.status === 'suspended' && (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          // Disable only the row whose reactivation is in flight (Fix 4).
+                          disabled={
+                            reactivateMutation.isPending &&
+                            reactivateMutation.variables === tenant.id
+                          }
+                          onClick={() =>
+                            setReactivateTarget({
+                              id: tenant.id,
+                              businessName: tenant.businessName,
+                            })
+                          }
+                        >
+                          Riattiva
+                        </Button>
+                      )}
+                      {showRigenera && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          // Disable only the row whose regeneration is in flight (Fix 4).
+                          disabled={
+                            regenerateMutation.isPending &&
+                            regenerateMutation.variables === tenant.id
+                          }
+                          onClick={() => regenerateMutation.mutate(tenant.id)}
+                        >
+                          Rigenera link
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
 
       {/* ── Suspend confirm dialog ──────────────────────────────────────────── */}
       <AlertDialog

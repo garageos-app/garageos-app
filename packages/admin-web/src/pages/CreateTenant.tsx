@@ -81,113 +81,107 @@ export function CreateTenant() {
   if (confirmationData !== null) {
     const { tenant, invitation } = confirmationData;
     return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-2xl mx-auto">
-          <Card>
-            <CardHeader>
-              <CardTitle>Officina creata</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p>
-                <strong>{tenant.businessName}</strong> creata. Invito inviato a{' '}
-                <strong>{invitation.ownerEmail}</strong>. Il link di accesso scade tra 7 giorni.
+      <div className="max-w-2xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle>Officina creata</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p>
+              <strong>{tenant.businessName}</strong> creata. Invito inviato a{' '}
+              <strong>{invitation.ownerEmail}</strong>. Il link di accesso scade tra 7 giorni.
+            </p>
+            {invitation.emailSent === false && (
+              <p className="text-amber-700">
+                Attenzione: Email non inviata.{' '}
+                <Link to="/officine" className="underline">
+                  Se l&apos;email non arriva, rigenera il link dalla lista Officine
+                </Link>{' '}
+                oppure contatta il supporto.
               </p>
-              {invitation.emailSent === false && (
-                <p className="text-amber-700">
-                  Attenzione: Email non inviata.{' '}
-                  <Link to="/officine" className="underline">
-                    Se l&apos;email non arriva, rigenera il link dalla lista Officine
-                  </Link>{' '}
-                  oppure contatta il supporto.
-                </p>
-              )}
-              <Button onClick={resetForm}>Crea un&apos;altra officina</Button>
-            </CardContent>
-          </Card>
-        </div>
+            )}
+            <Button onClick={resetForm}>Crea un&apos;altra officina</Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   // Form view — initial state and after an API error.
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-2xl mx-auto">
-        <Card>
-          <CardHeader>
-            <CardTitle>Crea officina</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {apiError && (
-              <div
-                role="alert"
-                className="mb-4 p-3 rounded-md bg-destructive/10 text-destructive text-sm"
-              >
-                {apiError}
-              </div>
-            )}
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
-              <div className="space-y-2">
-                <Label htmlFor="businessName">Ragione sociale</Label>
-                <Input id="businessName" {...form.register('businessName')} />
-                {form.formState.errors.businessName && (
-                  <p className="text-sm text-red-600">
-                    {form.formState.errors.businessName.message}
-                  </p>
-                )}
-              </div>
+    <div className="max-w-2xl mx-auto">
+      <Card>
+        <CardHeader>
+          <CardTitle>Crea officina</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {apiError && (
+            <div
+              role="alert"
+              className="mb-4 p-3 rounded-md bg-destructive/10 text-destructive text-sm"
+            >
+              {apiError}
+            </div>
+          )}
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+            <div className="space-y-2">
+              <Label htmlFor="businessName">Ragione sociale</Label>
+              <Input id="businessName" {...form.register('businessName')} />
+              {form.formState.errors.businessName && (
+                <p className="text-sm text-red-600">{form.formState.errors.businessName.message}</p>
+              )}
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="vatNumber">P.IVA</Label>
-                <Input id="vatNumber" {...form.register('vatNumber')} />
-                {form.formState.errors.vatNumber && (
-                  <p className="text-sm text-red-600">{form.formState.errors.vatNumber.message}</p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="vatNumber">P.IVA</Label>
+              <Input id="vatNumber" {...form.register('vatNumber')} />
+              {form.formState.errors.vatNumber && (
+                <p className="text-sm text-red-600">{form.formState.errors.vatNumber.message}</p>
+              )}
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">Email officina</Label>
-                <Input id="email" type="email" {...form.register('email')} />
-                {form.formState.errors.email && (
-                  <p className="text-sm text-red-600">{form.formState.errors.email.message}</p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email officina</Label>
+              <Input id="email" type="email" {...form.register('email')} />
+              {form.formState.errors.email && (
+                <p className="text-sm text-red-600">{form.formState.errors.email.message}</p>
+              )}
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ownerFirstName">Nome titolare</Label>
-                <Input id="ownerFirstName" {...form.register('ownerFirstName')} />
-                {form.formState.errors.ownerFirstName && (
-                  <p className="text-sm text-red-600">
-                    {form.formState.errors.ownerFirstName.message}
-                  </p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="ownerFirstName">Nome titolare</Label>
+              <Input id="ownerFirstName" {...form.register('ownerFirstName')} />
+              {form.formState.errors.ownerFirstName && (
+                <p className="text-sm text-red-600">
+                  {form.formState.errors.ownerFirstName.message}
+                </p>
+              )}
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ownerLastName">Cognome titolare</Label>
-                <Input id="ownerLastName" {...form.register('ownerLastName')} />
-                {form.formState.errors.ownerLastName && (
-                  <p className="text-sm text-red-600">
-                    {form.formState.errors.ownerLastName.message}
-                  </p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="ownerLastName">Cognome titolare</Label>
+              <Input id="ownerLastName" {...form.register('ownerLastName')} />
+              {form.formState.errors.ownerLastName && (
+                <p className="text-sm text-red-600">
+                  {form.formState.errors.ownerLastName.message}
+                </p>
+              )}
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ownerEmail">Email titolare</Label>
-                <Input id="ownerEmail" type="email" {...form.register('ownerEmail')} />
-                {form.formState.errors.ownerEmail && (
-                  <p className="text-sm text-red-600">{form.formState.errors.ownerEmail.message}</p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="ownerEmail">Email titolare</Label>
+              <Input id="ownerEmail" type="email" {...form.register('ownerEmail')} />
+              {form.formState.errors.ownerEmail && (
+                <p className="text-sm text-red-600">{form.formState.errors.ownerEmail.message}</p>
+              )}
+            </div>
 
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Invio...' : 'Crea officina'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Invio...' : 'Crea officina'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
