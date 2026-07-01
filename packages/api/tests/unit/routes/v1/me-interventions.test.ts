@@ -15,7 +15,6 @@ interface FakePrisma {
   intervention: { findFirst: ReturnType<typeof vi.fn> };
   vehicleOwnership: { findFirst: ReturnType<typeof vi.fn> };
   interventionDispute: { findMany: ReturnType<typeof vi.fn> };
-  attachment: { count: ReturnType<typeof vi.fn> };
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
@@ -38,7 +37,6 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     },
     vehicleOwnership: { findFirst: vi.fn().mockResolvedValue({ id: 'own-1' }) },
     interventionDispute: { findMany: vi.fn().mockResolvedValue([]) },
-    attachment: { count: vi.fn().mockResolvedValue(0) },
     ...overrides,
   };
 }

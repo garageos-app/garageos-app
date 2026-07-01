@@ -74,31 +74,6 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
         // gets a read-only, redacted view. Drives the redaction below.
         const isOwner = row.tenantId === tenantId;
 
-        // Attachments use the polymorphic ownerType/ownerId pattern — the
-        // Intervention model has no direct Prisma relation to Attachment.
-        // Fetch separately after the intervention lookup so the not-found
-        // guard runs first. Scope to the *owning* tenant (row.tenantId), not
-        // the caller: attachments belong to the intervention's tenant and
-        // stay visible cross-tenant (part of the shared shop record), while
-        // the explicit tenant scope still bounds the polymorphic query.
-        const attachments = await tx.attachment.findMany({
-          where: {
-            ownerType: 'intervention',
-            ownerId: id,
-            tenantId: row.tenantId,
-            processed: true,
-            deletedAt: null,
-          },
-          select: {
-            id: true,
-            fileName: true,
-            mimeType: true,
-            sizeBytes: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: 'asc' },
-        });
-
         return {
           id: row.id,
           status: row.status,
@@ -143,13 +118,6 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
                   last_name: row.user.lastName,
                 }
               : null,
-          attachments: attachments.map((a) => ({
-            id: a.id,
-            file_name: a.fileName,
-            mime_type: a.mimeType,
-            size_bytes: a.sizeBytes,
-            created_at: a.createdAt.toISOString(),
-          })),
         };
       });
     },

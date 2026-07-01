@@ -46,7 +46,6 @@ interface FakePrisma {
   vehicleOwnership: { findFirst: ReturnType<typeof vi.fn> };
   intervention: { findMany: ReturnType<typeof vi.fn> };
   privateIntervention: { findMany: ReturnType<typeof vi.fn> };
-  attachment: { groupBy: ReturnType<typeof vi.fn> };
   user: { findFirst: ReturnType<typeof vi.fn> };
 }
 
@@ -58,7 +57,6 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     },
     intervention: { findMany: vi.fn().mockResolvedValue([SHOP_ROW_1, SHOP_ROW_2_DISPUTED]) },
     privateIntervention: { findMany: vi.fn().mockResolvedValue([PRIVATE_ROW_1]) },
-    attachment: { groupBy: vi.fn().mockResolvedValue([]) },
     user: {
       // F-OFF-004 follow-ups Item 1: tenant-context reactive status lookup.
       findFirst: vi.fn().mockResolvedValue({ id: 'user-uuid' }),
@@ -163,10 +161,10 @@ describe('GET /v1/vehicles/:id/timeline (officine pool)', () => {
   });
 
   it('uses pool-bound role: user (migration 0003 made cross-tenant SELECT permissive)', async () => {
-    // Post-migration 0003, the SELECT side of interventions /
-    // attachments / tenants / locations / intervention_types is
-    // cross-tenant readable, so the handler runs with the pool's
-    // tenantId and role: 'user' — no admin elevation required.
+    // Post-migration 0003, the SELECT side of interventions / tenants /
+    // locations / intervention_types is cross-tenant readable, so the
+    // handler runs with the pool's tenantId and role: 'user' — no admin
+    // elevation required.
     const withContext = vi.fn(async (_ctx, fn) => fn(buildFakePrisma()));
     app = await buildApp({ verifier: officineVerifier, withContext });
 
@@ -400,64 +398,5 @@ describe('GET /v1/vehicles/:id/timeline (filters and pagination)', () => {
       url: `/v1/vehicles/${VEHICLE_ID}/timeline`,
     });
     expect(res.statusCode).toBe(401);
-  });
-});
-
-describe('GET /v1/vehicles/:id/timeline (attachments)', () => {
-  let app: FastifyInstance | undefined;
-  beforeEach(() => {
-    app = undefined;
-  });
-  afterEach(async () => {
-    await app?.close();
-  });
-
-  it('derives has_attachments / attachments_count from groupBy buckets', async () => {
-    const groupBy = vi.fn().mockResolvedValue([
-      { ownerType: 'intervention', ownerId: SHOP_INT_1, _count: { _all: 2 } },
-      { ownerType: 'private_intervention', ownerId: PRIVATE_INT_1, _count: { _all: 1 } },
-    ]);
-    const prisma = buildFakePrisma({
-      attachment: { groupBy },
-    });
-    app = await buildApp({ verifier: clientiVerifier, prisma });
-
-    const res = await app.inject({
-      method: 'GET',
-      url: `/v1/vehicles/${VEHICLE_ID}/timeline`,
-      headers: { authorization: 'Bearer valid.jwt' },
-    });
-    const body = res.json() as {
-      data: Array<{ id: string; has_attachments: boolean; attachments_count: number }>;
-    };
-
-    const shop1 = body.data.find((d) => d.id === SHOP_INT_1);
-    expect(shop1?.attachments_count).toBe(2);
-    expect(shop1?.has_attachments).toBe(true);
-
-    const shop2 = body.data.find((d) => d.id === SHOP_INT_2);
-    expect(shop2?.attachments_count).toBe(0);
-    expect(shop2?.has_attachments).toBe(false);
-
-    const priv = body.data.find((d) => d.id === PRIVATE_INT_1);
-    expect(priv?.attachments_count).toBe(1);
-    expect(priv?.has_attachments).toBe(true);
-  });
-
-  it('skips groupBy when no rows match', async () => {
-    const groupBy = vi.fn().mockResolvedValue([]);
-    const prisma = buildFakePrisma({
-      intervention: { findMany: vi.fn().mockResolvedValue([]) },
-      privateIntervention: { findMany: vi.fn().mockResolvedValue([]) },
-      attachment: { groupBy },
-    });
-    app = await buildApp({ verifier: clientiVerifier, prisma });
-
-    await app.inject({
-      method: 'GET',
-      url: `/v1/vehicles/${VEHICLE_ID}/timeline`,
-      headers: { authorization: 'Bearer valid.jwt' },
-    });
-    expect(groupBy).not.toHaveBeenCalled();
   });
 });

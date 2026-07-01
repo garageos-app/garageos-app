@@ -22,7 +22,7 @@ const baseRow: RawInterventionRow = {
 
 describe('projectShopInterventionDetail', () => {
   it('serializes intervention with date-only interventionDate and derived counts', () => {
-    const out = projectShopInterventionDetail(baseRow, [], 2);
+    const out = projectShopInterventionDetail(baseRow, []);
     expect(out.intervention).toEqual({
       id: 'int-1',
       vehicleId: 'veh-1',
@@ -40,7 +40,6 @@ describe('projectShopInterventionDetail', () => {
       status: 'disputed',
       isDisputed: true,
       tenant: { businessName: 'Officina Rossi' },
-      attachmentsCount: 2,
       generatedDeadlines: [],
     });
     expect(out.disputes).toEqual([]);
@@ -70,7 +69,6 @@ describe('projectShopInterventionDetail', () => {
         ],
       },
       [],
-      0,
     );
     expect(out.intervention.generatedDeadlines).toEqual([
       {
@@ -99,7 +97,6 @@ describe('projectShopInterventionDetail', () => {
         partsReplaced: [{ name: 'Pastiglie', code: 'BRK-42', quantity: 4, notes: 'Anteriori' }],
       },
       [],
-      0,
     );
     expect(out.intervention.partsReplaced).toEqual([
       { name: 'Pastiglie', code: 'BRK-42', quantity: 4, notes: 'Anteriori' },
@@ -118,7 +115,7 @@ describe('projectShopInterventionDetail', () => {
       tenantResponseAt: new Date('2026-05-03T09:00:00.000Z'),
       resolvedAt: null,
     };
-    const out = projectShopInterventionDetail({ ...baseRow, status: 'disputed' }, [disputeRow], 0);
+    const out = projectShopInterventionDetail({ ...baseRow, status: 'disputed' }, [disputeRow]);
     expect(out.disputes).toEqual([
       {
         id: 'd-1',
@@ -137,7 +134,6 @@ describe('projectShopInterventionDetail', () => {
     const out = projectShopInterventionDetail(
       { ...baseRow, title: null, partsReplaced: null as unknown as unknown[], status: 'active' },
       [],
-      0,
     );
     expect(out.intervention.title).toBeNull();
     expect(out.intervention.partsReplacedCount).toBe(0);

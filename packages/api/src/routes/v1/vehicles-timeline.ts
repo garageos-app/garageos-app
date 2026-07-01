@@ -144,9 +144,9 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
       const isClienti = request.authPool === 'clienti';
 
       // Migration 0003 (split_interventions_attachments_rls) made
-      // SELECT cross-tenant on interventions, attachments, tenants,
-      // locations, and intervention_types — i.e. the entire shape of
-      // shopRowSelect joined here. The pool-bound `role: 'user'` ctx
+      // SELECT cross-tenant on interventions, tenants, locations, and
+      // intervention_types — i.e. the entire shape of shopRowSelect
+      // joined here. The pool-bound `role: 'user'` ctx
       // is sufficient: every WHERE in this handler scopes to vehicleId
       // (and to customerId + deletedAt for the private query), and
       // ownership for clienti is verified above. No writes run here.
@@ -225,37 +225,6 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
               })
             : [];
 
-        // Attachments: single groupBy across both owner types, joined
-        // on the row id back into the response.
-        const shopIds = shopRows.map((r) => r.id);
-        const privateIds = privateRows.map((r) => r.id);
-        const attachmentBuckets =
-          shopIds.length + privateIds.length > 0
-            ? await tx.attachment.groupBy({
-                by: ['ownerType', 'ownerId'],
-                where: {
-                  OR: [
-                    ...(shopIds.length > 0
-                      ? [{ ownerType: 'intervention' as const, ownerId: { in: shopIds } }]
-                      : []),
-                    ...(privateIds.length > 0
-                      ? [
-                          {
-                            ownerType: 'private_intervention' as const,
-                            ownerId: { in: privateIds },
-                          },
-                        ]
-                      : []),
-                  ],
-                },
-                _count: { _all: true },
-              })
-            : [];
-        const attachmentByKey = new Map<string, number>();
-        for (const bucket of attachmentBuckets) {
-          attachmentByKey.set(`${bucket.ownerType}:${bucket.ownerId}`, bucket._count._all);
-        }
-
         // Merge sort by (interventionDate DESC, id DESC). Bounded by
         // 2*(limit+1) ≤ 202 rows, so a plain Array.sort is fine.
         type ShopItem = { kind: 'shop'; row: (typeof shopRows)[number] };
@@ -289,7 +258,6 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         const data = page.map((item) => {
           if (item.kind === 'shop') {
             const r = item.row;
-            const attachments = attachmentByKey.get(`intervention:${r.id}`) ?? 0;
             return {
               kind: 'shop_intervention' as const,
               id: r.id,
@@ -316,12 +284,9 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
                 business_name: r.tenant.businessName,
               },
               viewer_is_owner: r.tenantId === callerTenantId,
-              has_attachments: attachments > 0,
-              attachments_count: attachments,
             };
           }
           const r = item.row;
-          const attachments = attachmentByKey.get(`private_intervention:${r.id}`) ?? 0;
           return {
             kind: 'private_intervention' as const,
             id: r.id,
@@ -329,8 +294,6 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
             odometer_km: r.odometerKm,
             custom_type: r.customType,
             description: r.description,
-            has_attachments: attachments > 0,
-            attachments_count: attachments,
           };
         });
 
