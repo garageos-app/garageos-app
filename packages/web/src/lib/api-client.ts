@@ -117,3 +117,53 @@ export function useApiFetch() {
     [getIdToken, signOut, markAccountInactive, baseUrl],
   );
 }
+
+// Binary variant of createApiFetch: same Bearer + 401 + RFC-7807 error
+// handling, but returns the response body as a Blob (used for PDF/tag
+// downloads that stream application/pdf instead of JSON).
+export function createApiBlobFetch(deps: ApiClientDeps) {
+  return async function apiBlobFetch(path: string, init?: RequestInit): Promise<Blob> {
+    const token = await deps.getIdToken();
+    if (!token) throw new ApiError('auth.no_token', 401, 'Non sei autenticato');
+    let res: Response;
+    try {
+      res = await fetch(deps.baseUrl + path, {
+        ...init,
+        headers: { ...init?.headers, Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      throw new ApiError('network.offline', 0, 'Errore di connessione. Verifica la rete.');
+    }
+    if (res.status === 401) {
+      deps.onAuthExpired();
+      throw new ApiError('auth.expired', 401, 'Sessione scaduta');
+    }
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { code?: unknown; detail?: unknown };
+      const code = typeof body.code === 'string' ? body.code : `http.${res.status}`;
+      const message =
+        typeof body.detail === 'string'
+          ? body.detail
+          : `Errore ${res.status}: servizio temporaneamente non disponibile`;
+      throw new ApiError(code, res.status, message);
+    }
+    return res.blob();
+  };
+}
+
+export function useApiBlob() {
+  const { getIdToken, signOut, markAccountInactive } = useAuth();
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
+  return useCallback(
+    createApiBlobFetch({
+      getIdToken,
+      onAuthExpired: () => {
+        toast.error('Sessione scaduta. Effettua nuovamente il login.');
+        signOut();
+      },
+      onAccountInactive: markAccountInactive,
+      baseUrl,
+    }),
+    [getIdToken, signOut, markAccountInactive, baseUrl],
+  );
+}

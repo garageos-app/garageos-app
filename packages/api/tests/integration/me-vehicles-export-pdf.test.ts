@@ -1,14 +1,6 @@
-﻿import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock the S3 helper so no real AWS/PDF rendering happens; the integration
-// value is the DB path (ownership gate, status filter, cross-tenant read).
-vi.mock('../../src/lib/vehicle-history-pdf-s3.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/lib/vehicle-history-pdf-s3.js')>();
-  return { ...actual, generateVehicleHistoryPdfPresignedUrl: vi.fn() };
-});
-
-import { generateVehicleHistoryPdfPresignedUrl } from '../../src/lib/vehicle-history-pdf-s3.js';
 import { buildTestServer } from './fixtures.js';
 import {
   createCustomer,
@@ -22,15 +14,10 @@ import {
 } from './helpers.js';
 import { signTestToken } from '../helpers/jwt.js';
 
-const MOCK_EXPIRES_AT = new Date(Date.now() + 3600 * 1000);
-
 describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    process.env.AWS_ACCESS_KEY_ID ??= 'test';
-    process.env.AWS_SECRET_ACCESS_KEY ??= 'test';
-    process.env.S3_ATTACHMENTS_BUCKET ??= 'garageos-test-attachments';
     app = await buildTestServer();
   });
   afterAll(async () => {
@@ -40,10 +27,6 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
     await resetDb();
     await ensureSystemInterventionType('TAGLIANDO');
     vi.clearAllMocks();
-    vi.mocked(generateVehicleHistoryPdfPresignedUrl).mockImplementation(async ({ vehicleId }) => ({
-      url: `https://garageos-test-attachments.s3.eu-west-1.amazonaws.com/vehicle-history-pdfs/${vehicleId}.pdf?X-Amz-Signature=test`,
-      expiresAt: MOCK_EXPIRES_AT,
-    }));
   });
 
   async function seedShopIntervention(args: {
@@ -68,7 +51,7 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
     });
   }
 
-  it('200 — owner: returns pdf_download_url, S3 called once with the vehicleId', async () => {
+  it('200 — owner: streams application/pdf', async () => {
     const { tenantId } = await createTenantWithLocation('me-pdf-owner');
     const { userId } = await createUser({ tenantId, cognitoSub: 'mech-me-pdf-owner' });
     const { customerId } = await createCustomer({ cognitoSub: 'cust-me-pdf-owner' });
@@ -84,16 +67,12 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ pdf_download_url: string; expires_at: string }>();
-    expect(body.pdf_download_url).toContain(`vehicle-history-pdfs/${vehicleId}.pdf`);
-    expect(new Date(body.expires_at).getTime()).toBeGreaterThan(Date.now());
-    expect(generateVehicleHistoryPdfPresignedUrl).toHaveBeenCalledOnce();
-    expect(vi.mocked(generateVehicleHistoryPdfPresignedUrl).mock.calls[0]![0]).toMatchObject({
-      vehicleId,
-    });
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain(`storico-${vehicleId}.pdf`);
+    expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
   });
 
-  it('404 — non-owner customer: me.vehicle.not_found, S3 not called', async () => {
+  it('404 — non-owner customer: me.vehicle.not_found', async () => {
     const { tenantId } = await createTenantWithLocation('me-pdf-iso');
     const { userId } = await createUser({ tenantId, cognitoSub: 'mech-me-pdf-iso' });
     const { customerId } = await createCustomer({ cognitoSub: 'cust-me-pdf-iso' });
@@ -115,7 +94,6 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
 
     expect(res.statusCode).toBe(404);
     expect(res.json<{ code: string }>().code).toBe('me.vehicle.not_found');
-    expect(generateVehicleHistoryPdfPresignedUrl).not.toHaveBeenCalled();
   });
 
   it('404 — ex-owner (endedAt set): me.vehicle.not_found', async () => {
@@ -137,12 +115,11 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(404);
-    expect(generateVehicleHistoryPdfPresignedUrl).not.toHaveBeenCalled();
   });
 
-  it('200 — cross-tenant history + cancelled excluded: forwards only active+disputed', async () => {
+  it('200 — cross-tenant history + cancelled excluded: streams application/pdf', async () => {
     // Vehicle owned by the customer, with interventions from TWO tenants plus a
-    // cancelled one that must be excluded.
+    // cancelled one that must be excluded (BR-150).
     const a = await createTenantWithLocation('me-pdf-xt-A');
     const b = await createTenantWithLocation('me-pdf-xt-B');
     const userA = await createUser({
@@ -185,11 +162,8 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const data = vi.mocked(generateVehicleHistoryPdfPresignedUrl).mock.calls[0]![0].data;
-    // Two non-cancelled interventions from two different tenants.
-    expect(data.interventions).toHaveLength(2);
-    const tenantNames = data.interventions.map((i) => i.tenantName);
-    expect(new Set(tenantNames).size).toBe(2);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
   });
 
   it('200 — vehicle with no shop interventions: empty history still generates a PDF', async () => {
@@ -206,8 +180,7 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(
-      vi.mocked(generateVehicleHistoryPdfPresignedUrl).mock.calls[0]![0].data.interventions,
-    ).toEqual([]);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
   });
 });

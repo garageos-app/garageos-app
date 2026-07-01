@@ -405,6 +405,9 @@ importers:
       expo-device:
         specifier: ~7.0.3
         version: 7.0.3(expo@52.0.49)
+      expo-file-system:
+        specifier: ~18.0.12
+        version: 18.0.12(expo@52.0.49)(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.5(@babel/core@7.29.0))(@types/react@19.2.14)(react@18.3.1))
       expo-linking:
         specifier: ~7.0.0
         version: 7.0.5(expo@52.0.49)(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.5(@babel/core@7.29.0))(@types/react@19.2.14)(react@18.3.1))(react@18.3.1)
@@ -420,6 +423,9 @@ importers:
       expo-secure-store:
         specifier: ~14.0.0
         version: 14.0.1(expo@52.0.49)
+      expo-sharing:
+        specifier: ~13.0.1
+        version: 13.0.1(expo@52.0.49)
       expo-splash-screen:
         specifier: ~0.29.24
         version: 0.29.24(expo@52.0.49)
@@ -5734,7 +5740,7 @@ packages:
     resolution: {integrity: sha512-t+1F1tiDocSot8iSnrn/CjTUMvVvPV2DpafSVcticpbSzMGybEN7wcamO1t18fK7WxGXpZE9gxtd80qwv/LLqQ==}
 
   expo-file-system@18.0.12:
-    resolution: {integrity: sha512-HAkrd/mb8r+G3lJ9MzmGeuW2B+BxQR1joKfeCyY4deLl1zoZ48FrAWjgZjHK9aHUVhJ0ehzInu/NQtikKytaeg==}
+    resolution: {integrity: sha1-bO7rByX2xfqvWBEvGMBzwqz7MCc=}
     peerDependencies:
       expo: '*'
       react-native: '*'
@@ -5806,6 +5812,11 @@ packages:
   expo-server-sdk@6.1.0:
     resolution: {integrity: sha512-ISuax1AQ7cpM5RAqcu8gVcoLL0ZKskJ5OLoMWmdITBe9nYjTucjdGyBq817YkIvTcj1pAUwx+9toUT7l/V7thA==}
     engines: {node: '>=20'}
+
+  expo-sharing@13.0.1:
+    resolution: {integrity: sha1-9SIc5EGQoSZJpmOeYZ2D4xjHaKE=}
+    peerDependencies:
+      expo: '*'
 
   expo-splash-screen@0.29.24:
     resolution: {integrity: sha1-Tl9tV20/uzfF4+TubT87Ps41D3U=}
@@ -9330,7 +9341,7 @@ packages:
     resolution: {integrity: sha512-XHPEwS0q6TaxcvG85+8EYkbiCux2XtWG2mkc47Ng2A77BQu9+DqIOJldST4HgPkuea7dvKSj5VgX3P1d4rW8Tg==}
 
   web-streams-polyfill@3.3.3:
-    resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
+    resolution: {integrity: sha1-IHO5Gi/bH7+9QB594KyfghTOy0s=}
     engines: {node: '>= 8'}
 
   webidl-conversions@3.0.1:
@@ -16153,6 +16164,10 @@ snapshots:
       promise-limit: 2.7.0
       promise-retry: 2.0.1
       undici: 7.25.0
+
+  expo-sharing@13.0.1(expo@52.0.49):
+    dependencies:
+      expo: 52.0.49(@babel/core@7.29.0)(@babel/preset-env@7.29.5(@babel/core@7.29.0))(@expo/dom-webview@55.0.6)(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.5(@babel/core@7.29.0))(@types/react@19.2.14)(react@18.3.1)))(react-native@0.76.9(@babel/core@7.29.0)(@babel/preset-env@7.29.5(@babel/core@7.29.0))(@types/react@19.2.14)(react@18.3.1))(react@18.3.1)
 
   expo-splash-screen@0.29.24(expo@52.0.49):
     dependencies:

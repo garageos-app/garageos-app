@@ -11,15 +11,15 @@ import { ApiError } from '@/lib/api-client';
 // Hoisted mocks
 // ---------------------------------------------------------------------------
 
-const { mockApiFetch } = vi.hoisted(() => ({
-  mockApiFetch: vi.fn(),
+const { mockApiBlob } = vi.hoisted(() => ({
+  mockApiBlob: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
   return {
     ...actual,
-    useApiFetch: () => mockApiFetch,
+    useApiBlob: () => mockApiBlob,
   };
 });
 
@@ -80,10 +80,9 @@ function makeWrapper() {
 
 const VEHICLE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-const TAG_RESPONSE = {
-  tag_download_url: 'https://example.com/tags/GO-1.pdf',
-  expires_at: '2026-05-30T12:00:00Z',
-};
+function pdfBlob(): Blob {
+  return new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -91,8 +90,10 @@ const TAG_RESPONSE = {
 
 describe('VehicleTagReprintDialog', () => {
   beforeEach(() => {
-    mockApiFetch.mockReset();
+    mockApiBlob.mockReset();
     vi.spyOn(window, 'open').mockReturnValue(null);
+    URL.createObjectURL = vi.fn(() => 'blob:mock');
+    URL.revokeObjectURL = vi.fn();
   });
 
   // 1. Dialog default chiuso e apre via prop
@@ -111,12 +112,12 @@ describe('VehicleTagReprintDialog', () => {
       </QueryClientProvider>,
     );
     expect(screen.getByText('Ristampa tag')).toBeInTheDocument();
-    expect(mockApiFetch).not.toHaveBeenCalled();
+    expect(mockApiBlob).not.toHaveBeenCalled();
   });
 
   // 2. reason='Smarrito' + checkbox → submit OK → apiFetch called + onOpenChange(false)
   it('submits with reason=lost and documentVerified=true, closes dialog', async () => {
-    mockApiFetch.mockResolvedValueOnce(TAG_RESPONSE);
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
     const { Wrapper } = makeWrapper();
@@ -131,10 +132,11 @@ describe('VehicleTagReprintDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Conferma' }));
 
     await waitFor(() => {
-      expect(mockApiFetch).toHaveBeenCalledWith(
+      expect(mockApiBlob).toHaveBeenCalledWith(
         `/v1/vehicles/${VEHICLE_ID}/tag-reprint`,
         expect.objectContaining({
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason: 'lost', documentVerified: true }),
         }),
       );
@@ -160,12 +162,12 @@ describe('VehicleTagReprintDialog', () => {
     expect(
       await screen.findByText('Nota obbligatoria per il motivo "Altro" (min 3 caratteri)'),
     ).toBeInTheDocument();
-    expect(mockApiFetch).not.toHaveBeenCalled();
+    expect(mockApiBlob).not.toHaveBeenCalled();
   });
 
   // 4. reason='Altro' + note ≥3 chars → submit OK + body includes reasonNote
   it('submits with reason=other and reasonNote when note has ≥3 chars', async () => {
-    mockApiFetch.mockResolvedValueOnce(TAG_RESPONSE);
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
     const { Wrapper } = makeWrapper();
@@ -181,10 +183,11 @@ describe('VehicleTagReprintDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Conferma' }));
 
     await waitFor(() => {
-      expect(mockApiFetch).toHaveBeenCalledWith(
+      expect(mockApiBlob).toHaveBeenCalledWith(
         `/v1/vehicles/${VEHICLE_ID}/tag-reprint`,
         expect.objectContaining({
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             reason: 'other',
             reasonNote: 'Furto dello scoiattolo',
@@ -213,9 +216,7 @@ describe('VehicleTagReprintDialog', () => {
 
   // 6. Backend 500 → inline error visible + dialog remains open
   it('shows inline error message and keeps dialog open on backend 500', async () => {
-    mockApiFetch.mockRejectedValueOnce(
-      new ApiError('internal_error', 500, 'Internal server error'),
-    );
+    mockApiBlob.mockRejectedValueOnce(new ApiError('internal_error', 500, 'Internal server error'));
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
     const { Wrapper } = makeWrapper();
@@ -249,7 +250,7 @@ describe('VehicleTagReprintDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Annulla' }));
 
-    expect(mockApiFetch).not.toHaveBeenCalled();
+    expect(mockApiBlob).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

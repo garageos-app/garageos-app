@@ -23,6 +23,10 @@ vi.mock('@/lib/api-client', async () => {
   return {
     ...actual,
     useApiFetch: () => apiFetchMock,
+    // Stub only: VehicleTagPrintButton renders useVehicleTagDownload()
+    // (→ useApiBlob) unconditionally, but no test in this file exercises the
+    // tag download click path — a real AuthProvider is not mounted here.
+    useApiBlob: () => vi.fn(),
   };
 });
 

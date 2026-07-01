@@ -1,18 +1,20 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
-import { env } from '../../config/env.js';
 import { businessError } from '../../lib/business-error.js';
 import { normalizePartsReplaced } from '../../lib/intervention-shared.js';
-import { generateVehicleHistoryPdfPresignedUrl } from '../../lib/vehicle-history-pdf-s3.js';
+import {
+  renderVehicleHistoryPdf,
+  type VehicleHistoryPdfData,
+} from '../../lib/vehicle-history-pdf-renderer.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 
 // GET /v1/me/vehicles/:id/export.pdf — F-CLI-501. Renders the full shop-history
 // PDF (active + disputed interventions across all tenants, BR-150) for a
-// vehicle the authenticated customer currently owns, persists it to S3, returns
-// a 1h presigned download URL.
+// vehicle the authenticated customer currently owns, in-Lambda, and streams
+// the bytes back directly — no S3 persist, no presigned URL.
 //
 // Path diverges from APPENDICE_A (`/vehicles/:id/export.pdf`): we use the
 // `/me/...` customer surface for consistency with the rest of the customer app
@@ -28,11 +30,11 @@ const meVehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/v1/me/vehicles/:id/export.pdf',
     { preHandler: [requireAuth, requireClientiPool, clientiContext] },
-    async (request) => {
+    async (request, reply) => {
       const { id: vehicleId } = idParamSchema.parse(request.params);
       const customerId = request.customerId!;
 
-      return app.withContext({ customerId, role: 'user' as const }, async (tx) => {
+      const pdfData = await app.withContext({ customerId, role: 'user' as const }, async (tx) => {
         // BR-040 ownership gate (the security frontier, never RLS alone).
         const ownership = await tx.vehicleOwnership.findFirst({
           where: { vehicleId, customerId, endedAt: null },
@@ -76,36 +78,49 @@ const meVehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
         });
 
         const v = ownership.vehicle;
-        const { url, expiresAt } = await generateVehicleHistoryPdfPresignedUrl({
-          bucket: env.S3_ATTACHMENTS_BUCKET,
-          vehicleId: v.id,
-          data: {
-            vehicle: {
-              plate: v.plate,
-              make: v.make,
-              model: v.model,
-              version: v.version,
-              garageCode: v.garageCode,
-              vin: v.vin,
-              year: v.year,
-              fuelType: v.fuelType,
-            },
-            generatedAt: new Date().toISOString().slice(0, 10),
-            interventions: interventions.map((it) => ({
-              interventionDate: it.interventionDate.toISOString().slice(0, 10),
-              odometerKm: it.odometerKm,
-              typeName: it.interventionType.nameIt,
-              tenantName: it.tenant.businessName,
-              title: it.title,
-              description: it.description,
-              partsReplaced: normalizePartsReplaced(it.partsReplaced),
-            })),
+        const data: VehicleHistoryPdfData = {
+          vehicle: {
+            plate: v.plate,
+            make: v.make,
+            model: v.model,
+            version: v.version,
+            garageCode: v.garageCode,
+            vin: v.vin,
+            year: v.year,
+            fuelType: v.fuelType,
           },
-        });
-
-        request.log.info({ vehicleId: v.id, customerId }, 'vehicle_history_pdf.generated');
-        return { pdf_download_url: url, expires_at: expiresAt.toISOString() };
+          generatedAt: new Date().toISOString().slice(0, 10),
+          interventions: interventions.map((it) => ({
+            interventionDate: it.interventionDate.toISOString().slice(0, 10),
+            odometerKm: it.odometerKm,
+            typeName: it.interventionType.nameIt,
+            tenantName: it.tenant.businessName,
+            title: it.title,
+            description: it.description,
+            partsReplaced: normalizePartsReplaced(it.partsReplaced),
+          })),
+        };
+        return data;
       });
+
+      let pdfBuffer: Buffer;
+      try {
+        pdfBuffer = await renderVehicleHistoryPdf(pdfData);
+      } catch (err) {
+        request.log.error({ err }, 'vehicle_history_pdf.render_failed');
+        throw businessError(
+          'vehicle_history_pdf.render_failed',
+          502,
+          'Generazione del PDF non riuscita.',
+        );
+      }
+
+      request.log.info({ vehicleId, customerId }, 'vehicle_history_pdf.generated');
+
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `inline; filename="storico-${vehicleId}.pdf"`)
+        .send(pdfBuffer);
     },
   );
 };

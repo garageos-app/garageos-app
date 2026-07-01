@@ -7,22 +7,20 @@ import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
 import type { JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js';
 import vehicleTagReprintRoutes from '../../../../src/routes/v1/vehicles-tag-reprint.js';
 
-// Mock getOrCreateTagPresignedUrl at module level so no real S3 calls
-// are made — see feedback_aws_sdk_presigner_credentials_chain.
+// Mock renderTagPdf at module level so no real PDF rendering happens in the
+// unit suite — see feedback_aws_sdk_presigner_credentials_chain (same idea,
+// keep the unit test hermetic and fast).
 // Error classes are passed through from the real module so that the route
 // handler can import + use them normally even under the mock.
-vi.mock('../../../../src/lib/vehicle-tag-s3.js', async () => {
-  const real = await vi.importActual<typeof import('../../../../src/lib/vehicle-tag-s3.js')>(
-    '../../../../src/lib/vehicle-tag-s3.js',
+vi.mock('../../../../src/lib/vehicle-tag-renderer.js', async () => {
+  const real = await vi.importActual<typeof import('../../../../src/lib/vehicle-tag-renderer.js')>(
+    '../../../../src/lib/vehicle-tag-renderer.js',
   );
-  return {
-    ...real,
-    getOrCreateTagPresignedUrl: vi.fn(),
-  };
+  return { ...real, renderTagPdf: vi.fn() };
 });
 
 // Import after vi.mock so the mocked version is used.
-import { getOrCreateTagPresignedUrl } from '../../../../src/lib/vehicle-tag-s3.js';
+import { renderTagPdf } from '../../../../src/lib/vehicle-tag-renderer.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
@@ -30,8 +28,7 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const VEHICLE_ID = '55555555-5555-4555-8555-555555555555';
 const GARAGE_CODE = 'GO-288-QPWZ';
 
-const MOCK_EXPIRES_AT = new Date('2026-05-29T13:00:00.000Z');
-const MOCK_URL = `https://s3.amazonaws.com/garageos-test-attachments/tags/${GARAGE_CODE}.pdf?X-Amz-Signature=test`;
+const FAKE_PDF = Buffer.from('%PDF-1.4 fake-tag');
 
 beforeAll(() => {
   // Ensure AWS SDK doesn't attempt credential chain resolution —
@@ -118,13 +115,9 @@ describe('POST /v1/vehicles/:id/tag-reprint (unit)', () => {
     vi.clearAllMocks();
   });
 
-  it('200 — happy path: reprints existing tag and inserts audit row', async () => {
+  it('200 — streams application/pdf and records a reprint audit row', async () => {
     const prisma = buildFakePrisma();
-    vi.mocked(getOrCreateTagPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-      cacheHit: true,
-    });
+    vi.mocked(renderTagPdf).mockResolvedValue(FAKE_PDF);
 
     app = await buildApp(prisma);
 
@@ -136,11 +129,8 @@ describe('POST /v1/vehicles/:id/tag-reprint (unit)', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ tag_download_url: string; expires_at: string }>();
-
-    // URL must contain the expected S3 key segment
-    expect(body.tag_download_url).toContain(`tags/${GARAGE_CODE}.pdf`);
-    expect(body.expires_at).toBe(MOCK_EXPIRES_AT.toISOString());
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
 
     // Audit row created with correct fields
     expect(prisma.vehicleTagPrint.create).toHaveBeenCalledWith({
@@ -168,6 +158,7 @@ describe('POST /v1/vehicles/:id/tag-reprint (unit)', () => {
     });
 
     expect(res.statusCode).toBe(400);
+    expect(renderTagPdf).not.toHaveBeenCalled();
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
@@ -183,16 +174,13 @@ describe('POST /v1/vehicles/:id/tag-reprint (unit)', () => {
     });
 
     expect(res.statusCode).toBe(400);
+    expect(renderTagPdf).not.toHaveBeenCalled();
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
   it('200 — reason="other" with reasonNote stores it in audit', async () => {
     const prisma = buildFakePrisma();
-    vi.mocked(getOrCreateTagPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-      cacheHit: true,
-    });
+    vi.mocked(renderTagPdf).mockResolvedValue(FAKE_PDF);
 
     app = await buildApp(prisma);
 
@@ -228,11 +216,11 @@ describe('POST /v1/vehicles/:id/tag-reprint (unit)', () => {
     expect(res.statusCode).toBe(404);
     const body = res.json<{ code: string }>();
     expect(body.code).toBe('vehicle.not_found');
-    expect(getOrCreateTagPresignedUrl).not.toHaveBeenCalled();
+    expect(renderTagPdf).not.toHaveBeenCalled();
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
-  it('409 — vehicle.archived when status=archived: S3 not called, audit not inserted', async () => {
+  it('409 — vehicle.archived when status=archived: renderer not called, audit not inserted', async () => {
     const prisma = buildFakePrisma({ id: VEHICLE_ID, garageCode: GARAGE_CODE, status: 'archived' });
     app = await buildApp(prisma);
 
@@ -246,7 +234,7 @@ describe('POST /v1/vehicles/:id/tag-reprint (unit)', () => {
     expect(res.statusCode).toBe(409);
     const body = res.json<{ code: string }>();
     expect(body.code).toBe('vehicle.archived');
-    expect(getOrCreateTagPresignedUrl).not.toHaveBeenCalled();
+    expect(renderTagPdf).not.toHaveBeenCalled();
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
@@ -264,7 +252,7 @@ describe('POST /v1/vehicles/:id/tag-reprint (unit)', () => {
     expect(res.statusCode).toBe(409);
     const body = res.json<{ code: string }>();
     expect(body.code).toBe('vehicle.not_certified');
-    expect(getOrCreateTagPresignedUrl).not.toHaveBeenCalled();
+    expect(renderTagPdf).not.toHaveBeenCalled();
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
@@ -286,7 +274,25 @@ describe('POST /v1/vehicles/:id/tag-reprint (unit)', () => {
     expect(res.statusCode).toBe(409);
     const body = res.json<{ code: string }>();
     expect(body.code).toBe('vehicle_tag.never_printed');
-    expect(getOrCreateTagPresignedUrl).not.toHaveBeenCalled();
+    expect(renderTagPdf).not.toHaveBeenCalled();
+    expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
+  });
+
+  it('502 — vehicle_tag.render_failed when renderer throws; no new audit row created', async () => {
+    const prisma = buildFakePrisma();
+    vi.mocked(renderTagPdf).mockRejectedValue(new Error('render boom'));
+    app = await buildApp(prisma);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/tag-reprint`,
+      headers: { authorization: 'Bearer fake-jwt' },
+      payload: { reason: 'lost', documentVerified: true },
+    });
+
+    expect(res.statusCode).toBe(502);
+    const body = res.json<{ code: string }>();
+    expect(body.code).toBe('vehicle_tag.render_failed');
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 

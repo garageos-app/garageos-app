@@ -36,6 +36,10 @@ vi.mock('@/lib/api-client', async () => {
   return {
     ...actual,
     useApiFetch: () => apiFetchMock,
+    // Stub only: InterventionExportPdfButton renders useInterventionPdfDownload()
+    // (→ useApiBlob) unconditionally, but no test in this file exercises the
+    // PDF export click path — a real AuthProvider is not mounted here.
+    useApiBlob: () => vi.fn(),
   };
 });
 

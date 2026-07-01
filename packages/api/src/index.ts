@@ -64,7 +64,9 @@ const personalDeadlineSweepHandler = (): ReturnType<typeof processPersonalDeadli
 const innerHandler = withWarmingGuard(
   withTransferExpiryGuard(
     withPersonalDeadlineSweepGuard(
-      withSchedulerGuard(schedulerHandler)(awsLambdaFastify(app)),
+      withSchedulerGuard(schedulerHandler)(
+        awsLambdaFastify(app, { binaryMimeTypes: ['application/pdf'] }),
+      ),
       personalDeadlineSweepHandler,
     ),
     transferExpiryHandler,

@@ -1,39 +1,38 @@
 import { useMutation } from '@tanstack/react-query';
 
-import { ApiError, useApiFetch } from '@/lib/api-client';
+import { ApiError, useApiBlob } from '@/lib/api-client';
 
-// F-OFF-104 — vehicle tag (QR-code PDF) presigned download URL.
-// GET /v1/vehicles/:id/tag returns a short-lived S3 presigned URL for the
-// printable PDF tag. The hook opens it in a new tab on success.
-
-export interface VehicleTagResponse {
-  tag_download_url: string;
-  expires_at: string;
-}
+// F-OFF-104 — vehicle tag (QR-code PDF) is now streamed as application/pdf
+// bytes (no S3 presigned URL). GET /v1/vehicles/:id/tag returns the
+// printable PDF tag; the hook fetches it as an authenticated Blob, wraps it
+// in an object URL, and opens it in a new tab.
 
 /**
- * Mutation that fetches the presigned tag PDF URL for a vehicle and opens it
- * in a new browser tab.
+ * Mutation that fetches the tag PDF for a vehicle as an authenticated Blob
+ * and opens it in a new browser tab via a short-lived object URL.
  *
  * Usage:
  *   const { mutate, isPending } = useVehicleTagDownload();
  *   mutate(vehicleId);
  */
 export function useVehicleTagDownload() {
-  const apiFetch = useApiFetch();
+  const apiBlob = useApiBlob();
 
-  return useMutation<VehicleTagResponse, ApiError, string>({
-    mutationFn: (vehicleId: string) =>
-      apiFetch<VehicleTagResponse>(`/v1/vehicles/${vehicleId}/tag`, { method: 'GET' }),
-    onSuccess: (data) => {
-      window.open(data.tag_download_url, '_blank');
+  return useMutation<void, ApiError, string>({
+    mutationFn: async (vehicleId: string) => {
+      const blob = await apiBlob(`/v1/vehicles/${vehicleId}/tag`, { method: 'GET' });
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, '_blank');
+      // Revoke after a delay so the new tab has time to load the object URL.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     },
   });
 }
 
-// F-OFF-109 — vehicle tag reprint (operator-initiated, requires document verification).
-// POST /v1/vehicles/:id/tag-reprint generates a new QR-code PDF tag and returns
-// a short-lived S3 presigned URL. The hook opens it in a new tab on success.
+// F-OFF-109 — vehicle tag reprint (operator-initiated, requires document
+// verification). POST /v1/vehicles/:id/tag-reprint generates a new QR-code
+// PDF tag, streamed as application/pdf bytes. The hook opens it the same
+// way as useVehicleTagDownload.
 
 export interface VehicleTagReprintBody {
   reason: 'lost' | 'damaged' | 'other';
@@ -42,24 +41,27 @@ export interface VehicleTagReprintBody {
 }
 
 /**
- * Mutation that posts a tag-reprint request for a vehicle and opens the
- * resulting presigned PDF URL in a new browser tab.
+ * Mutation that posts a tag-reprint request for a vehicle, fetches the
+ * resulting PDF as an authenticated Blob, and opens it in a new browser tab.
  *
  * Usage:
  *   const { mutate, isPending } = useVehicleTagReprint(vehicleId);
  *   mutate({ reason: 'lost', documentVerified: true });
  */
 export function useVehicleTagReprint(vehicleId: string) {
-  const apiFetch = useApiFetch();
-  return useMutation<VehicleTagResponse, ApiError, VehicleTagReprintBody>({
-    mutationFn: async (body: VehicleTagReprintBody): Promise<VehicleTagResponse> => {
-      return apiFetch<VehicleTagResponse>(`/v1/vehicles/${vehicleId}/tag-reprint`, {
+  const apiBlob = useApiBlob();
+
+  return useMutation<void, ApiError, VehicleTagReprintBody>({
+    mutationFn: async (body: VehicleTagReprintBody) => {
+      const blob = await apiBlob(`/v1/vehicles/${vehicleId}/tag-reprint`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-    },
-    onSuccess: (data) => {
-      window.open(data.tag_download_url, '_blank');
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, '_blank');
+      // Revoke after a delay so the new tab has time to load the object URL.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     },
   });
 }
