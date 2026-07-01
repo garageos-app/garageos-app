@@ -8,17 +8,15 @@ import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
 import type { JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js';
 import interventionPdfRoutes from '../../../../src/routes/v1/interventions-pdf.js';
 
-// Mock the S3 helper + logo resolver so no real AWS calls happen.
-vi.mock('../../../../src/lib/intervention-pdf-s3.js', async () => {
-  const real = await vi.importActual<typeof import('../../../../src/lib/intervention-pdf-s3.js')>(
-    '../../../../src/lib/intervention-pdf-s3.js',
-  );
-  return { ...real, generateInterventionPdfPresignedUrl: vi.fn() };
+// Mock the pure renderer so no pdf-lib work and no logo lookup happen.
+vi.mock('../../../../src/lib/intervention-pdf-renderer.js', async () => {
+  const real = await vi.importActual<
+    typeof import('../../../../src/lib/intervention-pdf-renderer.js')
+  >('../../../../src/lib/intervention-pdf-renderer.js');
+  return { ...real, renderInterventionPdf: vi.fn() };
 });
-vi.mock('../../../../src/lib/tenant-logo.js', () => ({ resolveTenantLogo: vi.fn() }));
 
-import { generateInterventionPdfPresignedUrl } from '../../../../src/lib/intervention-pdf-s3.js';
-import { resolveTenantLogo } from '../../../../src/lib/tenant-logo.js';
+import { renderInterventionPdf } from '../../../../src/lib/intervention-pdf-renderer.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
@@ -26,8 +24,7 @@ const VEHICLE_ID = '55555555-5555-4555-8555-555555555555';
 const INTERVENTION_ID = '99999999-9999-4999-8999-999999999999';
 const CUSTOMER_ID = '88888888-8888-4888-8888-888888888888';
 
-const MOCK_EXPIRES_AT = new Date('2026-05-30T19:00:00.000Z');
-const MOCK_URL = `https://s3.example.com/intervention-pdfs/${TENANT_ID}/${INTERVENTION_ID}.pdf?X-Amz=abc`;
+const FAKE_PDF = Buffer.from('%PDF-1.4 fake-intervention');
 
 function interventionRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -46,7 +43,6 @@ function interventionRow(overrides: Record<string, unknown> = {}) {
       city: 'Roma',
       vatNumber: '0000',
       phone: null,
-      logoUrl: null,
     },
     vehicle: {
       id: VEHICLE_ID,
@@ -144,13 +140,9 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     vi.clearAllMocks();
   });
 
-  it('200 — happy path: returns pdf_download_url + expires_at; passes masked customer name', async () => {
+  it('200 — streams application/pdf; passes masked customer name to renderer', async () => {
     const prisma = buildFakePrisma({});
-    vi.mocked(resolveTenantLogo).mockResolvedValue(null);
-    vi.mocked(generateInterventionPdfPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-    });
+    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
 
     app = await buildApp(prisma);
     const res = await app.inject({
@@ -160,20 +152,17 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ pdf_download_url: string; expires_at: string }>();
-    expect(body.pdf_download_url).toContain(
-      `intervention-pdfs/${TENANT_ID}/${INTERVENTION_ID}.pdf`,
-    );
-    expect(body.expires_at).toBe(MOCK_EXPIRES_AT.toISOString());
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain(`intervento-${INTERVENTION_ID}.pdf`);
+    expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
 
-    const callArg = vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0];
-    expect(callArg.data.customerName).toBe('Mario Rossi');
-    expect(callArg.data.operatorName).toBe('Giuseppe Rossi');
-    expect(callArg.interventionId).toBe(INTERVENTION_ID);
-    expect(callArg.data.interventionDate).toBe('2026-05-23');
+    const dataArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
+    expect(dataArg.customerName).toBe('Mario Rossi');
+    expect(dataArg.operatorName).toBe('Giuseppe Rossi');
+    expect(dataArg.interventionDate).toBe('2026-05-23');
   });
 
-  it('404 — intervention.not_found when findFirst returns null; S3 not called', async () => {
+  it('404 — intervention.not_found when findFirst returns null; renderer not called', async () => {
     const prisma = buildFakePrisma({ intervention: null });
     app = await buildApp(prisma);
     const res = await app.inject({
@@ -183,33 +172,25 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     });
     expect(res.statusCode).toBe(404);
     expect(res.json<{ code: string }>().code).toBe('intervention.not_found');
-    expect(generateInterventionPdfPresignedUrl).not.toHaveBeenCalled();
+    expect(renderInterventionPdf).not.toHaveBeenCalled();
   });
 
   it('BR-151 — customerName is placeholder when relation not visible', async () => {
     const prisma = buildFakePrisma({ relationVisible: false });
-    vi.mocked(resolveTenantLogo).mockResolvedValue(null);
-    vi.mocked(generateInterventionPdfPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-    });
+    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
     app = await buildApp(prisma);
     await app.inject({
       method: 'GET',
       url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
       headers: { authorization: 'Bearer test' },
     });
-    const callArg = vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0];
-    expect(callArg.data.customerName).toBe('Proprietario non in anagrafica');
+    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
+    expect(callArg.customerName).toBe('Proprietario non in anagrafica');
   });
 
   it('owner null — customerName null, still 200', async () => {
     const prisma = buildFakePrisma({ owner: null });
-    vi.mocked(resolveTenantLogo).mockResolvedValue(null);
-    vi.mocked(generateInterventionPdfPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-    });
+    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
     app = await buildApp(prisma);
     const res = await app.inject({
       method: 'GET',
@@ -217,25 +198,21 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
       headers: { authorization: 'Bearer test' },
     });
     expect(res.statusCode).toBe(200);
-    const callArg = vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0];
-    expect(callArg.data.customerName).toBeNull();
+    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
+    expect(callArg.customerName).toBeNull();
   });
 
   it('BR-213 — operatorName fallback "Operatore" when user is null', async () => {
     const prisma = buildFakePrisma({ intervention: interventionRow({ user: null }) });
-    vi.mocked(resolveTenantLogo).mockResolvedValue(null);
-    vi.mocked(generateInterventionPdfPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-    });
+    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
     app = await buildApp(prisma);
     await app.inject({
       method: 'GET',
       url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
       headers: { authorization: 'Bearer test' },
     });
-    const callArg = vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0];
-    expect(callArg.data.operatorName).toBe('Operatore');
+    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
+    expect(callArg.operatorName).toBe('Operatore');
   });
 
   it('isBusiness — uses businessName for the customer name', async () => {
@@ -243,19 +220,15 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
       customer: { ...customerRow, isBusiness: true, businessName: 'Trasporti SRL' },
     };
     const prisma = buildFakePrisma({ owner: bizCustomer });
-    vi.mocked(resolveTenantLogo).mockResolvedValue(null);
-    vi.mocked(generateInterventionPdfPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-    });
+    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
     app = await buildApp(prisma);
     await app.inject({
       method: 'GET',
       url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
       headers: { authorization: 'Bearer test' },
     });
-    const callArg = vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0];
-    expect(callArg.data.customerName).toBe('Trasporti SRL');
+    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
+    expect(callArg.customerName).toBe('Trasporti SRL');
   });
 
   it('isBusiness true but businessName null — falls back to first+last name', async () => {
@@ -263,19 +236,15 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
       customer: { ...customerRow, isBusiness: true, businessName: null },
     };
     const prisma = buildFakePrisma({ owner: bizNoName });
-    vi.mocked(resolveTenantLogo).mockResolvedValue(null);
-    vi.mocked(generateInterventionPdfPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-    });
+    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
     app = await buildApp(prisma);
     await app.inject({
       method: 'GET',
       url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
       headers: { authorization: 'Bearer test' },
     });
-    const callArg = vi.mocked(generateInterventionPdfPresignedUrl).mock.calls[0]![0];
-    expect(callArg.data.customerName).toBe('Mario Rossi');
+    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
+    expect(callArg.customerName).toBe('Mario Rossi');
   });
 
   it('400 — invalid UUID', async () => {
