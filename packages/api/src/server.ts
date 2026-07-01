@@ -47,7 +47,6 @@ import meNotificationPreferencesRoutes from './routes/v1/me-notification-prefere
 import mePushTokensRoutes from './routes/v1/me-push-tokens.js';
 import userRoutes from './routes/v1/users.js';
 import userUpdateRoutes from './routes/v1/users-update.js';
-import userAvatarRoutes from './routes/v1/users-avatar.js';
 import { usersListRoutes } from './routes/v1/users-list.js';
 import { usersInvitationsCreateRoutes } from './routes/v1/users-invitations-create.js';
 import { usersInvitationsListRoutes } from './routes/v1/users-invitations-list.js';
@@ -167,7 +166,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(healthRoutes);
   await app.register(userRoutes);
   await app.register(userUpdateRoutes);
-  await app.register(userAvatarRoutes);
   await app.register(usersListRoutes);
   await app.register(usersInvitationsCreateRoutes);
   await app.register(usersInvitationsListRoutes);
