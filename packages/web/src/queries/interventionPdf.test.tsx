@@ -1,21 +1,33 @@
 // packages/web/src/queries/interventionPdf.test.tsx
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-const { mockApiFetch } = vi.hoisted(() => ({ mockApiFetch: vi.fn() }));
+const { mockApiBlob } = vi.hoisted(() => ({ mockApiBlob: vi.fn() }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
-  return { ...actual, useApiFetch: () => mockApiFetch };
+  return { ...actual, useApiBlob: () => mockApiBlob };
 });
+
+let openSpy: ReturnType<typeof vi.fn>;
+let createObjectURL: ReturnType<typeof vi.fn>;
+let revokeObjectURL: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  mockApiFetch.mockReset();
+  mockApiBlob.mockReset();
+  openSpy = vi.fn();
+  createObjectURL = vi.fn(() => 'blob:mock');
+  revokeObjectURL = vi.fn();
+  vi.stubGlobal('open', openSpy);
+  // @ts-expect-error jsdom URL lacks createObjectURL
+  URL.createObjectURL = createObjectURL;
+  // @ts-expect-error jsdom URL lacks revokeObjectURL
+  URL.revokeObjectURL = revokeObjectURL;
 });
 
-import { useInterventionPdfDownload, type InterventionPdfResponse } from './interventionPdf';
+import { useInterventionPdfDownload } from './interventionPdf';
 
 function wrap({ children }: { children: ReactNode }) {
   const qc = new QueryClient({
@@ -25,36 +37,35 @@ function wrap({ children }: { children: ReactNode }) {
 }
 
 const INTERVENTION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-const PDF_RESPONSE: InterventionPdfResponse = {
-  pdf_download_url: 'https://example.com/intervention-pdfs/signed-url',
-  expires_at: '2026-05-31T12:00:00Z',
-};
+
+function pdfBlob(): Blob {
+  return new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+}
 
 describe('useInterventionPdfDownload', () => {
   it('calls GET /v1/interventions/:id/pdf on mutate', async () => {
-    mockApiFetch.mockResolvedValueOnce(PDF_RESPONSE);
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
 
     const { result } = renderHook(() => useInterventionPdfDownload(), { wrapper: wrap });
-    await result.current.mutateAsync(INTERVENTION_ID);
+    await act(async () => {
+      await result.current.mutateAsync(INTERVENTION_ID);
+    });
 
-    expect(mockApiFetch).toHaveBeenCalledOnce();
-    expect(mockApiFetch).toHaveBeenCalledWith(`/v1/interventions/${INTERVENTION_ID}/pdf`, {
+    expect(mockApiBlob).toHaveBeenCalledOnce();
+    expect(mockApiBlob).toHaveBeenCalledWith(`/v1/interventions/${INTERVENTION_ID}/pdf`, {
       method: 'GET',
     });
-    openSpy.mockRestore();
   });
 
-  it('opens the returned URL in a new tab on success', async () => {
-    mockApiFetch.mockResolvedValueOnce(PDF_RESPONSE);
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+  it('opens the PDF blob in a new tab on success', async () => {
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
 
     const { result } = renderHook(() => useInterventionPdfDownload(), { wrapper: wrap });
-    await result.current.mutateAsync(INTERVENTION_ID);
+    await act(async () => {
+      await result.current.mutateAsync(INTERVENTION_ID);
+    });
 
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith(PDF_RESPONSE.pdf_download_url, '_blank'),
-    );
-    openSpy.mockRestore();
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(openSpy).toHaveBeenCalledWith('blob:mock', '_blank');
   });
 });

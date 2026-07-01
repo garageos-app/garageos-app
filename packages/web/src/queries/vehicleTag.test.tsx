@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -7,27 +7,39 @@ import type { ReactNode } from 'react';
 // Hoisted mocks
 // ---------------------------------------------------------------------------
 
-const { mockApiFetch } = vi.hoisted(() => ({
-  mockApiFetch: vi.fn(),
+const { mockApiBlob } = vi.hoisted(() => ({
+  mockApiBlob: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
   return {
     ...actual,
-    useApiFetch: () => mockApiFetch,
+    useApiBlob: () => mockApiBlob,
   };
 });
 
+let openSpy: ReturnType<typeof vi.fn>;
+let createObjectURL: ReturnType<typeof vi.fn>;
+let revokeObjectURL: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
-  mockApiFetch.mockReset();
+  mockApiBlob.mockReset();
+  openSpy = vi.fn();
+  createObjectURL = vi.fn(() => 'blob:mock');
+  revokeObjectURL = vi.fn();
+  vi.stubGlobal('open', openSpy);
+  // @ts-expect-error jsdom URL lacks createObjectURL
+  URL.createObjectURL = createObjectURL;
+  // @ts-expect-error jsdom URL lacks revokeObjectURL
+  URL.revokeObjectURL = revokeObjectURL;
 });
 
 // ---------------------------------------------------------------------------
 // Subject under test
 // ---------------------------------------------------------------------------
 
-import { useVehicleTagDownload, useVehicleTagReprint, type VehicleTagResponse } from './vehicleTag';
+import { useVehicleTagDownload, useVehicleTagReprint } from './vehicleTag';
 
 function wrap({ children }: { children: ReactNode }) {
   const qc = new QueryClient({
@@ -38,56 +50,43 @@ function wrap({ children }: { children: ReactNode }) {
 
 const VEHICLE_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
-const TAG_RESPONSE: VehicleTagResponse = {
-  tag_download_url: 'https://example.com/tags/signed-url',
-  expires_at: '2026-05-30T12:00:00Z',
-};
+function pdfBlob(): Blob {
+  return new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+}
 
 describe('useVehicleTagDownload', () => {
   it('calls GET /v1/vehicles/:id/tag on mutate', async () => {
-    mockApiFetch.mockResolvedValueOnce(TAG_RESPONSE);
-    // Mock window.open to suppress jsdom "not implemented" noise — this test
-    // focuses on the fetch call, not the side effect.
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
 
     const { result } = renderHook(() => useVehicleTagDownload(), { wrapper: wrap });
 
-    await result.current.mutateAsync(VEHICLE_ID);
-
-    expect(mockApiFetch).toHaveBeenCalledOnce();
-    expect(mockApiFetch).toHaveBeenCalledWith(`/v1/vehicles/${VEHICLE_ID}/tag`, {
-      method: 'GET',
+    await act(async () => {
+      await result.current.mutateAsync(VEHICLE_ID);
     });
 
-    openSpy.mockRestore();
+    expect(mockApiBlob).toHaveBeenCalledOnce();
+    expect(mockApiBlob).toHaveBeenCalledWith(`/v1/vehicles/${VEHICLE_ID}/tag`, {
+      method: 'GET',
+    });
   });
 
-  it('opens window with returned URL on success', async () => {
-    mockApiFetch.mockResolvedValueOnce(TAG_RESPONSE);
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+  it('opens the tag PDF blob in a new tab', async () => {
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
 
     const { result } = renderHook(() => useVehicleTagDownload(), { wrapper: wrap });
 
-    await result.current.mutateAsync(VEHICLE_ID);
+    await act(async () => {
+      await result.current.mutateAsync(VEHICLE_ID);
+    });
 
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith(TAG_RESPONSE.tag_download_url, '_blank'),
-    );
-
-    openSpy.mockRestore();
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(openSpy).toHaveBeenCalledWith('blob:mock', '_blank');
   });
 });
 
 describe('useVehicleTagReprint', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it('calls POST /v1/vehicles/:id/tag-reprint with body', async () => {
-    mockApiFetch.mockResolvedValue({
-      tag_download_url: 'https://s3.../tags/GO-1.pdf',
-      expires_at: '2026-05-29T13:00:00.000Z',
-    });
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
     const { result } = renderHook(() => useVehicleTagReprint('vehicle-uuid'), { wrapper: wrap });
     await act(async () => {
       await result.current.mutateAsync({
@@ -95,23 +94,20 @@ describe('useVehicleTagReprint', () => {
         documentVerified: true,
       });
     });
-    expect(mockApiFetch).toHaveBeenCalledWith('/v1/vehicles/vehicle-uuid/tag-reprint', {
+    expect(mockApiBlob).toHaveBeenCalledWith('/v1/vehicles/vehicle-uuid/tag-reprint', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason: 'lost', documentVerified: true }),
     });
   });
 
-  it('opens window with returned URL on success', async () => {
-    mockApiFetch.mockResolvedValue({
-      tag_download_url: 'https://s3.../tags/GO-2.pdf',
-      expires_at: '2026-05-29T13:00:00.000Z',
-    });
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+  it('opens the reprinted tag PDF blob in a new tab', async () => {
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
     const { result } = renderHook(() => useVehicleTagReprint('vehicle-uuid'), { wrapper: wrap });
     await act(async () => {
       await result.current.mutateAsync({ reason: 'lost', documentVerified: true });
     });
-    expect(openSpy).toHaveBeenCalledWith('https://s3.../tags/GO-2.pdf', '_blank');
-    openSpy.mockRestore();
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(openSpy).toHaveBeenCalledWith('blob:mock', '_blank');
   });
 });

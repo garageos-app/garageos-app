@@ -11,15 +11,15 @@ import { ApiError } from '@/lib/api-client';
 // Hoisted mocks
 // ---------------------------------------------------------------------------
 
-const { mockApiFetch } = vi.hoisted(() => ({
-  mockApiFetch: vi.fn(),
+const { mockApiBlob } = vi.hoisted(() => ({
+  mockApiBlob: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
   return {
     ...actual,
-    useApiFetch: () => mockApiFetch,
+    useApiBlob: () => mockApiBlob,
   };
 });
 
@@ -35,10 +35,9 @@ vi.mock('./VehicleTagReprintDialog', () => ({
 
 const VEHICLE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-const TAG_RESPONSE = {
-  tag_download_url: 'https://example.com/tags/signed-url',
-  expires_at: '2026-05-30T12:00:00Z',
-};
+function pdfBlob(): Blob {
+  return new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+}
 
 function renderButton(props: Partial<VehicleTagPrintButtonProps> = {}) {
   const qc = new QueryClient({
@@ -57,7 +56,9 @@ function renderButton(props: Partial<VehicleTagPrintButtonProps> = {}) {
 }
 
 beforeEach(() => {
-  mockApiFetch.mockReset();
+  mockApiBlob.mockReset();
+  URL.createObjectURL = vi.fn(() => 'blob:mock');
+  URL.revokeObjectURL = vi.fn();
 });
 
 describe('VehicleTagPrintButton', () => {
@@ -72,15 +73,13 @@ describe('VehicleTagPrintButton', () => {
   // 2. Click triggers mutation and opens window on success
   it('calls mutation and opens window on success', async () => {
     const user = userEvent.setup();
-    mockApiFetch.mockResolvedValueOnce(TAG_RESPONSE);
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Stampa tag/i }));
 
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith(TAG_RESPONSE.tag_download_url, '_blank'),
-    );
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith('blob:mock', '_blank'));
 
     openSpy.mockRestore();
   });
@@ -89,7 +88,7 @@ describe('VehicleTagPrintButton', () => {
   it('shows "Generazione PDF..." and disables button while pending', async () => {
     const user = userEvent.setup();
     // Never resolves, keeping the mutation in isPending state
-    mockApiFetch.mockImplementationOnce(() => new Promise(() => {}));
+    mockApiBlob.mockImplementationOnce(() => new Promise(() => {}));
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Stampa tag/i }));
@@ -103,9 +102,7 @@ describe('VehicleTagPrintButton', () => {
   // 4. Shows error message on failure — vehicle.archived
   it('shows "archiviati" error message when mutation fails with vehicle.archived', async () => {
     const user = userEvent.setup();
-    mockApiFetch.mockRejectedValueOnce(
-      new ApiError('vehicle.archived', 409, 'Vehicle is archived'),
-    );
+    mockApiBlob.mockRejectedValueOnce(new ApiError('vehicle.archived', 409, 'Vehicle is archived'));
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Stampa tag/i }));
@@ -158,7 +155,7 @@ describe('status gate (#6)', () => {
     const button = screen.getByRole('button', { name: /ristampa tag/i });
     expect(button).toBeDisabled();
     await user.click(button);
-    expect(mockApiFetch).not.toHaveBeenCalled();
+    expect(mockApiBlob).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
