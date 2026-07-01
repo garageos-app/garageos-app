@@ -8,21 +8,21 @@ import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
 import type { JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js';
 import meVehicleExportPdfRoutes from '../../../../src/routes/v1/me-vehicles-export-pdf.js';
 
-vi.mock('../../../../src/lib/vehicle-history-pdf-s3.js', async () => {
+// Mock the pure renderer so no pdf-lib work happens.
+vi.mock('../../../../src/lib/vehicle-history-pdf-renderer.js', async () => {
   const real = await vi.importActual<
-    typeof import('../../../../src/lib/vehicle-history-pdf-s3.js')
-  >('../../../../src/lib/vehicle-history-pdf-s3.js');
-  return { ...real, generateVehicleHistoryPdfPresignedUrl: vi.fn() };
+    typeof import('../../../../src/lib/vehicle-history-pdf-renderer.js')
+  >('../../../../src/lib/vehicle-history-pdf-renderer.js');
+  return { ...real, renderVehicleHistoryPdf: vi.fn() };
 });
 
-import { generateVehicleHistoryPdfPresignedUrl } from '../../../../src/lib/vehicle-history-pdf-s3.js';
+import { renderVehicleHistoryPdf } from '../../../../src/lib/vehicle-history-pdf-renderer.js';
 
 const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 const CUSTOMER_ID = '88888888-8888-4888-8888-888888888888';
 const VEHICLE_ID = '55555555-5555-4555-8555-555555555555';
 
-const MOCK_EXPIRES_AT = new Date('2026-06-09T19:00:00.000Z');
-const MOCK_URL = `https://s3.example.com/vehicle-history-pdfs/${VEHICLE_ID}.pdf?X-Amz=abc`;
+const FAKE_PDF = Buffer.from('%PDF-1.4 fake-history');
 
 function vehicleRow() {
   return {
@@ -104,12 +104,9 @@ describe('GET /v1/me/vehicles/:id/export.pdf (unit)', () => {
     vi.clearAllMocks();
   });
 
-  it('200 — returns pdf_download_url; passes assembled data with shop-only status filter', async () => {
+  it('200 — streams application/pdf for an owned vehicle', async () => {
     const prisma = buildFakePrisma({});
-    vi.mocked(generateVehicleHistoryPdfPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-    });
+    vi.mocked(renderVehicleHistoryPdf).mockResolvedValue(FAKE_PDF);
     app = await buildApp(prisma);
     const res = await app.inject({
       method: 'GET',
@@ -117,22 +114,22 @@ describe('GET /v1/me/vehicles/:id/export.pdf (unit)', () => {
       headers: { authorization: 'Bearer test' },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ pdf_download_url: string; expires_at: string }>();
-    expect(body.pdf_download_url).toContain(`vehicle-history-pdfs/${VEHICLE_ID}.pdf`);
-    expect(body.expires_at).toBe(MOCK_EXPIRES_AT.toISOString());
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain(`storico-${VEHICLE_ID}.pdf`);
+    expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    const dataArg = vi.mocked(renderVehicleHistoryPdf).mock.calls[0]![0];
+    expect(dataArg.vehicle.plate).toBeDefined();
+    expect(Array.isArray(dataArg.interventions)).toBe(true);
 
     // Status filter is active+disputed (shop-only, no cancelled).
     const whereArg = prisma.intervention.findMany.mock.calls[0]![0].where;
     expect(whereArg.status).toEqual({ in: ['active', 'disputed'] });
     expect(whereArg.vehicleId).toBe(VEHICLE_ID);
-
-    const callArg = vi.mocked(generateVehicleHistoryPdfPresignedUrl).mock.calls[0]![0];
-    expect(callArg.vehicleId).toBe(VEHICLE_ID);
-    expect(callArg.data.interventions[0]!.interventionDate).toBe('2026-05-23');
-    expect(callArg.data.interventions[0]!.tenantName).toBe('Officina X');
+    expect(dataArg.interventions[0]!.interventionDate).toBe('2026-05-23');
+    expect(dataArg.interventions[0]!.tenantName).toBe('Officina X');
   });
 
-  it('404 — me.vehicle.not_found when ownership is null; S3 not called', async () => {
+  it('404 — me.vehicle.not_found when ownership is null; renderer not called', async () => {
     const prisma = buildFakePrisma({ ownership: null });
     app = await buildApp(prisma);
     const res = await app.inject({
@@ -142,16 +139,13 @@ describe('GET /v1/me/vehicles/:id/export.pdf (unit)', () => {
     });
     expect(res.statusCode).toBe(404);
     expect(res.json<{ code: string }>().code).toBe('me.vehicle.not_found');
-    expect(generateVehicleHistoryPdfPresignedUrl).not.toHaveBeenCalled();
+    expect(renderVehicleHistoryPdf).not.toHaveBeenCalled();
     expect(prisma.intervention.findMany).not.toHaveBeenCalled();
   });
 
   it('200 — empty history still generates a PDF (empty interventions array forwarded)', async () => {
     const prisma = buildFakePrisma({ interventions: [] });
-    vi.mocked(generateVehicleHistoryPdfPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-    });
+    vi.mocked(renderVehicleHistoryPdf).mockResolvedValue(FAKE_PDF);
     app = await buildApp(prisma);
     const res = await app.inject({
       method: 'GET',
@@ -159,8 +153,21 @@ describe('GET /v1/me/vehicles/:id/export.pdf (unit)', () => {
       headers: { authorization: 'Bearer test' },
     });
     expect(res.statusCode).toBe(200);
-    const callArg = vi.mocked(generateVehicleHistoryPdfPresignedUrl).mock.calls[0]![0];
-    expect(callArg.data.interventions).toEqual([]);
+    const dataArg = vi.mocked(renderVehicleHistoryPdf).mock.calls[0]![0];
+    expect(dataArg.interventions).toEqual([]);
+  });
+
+  it('502 — vehicle_history_pdf.render_failed when renderer throws', async () => {
+    const prisma = buildFakePrisma({});
+    vi.mocked(renderVehicleHistoryPdf).mockRejectedValue(new Error('boom'));
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/export.pdf`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json<{ code: string }>().code).toBe('vehicle_history_pdf.render_failed');
   });
 
   it('400 — invalid UUID', async () => {
