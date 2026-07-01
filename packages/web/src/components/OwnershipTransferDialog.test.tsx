@@ -1,8 +1,8 @@
-// F-OFF-110 PR-2 — component tests for the 4-step OwnershipTransferDialog.
-// Tests cover: skip path, validation error, upload+payload, confirm summary.
+// F-OFF-110 PR-2 — component tests for the 3-step OwnershipTransferDialog.
+// Tests cover: the recipient -> reason/notes -> confirm wizard flow and submit payload.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -12,14 +12,10 @@ import { OwnershipTransferDialog } from './OwnershipTransferDialog';
 // ---------------------------------------------------------------------------
 // Hoisted mocks — must be defined before any vi.mock() call.
 // ---------------------------------------------------------------------------
-const { mockMutateAsync, mockUseOwnershipTransfer, mockUpload, mockResetUpload } = vi.hoisted(
-  () => ({
-    mockMutateAsync: vi.fn(),
-    mockUseOwnershipTransfer: vi.fn(),
-    mockUpload: vi.fn(),
-    mockResetUpload: vi.fn(),
-  }),
-);
+const { mockMutateAsync, mockUseOwnershipTransfer } = vi.hoisted(() => ({
+  mockMutateAsync: vi.fn(),
+  mockUseOwnershipTransfer: vi.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // Mock Radix Dialog so portal rendering works in JSDOM.
@@ -70,7 +66,7 @@ vi.mock('@/components/ui/select', () => ({
 
 // ---------------------------------------------------------------------------
 // Mock Radix Switch — used in the "nuovo cessionario" form sub-path.
-// Not exercised in these 4 tests; stub to avoid JSDOM pointer-event issues.
+// Not exercised in this test; stub to avoid JSDOM pointer-event issues.
 // ---------------------------------------------------------------------------
 vi.mock('@/components/ui/switch', () => ({
   Switch: ({
@@ -118,24 +114,6 @@ vi.mock('@/queries/ownershipTransfer', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Partial mock transferDocumentUpload — keep real validateLibrettoFile +
-// LIBRETTO_* constants, replace useTransferDocumentUpload.
-// ---------------------------------------------------------------------------
-vi.mock('@/queries/transferDocumentUpload', async () => {
-  const actual = await vi.importActual<typeof import('@/queries/transferDocumentUpload')>(
-    '@/queries/transferDocumentUpload',
-  );
-  return {
-    ...actual,
-    useTransferDocumentUpload: () => ({
-      upload: mockUpload,
-      state: { phase: 'idle' } as const,
-      reset: mockResetUpload,
-    }),
-  };
-});
-
-// ---------------------------------------------------------------------------
 // Mock sonner — prevent console noise and capture calls if needed.
 // ---------------------------------------------------------------------------
 vi.mock('sonner', () => ({
@@ -161,7 +139,6 @@ vi.mock('@/lib/api-client', async () => {
 // Test harness helpers.
 // ---------------------------------------------------------------------------
 const VEHICLE_ID = 'veh-00000000-0000-4000-8000-000000000001';
-const FAKE_S3_KEY = 'vehicle-transfers/veh-1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.pdf';
 const CURRENT_OWNER_ID = 'owner-11111111-1111-4111-8111-111111111111';
 
 function makeWrapper() {
@@ -199,7 +176,7 @@ async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByTestId('recipient-result-cust-aaa'));
 }
 
-// Navigate step 2 → step 3 (Documento) by selecting a reason and clicking Avanti.
+// Navigate step 2 → step 3 (Conferma) by selecting a reason and clicking Avanti.
 async function advanceToStep3(user: ReturnType<typeof userEvent.setup>) {
   // Select a reason in the mocked plain <select>
   await user.selectOptions(screen.getByTestId('reason-select'), 'purchase');
@@ -227,114 +204,37 @@ beforeEach(() => {
     mutateAsync: mockMutateAsync,
     isPending: false,
   });
-  mockUpload.mockReset();
-  mockUpload.mockResolvedValue({ ok: true, s3Key: FAKE_S3_KEY });
-  mockResetUpload.mockReset();
 });
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 describe('OwnershipTransferDialog', () => {
-  it('skip path: navigating Documento step without a file reaches Conferma with "Nessun documento allegato"', async () => {
+  it('completes the 3-step wizard and submits the transfer payload', async () => {
     const user = userEvent.setup();
     renderDialog();
 
     // Step 1 → 2
     await advanceToStep2(user);
-    // Step 2 → 3
+    // Step 2 → 3 (Conferma)
     await advanceToStep3(user);
 
-    // Now on step 3 (Documento) — click Avanti WITHOUT selecting a file
-    await waitFor(() => expect(screen.getByText(/libretto di circolazione/i)).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: /avanti/i }));
-
-    // Should be on step 4 (Conferma)
-    await waitFor(() => expect(screen.getByText(/nessun documento allegato/i)).toBeInTheDocument());
-  });
-
-  it('validation error: uploading an unsupported file type shows inline error and does NOT call upload', async () => {
-    const user = userEvent.setup();
-    renderDialog();
-
-    await advanceToStep2(user);
-    await advanceToStep3(user);
-
-    // On step 3 — upload a GIF file (invalid MIME).
-    // The file input is visually hidden; use fireEvent.change to directly
-    // trigger the onChange handler (userEvent.upload pointer simulation
-    // does not reach hidden inputs in JSDOM without CSS).
-    await waitFor(() => expect(screen.getByTestId('libretto-file-input')).toBeInTheDocument());
-    const gifFile = new File(['gif-content'], 'image.gif', { type: 'image/gif' });
-    fireEvent.change(screen.getByTestId('libretto-file-input'), {
-      target: { files: [gifFile] },
-    });
-
-    // Inline error should appear
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/formato non supportato/i),
-    );
-    // upload spy must NOT have been called
-    expect(mockUpload).not.toHaveBeenCalled();
-  });
-
-  it('upload + payload: valid PDF upload -> Conferma -> mutateAsync called with documentS3Key', async () => {
-    const user = userEvent.setup();
-    renderDialog();
-
-    await advanceToStep2(user);
-    await advanceToStep3(user);
-
-    // Upload a valid PDF via fireEvent.change (hidden input, see validation test comment).
-    await waitFor(() => expect(screen.getByTestId('libretto-file-input')).toBeInTheDocument());
-    const pdfFile = new File(['pdf-content'], 'libretto.pdf', { type: 'application/pdf' });
-    fireEvent.change(screen.getByTestId('libretto-file-input'), {
-      target: { files: [pdfFile] },
-    });
-
-    // Wait for upload to resolve and filename to appear
-    await waitFor(() => expect(screen.getByText('libretto.pdf')).toBeInTheDocument());
-
-    // Step 3 → 4 (Conferma)
-    await user.click(screen.getByRole('button', { name: /avanti/i }));
-
-    // Click "Conferma trasferimento" on step 4
+    // Confirm summary is shown
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /conferma trasferimento/i })).toBeInTheDocument(),
     );
+    expect(screen.getAllByText(/luca bianchi/i).length).toBeGreaterThan(0);
+
     await user.click(screen.getByRole('button', { name: /conferma trasferimento/i }));
 
-    // Assert mutateAsync called with documentS3Key
+    // Assert mutateAsync called with the recipient/reason/notes payload only
+    // (no documentS3Key — the upload step was removed).
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ documentS3Key: FAKE_S3_KEY }),
-      );
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        recipient: { kind: 'existing', customerId: 'cust-aaa' },
+        reason: 'purchase',
+        notes: null,
+      });
     });
-  });
-
-  it('confirm summary shows uploaded file name after successful upload', async () => {
-    const user = userEvent.setup();
-    renderDialog();
-
-    await advanceToStep2(user);
-    await advanceToStep3(user);
-
-    // Upload a valid PDF via fireEvent.change (hidden input, see validation test comment).
-    await waitFor(() => expect(screen.getByTestId('libretto-file-input')).toBeInTheDocument());
-    const pdfFile = new File(['pdf-content'], 'libretto-veicolo.pdf', {
-      type: 'application/pdf',
-    });
-    fireEvent.change(screen.getByTestId('libretto-file-input'), {
-      target: { files: [pdfFile] },
-    });
-
-    // Wait for the file to appear on the Documento step
-    await waitFor(() => expect(screen.getByText('libretto-veicolo.pdf')).toBeInTheDocument());
-
-    // Advance to Conferma
-    await user.click(screen.getByRole('button', { name: /avanti/i }));
-
-    // The Conferma summary must show the file name
-    await waitFor(() => expect(screen.getByText('libretto-veicolo.pdf')).toBeInTheDocument());
   });
 });
