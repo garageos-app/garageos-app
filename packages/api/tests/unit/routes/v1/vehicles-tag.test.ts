@@ -7,22 +7,20 @@ import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
 import type { JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js';
 import vehicleTagRoutes from '../../../../src/routes/v1/vehicles-tag.js';
 
-// Mock getOrCreateTagPresignedUrl at module level so no real S3 calls
-// are made — see feedback_aws_sdk_presigner_credentials_chain.
+// Mock renderTagPdf at module level so no real PDF rendering happens in the
+// unit suite — see feedback_aws_sdk_presigner_credentials_chain (same idea,
+// keep the unit test hermetic and fast).
 // Error classes are passed through from the real module so that the route
 // handler can import + use them normally even under the mock.
-vi.mock('../../../../src/lib/vehicle-tag-s3.js', async () => {
-  const real = await vi.importActual<typeof import('../../../../src/lib/vehicle-tag-s3.js')>(
-    '../../../../src/lib/vehicle-tag-s3.js',
+vi.mock('../../../../src/lib/vehicle-tag-renderer.js', async () => {
+  const real = await vi.importActual<typeof import('../../../../src/lib/vehicle-tag-renderer.js')>(
+    '../../../../src/lib/vehicle-tag-renderer.js',
   );
-  return {
-    ...real,
-    getOrCreateTagPresignedUrl: vi.fn(),
-  };
+  return { ...real, renderTagPdf: vi.fn() };
 });
 
 // Import after vi.mock so the mocked version is used.
-import { getOrCreateTagPresignedUrl } from '../../../../src/lib/vehicle-tag-s3.js';
+import { renderTagPdf } from '../../../../src/lib/vehicle-tag-renderer.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
@@ -31,8 +29,7 @@ const LOCATION_ID = '44444444-4444-4444-8444-444444444444';
 const VEHICLE_ID = '55555555-5555-4555-8555-555555555555';
 const GARAGE_CODE = 'GA0001';
 
-const MOCK_EXPIRES_AT = new Date('2026-05-29T11:00:00.000Z');
-const MOCK_URL = `https://s3.example.com/tags/${GARAGE_CODE}.pdf?X-Amz-Signature=abc`;
+const FAKE_PDF = Buffer.from('%PDF-1.4 fake-tag');
 
 beforeAll(() => {
   // Ensure AWS SDK doesn't attempt credential chain resolution —
@@ -114,13 +111,9 @@ describe('GET /v1/vehicles/:id/tag (unit)', () => {
     vi.clearAllMocks();
   });
 
-  it('200 — happy path: returns tag_download_url + expires_at, creates audit row', async () => {
+  it('200 — streams application/pdf and records a first-print audit row', async () => {
     const prisma = buildFakePrisma();
-    vi.mocked(getOrCreateTagPresignedUrl).mockResolvedValue({
-      url: MOCK_URL,
-      expiresAt: MOCK_EXPIRES_AT,
-      cacheHit: false,
-    });
+    vi.mocked(renderTagPdf).mockResolvedValue(FAKE_PDF);
 
     app = await buildApp(prisma);
 
@@ -131,14 +124,13 @@ describe('GET /v1/vehicles/:id/tag (unit)', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ tag_download_url: string; expires_at: string }>();
-
-    // URL must contain the expected S3 key segment
-    expect(body.tag_download_url).toContain(`tags/${GARAGE_CODE}.pdf`);
-    expect(body.expires_at).toBe(MOCK_EXPIRES_AT.toISOString());
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
 
     // Audit row created with correct fields
-    expect(prisma.vehicleTagPrint.create).toHaveBeenCalledOnce();
+    expect(prisma.vehicleTagPrint.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ kind: 'first' }) }),
+    );
     const createCall = prisma.vehicleTagPrint.create.mock.calls[0]![0] as {
       data: {
         vehicleId: string;
@@ -150,7 +142,6 @@ describe('GET /v1/vehicles/:id/tag (unit)', () => {
     expect(createCall.data.vehicleId).toBe(VEHICLE_ID);
     expect(createCall.data.tenantId).toBe(TENANT_ID);
     expect(createCall.data.printedByUserId).toBe(USER_ID);
-    expect(createCall.data.kind).toBe('first');
   });
 
   it('404 — vehicle.not_found when findFirst returns null', async () => {
@@ -166,11 +157,11 @@ describe('GET /v1/vehicles/:id/tag (unit)', () => {
     expect(res.statusCode).toBe(404);
     const body = res.json<{ code: string }>();
     expect(body.code).toBe('vehicle.not_found');
-    expect(getOrCreateTagPresignedUrl).not.toHaveBeenCalled();
+    expect(renderTagPdf).not.toHaveBeenCalled();
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
-  it('409 — vehicle.archived when status=archived: S3 not called, audit not inserted', async () => {
+  it('409 — vehicle.archived when status=archived: renderer not called, audit not inserted', async () => {
     const prisma = buildFakePrisma({ id: VEHICLE_ID, garageCode: GARAGE_CODE, status: 'archived' });
     app = await buildApp(prisma);
 
@@ -183,7 +174,7 @@ describe('GET /v1/vehicles/:id/tag (unit)', () => {
     expect(res.statusCode).toBe(409);
     const body = res.json<{ code: string }>();
     expect(body.code).toBe('vehicle.archived');
-    expect(getOrCreateTagPresignedUrl).not.toHaveBeenCalled();
+    expect(renderTagPdf).not.toHaveBeenCalled();
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
@@ -200,7 +191,7 @@ describe('GET /v1/vehicles/:id/tag (unit)', () => {
     expect(res.statusCode).toBe(409);
     const body = res.json<{ code: string }>();
     expect(body.code).toBe('vehicle.not_certified');
-    expect(getOrCreateTagPresignedUrl).not.toHaveBeenCalled();
+    expect(renderTagPdf).not.toHaveBeenCalled();
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
