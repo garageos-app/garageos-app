@@ -1,14 +1,25 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Linking } from 'react-native';
 import React from 'react';
 
 import { useVehicleHistoryPdfExport } from '@/queries/vehicleHistoryPdf';
-import { ApiError } from '@/lib/api-error';
 
-const mockFetch = jest.fn();
-jest.mock('@/lib/use-api-client', () => ({
-  useApiClient: () => ({ fetch: mockFetch }),
+const mockDownloadAsync = jest.fn();
+jest.mock('expo-file-system', () => ({
+  cacheDirectory: 'file:///cache/',
+  downloadAsync: (...args: unknown[]) => mockDownloadAsync(...args),
+}));
+
+const mockIsAvailableAsync = jest.fn();
+const mockShareAsync = jest.fn();
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: (...args: unknown[]) => mockIsAvailableAsync(...args),
+  shareAsync: (...args: unknown[]) => mockShareAsync(...args),
+}));
+
+const mockGetIdToken = jest.fn();
+jest.mock('@/auth/useAuth', () => ({
+  useAuth: () => ({ getIdToken: mockGetIdToken }),
 }));
 
 function makeWrapper() {
@@ -18,43 +29,62 @@ function makeWrapper() {
   };
 }
 
+// babel-preset-expo inlines process.env.EXPO_PUBLIC_* at transform time, so the
+// hook cannot be overridden via runtime assignment — the base URL is the value
+// baked in by jest.setup.ts. Reference it the same way so the expectation
+// tracks whatever that setup uses.
+const API_BASE = process.env.EXPO_PUBLIC_API_URL;
+
 describe('useVehicleHistoryPdfExport', () => {
-  let openURL: jest.SpyInstance;
-
   beforeEach(() => {
-    mockFetch.mockReset();
-    openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    jest.clearAllMocks();
+    mockGetIdToken.mockReturnValue('tok');
+    mockDownloadAsync.mockResolvedValue({ status: 200, uri: 'file:///cache/storico-veh-1.pdf' });
+    mockIsAvailableAsync.mockResolvedValue(true);
+    mockShareAsync.mockResolvedValue(undefined);
   });
 
-  afterEach(() => {
-    openURL.mockRestore();
-  });
-
-  it('GETs the export endpoint and opens the presigned URL', async () => {
-    mockFetch.mockResolvedValue({
-      pdf_download_url:
-        'https://bucket.s3.eu-south-1.amazonaws.com/vehicle-history-pdfs/v-1.pdf?sig',
-      expires_at: '2026-06-09T19:00:00Z',
-    });
+  it('downloads with the auth header and opens the share sheet', async () => {
     const { result } = renderHook(() => useVehicleHistoryPdfExport(), { wrapper: makeWrapper() });
 
     await result.current.mutateAsync('veh-1');
 
-    expect(mockFetch).toHaveBeenCalledWith('/v1/me/vehicles/veh-1/export.pdf');
-    expect(openURL).toHaveBeenCalledWith(
-      'https://bucket.s3.eu-south-1.amazonaws.com/vehicle-history-pdfs/v-1.pdf?sig',
+    expect(mockDownloadAsync).toHaveBeenCalledWith(
+      `${API_BASE}/v1/me/vehicles/veh-1/export.pdf`,
+      'file:///cache/storico-veh-1.pdf',
+      { headers: { Authorization: 'Bearer tok' } },
+    );
+    expect(mockShareAsync).toHaveBeenCalledWith(
+      'file:///cache/storico-veh-1.pdf',
+      expect.objectContaining({ mimeType: 'application/pdf' }),
     );
   });
 
-  it('does not open a URL when the API call fails', async () => {
-    mockFetch.mockRejectedValue(
-      new ApiError('me.vehicle.not_found', 404, 'Veicolo non trovato o non più di tua proprietà.'),
-    );
+  it('does not share when the OS share sheet is unavailable', async () => {
+    mockIsAvailableAsync.mockResolvedValue(false);
     const { result } = renderHook(() => useVehicleHistoryPdfExport(), { wrapper: makeWrapper() });
 
-    await expect(result.current.mutateAsync('veh-1')).rejects.toBeInstanceOf(ApiError);
+    await result.current.mutateAsync('veh-1');
+
+    expect(mockShareAsync).not.toHaveBeenCalled();
+  });
+
+  it('throws without downloading when there is no session token', async () => {
+    mockGetIdToken.mockReturnValue(null);
+    const { result } = renderHook(() => useVehicleHistoryPdfExport(), { wrapper: makeWrapper() });
+
+    await expect(result.current.mutateAsync('veh-1')).rejects.toThrow();
 
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(openURL).not.toHaveBeenCalled();
+    expect(mockDownloadAsync).not.toHaveBeenCalled();
+  });
+
+  it('throws when the download does not return a 200 status', async () => {
+    mockDownloadAsync.mockResolvedValue({ status: 404, uri: 'file:///cache/storico-veh-1.pdf' });
+    const { result } = renderHook(() => useVehicleHistoryPdfExport(), { wrapper: makeWrapper() });
+
+    await expect(result.current.mutateAsync('veh-1')).rejects.toThrow();
+
+    expect(mockShareAsync).not.toHaveBeenCalled();
   });
 });
