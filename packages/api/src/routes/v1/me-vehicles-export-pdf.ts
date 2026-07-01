@@ -106,7 +106,8 @@ const meVehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
       let pdfBuffer: Buffer;
       try {
         pdfBuffer = await renderVehicleHistoryPdf(pdfData);
-      } catch {
+      } catch (err) {
+        request.log.error({ err }, 'vehicle_history_pdf.render_failed');
         throw businessError(
           'vehicle_history_pdf.render_failed',
           502,

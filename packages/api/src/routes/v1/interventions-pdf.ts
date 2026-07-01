@@ -142,7 +142,8 @@ const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
       let pdfBuffer: Buffer;
       try {
         pdfBuffer = await renderInterventionPdf(pdfData, null);
-      } catch {
+      } catch (err) {
+        request.log.error({ err }, 'intervention_pdf.render_failed');
         throw businessError(
           'intervention_pdf.render_failed',
           502,

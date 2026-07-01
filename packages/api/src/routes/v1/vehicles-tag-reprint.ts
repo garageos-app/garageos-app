@@ -126,7 +126,8 @@ const vehicleTagReprintRoutes: FastifyPluginAsync = async (app) => {
           let pdfBuffer: Buffer;
           try {
             pdfBuffer = await renderTagPdf(garageCode);
-          } catch {
+          } catch (err) {
+            request.log.error({ err }, 'vehicle_tag.render_failed');
             throw businessError(
               'vehicle_tag.render_failed',
               502,

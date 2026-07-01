@@ -508,6 +508,18 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 
 ---
 
+### 3.19 PDF rendering diretto (F-OFF-309, F-CLI-501)
+
+#### `intervention_pdf.render_failed`
+
+**HTTP 502.** `pdf-lib` ha lanciato durante il render del PDF intervento (`GET /v1/interventions/:id/pdf`). Verificare deps e input; l'errore originale è loggato server-side (`request.log.error`).
+
+#### `vehicle_history_pdf.render_failed`
+
+**HTTP 502.** `pdf-lib` ha lanciato durante il render del PDF storico veicolo (`GET /v1/me/vehicles/:id/export.pdf`). Verificare deps e input; l'errore originale è loggato server-side (`request.log.error`).
+
+---
+
 ## 4. Mapping a classi eccezione backend
 
 ### 4.1 Gerarchia eccezioni
@@ -969,6 +981,7 @@ intervention.modification.locked
 intervention.modification.revision_reason_required
 intervention.not_found
 intervention.revisions.not_owner
+intervention_pdf.render_failed
 me.intervention.not_found
 me.notification-preferences.update.empty_body
 me.notification-preferences.update.unknown_field
@@ -1056,6 +1069,7 @@ vehicle.modification.vin_immutable
 vehicle.not_certified
 vehicle.not_found
 vehicle.pending.duplicate_vin_certified
+vehicle_history_pdf.render_failed
 vehicle_tag.audit_insert_failed
 vehicle_tag.never_printed
 vehicle_tag.render_failed
@@ -1063,7 +1077,7 @@ vehicle_tag.s3_head_failed
 vehicle_tag.s3_upload_failed
 ```
 
-**Totale: ~156 error code documentati in v1.0** (aggiornato post F-OFF-104 tag PDF, +6 codici: `vehicle.archived`, `vehicle.not_certified`, `vehicle_tag.s3_head_failed`, `vehicle_tag.s3_upload_failed`, `vehicle_tag.render_failed`, `vehicle_tag.audit_insert_failed`). (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004 + 3 codici F-OFF-004 reactivation slice 2026-05-21; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`).
+**Totale: ~158 error code documentati in v1.0** (aggiornato post F-OFF-104 tag PDF, +6 codici: `vehicle.archived`, `vehicle.not_certified`, `vehicle_tag.s3_head_failed`, `vehicle_tag.s3_upload_failed`, `vehicle_tag.render_failed`, `vehicle_tag.audit_insert_failed`). (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004 + 3 codici F-OFF-004 reactivation slice 2026-05-21; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`). (aggiornato post F-OFF-309/F-CLI-501 PDF rendering diretto, +2 codici: `intervention_pdf.render_failed`, `vehicle_history_pdf.render_failed`).
 
 ---
 
