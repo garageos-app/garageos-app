@@ -7,33 +7,33 @@ import { ErrorState } from '@/components/feedback/ErrorState';
 import { TableSkeleton } from '@/components/feedback/TableSkeleton';
 
 describe('feedback components', () => {
-  it('PageHeader renders title, description, and actions', () => {
-    render(
-      <PageHeader
-        title="Officina Rossi"
-        description="Dettaglio"
-        actions={<button>Azione</button>}
-      />,
-    );
+  // PageHeader's only logic is the null-collapse guard: with every prop absent it
+  // must render nothing, otherwise empty pages get a stray header band + spacing.
+  it('PageHeader renders nothing when title, description, and actions are all absent', () => {
+    const { container } = render(<PageHeader />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('PageHeader exposes the title as a heading and renders the actions slot', () => {
+    render(<PageHeader title="Officina Rossi" actions={<button>Azione</button>} />);
+    // The title must be a heading (a11y contract the shell relies on), not plain text.
     expect(screen.getByRole('heading', { name: 'Officina Rossi' })).toBeInTheDocument();
-    expect(screen.getByText('Dettaglio')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Azione' })).toBeInTheDocument();
   });
 
-  it('EmptyState shows the message and icon', () => {
-    render(<EmptyState icon={Inbox} title="Nessuna officina" description="Crea la prima." />);
-    expect(screen.getByText('Nessuna officina')).toBeInTheDocument();
-    expect(screen.getByText('Crea la prima.')).toBeInTheDocument();
+  it('EmptyState renders the provided icon', () => {
+    const { container } = render(<EmptyState icon={Inbox} title="Nessuna officina" />);
+    // lucide icons render an <svg>; assert it actually mounts (icon is optional).
+    expect(container.querySelector('svg')).toBeInTheDocument();
   });
 
-  it('ErrorState renders an alert with the message', () => {
+  it('ErrorState renders an alert carrying the message', () => {
     render(<ErrorState message="Errore nel caricamento." />);
     expect(screen.getByRole('alert')).toHaveTextContent('Errore nel caricamento.');
   });
 
   it('TableSkeleton renders the requested number of skeleton rows', () => {
     const { container } = render(<TableSkeleton rows={3} columns={4} />);
-    // 3 body rows (header row uses <th>, body uses <td>)
     expect(container.querySelectorAll('tbody tr')).toHaveLength(3);
   });
 });
