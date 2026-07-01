@@ -77,4 +77,12 @@ describe('PlatformConsole page', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
+
+  it('shows skeleton cards while metrics are loading', () => {
+    // Never resolve — keep the query in loading state.
+    mockApiFetch.mockImplementation(() => new Promise(() => {}));
+    const { container } = render(<PlatformConsole />, { wrapper: makeWrapper() });
+    // 5 stat-card skeletons render while loading.
+    expect(container.querySelectorAll('[data-testid="stat-skeleton"]').length).toBe(5);
+  });
 });

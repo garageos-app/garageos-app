@@ -18,7 +18,8 @@ export function InterventionsTrendChart({ data }: InterventionsTrendChartProps) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Interventi per settimana (ultime 8)</CardTitle>
+        <CardTitle className="text-base">Interventi per settimana</CardTitle>
+        <p className="text-sm text-muted-foreground">Ultime 8 settimane</p>
       </CardHeader>
       <CardContent>
         <div className="h-64" data-testid="trend-chart">

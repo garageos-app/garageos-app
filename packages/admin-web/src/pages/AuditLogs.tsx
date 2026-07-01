@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useInfiniteQuery, type InfiniteData } from '@tanstack/react-query';
+import { ScrollText } from 'lucide-react';
 import { useApiFetch } from '@/lib/api-client';
 import type { TenantAdminListItem } from '@/lib/tenant-types';
 import { ACTOR_TYPE_LABELS, AUDIT_ACTIONS } from '@/lib/audit-types';
@@ -20,6 +21,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/feedback/EmptyState';
+import { ErrorState } from '@/components/feedback/ErrorState';
+import { TableSkeleton } from '@/components/feedback/TableSkeleton';
 
 // ─── Filter state ─────────────────────────────────────────────────────────────
 
@@ -103,15 +107,11 @@ export function AuditLogs() {
   // ── Error / loading guards (error before isLoading — mirror TenantList) ─────
 
   if (error) {
-    return (
-      <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
-        Errore nel caricamento degli audit log.
-      </div>
-    );
+    return <ErrorState message="Errore nel caricamento del registro." />;
   }
 
   if (isLoading || !data) {
-    return <p className="text-muted-foreground">Caricamento…</p>;
+    return <TableSkeleton columns={5} />;
   }
 
   const items = data.pages.flatMap((p) => p.items);
@@ -214,7 +214,11 @@ export function AuditLogs() {
 
       {/* ── Table ──────────────────────────────────────────────────────── */}
       {items.length === 0 ? (
-        <p className="text-muted-foreground">Nessun evento.</p>
+        <EmptyState
+          icon={ScrollText}
+          title="Nessun evento"
+          description="Nessun evento corrisponde ai filtri selezionati."
+        />
       ) : (
         <>
           <Table>

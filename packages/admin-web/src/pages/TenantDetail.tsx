@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { Wrench, Clock, Users, Car, Contact, AlertCircle, Mail } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,6 +11,9 @@ import { ACTION_ERROR_MESSAGES, GENERIC_ACTION_ERROR } from '@/lib/tenant-action
 import type { TenantProfile, AdminUser, InviteResult } from '@/lib/tenant-detail-types';
 import type { TenantMetrics } from '@/lib/metrics-types';
 import { StatCard } from '@/components/StatCard';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { ErrorState } from '@/components/feedback/ErrorState';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   tenantProfileSchema,
   type TenantProfileValues,
@@ -246,9 +250,7 @@ export function TenantDetail() {
         <Link to="/officine" className="text-sm text-muted-foreground hover:underline inline-block">
           ← Officine
         </Link>
-        <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
-          Errore nel caricamento dell&apos;officina.
-        </div>
+        <ErrorState message="Errore nel caricamento dell'officina." />
       </div>
     );
   }
@@ -262,7 +264,10 @@ export function TenantDetail() {
         <Link to="/officine" className="text-sm text-muted-foreground hover:underline inline-block">
           ← Officine
         </Link>
-        <p className="text-muted-foreground">Caricamento…</p>
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-48 w-full" />
+        </div>
       </div>
     );
   }
@@ -287,9 +292,12 @@ export function TenantDetail() {
           ← Officine
         </Link>
 
-        <div className="flex items-center gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{data.tenant.businessName}</h1>
-          <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
+        <div className="mb-6">
+          <PageHeader
+            title={data.tenant.businessName}
+            description="Dettaglio e gestione officina."
+            actions={<Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>}
+          />
         </div>
 
         {/* ── Profile section ───────────────────────────────────────────────── */}
@@ -507,11 +515,13 @@ export function TenantDetail() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <StatCard
+                  icon={Wrench}
                   label="Interventi"
                   value={metricsData.interventions.total}
                   hint={`${metricsData.interventions.last30d} ultimi 30 giorni`}
                 />
                 <StatCard
+                  icon={Clock}
                   label="Ultimo intervento"
                   value={
                     metricsData.interventions.lastAt
@@ -519,11 +529,19 @@ export function TenantDetail() {
                       : '—'
                   }
                 />
-                <StatCard label="Utenti" value={metricsData.usersTotal} />
-                <StatCard label="Veicoli" value={metricsData.vehiclesTotal} />
-                <StatCard label="Clienti" value={metricsData.customersTotal} />
-                <StatCard label="Scadenze aperte" value={metricsData.openDeadlines} />
-                <StatCard label="Inviti pendenti" value={metricsData.pendingInvitations} />
+                <StatCard icon={Users} label="Utenti" value={metricsData.usersTotal} />
+                <StatCard icon={Car} label="Veicoli" value={metricsData.vehiclesTotal} />
+                <StatCard icon={Contact} label="Clienti" value={metricsData.customersTotal} />
+                <StatCard
+                  icon={AlertCircle}
+                  label="Scadenze aperte"
+                  value={metricsData.openDeadlines}
+                />
+                <StatCard
+                  icon={Mail}
+                  label="Inviti pendenti"
+                  value={metricsData.pendingInvitations}
+                />
               </div>
             )}
           </CardContent>
