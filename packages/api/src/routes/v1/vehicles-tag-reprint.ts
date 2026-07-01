@@ -3,10 +3,8 @@ import { z } from 'zod';
 
 import { env } from '../../config/env.js';
 import { businessError } from '../../lib/business-error.js';
-import {
-  getOrCreateTagPresignedUrl,
-  VehicleTagAuditInsertFailedError,
-} from '../../lib/vehicle-tag-s3.js';
+import { getOrCreateTagPresignedUrl } from '../../lib/vehicle-tag-s3.js';
+import { VehicleTagAuditInsertFailedError } from '../../lib/vehicle-tag-errors.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
