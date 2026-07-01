@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { Wrench, Clock, Users, Car, Contact, AlertCircle, Mail } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -507,11 +508,13 @@ export function TenantDetail() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <StatCard
+                  icon={Wrench}
                   label="Interventi"
                   value={metricsData.interventions.total}
                   hint={`${metricsData.interventions.last30d} ultimi 30 giorni`}
                 />
                 <StatCard
+                  icon={Clock}
                   label="Ultimo intervento"
                   value={
                     metricsData.interventions.lastAt
@@ -519,11 +522,19 @@ export function TenantDetail() {
                       : '—'
                   }
                 />
-                <StatCard label="Utenti" value={metricsData.usersTotal} />
-                <StatCard label="Veicoli" value={metricsData.vehiclesTotal} />
-                <StatCard label="Clienti" value={metricsData.customersTotal} />
-                <StatCard label="Scadenze aperte" value={metricsData.openDeadlines} />
-                <StatCard label="Inviti pendenti" value={metricsData.pendingInvitations} />
+                <StatCard icon={Users} label="Utenti" value={metricsData.usersTotal} />
+                <StatCard icon={Car} label="Veicoli" value={metricsData.vehiclesTotal} />
+                <StatCard icon={Contact} label="Clienti" value={metricsData.customersTotal} />
+                <StatCard
+                  icon={AlertCircle}
+                  label="Scadenze aperte"
+                  value={metricsData.openDeadlines}
+                />
+                <StatCard
+                  icon={Mail}
+                  label="Inviti pendenti"
+                  value={metricsData.pendingInvitations}
+                />
               </div>
             )}
           </CardContent>
