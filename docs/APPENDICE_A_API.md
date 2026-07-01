@@ -1470,7 +1470,7 @@ Authorization: Bearer <tenant_user_jwt>
 
 #### Descrizione
 
-Restituisce il DTO completo di un singolo intervento officina, inclusi tipo, tenant, veicolo, operatore che ha creato il record, e lista degli allegati confermati. Pensato per popolare la detail page dell'intervento nella web app officina.
+Restituisce il DTO completo di un singolo intervento officina, inclusi tipo, tenant, veicolo, operatore che ha creato il record. Pensato per popolare la detail page dell'intervento nella web app officina.
 
 `wiki_window_open` è computato server-side come predicato composito BR-062: `wikiLockedAt IS NULL AND firstSeenByCustomerAt IS NULL AND now() - createdAt < 48h`. Non viene esposto il raw `wikiLockedAt` per evitare che il client ri-derivi la logica con bug di time-zone (vedi memory `feedback_compute_composite_br_predicates_server_side.md`).
 
@@ -2337,7 +2337,7 @@ Errori: `401`, `404 me.vehicle.not_found`, `429`, `500`. Nessun codice
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | POST | `/vehicles/:id/interventions` | F-OFF-301, F-OFF-308 | Tenant User | **[DETTAGLIATO §2.2]** Crea intervento |
-| GET | `/interventions/:id` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.12]** Dettaglio intervento officina (BR-062 wiki_window_open, allegati confermati) |
+| GET | `/interventions/:id` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.12]** Dettaglio intervento officina (BR-062 wiki_window_open) |
 | PATCH | `/interventions/:id` | F-OFF-304 | Tenant User | Modifica intervento (wiki rules). Vedi §2.12 per read-after-write. |
 | POST | `/interventions/:id/cancel` | F-OFF-307 | Super Admin | Annulla intervento con motivazione |
 | GET | `/interventions/:id/revisions` | F-OFF-304 | Any User | Storico modifiche. Vedi §2.12 per il DTO completo dell'intervento. |

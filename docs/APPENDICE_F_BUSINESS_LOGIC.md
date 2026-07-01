@@ -344,7 +344,29 @@ Variante officina-mediated del passaggio di proprietà (F-OFF-110): il cedente �
 5. Se cessionario nuovo: `customers` row creata (con email-as-global-identity riuso cross-tenant se esistente)
 6. `access_logs` row: `action = 'ownership_transfer'`
 
-**Documento libretto (opzionale, F-OFF-110 PR-2):** il caller può fornire una chiave S3 (`documentS3Key`) ottenuta dall'endpoint di pre-firma. Il server verifica l'oggetto (`headObject`) e, se valido (formato `image/jpeg | image/png | application/pdf | image/heic`, size ≤ 10 MB, struttura chiave `vehicle-transfers/<vehicleId>/<uuid>.<ext>`), lo salva come `VehicleTransfer.documentUrl`. Un documento non valido blocca il trasferimento con `422 vehicle.transfer.document_invalid`. Il campo è opzionale: i trasferimenti senza documento restano pienamente validi.
+**Documento libretto** *(DEPRECATED/REMOVED — 2026-07-01)*
+
+> **DEPRECATED/REMOVED — rimozione upload, 2026-07-01.** Il sub-flow di
+> upload del documento libretto descritto sotto è stato rimosso
+> integralmente nell'arco "remove uploads and S3" (PR2
+> `feat/remove-uploads`). Nessun endpoint o codice descritto da questo
+> paragrafo è più presente nell'API; l'errore `vehicle.transfer.document_invalid`
+> è stato deregistrato da `APPENDICE_G_ERROR_CODES.md`. Vedi
+> `docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md` per il
+> design completo. La feature di passaggio di proprietà officina-mediated
+> (BR-049 sopra) resta pienamente attiva: solo il sub-flow di allegazione
+> documento è stato rimosso. Il testo originale è mantenuto sotto solo come
+> riferimento storico.
+>
+> **Storico (pre rimozione upload, opzionale, F-OFF-110 PR-2):** il caller
+> poteva fornire una chiave S3 (`documentS3Key`) ottenuta dall'endpoint di
+> pre-firma. Il server verificava l'oggetto (`headObject`) e, se valido
+> (formato `image/jpeg | image/png | application/pdf | image/heic`, size
+> ≤ 10 MB, struttura chiave `vehicle-transfers/<vehicleId>/<uuid>.<ext>`),
+> lo salvava come `VehicleTransfer.documentUrl`. Un documento non valido
+> bloccava il trasferimento con `422 vehicle.transfer.document_invalid`. Il
+> campo era opzionale: i trasferimenti senza documento restavano pienamente
+> validi.
 
 **Notifica cedente (opzionale, F-OFF-110 PR-2):** al completamento del trasferimento, il cedente (precedente proprietario) riceve una email best-effort tramite il canale `ownership_transfer` (BR-226). Il fallimento dell'invio non fa mai fallire la transazione già completata.
 
