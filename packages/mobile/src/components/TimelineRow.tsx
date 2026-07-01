@@ -37,9 +37,6 @@ export function TimelineRow({ item, onPress }: Props) {
           {isShop && item.parts_replaced_count > 0 ? (
             <Text style={styles.meta}>{item.parts_replaced_count} pezzi</Text>
           ) : null}
-          {item.attachments_count > 0 ? (
-            <Text style={styles.meta}>{item.attachments_count} allegati</Text>
-          ) : null}
         </View>
       </View>
     </View>

@@ -3,7 +3,6 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
-import { preValidateAttachmentsForDispute } from '../../lib/dispute-attachments.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -53,9 +52,9 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
           select: { id: true, role: true },
         });
 
-        // Guard order: permission → reason → attachments → 404
-        // (findUniqueOrThrow). Role check fires first because the
-        // user-lookup already bound the request to the correct tenant
+        // Guard order: permission → reason → 404 (findUniqueOrThrow).
+        // Role check fires first because the user-lookup already bound
+        // the request to the correct tenant
         // (post-#27 defense-in-depth), so 403 here is acceptable
         // opacity. Cross-tenant intervention id is masked opaquely
         // by RLS-as-404 at findUniqueOrThrow below.
@@ -72,15 +71,6 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
             'intervention.dispute.response.description_too_short',
             400,
             'La risposta deve essere di almeno 20 caratteri.',
-          );
-        }
-
-        const attachmentIds = body.attachmentIds ?? [];
-        if (attachmentIds.length > 0 && !body.disputeId) {
-          throw businessError(
-            'intervention.dispute.response.attachments_require_dispute_id',
-            422,
-            'Non puoi allegare prove a una risposta multi-dispute. Specifica disputeId.',
           );
         }
 
@@ -122,12 +112,6 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
           targetIds = openTargets.map((t) => t.id);
         }
 
-        await preValidateAttachmentsForDispute(tx, {
-          attachmentIds: body.attachmentIds,
-          interventionId: id,
-          uploader: { userId: user.id, tenantId },
-        });
-
         const now = new Date();
 
         await tx.interventionDispute.updateMany({
@@ -139,13 +123,6 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
             tenantResponseUserId: user.id,
           },
         });
-
-        if (attachmentIds.length > 0 && body.disputeId) {
-          await tx.attachment.updateMany({
-            where: { id: { in: attachmentIds } },
-            data: { disputeId: body.disputeId },
-          });
-        }
 
         const respondedDisputes = await tx.interventionDispute.findMany({
           where: { id: { in: targetIds } },
@@ -195,10 +172,7 @@ const interventionDisputeResponseRoutes: FastifyPluginAsync = async (app) => {
         });
 
         return {
-          disputes: respondedDisputes.map((d) => ({
-            ...d,
-            attachment_ids: d.id === body.disputeId ? attachmentIds : [],
-          })),
+          disputes: respondedDisputes,
           interventionStatus,
         };
       });

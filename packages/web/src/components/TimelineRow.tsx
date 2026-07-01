@@ -11,9 +11,9 @@ import type { OfficinaColor } from '@/lib/officinaColors';
 import type { TimelineItem } from '@/queries/types';
 
 // Timeline row con expand/collapse inline. Surfacia description,
-// parts_replaced_count, attachments_count, is_disputed che il DTO
-// timeline (PR vehicles-timeline) gia' contiene ma il rendering
-// compact precedente non mostrava.
+// parts_replaced_count, is_disputed che il DTO timeline (PR
+// vehicles-timeline) gia' contiene ma il rendering compact precedente
+// non mostrava.
 //
 // Multi-open accordion: ogni riga ha state locale, niente coordinamento
 // globale. Animazione via Tailwind grid-rows trick (no JS measure).
@@ -175,7 +175,6 @@ function ExpandedPanel({
   const description = item.description.trim();
   const isShop = item.kind === 'shop_intervention';
   const partsCount = isShop ? item.parts_replaced_count : 0;
-  const hasAttachments = item.has_attachments && item.attachments_count > 0;
 
   return (
     <div className="space-y-3 pl-28">
@@ -184,18 +183,11 @@ function ExpandedPanel({
       ) : (
         <p className="text-sm italic text-muted-foreground">Nessuna descrizione.</p>
       )}
-      {(partsCount > 0 || hasAttachments) && (
+      {partsCount > 0 && (
         <div className="flex flex-wrap gap-2">
-          {partsCount > 0 && (
-            <Badge variant="secondary" className="text-[11px]">
-              {partsCount} ricambi
-            </Badge>
-          )}
-          {hasAttachments && (
-            <Badge variant="secondary" className="text-[11px]">
-              Con allegati ({item.attachments_count})
-            </Badge>
-          )}
+          <Badge variant="secondary" className="text-[11px]">
+            {partsCount} ricambi
+          </Badge>
         </div>
       )}
       {isShop && (

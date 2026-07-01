@@ -29,7 +29,6 @@ export interface AdminUser {
   role: 'super_admin' | 'mechanic';
   status: 'active' | 'inactive';
   phone: string | null;
-  avatarUrl: string | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;

@@ -51,10 +51,6 @@ interface FakePrisma {
   interventionType: {
     findFirst: ReturnType<typeof vi.fn>;
   };
-  attachment: {
-    findMany: ReturnType<typeof vi.fn>;
-    groupBy: ReturnType<typeof vi.fn>;
-  };
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
@@ -72,10 +68,6 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     },
     interventionType: {
       findFirst: vi.fn().mockResolvedValue({ id: 'type-1' }),
-    },
-    attachment: {
-      findMany: vi.fn().mockResolvedValue([]),
-      groupBy: vi.fn().mockResolvedValue([]),
     },
     ...overrides,
   };
@@ -281,7 +273,7 @@ describe('mePrivateInterventionRoutes (unit)', () => {
     );
   });
 
-  it('PATCH 200 calls update with merged data + reads back attachments', async () => {
+  it('PATCH 200 calls update with merged data', async () => {
     // The PATCH handler's findFirst uses `select: { id, interventionTypeId,
     // customType }` for the merged-XOR check. The default PRIVATE_ROW omits
     // `interventionTypeId` (undefined), which would collide with the
@@ -314,16 +306,6 @@ describe('mePrivateInterventionRoutes (unit)', () => {
       expect.objectContaining({
         where: { id: PRIVATE_ID },
         data: { description: 'updated' },
-      }),
-    );
-    expect(prisma.attachment.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          ownerType: 'private_intervention',
-          ownerId: PRIVATE_ID,
-          processed: true,
-          deletedAt: null,
-        }),
       }),
     );
   });

@@ -11,7 +11,6 @@ export const USER_ADMIN_SELECT = {
   role: true,
   status: true,
   phone: true,
-  avatarUrl: true,
   lastLoginAt: true,
   createdAt: true,
   updatedAt: true,
@@ -30,7 +29,6 @@ export type UserAdminWireDto = {
   role: UserRole;
   status: UserStatus;
   phone: string | null;
-  avatarUrl: string | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -46,7 +44,6 @@ export function serializeUserAdmin(row: UserAdminRow): UserAdminWireDto {
     role: row.role,
     status: row.status,
     phone: row.phone,
-    avatarUrl: row.avatarUrl,
     lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

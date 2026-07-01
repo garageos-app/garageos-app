@@ -99,7 +99,6 @@ const profile: ProfileMeDto = {
   lastName: 'Rossi',
   role: 'super_admin',
   tenantId: 't-1',
-  avatarUrl: null,
   phone: null,
   status: 'active',
   createdAt: '2026-05-15T00:00:00Z',

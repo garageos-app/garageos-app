@@ -101,7 +101,6 @@ const BASE_DETAIL: InterventionDetailDto = {
     model: 'Panda',
   },
   created_by: { id: 'user-1', first_name: 'Mario', last_name: 'Bianchi' },
-  attachments: [],
 };
 
 const DISPUTE_FIXTURE: InterventionDispute = {

@@ -474,7 +474,7 @@ Oppure cessionario nuovo:
 
 `reason` ∈ `purchase | inheritance | company_assignment | other`. Per `recipient.kind='new'`, se `isBusiness=true` allora `businessName` + `vatNumber` sono obbligatori. Se l'email corrisponde a un customer esistente (anche cross-tenant), il customer viene riusato e `customer_tenant_relations` upsert per l'officina corrente.
 
-`documentS3Key` (opzionale, stringa, max 500, nullable) — chiave S3 restituita dall'endpoint `document-upload-url` (§2.3ter). Quando presente, il server verifica l'oggetto su S3 (`headObject`) e, se valido, lo salva come `VehicleTransfer.documentUrl`. In caso di chiave malformata, oggetto assente, dimensione o formato non conforme → `422 vehicle.transfer.document_invalid`. Se S3 è irraggiungibile durante la verifica → `502 vehicle.transfer.document_s3_unavailable`.
+Nota: l'upload del documento libretto (`documentS3Key` / endpoint di pre-firma) è stato rimosso 2026-07-01 nell'arco "remove uploads and S3" — il trasferimento non richiede più un documento allegato.
 
 #### Response 200
 
@@ -503,66 +503,6 @@ Famiglia `vehicle.transfer.*` — vedi APPENDICE_G:
 - `409 vehicle.transfer.active_transfer_exists` — BR-047
 - `409 vehicle.transfer.same_owner`
 - `403 vehicle.transfer.role_denied` — ruolo non super_admin/mechanic
-- `422 vehicle.transfer.document_invalid` — `documentS3Key` presente ma non valido (chiave malformata, oggetto assente su S3, o size/formato non conforme)
-- `502 vehicle.transfer.document_s3_unavailable` — S3 irraggiungibile durante la verifica del documento
-
----
-
-### 2.3ter `POST /vehicles/:id/ownership-transfer/document-upload-url` — Pre-firma upload libretto
-
-**Feature:** F-OFF-110
-**BR:** BR-049
-**Auth:** Officine pool, ruolo `super_admin` o `mechanic`
-
-#### Descrizione
-
-Genera una pre-signed PUT URL per caricare il libretto di circolazione del veicolo prima di eseguire il trasferimento officina-mediated. La chiave S3 restituita (`s3Key`) va passata come `documentS3Key` nell'endpoint §2.3bis. L'URL scade dopo 15 minuti.
-
-#### Path
-
-```
-POST /v1/vehicles/:id/ownership-transfer/document-upload-url
-```
-
-#### Body
-
-```json
-{
-  "fileName": "libretto-fiat-500.pdf",
-  "mimeType": "application/pdf",
-  "sizeBytes": 2097152
-}
-```
-
-| Campo | Tipo | Vincoli |
-| --- | --- | --- |
-| `fileName` | string | 1–255 caratteri, no control bytes |
-| `mimeType` | string | `image/jpeg` \| `image/png` \| `application/pdf` \| `image/heic` |
-| `sizeBytes` | integer | 1 – 10 485 760 (10 MB) |
-
-#### Response 200
-
-```json
-{
-  "uploadUrl": "https://s3.eu-west-1.amazonaws.com/...",
-  "uploadMethod": "PUT",
-  "uploadHeaders": {
-    "Content-Type": "application/pdf"
-  },
-  "s3Key": "vehicle-transfers/<vehicleId>/<uuid>.pdf",
-  "expiresAt": "2026-05-22T10:15:00.000Z"
-}
-```
-
-Il client deve eseguire `PUT <uploadUrl>` con header `Content-Type` ricevuto e il file come corpo (nessun multipart). Dopo l'upload, passare `s3Key` come `documentS3Key` nella chiamata §2.3bis.
-
-#### Errori
-
-- `400` — body non valido (campo mancante, mimeType non consentito, sizeBytes fuori range)
-- `401` — non autenticato
-- `403 vehicle.transfer.role_denied` — ruolo non super_admin/mechanic
-- `404 vehicle.not_found` — veicolo non visibile all'officina
-- `502 vehicle.transfer.document_s3_unavailable` — S3 irraggiungibile durante la firma della URL
 
 ---
 
@@ -716,8 +656,7 @@ Restituisce un singolo intervento officina e il **thread delle contestazioni del
     "partsReplacedCount": 3,
     "status": "disputed",
     "isDisputed": true,
-    "tenant": { "businessName": "Officina Rossi" },
-    "attachmentsCount": 2
+    "tenant": { "businessName": "Officina Rossi" }
   },
   "disputes": [
     {
@@ -990,9 +929,7 @@ Authorization: Bearer <any_user_jwt>
       "tenant": {
         "id": "01HKXL0...",
         "business_name": "Officina Rossi S.r.l."
-      },
-      "has_attachments": true,
-      "attachments_count": 2
+      }
     },
     {
       "kind": "private_intervention",
@@ -1000,8 +937,7 @@ Authorization: Bearer <any_user_jwt>
       "intervention_date": "2026-03-10",
       "odometer_km": 43500,
       "custom_type": "Rabbocco liquido tergicristalli",
-      "description": "...",
-      "has_attachments": false
+      "description": "..."
     }
   ],
   "meta": {
@@ -1070,8 +1006,7 @@ Authorization: Bearer <customer_jwt>
 
 {
   "reason_category": "not_performed",
-  "description": "Ho portato il veicolo per il cambio olio ma non ho mai richiesto la sostituzione del filtro aria.",
-  "attachment_ids": ["01HKZA..."]
+  "description": "Ho portato il veicolo per il cambio olio ma non ho mai richiesto la sostituzione del filtro aria."
 }
 ```
 
@@ -1086,24 +1021,11 @@ Authorization: Bearer <customer_jwt>
     "reason_category": "not_performed",
     "customer_description": "...",
     "status": "open",
-    "created_at": "2026-04-22T09:15:00Z",
-    "attachment_ids": ["01HKZA..."]
+    "created_at": "2026-04-22T09:15:00Z"
   },
   "intervention_status": "disputed"
 }
 ```
-
-#### Validazione `attachment_ids`
-
-Gli `attachment_ids` devono essere stati pre-uploadati via `POST /v1/attachments/upload-url` con `owner_type=intervention_dispute` e `owner_id=<intervention_id>` (vedi §3.9 / §2.7). Devono essere `processed=true` (callback `confirm` chiamato) e non già associati ad altre dispute.
-
-**Errori di validazione:**
-
-- `422 intervention.dispute.attachment_not_found` — uno degli id non esiste, non è dispute attachment, o non è stato uploadato dal customer corrente.
-- `422 intervention.dispute.attachment_not_processed` — un id esiste ma `processed=false` (manca il callback confirm).
-- `409 intervention.dispute.attachment_already_claimed` — un id è già associato a un'altra dispute.
-
-Il limite è 10 attachment per dispute (BR-180).
 
 #### Note
 
@@ -1131,9 +1053,8 @@ Content-Type: application/json
 Authorization: Bearer <officina_jwt>
 
 {
-  "tenant_response": "L'intervento è stato eseguito come da preventivo firmato il 2026-04-20; in allegato il foglio di lavoro.",
-  "dispute_id": "01HKZB...",
-  "attachment_ids": []
+  "tenant_response": "L'intervento è stato eseguito come da preventivo firmato il 2026-04-20.",
+  "dispute_id": "01HKZB..."
 }
 ```
 
@@ -1141,7 +1062,6 @@ Authorization: Bearer <officina_jwt>
 |---|---|---|---|
 | `tenant_response` | string | yes | min 20, max 2000 chars (BR-129) |
 | `dispute_id` | UUID | no | Se omesso, risponde a tutte le `open` su questa intervention |
-| `attachment_ids` | UUID[] | no | Forward-compat; in v1 deve essere vuoto/assente |
 
 #### Response `200 OK`
 
@@ -1159,8 +1079,7 @@ Authorization: Bearer <officina_jwt>
       "tenant_response_user_id": "01HKUS...",
       "status": "responded",
       "resolved_at": null,
-      "created_at": "2026-04-22T09:15:00Z",
-      "attachment_ids": ["01HKZD..."]
+      "created_at": "2026-04-22T09:15:00Z"
     }
   ],
   "intervention_status": "active"
@@ -1170,25 +1089,16 @@ Authorization: Bearer <officina_jwt>
 `disputes` è sempre array (length 1 con `disputeId`, ≥1 col fanout).
 `intervention_status` è `"active"` se 0 `open` residue post-update; `"disputed"` altrimenti.
 
-**Allegati nelle risposte officina:**
-
-L'array `attachment_ids` viene popolato solo per la dispute target (passata via `dispute_id` nella request body). Per le altre dispute toccate via fanout, l'array è vuoto (`[]`).
-
-**Vincolo fanout + attachments:**
-
-Quando si fa fanout (richiesta SENZA `dispute_id`) E `attachment_ids` non è vuoto → 422 `intervention.dispute.response.attachments_require_dispute_id`. Per allegare prove, specificare esplicitamente `dispute_id`.
-
 #### Errori
 
 | Status | `code` | Trigger |
 |---|---|---|
 | 400 | `intervention.dispute.response.description_too_short` | `tenant_response` < 20 |
-| 400 | `validation.error` | Zod fail (max, attachmentIds shape, body shape) |
+| 400 | `validation.error` | Zod fail (max, body shape) |
 | 401 | `auth.unauthenticated` | JWT mancante/invalido |
 | 403 | `intervention.dispute.response.permission_denied` | Ruolo non in allow-list |
 | 404 | `not_found` | Intervention con id inesistente; `dispute_id` non trovato o di altro tenant |
 | 409 | `intervention.dispute.response.no_active_dispute` | Nessuna `open` da rispondere; OPPURE intervention di altro tenant (vedi Note RLS) |
-| 422 | `intervention.dispute.response.attachments_require_dispute_id` | Fanout + attachmentIds non vuoto |
 
 #### Note
 
@@ -1199,186 +1109,14 @@ Quando si fa fanout (richiesta SENZA `dispute_id`) E `attachment_ids` non è vuo
 
 ---
 
-### 2.7 `POST /attachments/upload-url` + `POST /attachments/:id/confirm` — Workflow upload allegati
+### 2.7 Allegati (rimossi 2026-07-01)
 
-**Feature:** F-OFF-305 (+ reciprocal F-CLI-203/204 attachments)
-**Auth:** Dual pool — `owner_type: intervention` → officina; `owner_type: private_intervention` → clienti (customer must own the row); `owner_type: intervention_dispute` → both pools
-
-#### Descrizione
-
-Workflow a 3 step per uploadare allegati via presigned URL S3:
-
-1. Client chiama `POST /v1/attachments/upload-url` → server insert attachment row con `processed: false`, ritorna URL S3 PUT presigned (15 min) + metadata
-2. Client `PUT` direct su `upload_url` con il file binary (server bypassed)
-3. Client chiama `POST /v1/attachments/:id/confirm` → server verifica via S3 HeadObject, flippa `processed: false → true`
-
-Dispatch per `owner_type` + auth pool: `intervention` (officina), `private_intervention` (clienti — XOR `tenant_id NULL + customer_id SET` per `chk_attachment_owner_consistent`), `intervention_dispute` (entrambi i pool).
-
----
-
-#### Request: `POST /v1/attachments/upload-url`
-
-```http
-POST /v1/attachments/upload-url
-Content-Type: application/json
-Authorization: Bearer <officina_user_jwt>
-
-{
-  "owner_type": "intervention",
-  "owner_id": "01HKXQ...",
-  "file_name": "foto-prima.jpg",
-  "mime_type": "image/jpeg",
-  "size_bytes": 2457600
-}
-```
-
-**Validation rules:**
-
-- `owner_type`: enum `intervention | private_intervention`. Solo `intervention` accettato in v1; `private_intervention` ritorna 422.
-- `owner_id`: UUID v4 dell'intervention. Server verifica che appartenga al tenant del caller (RLS scoping). Mismatch o non esistente → 404.
-- `file_name`: 1-255 chars, no null bytes o control chars. Usato solo per display, mai nel S3 key.
-- `mime_type`: enum whitelisted: `image/jpeg | image/png | image/webp | image/heic | application/pdf`.
-- `size_bytes`: int positive, max 25 MB (26_214_400 bytes).
-
-#### Response `201 Created`
-
-```json
-{
-  "attachment_id": "01HKZE...",
-  "upload_url": "https://garageos-production-attachments.s3.eu-central-1.amazonaws.com/attachments/intervention/01HKXQ.../01HKZE....jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=...",
-  "upload_method": "PUT",
-  "upload_headers": {
-    "Content-Type": "image/jpeg"
-  },
-  "expires_at": "2026-05-04T14:47:05Z",
-  "callback_url": "/v1/attachments/01HKZE.../confirm"
-}
-```
-
-**Importante:** il client DEVE fare PUT con `Content-Type` esatto matchando `mime_type` richiesto + `Content-Length` matchando `size_bytes`. AWS S3 reject l'upload se i header divergono dalle condition signed nell'URL.
-
-#### Errori
-
-- `400 VALIDATION_ERROR` — body schema fail (Zod parsing)
-- `401 UNAUTHORIZED` — JWT mancante/invalid
-- `403 attachment.upload.officina_only` — clienti pool tenta `owner_type=intervention`
-- `403 attachment.upload.officina_pool_not_allowed_for_private` — officina pool tenta `owner_type=private_intervention`
-- `404 attachment.upload.intervention_not_found` — owner_id (intervention) non esiste o cross-tenant
-- `404 attachment.upload.private_intervention_not_found` — owner_id (private_intervention) non esiste, soft-deleted, o di altro customer
-- `502 attachment.upload.s3_unavailable` — AWS SDK signing fail
-
----
-
-#### Request: `POST /v1/attachments/:id/confirm`
-
-```http
-POST /v1/attachments/01HKZE.../confirm
-Authorization: Bearer <officina_user_jwt>
-```
-
-(No body. `id` viene dal URL path.)
-
-#### Response `200 OK`
-
-```json
-{
-  "id": "01HKZE...",
-  "owner_type": "intervention",
-  "owner_id": "01HKXQ...",
-  "file_name": "foto-prima.jpg",
-  "mime_type": "image/jpeg",
-  "size_bytes": 2457600,
-  "processed": true,
-  "uploaded_at": "2026-05-04T14:32:10Z"
-}
-```
-
-**Behavior:**
-
-- **Idempotent**: se l'attachment è già `processed: true`, return 200 con stesso payload senza re-call S3. Permette retry sicuro lato client.
-- **Verifica server-side**: invocazione `s3:HeadObject` per leggere `Content-Length` e `Content-Type` dell'oggetto uploadato. Mismatch con `size_bytes`/`mime_type` salvati alla request upload-url → 422 `metadata_mismatch` (defense vs file-swap post-presign).
-- **Auth**: solo l'uploader originario (chi ha chiamato upload-url) può confirmare. Mismatch `uploadedByUserId` → 403.
-
-#### Errori
-
-- `400 VALIDATION_ERROR` — id non UUID
-- `401 UNAUTHORIZED`
-- `403 attachment.confirm.not_uploader` — caller diverso da uploader
-- `404 attachment.confirm.not_found` — attachment non esiste o cross-tenant
-- `422 attachment.confirm.upload_not_found` — file mai uploaded su S3 (presigned URL expirato senza PUT)
-- `422 attachment.confirm.metadata_mismatch` — ContentLength o ContentType S3 non matcha la request originale
-- `502 attachment.confirm.s3_unavailable` — AWS SDK HeadObject error generico
-
----
-
-#### Flusso completo upload (recap)
-
-1. Client → `POST /attachments/upload-url` ricevi `{attachment_id, upload_url, upload_method: PUT, upload_headers, callback_url}`.
-2. Client → `PUT upload_url` con `Content-Type: <mime>` + `Content-Length: <size>` matching headers.
-3. Client → `POST /attachments/<id>/confirm` (callback_url).
-4. Server flippa `processed: true`.
-
-#### Compression / thumbnail (deferred)
-
-In v1 il `processed: true` flip non triggera compression/thumbnail (cluster G PR 24 con EventBridge fan-out). `thumbnailS3Key` resta `null` finché un futuro Lambda consumer non genera thumbnail post-confirm.
-
----
-
-### 2.7.1 `GET /v1/attachments/:id/view-url` — URL presigned GET allegato
-
-**Feature:** F-OFF-301 (companion slice D — detail page intervento)
-**Auth:** Tenant User (officina pool; clienti pool ritorna `403`)
-**Rate limit:** standard utente
-
-#### Descrizione
-
-Genera on-demand un URL presigned GET S3 per visualizzare o scaricare un allegato già confermato (`processed=true`). L'URL ha validità **15 minuti**. La generazione avviene al momento della richiesta (lazy presign): il DTO del dettaglio intervento (`GET /v1/interventions/:id`, §2.12) espone i metadati degli allegati ma **non** include URL di accesso precalcolati, per evitare fanout S3 non necessario al caricamento della pagina.
-
-v1: supportato solo `ownerType='intervention'`. `private_intervention` e `intervention_dispute` sono deferiti rispettivamente alla mobile slice B2C e alla UI dispute response.
-
-#### Request
-
-```http
-GET /v1/attachments/01HKZE.../view-url
-Authorization: Bearer <officina_user_jwt>
-```
-
-**Path parameters:**
-
-| Nome | Tipo | Note |
-| --- | --- | --- |
-| `id` | uuid v4 | UUID dell'allegato. UUID malformato → `400 VALIDATION_ERROR`. |
-
-#### Response `200 OK`
-
-```json
-{
-  "url": "https://garageos-production-attachments.s3.eu-central-1.amazonaws.com/attachments/intervention/01HKXQ.../01HKZE....jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=900&X-Amz-Signature=...",
-  "expires_at": "2026-05-11T15:47:05.000Z"
-}
-```
-
-| Campo | Tipo | Note |
-| --- | --- | --- |
-| `url` | string | URL presigned S3 GET. Valido per 15 minuti da `expires_at`. |
-| `expires_at` | string (ISO 8601 UTC) | Scadenza dell'URL. Il client deve rigenerare chiamando di nuovo questo endpoint dopo la scadenza. |
-
-#### Errori
-
-| Status | Codice | Scenario |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `id` non è un UUID v4 valido |
-| 401 | (auth middleware) | Authorization header mancante o JWT non valido |
-| 403 | `FORBIDDEN` | JWT proviene dal pool `clienti` invece di `officine` |
-| 404 | `attachment.not_found` | Allegato inesistente, non `processed`, o `deletedAt != null` |
-| 422 | `attachment.owner_not_supported` | `ownerType != 'intervention'` (es. `intervention_dispute`, `private_intervention`) |
-| 502 | `attachment.view_url.s3_unavailable` | AWS SDK presign fail (passthrough da `S3UnavailableError`) |
-
-#### Note
-
-- **Lazy presign**: l'URL non è precalcolato nel DTO del dettaglio intervento (§2.12). Il client deve chiamare questo endpoint separatamente per ogni allegato che vuole aprire o scaricare.
-- **Visibilità cross-tenant (BR-150 / BR-153)**: gli allegati di tipo `intervention` sono parte dello storico officina condiviso, quindi sono presignabili da **qualsiasi** officina — stesso modello di visibilità del dettaglio intervento (§2.12). Il lookup officine **non** è tenant-scoped; il gate `ownerType === 'intervention'` è ciò che mantiene privati gli allegati riservati: `intervention_dispute` (prove di disputa) e `private_intervention` (lato cliente) restano `422` e non trapelano cross-tenant. `attachments_read` RLS è `USING (true)`; l'enforcement è application-layer.
-- **Processed-only**: allegati in stato `processed=false` (upload pendente) o `deletedAt != null` (soft-deleted) ritornano `404 attachment.not_found` — non vengono distinti per evitare information leakage.
+`POST /attachments/upload-url`, `POST /attachments/:id/confirm` e `GET
+/v1/attachments/:id/view-url` (già §2.7 / §2.7.1) sono stati rimossi
+nell'arco "remove uploads and S3" — nessun endpoint di upload/allegato
+resta esposto dall'API. Vedi
+`docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md` e
+BR-180…BR-185 (APPENDICE_F §9, annotate deprecated/removed).
 
 ---
 
@@ -1732,7 +1470,7 @@ Authorization: Bearer <tenant_user_jwt>
 
 #### Descrizione
 
-Restituisce il DTO completo di un singolo intervento officina, inclusi tipo, tenant, veicolo, operatore che ha creato il record, e lista degli allegati confermati. Pensato per popolare la detail page dell'intervento nella web app officina.
+Restituisce il DTO completo di un singolo intervento officina, inclusi tipo, tenant, veicolo, operatore che ha creato il record. Pensato per popolare la detail page dell'intervento nella web app officina.
 
 `wiki_window_open` è computato server-side come predicato composito BR-062: `wikiLockedAt IS NULL AND firstSeenByCustomerAt IS NULL AND now() - createdAt < 48h`. Non viene esposto il raw `wikiLockedAt` per evitare che il client ri-derivi la logica con bug di time-zone (vedi memory `feedback_compute_composite_br_predicates_server_side.md`).
 
@@ -1789,16 +1527,7 @@ Authorization: Bearer <officina_user_jwt>
     "id": "01HKXP8...",
     "first_name": "Giuseppe",
     "last_name": "Ferrari"
-  },
-  "attachments": [                         // solo processed=true e deletedAt=null
-    {
-      "id": "01HKZE...",
-      "file_name": "foto-prima.jpg",
-      "mime_type": "image/jpeg",
-      "size_bytes": 2457600,
-      "created_at": "2026-05-04T14:32:10.000Z"
-    }
-  ]
+  }
 }
 ```
 
@@ -1824,9 +1553,6 @@ Authorization: Bearer <officina_user_jwt>
 | `tenant` | object | no | Tenant owner (`id`, `business_name`) |
 | `vehicle` | object | no | Veicolo target |
 | `created_by` | object | sì | `null` se l'utente è stato cancellato (FK `SetNull` on delete) **oppure** se il viewer non è il tenant proprietario (BR-151) |
-| `attachments` | array | no | Solo `processed=true` e `deletedAt=null`. Upload pendenti e soft-deleted sono nascosti. |
-
-Per ottenere l'URL di accesso a un allegato, chiamare `GET /v1/attachments/:id/view-url` (§2.7.1) con l'`id` di ogni elemento dell'array `attachments`.
 
 #### Errori
 
@@ -1840,10 +1566,9 @@ Per ottenere l'URL di accesso a un allegato, chiamare `GET /v1/attachments/:id/v
 #### Note
 
 - **Visibilità cross-tenant (BR-150 / BR-153)**: lo storico interventi officina è leggibile cross-tenant — una qualsiasi officina può aprire l'intervento di un altro tenant in **sola lettura** (libretto di manutenzione condiviso). `interventions_read` è permissivo cross-tenant (post migration 0003), quindi il lookup usa `findFirst({id})` + null check → `404` **solo** quando la riga non esiste. La proprietà è calcolata app-side (`row.tenantId === request.tenantId`) e pilota la redazione.
-- **Redazione per non proprietari**: quando il viewer non è il tenant proprietario, `internal_notes` e `created_by` sono restituiti `null` (BR-153 note riservate; BR-151 identità meccanico). Tutti gli altri campi (incluso `attachments`) restano visibili. `viewer_is_owner=false` segnala al client la modalità sola lettura: PATCH/cancel/dispute restano comunque bloccati lato server al solo tenant proprietario.
+- **Redazione per non proprietari**: quando il viewer non è il tenant proprietario, `internal_notes` e `created_by` sono restituiti `null` (BR-153 note riservate; BR-151 identità meccanico). Tutti gli altri campi restano visibili. `viewer_is_owner=false` segnala al client la modalità sola lettura: PATCH/cancel/dispute restano comunque bloccati lato server al solo tenant proprietario.
 - **`internal_notes` visibility**: esposto al solo Tenant User proprietario (BR-153). Il pool clienti non ha accesso a questo endpoint (403).
 - **`created_by` null**: quando l'utente che ha creato l'intervento è stato rimosso (soft-delete con `SetNull` sulla FK `userId`) **oppure** quando il viewer è un tenant non proprietario (BR-151). Il client deve gestire il caso null nella UI.
-- **Attachments fetch**: gli allegati sono caricati con una seconda query separata dopo il guard di esistenza dell'intervento (`attachments` non ha una Prisma relation diretta su `Intervention`). Solo `processed=true` e `deletedAt=null` sono inclusi.
 
 ---
 
@@ -2092,9 +1817,6 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 |---|---|---|---|---|
 | GET | `/users/me` | F-OFF-007 | Tenant User | Profilo utente corrente |
 | PATCH | `/users/me` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Aggiorna profilo |
-| POST | `/users/me/avatar/upload-url` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Genera presigned PUT URL per upload avatar |
-| POST | `/users/me/avatar/confirm` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Conferma upload S3 e flippa `avatar_url` |
-| DELETE | `/users/me/avatar` | F-OFF-007 | Tenant User | **[DETTAGLIATO sotto]** Rimuove avatar (`avatar_url=NULL` + DeleteObject) |
 | GET | `/users` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Lista utenti tenant |
 | POST | `/users/invitations` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Invita nuovo utente |
 | GET | `/users/invitations` | F-OFF-004 | Super Admin | **[DETTAGLIATO sotto]** Lista inviti pendenti |
@@ -2127,10 +1849,12 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 
 **200 response:** same shape as `GET /v1/users/me`.
 
-**`GET /v1/users/me` / `PATCH /v1/users/me` response shape** (camelCase wire): `id`, `email`, `firstName`, `lastName`, `role`, `tenantId`, `avatarUrl` (presigned URL or `null`), `phone`, `status`, `createdAt`, plus the brand-strip names:
+**`GET /v1/users/me` / `PATCH /v1/users/me` response shape** (camelCase wire): `id`, `email`, `firstName`, `lastName`, `role`, `tenantId`, `phone`, `status`, `createdAt`, plus the brand-strip names:
 - `tenant`: `{ "businessName": "Officina Matula" }` — nome dell'officina del chiamante.
 
 > **Nota sede-unica (2026-06-30):** `locationId` e `location` rimossi dalla response — la tabella `locations` è stata eliminata.
+>
+> **Nota rimozione upload (2026-07-01):** `avatarUrl` e gli endpoint `/users/me/avatar/*` (upload-url, confirm, delete) sono stati rimossi nell'arco "remove uploads and S3" — la UI mostra le iniziali dell'utente al posto dell'avatar. Vedi `docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md`.
 
 **Errors:**
 - `400 VALIDATION_ERROR` — field validation failure
@@ -2139,55 +1863,6 @@ Gli endpoint seguenti seguono gli stessi pattern mostrati sopra. Per ognuno si i
 - `401 UNAUTHORIZED` — missing/invalid JWT
 - `403 auth.forbidden.wrong_pool` — JWT from clienti pool
 - `404 NOT FOUND` — cross-tenant guard (cognitoSub belongs to different tenant)
-
----
-
-#### Avatar endpoints (`/users/me/avatar/*`)
-
-Flusso 2-fase (analogo a `/attachments/upload-url` + `/confirm` di F-OFF-305 ma dedicato user-avatar, niente riga `attachments`):
-
-**1. `POST /v1/users/me/avatar/upload-url`**
-
-Restituisce un presigned PUT URL per la deterministic key `avatars/users/<user-id>.jpg`. Il client deve poi PUT-tare l'oggetto JPEG (output canvas client-side 512×512 ~85% quality) con header `Content-Type: image/jpeg` esatto.
-
-Request body: `{}` (vuoto).
-
-Response 200:
-```json
-{
-  "upload_url": "https://<bucket>.s3.eu-central-1.amazonaws.com/avatars/users/<uuid>.jpg?...",
-  "upload_method": "PUT",
-  "upload_headers": { "Content-Type": "image/jpeg" },
-  "expires_at": "2026-05-15T12:30:00Z"
-}
-```
-
-Errori: `users.me.avatar.s3_unavailable` (502).
-
-**2. `POST /v1/users/me/avatar/confirm`**
-
-Verifica HeadObject (deve esistere e avere mime `image/jpeg`), poi flippa `users.avatar_url = '<key>'`. Idempotente.
-
-Request body: `{}`.
-
-Response 200: USER_ME response shape con `avatarUrl` come URL presigned 15-min.
-
-Errori:
-- `users.me.avatar.upload_not_found` (422) — HeadObject restituisce NoSuchKey
-- `users.me.avatar.invalid_mime` (422) — HeadObject contentType ≠ `image/jpeg`
-- `users.me.avatar.s3_unavailable` (502)
-
-**3. `DELETE /v1/users/me/avatar`**
-
-Best-effort `DeleteObject` su S3 + UPDATE `users SET avatar_url = NULL`. Idempotente (S3 failures loggate, request comunque 204).
-
-Response 204 No Content.
-
-**Note storage**:
-- DB stora la S3 **key** (`avatars/users/<uuid>.jpg`), non l'URL.
-- L'API layer trasforma key → presigned 15-min URL nel response di GET/PATCH/confirm.
-- Riusa il bucket `S3_ATTACHMENTS_BUCKET` con prefix `avatars/users/`. Niente bucket pubblico.
-- Output sempre JPEG: il frontend converte qualsiasi input (JPEG/PNG/WebP, max 5 MB) a JPEG 512×512 via canvas prima dell'upload.
 
 ---
 
@@ -2206,7 +1881,6 @@ Il DTO **UserAdmin** usato nelle risposte ha la seguente shape:
   "role": "super_admin",
   "status": "active",
   "phone": "+39 333 1234567 | null",
-  "avatarUrl": "https://presigned-url... | null",
   "lastLoginAt": "2026-05-19T10:00:00.000Z | null",
   "createdAt": "2026-04-01T09:00:00.000Z",
   "updatedAt": "2026-05-01T12:00:00.000Z",
@@ -2253,7 +1927,6 @@ Restituisce tutti gli utenti del tenant del chiamante (attivi, inattivi e soft-d
       "role": "super_admin",
       "status": "active",
       "phone": null,
-      "avatarUrl": null,
       "lastLoginAt": "2026-05-19T08:30:00.000Z",
       "createdAt": "2026-04-01T09:00:00.000Z",
       "updatedAt": "2026-05-01T12:00:00.000Z",
@@ -2430,7 +2103,6 @@ Endpoint pubblico (nessun JWT). Il bearer dell'URL è il token stesso. Crea l'ac
     "role": "mechanic",
     "status": "active",
     "phone": null,
-    "avatarUrl": null,
     "lastLoginAt": null,
     "createdAt": "2026-05-19T10:00:00.000Z",
     "updatedAt": "2026-05-19T10:00:00.000Z",
@@ -2665,7 +2337,7 @@ Errori: `401`, `404 me.vehicle.not_found`, `429`, `500`. Nessun codice
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | POST | `/vehicles/:id/interventions` | F-OFF-301, F-OFF-308 | Tenant User | **[DETTAGLIATO §2.2]** Crea intervento |
-| GET | `/interventions/:id` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.12]** Dettaglio intervento officina (BR-062 wiki_window_open, allegati confermati) |
+| GET | `/interventions/:id` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.12]** Dettaglio intervento officina (BR-062 wiki_window_open) |
 | PATCH | `/interventions/:id` | F-OFF-304 | Tenant User | Modifica intervento (wiki rules). Vedi §2.12 per read-after-write. |
 | POST | `/interventions/:id/cancel` | F-OFF-307 | Super Admin | Annulla intervento con motivazione |
 | GET | `/interventions/:id/revisions` | F-OFF-304 | Any User | Storico modifiche. Vedi §2.12 per il DTO completo dell'intervento. |
@@ -2705,26 +2377,11 @@ Errori: `401`, `404 me.vehicle.not_found`, `429`, `500`. Nessun codice
 | DELETE | `/me/personal-deadlines/:id` | F-CLI-306 | Customer | **[DETTAGLIATO §2.4d]** Elimina scadenza personale |
 | POST | `/me/personal-deadlines/:id/complete` | F-CLI-306 | Customer | **[DETTAGLIATO §2.4d]** Completa scadenza; risposta include `renewalSuggestion` se ricorrente (BR-296) |
 
-### 3.9 Attachments
+### 3.9 Attachments (rimossi 2026-07-01)
 
-| Metodo | Path | Feature | Auth | Descrizione |
-|---|---|---|---|---|
-| POST | `/attachments/upload-url` | F-OFF-305 | Tenant User | **[DETTAGLIATO §2.7]** Richiede presigned URL upload |
-| POST | `/attachments/:id/confirm` | F-OFF-305 | Tenant User | **[DETTAGLIATO §2.7]** Conferma upload completato |
-| GET | `/attachments/:id/view-url` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.7.1]** Presigned GET URL per visualizzare allegato (15 min, lazy per click) |
-| GET | `/attachments/:id` | (deferred) | - | Dettaglio attachment metadata (non shipped in v1) |
-| GET | `/attachments/:id/download-url` | F-OFF-305 | Any User | Presigned URL download (15 min validity) |
-| DELETE | `/attachments/:id` | F-OFF-305 | Any User | Rimuove allegato |
-
-**Cross-pool note (`owner_type=intervention_dispute`):**
-
-L'`owner_type=intervention_dispute` è cross-pool: customer-pool per allegati alla contestazione (§2.6), officina-pool per allegati alla risposta (§2.6.1). In entrambi i casi `owner_id` è l'`intervention.id` del genitore. Il binding alla `dispute.id` avviene atomicamente al momento del create della dispute o della risposta.
-
-Auth gating per `owner_type=intervention_dispute`:
-- Customer-pool: il caller deve essere current owner del veicolo (BR-120).
-- Officina-pool: il caller deve essere `super_admin` o `mechanic` E deve esistere almeno una dispute `open` sull'intervention.
-
-L'`owner_type=intervention` resta officina-only.
+Tutti gli endpoint `/attachments/*` sono stati rimossi nell'arco "remove
+uploads and S3" — vedi §2.7 e
+`docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md`.
 
 ### 3.10 Transfers
 
@@ -3160,7 +2817,6 @@ Anti-enumerazione: UUID non valido nel formato e ID sconosciuto restituiscono en
       "role": "super_admin",
       "status": "active",
       "phone": null,
-      "avatarUrl": null,
       "lastLoginAt": "2026-05-19T08:30:00.000Z",
       "createdAt": "2026-04-01T09:00:00.000Z",
       "updatedAt": "2026-05-01T12:00:00.000Z",
@@ -3473,7 +3129,6 @@ Endpoint chiamati solo da EventBridge/sistemi interni. Protetti con firma HMAC
 |---|---|---|
 | POST | `/internal/scheduler/transfer-expiration` | Chiusura trasferimenti scaduti |
 | POST | `/internal/scheduler/invitation-expiration` | Cleanup inviti scaduti |
-| POST | `/internal/s3/attachment-uploaded` | Callback S3 event per processing allegato |
 
 > **Note (post-H3):** The original spec called for a `POST /internal/scheduler/deadline-reminder`
 > HTTP endpoint protected by HMAC. H3 (PR shipped 2026-05-08) replaced this with direct Lambda

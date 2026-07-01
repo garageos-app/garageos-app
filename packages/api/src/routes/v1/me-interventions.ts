@@ -81,32 +81,22 @@ const meInterventionsRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        const [disputes, attachmentsCount] = await Promise.all([
-          tx.interventionDispute.findMany({
-            where: { interventionId: id, customerId },
-            orderBy: { createdAt: 'desc' },
-            select: {
-              id: true,
-              reasonCategory: true,
-              customerDescription: true,
-              status: true,
-              createdAt: true,
-              tenantResponse: true,
-              tenantResponseAt: true,
-              resolvedAt: true,
-            },
-          }),
-          tx.attachment.count({
-            where: {
-              ownerType: 'intervention',
-              ownerId: id,
-              processed: true,
-              deletedAt: null,
-            },
-          }),
-        ]);
+        const disputes = await tx.interventionDispute.findMany({
+          where: { interventionId: id, customerId },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            reasonCategory: true,
+            customerDescription: true,
+            status: true,
+            createdAt: true,
+            tenantResponse: true,
+            tenantResponseAt: true,
+            resolvedAt: true,
+          },
+        });
 
-        return projectShopInterventionDetail(intervention, disputes, attachmentsCount);
+        return projectShopInterventionDetail(intervention, disputes);
       });
     },
   );

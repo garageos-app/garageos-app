@@ -83,8 +83,6 @@ const TIMELINE_FIXTURE: TimelineResponse = {
       wiki_window_open: true,
       tenant: { id: 'tenant-rossi', business_name: 'Officina Rossi' },
       viewer_is_owner: true,
-      has_attachments: true,
-      attachments_count: 2,
     },
     {
       kind: 'private_intervention',
@@ -93,8 +91,6 @@ const TIMELINE_FIXTURE: TimelineResponse = {
       odometer_km: 28100,
       custom_type: 'Cambio gomme',
       description: 'Stagionali invernali.',
-      has_attachments: false,
-      attachments_count: 0,
     },
   ],
   meta: { has_more: false },

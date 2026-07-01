@@ -65,7 +65,6 @@ function makeIntervention(overrides: Partial<InterventionDetail> = {}): Interven
       first_name: 'Mario',
       last_name: 'Rossi',
     },
-    attachments: [],
     ...overrides,
   };
 }

@@ -52,7 +52,6 @@ interface UpdatedUserRow {
   role: 'super_admin' | 'mechanic';
   status: 'active' | 'inactive';
   phone: string | null;
-  avatarUrl: string | null;
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -88,7 +87,6 @@ function baseUpdatedRow(overrides: Partial<UpdatedUserRow> = {}): UpdatedUserRow
     role: 'mechanic',
     status: 'active',
     phone: null,
-    avatarUrl: null,
     lastLoginAt: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-05-21T12:00:00Z'),

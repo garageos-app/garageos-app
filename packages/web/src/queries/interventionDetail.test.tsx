@@ -3,11 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import {
-  useInterventionDetail,
-  useCancelIntervention,
-  useAttachmentViewUrl,
-} from './interventionDetail';
+import { useInterventionDetail, useCancelIntervention } from './interventionDetail';
 import { ApiError } from '@/lib/api-client';
 
 const apiFetchMock = vi.fn();
@@ -117,27 +113,5 @@ describe('useCancelIntervention', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['intervention-disputes', id] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['intervention-revisions', id] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['vehicle-timeline'] });
-  });
-});
-
-describe('useAttachmentViewUrl', () => {
-  it('GETs /v1/attachments/:id/view-url and returns {url, expires_at}', async () => {
-    apiFetchMock.mockResolvedValueOnce({
-      url: 'https://s3/x',
-      expires_at: '2026-05-11T12:00:00.000Z',
-    });
-
-    const { Wrapper } = makeWrapper();
-    const { result } = renderHook(() => useAttachmentViewUrl(), { wrapper: Wrapper });
-
-    let out: { url: string; expires_at: string } | undefined;
-    await act(async () => {
-      out = await result.current.mutateAsync('44444444-4444-4444-4444-444444444444');
-    });
-
-    expect(out?.url).toBe('https://s3/x');
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      '/v1/attachments/44444444-4444-4444-4444-444444444444/view-url',
-    );
   });
 });

@@ -6,7 +6,6 @@ import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor
 import {
   assertInterventionTypeExists,
   assertNotFutureInterventionDate,
-  fetchPrivateInterventionAttachments,
 } from '../../lib/intervention-shared.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -130,12 +129,7 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        const attachments = await fetchPrivateInterventionAttachments(tx, id);
-
-        return {
-          ...projectDetail(row),
-          attachments,
-        };
+        return projectDetail(row);
       });
     },
   );
@@ -198,27 +192,7 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
         const hasMore = rows.length > limit;
         const page = hasMore ? rows.slice(0, limit) : rows;
 
-        // Single groupBy across page ids — avoids N+1 query.
-        const pageIds = page.map((r) => r.id);
-        const buckets =
-          pageIds.length > 0
-            ? await tx.attachment.groupBy({
-                by: ['ownerId'],
-                where: {
-                  ownerType: 'private_intervention',
-                  ownerId: { in: pageIds },
-                  processed: true,
-                  deletedAt: null,
-                },
-                _count: { _all: true },
-              })
-            : [];
-        const countById = new Map<string, number>(buckets.map((b) => [b.ownerId, b._count._all]));
-
-        const data = page.map((r) => ({
-          ...projectDetail(r),
-          attachments_count: countById.get(r.id) ?? 0,
-        }));
+        const data = page.map((r) => projectDetail(r));
 
         const lastRow = page.at(-1);
         const nextCursor =
@@ -318,7 +292,7 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
         });
 
         reply.code(201);
-        return { ...projectDetail(row), attachments: [] };
+        return projectDetail(row);
       });
     },
   );
@@ -406,12 +380,7 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           select: detailSelect,
         });
 
-        const attachments = await fetchPrivateInterventionAttachments(tx, id);
-
-        return {
-          ...projectDetail(row),
-          attachments,
-        };
+        return projectDetail(row);
       });
     },
   );

@@ -232,9 +232,6 @@ Per fornire dati utili al client per gestire l'errore:
 | `user.already_active` | 422 | info | Utente già attivo | POST /v1/users/:id/reactivate su utente non soft-deleted (race / replay) | F-OFF-004, BR-212 |
 | `user.invitation.email_in_other_tenant` | 409 | warning | Questa email risulta già registrata in un'altra officina. Contatta il supporto. | POST /v1/users/invitations — Cognito `AdminGetUser` hit + nessun User row nel tenant chiamante | F-OFF-004, BR-213 |
 | `user.invitation.email_soft_deleted_in_tenant` | 409 | info | Questa email appartiene a un utente disattivato. Riattivalo da Impostazioni → Utenti. | POST /v1/users/invitations — re-invite same email in same tenant dove l'utente è soft-deleted | F-OFF-004, BR-212 |
-| `users.me.avatar.invalid_mime` | 422 | info | Tipo file non valido — richiesto JPEG | POST /v1/users/me/avatar/confirm — HeadObject contentType ≠ image/jpeg | F-OFF-007 |
-| `users.me.avatar.s3_unavailable` | 502 | error | Servizio storage temporaneamente non disponibile | POST /v1/users/me/avatar/upload-url o /confirm — S3 error | F-OFF-007 |
-| `users.me.avatar.upload_not_found` | 422 | info | File non trovato su S3 — upload non atterrato o scaduto | POST /v1/users/me/avatar/confirm — HeadObject NoSuchKey | F-OFF-007 |
 | `users.me.update.empty_body` | 422 | info | Nessun campo da aggiornare | PATCH /v1/users/me con body vuoto o senza campi edibili | F-OFF-007 |
 | `users.me.update.unknown_field` | 422 | info | Campo non modificabile | PATCH /v1/users/me con chiave non in schema (es. email, role, tenantId) | F-OFF-007 |
 | ~~`user.cannot_remove_last_super_admin`~~ | — | — | *Stale spec code — non implementato* | Sostituito da `user.last_super_admin` in F-OFF-004 | BR-203 |
@@ -301,14 +298,10 @@ Per fornire dati utili al client per gestire l'errore:
 | `intervention.dispute.already_exists` | 409 | info | Contestazione già aperta | Una per customer per intervention | BR-122 |
 | `intervention.dispute.not_owner` | 403 | warning | Solo il proprietario può contestare | | BR-120 |
 | `intervention.dispute.description_too_short` | 400 | info | Descrizione contestazione troppo breve | <20 caratteri | BR-124 |
-| `intervention.dispute.attachment_not_found` | 422 | warning | attachmentId non valido o non uploadato dal caller | Verifica che gli id siano stati uploadati con owner_type=intervention_dispute, owner_id=intervention.id, dal pool corrente |  |
-| `intervention.dispute.attachment_not_processed` | 422 | warning | attachmentId esiste ma `processed=false` | Chiama `POST /v1/attachments/<id>/confirm` prima di passarlo nella dispute |  |
-| `intervention.dispute.attachment_already_claimed` | 409 | warning | attachmentId già linked a un'altra dispute | Ottieni un nuovo upload-url e riuploada |  |
 | `intervention.dispute.response.not_your_intervention` | 403 | warning | Contestazione di altro tenant (~~reservato — sostituito da RLS-as-404 in v1~~) | | |
 | `intervention.dispute.response.description_too_short` | 400 | info | Risposta troppo breve | <20 caratteri | BR-129 |
 | `intervention.dispute.response.permission_denied` | 403 | warning | Ruolo non autorizzato a rispondere | Ruolo fuori da {super_admin, mechanic} | BR-129 |
 | `intervention.dispute.response.no_active_dispute` | 409 | info | Nessuna contestazione `open` da rispondere | Omitted dispute_id senza target oppure dispute_id su stato non `open` | BR-129 |
-| `intervention.dispute.response.attachments_require_dispute_id` | 422 | warning | Officina fanout (no dispute_id) + attachmentIds non empty | Specifica `dispute_id` nella request body |  |
 | `intervention.revisions.not_owner` | 403 | warning | Solo il proprietario può consultare lo storico modifiche | Cliente non proprietario attivo del veicolo dell'intervento | BR-064 |
 
 ### 3.7 Interventi privati
@@ -350,8 +343,6 @@ Per fornire dati utili al client per gestire l'errore:
 | `vehicle.transfer.same_owner` | 409 | warning | Il cessionario coincide con il proprietario attuale | F-OFF-110 | BR-049 |
 | `vehicle.transfer.recipient_not_found` | 422 | info | Cessionario non trovato | F-OFF-110 `kind=existing` | BR-049 |
 | `vehicle.transfer.role_denied` | 403 | warning | Ruolo non autorizzato per il trasferimento | F-OFF-110 caller non super_admin/mechanic | BR-049 |
-| `vehicle.transfer.document_invalid` | 422 | info | Il documento del libretto fornito non è valido: chiave malformata, file inesistente su S3, o dimensione/formato non conforme | F-OFF-110 PR-2 `documentS3Key` non valido | BR-049 |
-| `vehicle.transfer.document_s3_unavailable` | 502 | error | Servizio di storage non disponibile durante la firma o la verifica del caricamento del libretto | F-OFF-110 PR-2 S3 irraggiungibile | BR-049 |
 
 ### 3.9 Scadenze
 
@@ -367,16 +358,9 @@ Per fornire dati utili al client per gestire l'errore:
 
 ### 3.10 Allegati
 
-| Code | HTTP | Severity | Titolo | Quando | BR |
-|---|---|---|---|---|---|
-| `attachment.not_found` | 404 | info | Allegato non trovato | | |
-| `attachment.upload.too_large` | 400 | info | File troppo grande | >10 MB | BR-180 |
-| `attachment.upload.mime_not_allowed` | 400 | info | Formato non consentito | Formato non in whitelist | BR-180 |
-| `attachment.upload.too_many` | 409 | info | Limite allegati raggiunto | >10 per intervention | BR-180 |
-| `attachment.upload.url_expired` | 410 | info | URL di upload scaduto | Presigned URL >15min | |
-| `attachment.upload.confirmation_mismatch` | 422 | warning | Conferma upload non corrisponde | Size/hash mismatch | |
-| `attachment.download.permission_denied` | 403 | warning | Non autorizzato a scaricare | | BR-184 |
-| `attachment.deletion.locked` | 422 | info | Allegato bloccato, intervento fuori finestra wiki | | BR-183 |
+*Rimossa 2026-07-01: feature allegati/upload dismessa (arco "remove uploads and
+S3", vedi `docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md`).
+Nessun error code di questa famiglia è più emesso dall'API.*
 
 ### 3.11 Notifiche & push
 
@@ -453,26 +437,11 @@ Troppi tentativi di registrazione dallo stesso IP (5 richieste in 15 minuti). Il
 
 ### 3.17 Attachments (F-OFF-305)
 
-| Codice | HTTP | Trigger | Suggerimento client |
-| --- | --- | --- | --- |
-| `attachment.upload.intervention_not_found` | 404 | `owner_id` non corrisponde a un intervention del tenant del caller (RLS scoping) | Verifica che l'intervention esista e appartenga al tenant corrente; non chiamare upload-url su intervention di altri tenant. |
-| `attachment.upload.mime_type_not_allowed` | 422 (oggi: 400 VALIDATION_ERROR) | `mime_type` fuori whitelist (`image/jpeg`, `image/png`, `image/webp`, `image/heic`, `application/pdf`) | Fai upload solo dei tipi supportati. Per altri formati (es. video), scegli un'alternativa o richiedi extension whitelist. |
-| `attachment.upload.size_too_large` | 422 (oggi: 400 VALIDATION_ERROR) | `size_bytes > 26_214_400` (25 MB) | Comprimi o splitta il file. Limit attuale 25 MB per attachment. |
-| `attachment.upload.invalid_file_name` | 422 (oggi: 400 VALIDATION_ERROR) | `file_name` vuoto, troppo lungo (>255), o contiene null/control bytes | Sanitizza il nome lato client prima del POST. |
-| `attachment.upload.s3_unavailable` | 502 | AWS SDK signing fail (errori temporanei AWS) | Retry con exponential backoff. Se persistente, errore lato server. |
-| `attachment.upload.intervention_dispute_not_owner` | 403 | Customer-pool non è current owner del veicolo dell'intervention | Solo current owner può allegare prove a una dispute |
-| `attachment.upload.intervention_dispute_role_denied` | 403 | Officina-pool con role non in `[super_admin, mechanic]` | Verifica il ruolo dell'utente |
-| `attachment.upload.no_open_dispute` | 422 | Officina upload con `owner_type=intervention_dispute` ma nessuna dispute `open` esiste | Crea/verifica la dispute prima |
-| `attachment.upload.officina_only` | 403 | Clienti-pool tenta `owner_type=intervention` (officina-only) | Usa officina-pool token |
-| `attachment.upload.officina_pool_not_allowed_for_private` | 403 | Officina pool tenta upload su `owner_type=private_intervention` (F-OFF-305 reciprocal: clienti-only) | Solo clienti-pool può caricare allegati su interventi privati customer-side |
-| `attachment.upload.private_intervention_not_found` | 404 | Intervento privato target non esistente, soft-deleted, o appartenente a un altro customer (F-OFF-305 reciprocal) | Verifica che il private intervention esista e appartenga al customer corrente |
-| `attachment.confirm.not_found` | 404 | Attachment id non esiste o appartiene ad altro tenant | Verifica l'id; richiamare upload-url se l'attachment è stato pulito (deferred lifecycle). |
-| `attachment.confirm.not_uploader` | 403 | Caller diverso dall'uploader originario | Solo chi ha chiamato upload-url può confirmare. Per re-upload, ottieni un nuovo upload-url. |
-| `attachment.confirm.upload_not_found` | 422 | S3 HeadObject ritorna NoSuchKey o 404 | L'upload non è atterrato su S3 (URL expirato o PUT mai effettuato). Re-richiedi upload-url e ritenta. |
-| `attachment.confirm.metadata_mismatch` | 422 | ContentLength o ContentType S3 non matcha quanto dichiarato in upload-url | Re-fai upload-url con i metadata corretti del file uploadato. Defense vs file-swap post-presign. |
-| `attachment.confirm.s3_unavailable` | 502 | AWS SDK HeadObject error generico | Retry con backoff. |
-
-**Nota validation Zod**: gli errori di validation (mime fuori whitelist, size > 25MB, file_name invalido) attualmente ritornano `400 VALIDATION_ERROR` (RFC 7807 standard via `@fastify/sensible`) — il code dot-separated specifico (`attachment.upload.mime_type_not_allowed`) è documentato qui per riferimento ma il client riceve `code: VALIDATION_ERROR` con `details` array. In una future iteration, il dot-separated code può essere mappato esplicitamente per granularità.
+*Rimossa 2026-07-01: feature allegati/upload (endpoint `attachments.ts`,
+upload/confirm) dismessa nell'arco "remove uploads and S3", vedi
+`docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md`. Nessuno
+dei codici `attachment.upload.*` / `attachment.confirm.*` è più emesso
+dall'API.*
 
 ---
 
@@ -899,20 +868,6 @@ admin.impersonation.not_allowed
 admin.impersonation.target_not_found
 admin.permission.denied
 admin.tenant.rate_limited
-attachment.deletion.locked
-attachment.download.permission_denied
-attachment.not_found
-attachment.upload.confirmation_mismatch
-attachment.upload.intervention_dispute_not_owner
-attachment.upload.intervention_dispute_role_denied
-attachment.upload.mime_not_allowed
-attachment.upload.no_open_dispute
-attachment.upload.officina_only
-attachment.upload.officina_pool_not_allowed_for_private
-attachment.upload.private_intervention_not_found
-attachment.upload.too_large
-attachment.upload.too_many
-attachment.upload.url_expired
 auth.2fa.invalid_code
 auth.2fa.required
 auth.cognito_unavailable
@@ -965,12 +920,8 @@ intervention.creation.odometer_decrease_warning
 intervention.creation.parts_invalid
 intervention.creation.type_not_found
 intervention.dispute.already_exists
-intervention.dispute.attachment_already_claimed
-intervention.dispute.attachment_not_found
-intervention.dispute.attachment_not_processed
 intervention.dispute.description_too_short
 intervention.dispute.not_owner
-intervention.dispute.response.attachments_require_dispute_id
 intervention.dispute.response.description_too_short
 intervention.dispute.response.no_active_dispute
 intervention.dispute.response.not_your_intervention
@@ -1040,9 +991,6 @@ user.invitation.expired
 user.invitation.not_found
 user.last_super_admin
 user.not_found
-users.me.avatar.invalid_mime
-users.me.avatar.s3_unavailable
-users.me.avatar.upload_not_found
 users.me.update.empty_body
 users.me.update.unknown_field
 validation.failed
@@ -1077,7 +1025,7 @@ vehicle_tag.s3_head_failed
 vehicle_tag.s3_upload_failed
 ```
 
-**Totale: ~158 error code documentati in v1.0** (aggiornato post F-OFF-104 tag PDF, +6 codici: `vehicle.archived`, `vehicle.not_certified`, `vehicle_tag.s3_head_failed`, `vehicle_tag.s3_upload_failed`, `vehicle_tag.render_failed`, `vehicle_tag.audit_insert_failed`). (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004 + 3 codici F-OFF-004 reactivation slice 2026-05-21; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`). (aggiornato post F-OFF-309/F-CLI-501 PDF rendering diretto, +2 codici: `intervention_pdf.render_failed`, `vehicle_history_pdf.render_failed`).
+**Totale: 159 error code documentati in v1.0** (aggiornato post F-OFF-104 tag PDF, +6 codici: `vehicle.archived`, `vehicle.not_certified`, `vehicle_tag.s3_head_failed`, `vehicle_tag.s3_upload_failed`, `vehicle_tag.render_failed`, `vehicle_tag.audit_insert_failed`). (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004 + 3 codici F-OFF-004 reactivation slice 2026-05-21; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`). (aggiornato post F-OFF-309/F-CLI-501 PDF rendering diretto, +2 codici: `intervention_pdf.render_failed`, `vehicle_history_pdf.render_failed`). (aggiornato 2026-07-01 post rimozione upload/allegati/avatar/documenti passaggio proprietà — arco "remove uploads and S3": -21 codici rimossi: 14 `attachment.upload.*`/`attachment.*`, 4 `intervention.dispute.attachment*`/`response.attachments_require_dispute_id`, 3 `users.me.avatar.*`; totale netto 159, vedi `docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md`).
 
 ---
 

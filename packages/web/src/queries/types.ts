@@ -102,8 +102,6 @@ export interface ShopTimelineItem {
    * hidden on other tenants' rows. Always false for the clienti pool.
    */
   viewer_is_owner: boolean;
-  has_attachments: boolean;
-  attachments_count: number;
 }
 
 // GET /v1/vehicles/:id/timeline/officine — distinct officine with ≥1 shop
@@ -126,8 +124,6 @@ export interface PrivateTimelineItem {
   odometer_km: number;
   custom_type: string | null;
   description: string;
-  has_attachments: boolean;
-  attachments_count: number;
 }
 
 export type TimelineItem = ShopTimelineItem | PrivateTimelineItem;
@@ -401,14 +397,6 @@ export interface InterventionPartReplaced {
   notes: string | null;
 }
 
-export interface InterventionAttachment {
-  id: string;
-  file_name: string;
-  mime_type: string;
-  size_bytes: number;
-  created_at: string;
-}
-
 export interface InterventionDetail {
   id: string;
   status: InterventionStatus;
@@ -443,14 +431,6 @@ export interface InterventionDetail {
   tenant: { id: string; business_name: string };
   vehicle: { id: string; garage_code: string; plate: string; make: string; model: string };
   created_by: { id: string; first_name: string; last_name: string } | null;
-  attachments: InterventionAttachment[];
-}
-
-// /v1/attachments/:id/view-url — lazy presign GET URL companion (slice D).
-// Returns a 15-min TTL presigned S3 URL plus its expiration.
-export interface AttachmentViewUrlResponse {
-  url: string;
-  expires_at: string;
 }
 
 // /v1/interventions/:id/cancel request body (F-OFF-307 BR-066).
@@ -489,41 +469,4 @@ export interface InterventionRevisionsResponse {
     has_more: boolean;
     cursor?: string;
   };
-}
-
-// /v1/attachments/upload-url — request body (F-OFF-305 slice H).
-// v1: only `owner_type: 'intervention'` is supported (private_intervention
-// returns 422 server-side, deferred to mobile B2C slice K).
-export interface AttachmentUploadUrlRequest {
-  owner_type: 'intervention';
-  owner_id: string;
-  file_name: string;
-  mime_type: string;
-  size_bytes: number;
-}
-
-// /v1/attachments/upload-url — response body. The client must PUT the
-// file binary to `upload_url` with `Content-Type: <mime_type>` and the
-// declared `Content-Length: <size_bytes>` before calling confirm.
-// `expires_at` reflects the 15-min S3 presign TTL.
-export interface AttachmentUploadUrlResponse {
-  attachment_id: string;
-  upload_url: string;
-  upload_method: 'PUT';
-  upload_headers: Record<string, string>;
-  expires_at: string;
-  callback_url: string;
-}
-
-// /v1/attachments/:id/confirm — response body. Idempotent: a second
-// call after success returns the same payload without re-calling S3.
-export interface AttachmentConfirmResponse {
-  id: string;
-  owner_type: 'intervention';
-  owner_id: string;
-  file_name: string;
-  mime_type: string;
-  size_bytes: number;
-  processed: true;
-  uploaded_at: string;
 }

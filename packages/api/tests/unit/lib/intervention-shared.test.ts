@@ -3,8 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertInterventionTypeExists,
   assertNotFutureInterventionDate,
-  fetchPrivateInterventionAttachments,
-  type PrivateInterventionAttachmentDto,
 } from '../../../src/lib/intervention-shared.js';
 
 describe('assertNotFutureInterventionDate', () => {
@@ -37,77 +35,6 @@ describe('assertNotFutureInterventionDate', () => {
         message: 'Non è possibile registrare interventi futuri.',
       }),
     );
-  });
-});
-
-describe('fetchPrivateInterventionAttachments', () => {
-  it('maps Prisma rows to the public DTO shape (snake_case wire fields)', async () => {
-    const createdAt = new Date('2026-05-10T12:00:00.000Z');
-    const findMany = vi.fn().mockResolvedValue([
-      {
-        id: 'att-1',
-        fileName: 'receipt.pdf',
-        mimeType: 'application/pdf',
-        sizeBytes: 12345,
-        createdAt,
-      },
-    ]);
-    const tx = { attachment: { findMany } } as unknown as Parameters<
-      typeof fetchPrivateInterventionAttachments
-    >[0];
-
-    const result = await fetchPrivateInterventionAttachments(tx, 'pi-1');
-    expect(result).toEqual<PrivateInterventionAttachmentDto[]>([
-      {
-        id: 'att-1',
-        file_name: 'receipt.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 12345,
-        created_at: createdAt.toISOString(),
-      },
-    ]);
-    expect(findMany).toHaveBeenCalledWith({
-      where: {
-        ownerType: 'private_intervention',
-        ownerId: 'pi-1',
-        processed: true,
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        fileName: true,
-        mimeType: true,
-        sizeBytes: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-  });
-
-  it('returns an empty array when findMany returns no rows', async () => {
-    const findMany = vi.fn().mockResolvedValue([]);
-    const tx = { attachment: { findMany } } as unknown as Parameters<
-      typeof fetchPrivateInterventionAttachments
-    >[0];
-
-    const result = await fetchPrivateInterventionAttachments(tx, 'pi-empty');
-    expect(result).toEqual([]);
-    expect(findMany).toHaveBeenCalledWith({
-      where: {
-        ownerType: 'private_intervention',
-        ownerId: 'pi-empty',
-        processed: true,
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        fileName: true,
-        mimeType: true,
-        sizeBytes: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
   });
 });
 

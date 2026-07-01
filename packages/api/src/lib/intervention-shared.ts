@@ -75,50 +75,6 @@ export function assertNotFutureInterventionDate(
   return dateUtc;
 }
 
-// Public DTO shape for an attachment exposed on the wire. Snake_case
-// because the API contract is snake_case; the s3 key is intentionally
-// dropped (clients call /v1/attachments/:id/view-url to get signed URLs).
-export type PrivateInterventionAttachmentDto = {
-  id: string;
-  file_name: string;
-  mime_type: string;
-  size_bytes: number;
-  created_at: string;
-};
-
-// Reads processed, non-deleted attachments for a private intervention
-// and maps them to the public DTO. Used by detail GET and PATCH
-// handlers — single source of truth for the select + serializer so
-// drift here breaks both endpoints simultaneously (desired failure mode).
-export async function fetchPrivateInterventionAttachments(
-  tx: PrismaClient,
-  privateInterventionId: string,
-): Promise<PrivateInterventionAttachmentDto[]> {
-  const rows = await tx.attachment.findMany({
-    where: {
-      ownerType: 'private_intervention',
-      ownerId: privateInterventionId,
-      processed: true,
-      deletedAt: null,
-    },
-    select: {
-      id: true,
-      fileName: true,
-      mimeType: true,
-      sizeBytes: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'asc' },
-  });
-  return rows.map((r) => ({
-    id: r.id,
-    file_name: r.fileName,
-    mime_type: r.mimeType,
-    size_bytes: r.sizeBytes,
-    created_at: r.createdAt.toISOString(),
-  }));
-}
-
 // FK existence check for intervention_types. RLS on intervention_types
 // is permissive (migration 20260427120000) — system-wide AND tenant-
 // custom rows are visible. Caller is responsible for the null/undefined

@@ -1,6 +1,6 @@
 // Pure serializer for GET /v1/me/interventions/:id (F-CLI-206). The route
-// resolves the Prisma rows and the attachments count, then passes them here
-// so this stays DB-free and unit-testable. camelCase wire shape, consistent
+// resolves the Prisma rows and passes them here so this stays DB-free and
+// unit-testable. camelCase wire shape, consistent
 // with the other /me endpoints. interventionDate is @db.Date -> emitted
 // date-only (YYYY-MM-DD), never a full ISO timestamp (see feedback
 // db_date_serialized_as_iso, PR #156).
@@ -58,7 +58,6 @@ export interface ShopInterventionDetailDto {
     status: string;
     isDisputed: boolean;
     tenant: { businessName: string };
-    attachmentsCount: number;
     generatedDeadlines: Array<{
       id: string;
       type: { code: string; name_it: string };
@@ -83,7 +82,6 @@ export interface ShopInterventionDetailDto {
 export function projectShopInterventionDetail(
   row: RawInterventionRow,
   disputes: RawDisputeRow[],
-  attachmentsCount: number,
 ): ShopInterventionDetailDto {
   const parts = normalizePartsReplaced(row.partsReplaced);
   return {
@@ -100,7 +98,6 @@ export function projectShopInterventionDetail(
       status: row.status,
       isDisputed: row.status === 'disputed',
       tenant: { businessName: row.tenant.businessName },
-      attachmentsCount,
       generatedDeadlines: row.sourceDeadlines.map((d) => ({
         id: d.id,
         type: { code: d.interventionType.code, name_it: d.interventionType.nameIt },

@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InterventionHeader } from '@/components/intervention-detail/InterventionHeader';
-import { AttachmentsSection } from '@/components/intervention-detail/AttachmentsSection';
 import { DisputeThreadSection } from '@/components/intervention-detail/DisputeThreadSection';
 import { RevisionHistorySection } from '@/components/intervention-detail/RevisionHistorySection';
 import { CancelInterventionDialog } from '@/components/CancelInterventionDialog';
@@ -52,8 +51,6 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
       business_name: d.tenant.business_name,
     },
     viewer_is_owner: d.viewer_is_owner,
-    has_attachments: d.attachments.length > 0,
-    attachments_count: d.attachments.length,
   };
 }
 
@@ -79,7 +76,7 @@ function Tile({ label, value }: { label: string; value: string }) {
  *
  * Mounts three React Queries (detail, disputes, revisions) and composes
  * InterventionHeader, a 4-tile stats grid, a wiki banner (BR-062), and
- * six Card sections (Descrizione, Ricambi, Allegati, Contestazione,
+ * five Card sections (Descrizione, Ricambi, Contestazione,
  * Cronologia modifiche, Annullamento). Hosts CancelInterventionDialog
  * (BR-066) and EditInterventionDialog (BR-062/BR-064). The edit dialog
  * is reused from PR #83 unchanged via the `toTimelineItemSlice` adapter.
@@ -254,13 +251,6 @@ export function InterventionDetail() {
           </CardContent>
         </Card>
       )}
-
-      {/* Allegati — list visible to all; upload affordance owner-only */}
-      <AttachmentsSection
-        attachments={i.attachments}
-        interventionId={i.id}
-        canUpload={i.viewer_is_owner}
-      />
 
       {/* Contestazione thread + cronologia modifiche — owner-only surfaces
           (BR-151/BR-153). Hidden in the cross-tenant read-only view: the

@@ -152,9 +152,6 @@ describe('GET /v1/interventions/:id (officina)', () => {
 
     // The owning tenant is the viewer → full visibility flag
     expect(body.viewer_is_owner).toBe(true);
-
-    // Attachments (empty by default)
-    expect(body.attachments).toEqual([]);
   });
 
   // -----------------------------------------------------------------------
@@ -166,7 +163,7 @@ describe('GET /v1/interventions/:id (officina)', () => {
   //   - created_by     → null  (mechanic identity gated by BR-151)
   //   - viewer_is_owner → false (drives read-only UI on the client)
   // Public shop-record fields (title, description, parts, type, tenant,
-  // location, vehicle, attachments) stay visible.
+  // vehicle) stay visible.
   // -----------------------------------------------------------------------
   it('allows cross-tenant read but redacts internal_notes and created_by (BR-153)', async () => {
     const { tenantId: tenantA, userId: userA } = await setupCaller('det-xA');
@@ -174,19 +171,6 @@ describe('GET /v1/interventions/:id (officina)', () => {
       tenantId: tenantA,
       userId: userA,
     });
-
-    // A processed attachment owned by tenantA — must stay visible cross-tenant.
-    const { rows } = await pgAdmin.query<{ id: string }>(
-      `INSERT INTO attachments
-         (id, owner_type, owner_id, tenant_id, file_name, mime_type,
-          size_bytes, s3_key, s3_bucket, processed, deleted_at, created_at)
-       VALUES (gen_random_uuid(), 'intervention'::"AttachmentOwnerType", $1, $2,
-          'ricevuta.pdf', 'application/pdf', 67890,
-          'uploads/ricevuta.pdf', 'garageos-dev', true, NULL, NOW())
-       RETURNING id`,
-      [interventionId, tenantA],
-    );
-    const attachmentId = rows[0]!.id;
 
     // Caller is tenantB
     const { token: tokenB } = await setupCaller('det-xB');
@@ -212,11 +196,6 @@ describe('GET /v1/interventions/:id (officina)', () => {
     expect(body.parts_replaced).toHaveLength(1);
     expect((body.tenant as Record<string, unknown>).id).toBe(tenantA);
     expect(typeof (body.vehicle as Record<string, unknown>).plate).toBe('string');
-
-    // Attachments of the owning tenant are visible cross-tenant
-    const attachments = body.attachments as Array<Record<string, unknown>>;
-    expect(attachments).toHaveLength(1);
-    expect(attachments[0]!.id).toBe(attachmentId);
   });
 
   // -----------------------------------------------------------------------
@@ -475,65 +454,6 @@ describe('GET /v1/interventions/:id (officina)', () => {
       quantity: 2,
       notes: 'Verificare coppia serraggio',
     });
-  });
-
-  // -----------------------------------------------------------------------
-  // Scenario 13: Attachments filtering (processed=true only, deletedAt=null)
-  // -----------------------------------------------------------------------
-  it('hides pending (processed=false) and soft-deleted (deletedAt!=null) attachments; surfaces only processed+live ones', async () => {
-    const { tenantId, userId, token } = await setupCaller('det-attach');
-    const { interventionId } = await setupIntervention({ tenantId, userId });
-
-    // Attachment 1: processed=false → must be excluded
-    await pgAdmin.query(
-      `INSERT INTO attachments
-         (id, owner_type, owner_id, tenant_id, file_name, mime_type,
-          size_bytes, s3_key, s3_bucket, processed, deleted_at, created_at)
-       VALUES (gen_random_uuid(), 'intervention'::"AttachmentOwnerType", $1, $2,
-          'draft.pdf', 'application/pdf', 12345,
-          'uploads/draft.pdf', 'garageos-dev', false, NULL, NOW())`,
-      [interventionId, tenantId],
-    );
-
-    // Attachment 2: processed=true, deletedAt=null → must be included
-    const { rows } = await pgAdmin.query<{ id: string }>(
-      `INSERT INTO attachments
-         (id, owner_type, owner_id, tenant_id, file_name, mime_type,
-          size_bytes, s3_key, s3_bucket, processed, deleted_at, created_at)
-       VALUES (gen_random_uuid(), 'intervention'::"AttachmentOwnerType", $1, $2,
-          'ricevuta.pdf', 'application/pdf', 67890,
-          'uploads/ricevuta.pdf', 'garageos-dev', true, NULL, NOW())
-       RETURNING id`,
-      [interventionId, tenantId],
-    );
-    const processedAttachmentId = rows[0]!.id;
-
-    // Attachment 3: processed=true but soft-deleted → must be excluded
-    await pgAdmin.query(
-      `INSERT INTO attachments
-         (id, owner_type, owner_id, tenant_id, file_name, mime_type,
-          size_bytes, s3_key, s3_bucket, processed, deleted_at, created_at)
-       VALUES (gen_random_uuid(), 'intervention'::"AttachmentOwnerType", $1, $2,
-          'deleted.pdf', 'application/pdf', 11111,
-          'uploads/deleted.pdf', 'garageos-dev', true, NOW(), NOW())`,
-      [interventionId, tenantId],
-    );
-
-    const res = await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/${interventionId}`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
-    });
-
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as Record<string, unknown>;
-    const attachments = body.attachments as Array<Record<string, unknown>>;
-    expect(attachments).toHaveLength(1);
-    expect(attachments[0]!.id).toBe(processedAttachmentId);
-    expect(attachments[0]!.file_name).toBe('ricevuta.pdf');
-    expect(attachments[0]!.mime_type).toBe('application/pdf');
-    expect(attachments[0]!.size_bytes).toBe(67890);
-    expect(typeof attachments[0]!.created_at).toBe('string');
   });
 
   // -----------------------------------------------------------------------

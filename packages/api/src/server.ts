@@ -35,7 +35,6 @@ import interventionRoutes from './routes/v1/interventions.js';
 import interventionRecentRoutes from './routes/v1/interventions-recent.js';
 import disputesOpenRoutes from './routes/v1/disputes-open.js';
 import interventionTypesRoutes from './routes/v1/intervention-types.js';
-import attachmentsRoutes from './routes/v1/attachments.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
 import meVehiclesPendingRoutes from './routes/v1/me-vehicles-pending.js';
 import meVehicleExportPdfRoutes from './routes/v1/me-vehicles-export-pdf.js';
@@ -48,7 +47,6 @@ import meNotificationPreferencesRoutes from './routes/v1/me-notification-prefere
 import mePushTokensRoutes from './routes/v1/me-push-tokens.js';
 import userRoutes from './routes/v1/users.js';
 import userUpdateRoutes from './routes/v1/users-update.js';
-import userAvatarRoutes from './routes/v1/users-avatar.js';
 import { usersListRoutes } from './routes/v1/users-list.js';
 import { usersInvitationsCreateRoutes } from './routes/v1/users-invitations-create.js';
 import { usersInvitationsListRoutes } from './routes/v1/users-invitations-list.js';
@@ -168,7 +166,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(healthRoutes);
   await app.register(userRoutes);
   await app.register(userUpdateRoutes);
-  await app.register(userAvatarRoutes);
   await app.register(usersListRoutes);
   await app.register(usersInvitationsCreateRoutes);
   await app.register(usersInvitationsListRoutes);
@@ -226,7 +223,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(deadlinesCompleteRoutes);
   await app.register(deadlinesListCustomerRoutes);
   await app.register(deadlinesListTenantRoutes);
-  await app.register(attachmentsRoutes);
   await app.register(meVehicleRoutes);
   await app.register(meVehiclesPendingRoutes);
   await app.register(meVehicleExportPdfRoutes);

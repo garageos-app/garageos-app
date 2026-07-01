@@ -140,8 +140,7 @@ export function useRevokeInvitation() {
   const qc = useQueryClient();
   return useMutation<void, ApiError, string>({
     // body: '{}' — apiFetch hardcodes Content-Type: application/json and
-    // Fastify rejects requests with that header but no body. See
-    // queries/avatarUpload.ts:123 for the same workaround.
+    // Fastify rejects requests with that header but no body.
     mutationFn: (id) =>
       apiFetch<void>(`/v1/users/invitations/${id}`, { method: 'DELETE', body: '{}' }),
     onSuccess: () => {

@@ -38,7 +38,6 @@ export const CreateInterventionSchema = z.object({
 export const CreateDisputeSchema = z.object({
   reasonCategory: z.enum(['not_performed', 'wrong_data', 'not_authorized', 'other']),
   description: z.string().min(20).max(2000),
-  attachmentIds: z.array(z.uuid()).max(10).optional(),
 });
 
 // BR-065 — fields editable on PATCH /interventions/:id.
@@ -84,13 +83,10 @@ export const CancelInterventionSchema = z
 // generic `validation.error`. The max(2000) upper bound stays in Zod.
 // `disputeId` is optional: when present, target a single dispute by id;
 // when absent, target all `open` disputes on the parent intervention.
-// `attachmentIds` accepted for forward-compat (rejected handler-side
-// 422 in v1 — storage layer not shipped).
 export const RespondToDisputeSchema = z
   .object({
     tenantResponse: z.string().max(2000),
     disputeId: z.uuid().optional(),
-    attachmentIds: z.array(z.uuid()).max(10).optional(),
   })
   .strict();
 
