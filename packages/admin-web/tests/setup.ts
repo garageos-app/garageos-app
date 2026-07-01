@@ -25,6 +25,21 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
+// Polyfill matchMedia for the shadcn sidebar's useIsMobile hook in jsdom.
+if (!window.matchMedia) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  });
+}
+
 // Stub Cognito env vars so module-init does not throw when test files import
 // code that depends on them. These values are intentionally fake.
 vi.stubEnv('VITE_COGNITO_PLATFORM_ADMINS_POOL_ID', 'eu-central-1_test');

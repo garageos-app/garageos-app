@@ -104,173 +104,159 @@ export function AuditLogs() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-6xl mx-auto">
-          <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
-            Errore nel caricamento degli audit log.
-          </div>
-        </div>
+      <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
+        Errore nel caricamento degli audit log.
       </div>
     );
   }
 
   if (isLoading || !data) {
-    return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-muted-foreground">Caricamento…</p>
-        </div>
-      </div>
-    );
+    return <p className="text-muted-foreground">Caricamento…</p>;
   }
 
   const items = data.pages.flatMap((p) => p.items);
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Audit</h1>
-
-        {/* ── Filters ─────────────────────────────────────────────────────── */}
-        {/* Native <select> and <input> — avoids Radix Select pointer-capture
+    <div className="space-y-6">
+      {/* ── Filters ─────────────────────────────────────────────────────── */}
+      {/* Native <select> and <input> — avoids Radix Select pointer-capture
             issues in JSDOM. See [[feedback_radix_select_jsdom_pointer_polyfill]]. */}
-        <div className="flex flex-wrap gap-4 mb-6">
-          {/* Officina */}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="filter-tenant" className="text-sm font-medium">
-              Officina
-            </label>
-            <select
-              id="filter-tenant"
-              value={filters.tenantId}
-              onChange={(e) => setFilters((f) => ({ ...f, tenantId: e.target.value }))}
-              className="border rounded px-2 py-1 text-sm bg-background"
-            >
-              <option value="">Tutte</option>
-              <option value="platform">Eventi piattaforma</option>
-              {tenantsQuery.data?.tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.businessName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Azione */}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="filter-action" className="text-sm font-medium">
-              Azione
-            </label>
-            <select
-              id="filter-action"
-              value={filters.action}
-              onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
-              className="border rounded px-2 py-1 text-sm bg-background"
-            >
-              <option value="">Tutte</option>
-              {AUDIT_ACTIONS.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Tipo attore */}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="filter-actor-type" className="text-sm font-medium">
-              Tipo attore
-            </label>
-            <select
-              id="filter-actor-type"
-              value={filters.actorType}
-              onChange={(e) => setFilters((f) => ({ ...f, actorType: e.target.value }))}
-              className="border rounded px-2 py-1 text-sm bg-background"
-            >
-              <option value="">Tutti</option>
-              {(Object.keys(ACTOR_TYPE_LABELS) as AuditLogItem['actorType'][]).map((key) => (
-                <option key={key} value={key}>
-                  {ACTOR_TYPE_LABELS[key]}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Periodo Da */}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="filter-from" className="text-sm font-medium">
-              Da
-            </label>
-            <input
-              id="filter-from"
-              type="date"
-              value={filters.from}
-              onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))}
-              className="border rounded px-2 py-1 text-sm bg-background"
-            />
-          </div>
-
-          {/* Periodo A */}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="filter-to" className="text-sm font-medium">
-              A
-            </label>
-            <input
-              id="filter-to"
-              type="date"
-              value={filters.to}
-              onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))}
-              className="border rounded px-2 py-1 text-sm bg-background"
-            />
-          </div>
+      <div className="flex flex-wrap gap-4 mb-6">
+        {/* Officina */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filter-tenant" className="text-sm font-medium">
+            Officina
+          </label>
+          <select
+            id="filter-tenant"
+            value={filters.tenantId}
+            onChange={(e) => setFilters((f) => ({ ...f, tenantId: e.target.value }))}
+            className="border rounded px-2 py-1 text-sm bg-background"
+          >
+            <option value="">Tutte</option>
+            <option value="platform">Eventi piattaforma</option>
+            {tenantsQuery.data?.tenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.businessName}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* ── Table ──────────────────────────────────────────────────────── */}
-        {items.length === 0 ? (
-          <p className="text-muted-foreground">Nessun evento.</p>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Officina</TableHead>
-                  <TableHead>Attore</TableHead>
-                  <TableHead>Azione</TableHead>
-                  <TableHead>Entità</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow
-                    key={item.id}
-                    className="cursor-pointer"
-                    onClick={() => setSelected(item)}
-                  >
-                    <TableCell>{new Date(item.createdAt).toLocaleString('it-IT')}</TableCell>
-                    <TableCell>{getTenantLabel(item.tenant)}</TableCell>
-                    <TableCell>{ACTOR_TYPE_LABELS[item.actorType]}</TableCell>
-                    <TableCell>{item.action}</TableCell>
-                    <TableCell>{item.entityType}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        {/* Azione */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filter-action" className="text-sm font-medium">
+            Azione
+          </label>
+          <select
+            id="filter-action"
+            value={filters.action}
+            onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
+            className="border rounded px-2 py-1 text-sm bg-background"
+          >
+            <option value="">Tutte</option>
+            {AUDIT_ACTIONS.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </div>
 
-            {hasNextPage && (
-              <div className="mt-4 flex justify-center">
-                <Button
-                  variant="outline"
-                  onClick={() => void fetchNextPage()}
-                  disabled={isFetchingNextPage}
-                >
-                  Carica altri
-                </Button>
-              </div>
-            )}
-          </>
-        )}
+        {/* Tipo attore */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filter-actor-type" className="text-sm font-medium">
+            Tipo attore
+          </label>
+          <select
+            id="filter-actor-type"
+            value={filters.actorType}
+            onChange={(e) => setFilters((f) => ({ ...f, actorType: e.target.value }))}
+            className="border rounded px-2 py-1 text-sm bg-background"
+          >
+            <option value="">Tutti</option>
+            {(Object.keys(ACTOR_TYPE_LABELS) as AuditLogItem['actorType'][]).map((key) => (
+              <option key={key} value={key}>
+                {ACTOR_TYPE_LABELS[key]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Periodo Da */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filter-from" className="text-sm font-medium">
+            Da
+          </label>
+          <input
+            id="filter-from"
+            type="date"
+            value={filters.from}
+            onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))}
+            className="border rounded px-2 py-1 text-sm bg-background"
+          />
+        </div>
+
+        {/* Periodo A */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filter-to" className="text-sm font-medium">
+            A
+          </label>
+          <input
+            id="filter-to"
+            type="date"
+            value={filters.to}
+            onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))}
+            className="border rounded px-2 py-1 text-sm bg-background"
+          />
+        </div>
       </div>
+
+      {/* ── Table ──────────────────────────────────────────────────────── */}
+      {items.length === 0 ? (
+        <p className="text-muted-foreground">Nessun evento.</p>
+      ) : (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Data</TableHead>
+                <TableHead>Officina</TableHead>
+                <TableHead>Attore</TableHead>
+                <TableHead>Azione</TableHead>
+                <TableHead>Entità</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => (
+                <TableRow
+                  key={item.id}
+                  className="cursor-pointer"
+                  onClick={() => setSelected(item)}
+                >
+                  <TableCell>{new Date(item.createdAt).toLocaleString('it-IT')}</TableCell>
+                  <TableCell>{getTenantLabel(item.tenant)}</TableCell>
+                  <TableCell>{ACTOR_TYPE_LABELS[item.actorType]}</TableCell>
+                  <TableCell>{item.action}</TableCell>
+                  <TableCell>{item.entityType}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {hasNextPage && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                onClick={() => void fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                Carica altri
+              </Button>
+            </div>
+          )}
+        </>
+      )}
 
       {/* ── Detail Dialog ────────────────────────────────────────────────── */}
       <Dialog

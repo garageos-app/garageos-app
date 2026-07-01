@@ -242,17 +242,12 @@ export function TenantDetail() {
   // Mirrors the guard order in TenantList.tsx.
   if (error) {
     return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-3xl mx-auto">
-          <Link
-            to="/officine"
-            className="text-sm text-muted-foreground hover:underline mb-4 inline-block"
-          >
-            ← Officine
-          </Link>
-          <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
-            Errore nel caricamento dell&apos;officina.
-          </div>
+      <div className="max-w-3xl space-y-4">
+        <Link to="/officine" className="text-sm text-muted-foreground hover:underline inline-block">
+          ← Officine
+        </Link>
+        <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
+          Errore nel caricamento dell&apos;officina.
         </div>
       </div>
     );
@@ -263,16 +258,11 @@ export function TenantDetail() {
   // See [[feedback_react_query_data_bang_offline_paused]].
   if (isLoading || !data) {
     return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-3xl mx-auto">
-          <Link
-            to="/officine"
-            className="text-sm text-muted-foreground hover:underline mb-4 inline-block"
-          >
-            ← Officine
-          </Link>
-          <p className="text-muted-foreground">Caricamento…</p>
-        </div>
+      <div className="max-w-3xl space-y-4">
+        <Link to="/officine" className="text-sm text-muted-foreground hover:underline inline-block">
+          ← Officine
+        </Link>
+        <p className="text-muted-foreground">Caricamento…</p>
       </div>
     );
   }
@@ -288,7 +278,7 @@ export function TenantDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
+    <>
       <div className="max-w-3xl mx-auto">
         <Link
           to="/officine"
@@ -760,6 +750,6 @@ export function TenantDetail() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

@@ -6,9 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PlatformConsole } from '@/pages/PlatformConsole';
 import type { PlatformMetrics } from '@/lib/metrics-types';
 
-const { mockApiFetch, mockSignOut } = vi.hoisted(() => ({
+const { mockApiFetch } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
-  mockSignOut: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', () => ({
@@ -17,20 +16,13 @@ vi.mock('@/lib/api-client', () => ({
 
 vi.mock('@/auth/useAuth', () => ({
   useAuth: () => ({
-    signOut: mockSignOut,
+    signOut: vi.fn(),
     state: { status: 'authenticated', user: { email: 'admin@garageos.it' } },
     signIn: vi.fn(),
     getIdToken: vi.fn(),
     completeNewPassword: vi.fn(),
   }),
 }));
-
-const ME = {
-  sub: 'sub-abc123',
-  email: 'admin@garageos.it',
-  firstName: 'Mario',
-  lastName: 'Rossi',
-};
 
 const METRICS: PlatformMetrics = {
   tenants: { total: 7, active: 5, suspended: 2 },
@@ -44,10 +36,9 @@ const METRICS: PlatformMetrics = {
   })),
 };
 
-// Route the mock by path so both queries (me + metrics) resolve.
-function routeApiFetch(overrides?: { me?: unknown; metrics?: unknown }) {
+// Route the mock by path — the component now only calls /v1/admin/metrics.
+function routeApiFetch(overrides?: { metrics?: unknown }) {
   mockApiFetch.mockImplementation((path: string) => {
-    if (path === '/v1/admin/me') return Promise.resolve(overrides?.me ?? ME);
     if (path === '/v1/admin/metrics') return Promise.resolve(overrides?.metrics ?? METRICS);
     return Promise.reject(new Error(`unexpected path ${path}`));
   });
@@ -66,15 +57,13 @@ function makeWrapper() {
 
 beforeEach(() => {
   mockApiFetch.mockReset();
-  mockSignOut.mockReset();
 });
 
 describe('PlatformConsole page', () => {
-  it('renders admin identity and aggregate metric values', async () => {
+  it('renders aggregate metric values', async () => {
     routeApiFetch();
     render(<PlatformConsole />, { wrapper: makeWrapper() });
 
-    expect(await screen.findByText('Mario Rossi')).toBeInTheDocument();
     // Tenants total + interventions total surface as stat-card values.
     expect(await screen.findByText('7')).toBeInTheDocument();
     expect(await screen.findByText('420')).toBeInTheDocument();
@@ -83,36 +72,9 @@ describe('PlatformConsole page', () => {
   });
 
   it('shows an error alert when GET /v1/admin/metrics fails', async () => {
-    mockApiFetch.mockImplementation((path: string) => {
-      if (path === '/v1/admin/me') return Promise.resolve(ME);
-      return Promise.reject(new Error('Network error'));
-    });
+    mockApiFetch.mockImplementation(() => Promise.reject(new Error('Network error')));
     render(<PlatformConsole />, { wrapper: makeWrapper() });
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
-  });
-
-  it('shows a profile error alert when GET /v1/admin/me fails', async () => {
-    mockApiFetch.mockImplementation((path: string) => {
-      if (path === '/v1/admin/me') return Promise.reject(new Error('profile error'));
-      if (path === '/v1/admin/metrics') return Promise.resolve(METRICS);
-      return Promise.reject(new Error(`unexpected path ${path}`));
-    });
-    render(<PlatformConsole />, { wrapper: makeWrapper() });
-
-    expect(
-      await screen.findByText('Errore nel caricamento del profilo. Riprova.'),
-    ).toBeInTheDocument();
-  });
-
-  it('calls signOut when the Esci button is clicked', async () => {
-    routeApiFetch();
-    const { default: userEvent } = await import('@testing-library/user-event');
-    const user = userEvent.setup();
-    render(<PlatformConsole />, { wrapper: makeWrapper() });
-
-    await screen.findByText('Mario Rossi');
-    await user.click(screen.getByRole('button', { name: /esci/i }));
-    expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
 });
