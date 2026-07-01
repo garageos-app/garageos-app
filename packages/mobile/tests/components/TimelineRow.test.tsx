@@ -15,8 +15,6 @@ const shopItem: TimelineItem = {
   is_disputed: false,
   wiki_window_open: false,
   tenant: { business_name: 'Autofficina Rossi' },
-  has_attachments: true,
-  attachments_count: 3,
 };
 
 const privateItem: TimelineItem = {
@@ -26,8 +24,6 @@ const privateItem: TimelineItem = {
   odometer_km: 120000,
   custom_type: 'Pulizia interna',
   description: null,
-  has_attachments: false,
-  attachments_count: 0,
 };
 
 describe('TimelineRow', () => {
@@ -87,8 +83,6 @@ describe('TimelineRow dispute affordances', () => {
     is_disputed: true,
     wiki_window_open: false,
     tenant: { business_name: 'Officina Rossi' },
-    has_attachments: false,
-    attachments_count: 0,
   };
 
   it('shows the CONTESTATO badge when is_disputed', () => {

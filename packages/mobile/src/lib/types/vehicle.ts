@@ -56,8 +56,6 @@ export type TimelineItem =
       is_disputed: boolean;
       wiki_window_open: boolean;
       tenant: { business_name: string };
-      has_attachments: boolean;
-      attachments_count: number;
     }
   | {
       kind: 'private_intervention';
@@ -66,8 +64,6 @@ export type TimelineItem =
       odometer_km: number;
       custom_type: string | null;
       description: string | null;
-      has_attachments: boolean;
-      attachments_count: number;
     };
 
 // POST /v1/me/vehicles/claim response (F-CLI-101). The vehicle projection is

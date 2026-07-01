@@ -44,7 +44,6 @@ function baseData(overrides: Record<string, unknown> = {}) {
       status: 'active',
       isDisputed: false,
       tenant: { businessName: 'Officina Rossi', locationCity: 'Milano' },
-      attachmentsCount: 0,
       generatedDeadlines: [],
     },
     disputes: [],

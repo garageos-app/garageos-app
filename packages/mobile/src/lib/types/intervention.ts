@@ -48,7 +48,6 @@ export type ShopInterventionDetail = {
     status: string;
     isDisputed: boolean;
     tenant: { businessName: string; locationCity: string | null };
-    attachmentsCount: number;
     generatedDeadlines: GeneratedDeadline[];
   };
   disputes: Dispute[];
