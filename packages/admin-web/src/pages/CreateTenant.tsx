@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorState } from '@/components/feedback/ErrorState';
 import {
   createTenantSchema,
   type CreateTenantValues,
@@ -111,16 +112,10 @@ export function CreateTenant() {
   return (
     <div className="max-w-2xl mx-auto">
       <Card>
-        <CardHeader>
-          <CardTitle>Crea officina</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {apiError && (
-            <div
-              role="alert"
-              className="mb-4 p-3 rounded-md bg-destructive/10 text-destructive text-sm"
-            >
-              {apiError}
+            <div className="mb-4">
+              <ErrorState message={apiError} />
             </div>
           )}
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
