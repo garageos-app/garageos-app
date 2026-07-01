@@ -45,8 +45,6 @@ const SHOP_ITEM: ShopTimelineItem = {
   wiki_window_open: true,
   tenant: { id: 'tenant-rossi', business_name: 'Officina Rossi' },
   viewer_is_owner: true,
-  has_attachments: true,
-  attachments_count: 2,
 };
 
 const SHOP_ITEM_DISPUTED: ShopTimelineItem = {
@@ -57,8 +55,6 @@ const SHOP_ITEM_DISPUTED: ShopTimelineItem = {
   title: 'Cambio frizione',
   description: 'Sostituzione frizione completa.',
   parts_replaced_count: 1,
-  has_attachments: false,
-  attachments_count: 0,
 };
 
 const PRIVATE_ITEM: PrivateTimelineItem = {
@@ -68,8 +64,6 @@ const PRIVATE_ITEM: PrivateTimelineItem = {
   odometer_km: 28100,
   custom_type: 'Cambio gomme',
   description: 'Stagionali invernali montate.',
-  has_attachments: false,
-  attachments_count: 0,
 };
 
 function renderRow(item: TimelineItem, vehicleId = 'veh-1') {
@@ -155,14 +149,13 @@ describe('TimelineRow — toggle behavior', () => {
 });
 
 describe('TimelineRow — expanded shop content', () => {
-  it('shows description, parts count, attachments badge after expansion', async () => {
+  it('shows description and parts count after expansion', async () => {
     const user = userEvent.setup();
     renderRow(SHOP_ITEM);
     await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
 
     expect(screen.getByText(/Cambio olio motore/)).toBeInTheDocument();
     expect(screen.getByText('3 ricambi')).toBeInTheDocument();
-    expect(screen.getByText('Con allegati (2)')).toBeInTheDocument();
   });
 
   it('omits parts badge when parts_replaced_count is 0', async () => {
@@ -172,16 +165,6 @@ describe('TimelineRow — expanded shop content', () => {
     await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
 
     expect(screen.queryByText(/ricambi/)).not.toBeInTheDocument();
-    expect(screen.getByText('Con allegati (2)')).toBeInTheDocument();
-  });
-
-  it('omits attachments badge when has_attachments is false', async () => {
-    const user = userEvent.setup();
-    renderRow(SHOP_ITEM_DISPUTED); // has_attachments: false
-    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
-
-    expect(screen.queryByText(/Con allegati/)).not.toBeInTheDocument();
-    expect(screen.getByText('1 ricambi')).toBeInTheDocument();
   });
 
   it('shows "Nessuna descrizione." when description is empty', async () => {
@@ -202,7 +185,6 @@ describe('TimelineRow — expanded private content', () => {
 
     expect(screen.getByText('Stagionali invernali montate.')).toBeInTheDocument();
     expect(screen.queryByText(/ricambi/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Con allegati/)).not.toBeInTheDocument();
   });
 });
 

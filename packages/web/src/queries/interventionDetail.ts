@@ -1,11 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useApiFetch, ApiError } from '@/lib/api-client';
-import type {
-  AttachmentViewUrlResponse,
-  CancelInterventionRequest,
-  InterventionDetail,
-} from './types';
+import type { CancelInterventionRequest, InterventionDetail } from './types';
 
 export function useInterventionDetail(id: string | undefined) {
   const apiFetch = useApiFetch();
@@ -34,16 +30,5 @@ export function useCancelIntervention(id: string | undefined) {
       qc.invalidateQueries({ queryKey: ['intervention-revisions', id] });
       qc.invalidateQueries({ queryKey: ['vehicle-timeline'] });
     },
-  });
-}
-
-// useMutation (not useQuery) because the presigned URL is fetched
-// on user click, not on mount — each URL has a 15-min TTL and should
-// not be cached across renders.
-export function useAttachmentViewUrl() {
-  const apiFetch = useApiFetch();
-  return useMutation<AttachmentViewUrlResponse, ApiError, string>({
-    mutationFn: (attachmentId: string) =>
-      apiFetch<AttachmentViewUrlResponse>(`/v1/attachments/${attachmentId}/view-url`),
   });
 }

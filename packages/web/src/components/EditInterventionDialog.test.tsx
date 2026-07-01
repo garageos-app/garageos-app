@@ -98,8 +98,6 @@ function makeShopItem(overrides: Partial<ShopTimelineItem> = {}): ShopTimelineIt
     wiki_window_open: true,
     tenant: { id: 'tenant-acme', business_name: 'Garage Acme' },
     viewer_is_owner: true,
-    has_attachments: false,
-    attachments_count: 0,
     ...overrides,
   };
 }
@@ -124,7 +122,6 @@ function makeDetail(overrides: Partial<InterventionDetail> = {}): InterventionDe
     tenant: { id: 't-1', business_name: 'Garage Acme' },
     vehicle: { id: 'v-1', garage_code: 'ACM-0001', plate: 'AB123CD', make: 'Fiat', model: 'Panda' },
     created_by: null,
-    attachments: [],
     ...overrides,
   };
 }
