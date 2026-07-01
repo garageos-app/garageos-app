@@ -2,10 +2,15 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Building2, Plus } from 'lucide-react';
 import { useApiFetch, ApiError } from '@/lib/api-client';
 import { STATUS_BADGE, INVITATION_BADGE } from '@/lib/tenant-status';
 import type { TenantAdminListItem } from '@/lib/tenant-types';
 import { ACTION_ERROR_MESSAGES, GENERIC_ACTION_ERROR } from '@/lib/tenant-actions';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { EmptyState } from '@/components/feedback/EmptyState';
+import { ErrorState } from '@/components/feedback/ErrorState';
+import { TableSkeleton } from '@/components/feedback/TableSkeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -151,17 +156,13 @@ export function TenantList() {
   // Error check first — when the query fails, isLoading is false but data is
   // also undefined, so we must check error before the isLoading||!data guard.
   if (error) {
-    return (
-      <div role="alert" className="p-4 rounded-md bg-destructive/10 text-destructive">
-        Errore nel caricamento delle officine.
-      </div>
-    );
+    return <ErrorState message="Errore nel caricamento delle officine." />;
   }
 
   // Loading state — also guards against offline/paused state where data may be
   // undefined even though isLoading is false. See [[feedback_react_query_data_bang_offline_paused]].
   if (isLoading || !data) {
-    return <p className="text-muted-foreground">Caricamento…</p>;
+    return <TableSkeleton columns={7} />;
   }
 
   // Client-side filter
@@ -170,6 +171,18 @@ export function TenantList() {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        description="Gestisci le officine della piattaforma."
+        actions={
+          <Button asChild>
+            <Link to="/officine/nuova">
+              <Plus className="mr-2 h-4 w-4" />
+              Crea officina
+            </Link>
+          </Button>
+        }
+      />
+
       {/* Status filter */}
       <div className="flex gap-2 mb-4">
         {FILTER_OPTIONS.map(({ value, label }) => (
@@ -189,7 +202,11 @@ export function TenantList() {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-muted-foreground">Nessuna officina.</p>
+        <EmptyState
+          icon={Building2}
+          title="Nessuna officina"
+          description="Crea la prima officina per iniziare."
+        />
       ) : (
         <Table>
           <TableHeader>
