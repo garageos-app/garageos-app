@@ -147,7 +147,7 @@ describe('AuditLogs page', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toBeInTheDocument();
-    expect(alert).toHaveTextContent('Errore nel caricamento degli audit log.');
+    expect(alert).toHaveTextContent('Errore nel caricamento del registro.');
   });
 
   // ── Test 3: Detail dialog ──────────────────────────────────────────────────
