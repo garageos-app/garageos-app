@@ -170,8 +170,6 @@ export function TenantList() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Officine</h1>
-
       {/* Status filter */}
       <div className="flex gap-2 mb-4">
         {FILTER_OPTIONS.map(({ value, label }) => (

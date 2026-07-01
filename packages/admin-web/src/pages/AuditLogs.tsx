@@ -118,8 +118,6 @@ export function AuditLogs() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Audit</h1>
-
       {/* ── Filters ─────────────────────────────────────────────────────── */}
       {/* Native <select> and <input> — avoids Radix Select pointer-capture
             issues in JSDOM. See [[feedback_radix_select_jsdom_pointer_polyfill]]. */}
