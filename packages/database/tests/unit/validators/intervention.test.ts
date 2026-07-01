@@ -141,26 +141,6 @@ describe('BR-123 / BR-124 — CreateDisputeSchema', () => {
       }),
     ).toThrow();
   });
-
-  it('accepts up to 10 attachmentIds', () => {
-    expect(() =>
-      CreateDisputeSchema.parse({
-        reasonCategory: 'wrong_data',
-        description: 'a'.repeat(20),
-        attachmentIds: Array.from({ length: 10 }, () => randomUUID()),
-      }),
-    ).not.toThrow();
-  });
-
-  it('rejects more than 10 attachmentIds', () => {
-    expect(() =>
-      CreateDisputeSchema.parse({
-        reasonCategory: 'wrong_data',
-        description: 'a'.repeat(20),
-        attachmentIds: Array.from({ length: 11 }, () => randomUUID()),
-      }),
-    ).toThrow();
-  });
 });
 
 describe('UpdateInterventionSchema (BR-061, BR-064, BR-065)', () => {
@@ -326,35 +306,6 @@ describe('RespondToDisputeSchema (BR-129)', () => {
         tenantResponse: 'a'.repeat(20),
         disputeId: 'not-a-uuid',
       }),
-    ).toThrow();
-  });
-
-  it('accepts an empty attachmentIds array', () => {
-    expect(() =>
-      RespondToDisputeSchema.parse({
-        tenantResponse: 'a'.repeat(20),
-        attachmentIds: [],
-      }),
-    ).not.toThrow();
-  });
-
-  it('accepts up to 10 attachmentIds', () => {
-    const ids = Array.from(
-      { length: 10 },
-      (_, i) => `${'a'.repeat(8)}-aaaa-4aaa-8aaa-${(i + 100000000000).toString().slice(-12)}`,
-    );
-    expect(() =>
-      RespondToDisputeSchema.parse({ tenantResponse: 'a'.repeat(20), attachmentIds: ids }),
-    ).not.toThrow();
-  });
-
-  it('rejects more than 10 attachmentIds', () => {
-    const ids = Array.from(
-      { length: 11 },
-      (_, i) => `${'a'.repeat(8)}-aaaa-4aaa-8aaa-${(i + 100000000000).toString().slice(-12)}`,
-    );
-    expect(() =>
-      RespondToDisputeSchema.parse({ tenantResponse: 'a'.repeat(20), attachmentIds: ids }),
     ).toThrow();
   });
 

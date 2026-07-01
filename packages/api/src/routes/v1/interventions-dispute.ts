@@ -32,11 +32,6 @@ import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
 // with a customer-side WRITE policy that allows UPDATE only when an
 // open/responded `intervention_disputes` row exists for the current
 // customer — optional column-level guard via BEFORE UPDATE trigger.
-//
-// Attachments: the upload sub-flow (pre-validation + claim) was removed
-// in PR2 (2026-07). `CreateDisputeSchema` still carries an optional
-// `attachmentIds` field for now (packages/database/ untouched this PR;
-// dropped in a later pass) but it is no longer read here.
 
 const idParamSchema = z.object({
   id: z.uuid(),
