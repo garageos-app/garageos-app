@@ -30,10 +30,6 @@ interface FakePrisma {
     updateMany: ReturnType<typeof vi.fn>;
     count: ReturnType<typeof vi.fn>;
   };
-  attachment: {
-    findMany: ReturnType<typeof vi.fn>;
-    updateMany: ReturnType<typeof vi.fn>;
-  };
   accessLog: {
     findFirst: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
@@ -92,8 +88,6 @@ interface FakePrismaOverrides {
   respondedRows?: Array<ReturnType<typeof buildRespondedDispute>>;
   // Remaining 'open' count post-update
   remainingOpen?: number;
-  // Attachment rows returned by attachment.findMany (pre-validate)
-  attachmentRows?: Array<{ id: string; processed: boolean; disputeId: string | null }>;
 }
 
 function buildFakePrisma(o: FakePrismaOverrides = {}): FakePrisma {
@@ -130,10 +124,6 @@ function buildFakePrisma(o: FakePrismaOverrides = {}): FakePrisma {
         count: vi.fn().mockResolvedValue(o.remainingOpen ?? 0),
       };
     })(),
-    attachment: {
-      findMany: vi.fn().mockResolvedValue(o.attachmentRows ?? []),
-      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
-    },
     accessLog: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue(undefined),
@@ -463,27 +453,6 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('422 attachments non-empty without disputeId → attachments_require_dispute_id', async () => {
-    // The old attachments_not_supported guard is replaced by the fanout
-    // check: non-empty attachmentIds without an explicit disputeId is
-    // rejected before any DB lookup. See Task 9 for migration rationale.
-    const prisma = buildFakePrisma();
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
-      headers: { authorization: 'Bearer test' },
-      payload: {
-        tenantResponse: VALID_RESPONSE,
-        attachmentIds: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
-      },
-    });
-    expect(res.statusCode).toBe(422);
-    const body = res.json() as { code: string };
-    expect(body.code).toBe('intervention.dispute.response.attachments_require_dispute_id');
-    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
-  });
-
   it('400 extra body field → strict() rejection', async () => {
     app = await buildApp();
     const res = await app.inject({
@@ -618,221 +587,6 @@ describe('POST /v1/interventions/:id/dispute-response (unit)', () => {
     });
     expect(res.statusCode).toBe(404);
     expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
-  });
-});
-
-describe('POST /v1/interventions/:id/dispute-response — attachments wiring', () => {
-  let app: FastifyInstance;
-
-  afterEach(async () => {
-    await app?.close();
-    vi.clearAllMocks();
-  });
-
-  const ATTACHMENT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-
-  function buildAttachmentRow(
-    overrides: Partial<{ id: string; processed: boolean; disputeId: string | null }> = {},
-  ) {
-    return {
-      id: ATTACHMENT_ID,
-      processed: true,
-      disputeId: null,
-      ...overrides,
-    };
-  }
-
-  it('happy path — single dispute, claims attachments', async () => {
-    const target = buildOpenDispute(DISPUTE_ID);
-    const responded = buildRespondedDispute(DISPUTE_ID);
-    const prisma = buildFakePrisma({
-      interventionStatus: 'disputed',
-      singleTarget: target,
-      respondedRows: [responded],
-      remainingOpen: 0,
-      attachmentRows: [buildAttachmentRow()],
-    });
-    app = await buildApp({ prisma });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
-      headers: { authorization: 'Bearer test' },
-      payload: {
-        tenantResponse: VALID_RESPONSE,
-        disputeId: DISPUTE_ID,
-        attachmentIds: [ATTACHMENT_ID],
-      },
-    });
-
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as {
-      disputes: Array<{ id: string; attachment_ids: string[] }>;
-      interventionStatus: string;
-    };
-    expect(body.disputes).toHaveLength(1);
-    expect(body.disputes[0]!.attachment_ids).toEqual([ATTACHMENT_ID]);
-    expect(prisma.attachment.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: [ATTACHMENT_ID] } },
-      data: { disputeId: DISPUTE_ID },
-    });
-  });
-
-  it('422 attachments_require_dispute_id when fanout + non-empty attachments', async () => {
-    const prisma = buildFakePrisma();
-    app = await buildApp({ prisma });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
-      headers: { authorization: 'Bearer test' },
-      payload: { tenantResponse: VALID_RESPONSE, attachmentIds: [ATTACHMENT_ID] },
-      // NO disputeId
-    });
-
-    expect(res.statusCode).toBe(422);
-    const body = res.json() as { code: string };
-    expect(body.code).toBe('intervention.dispute.response.attachments_require_dispute_id');
-    expect(prisma.attachment.findMany).not.toHaveBeenCalled();
-    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('422 attachment_not_found when attachment lookup fails', async () => {
-    const target = buildOpenDispute(DISPUTE_ID);
-    const prisma = buildFakePrisma({
-      interventionStatus: 'disputed',
-      singleTarget: target,
-      // attachment.findMany returns empty → length mismatch → not_found
-      attachmentRows: [],
-    });
-    app = await buildApp({ prisma });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
-      headers: { authorization: 'Bearer test' },
-      payload: {
-        tenantResponse: VALID_RESPONSE,
-        disputeId: DISPUTE_ID,
-        attachmentIds: [ATTACHMENT_ID],
-      },
-    });
-
-    expect(res.statusCode).toBe(422);
-    const body = res.json() as { code: string };
-    expect(body.code).toBe('intervention.dispute.attachment_not_found');
-    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('422 attachment_not_processed when row is unprocessed', async () => {
-    const target = buildOpenDispute(DISPUTE_ID);
-    const prisma = buildFakePrisma({
-      interventionStatus: 'disputed',
-      singleTarget: target,
-      attachmentRows: [buildAttachmentRow({ processed: false })],
-    });
-    app = await buildApp({ prisma });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
-      headers: { authorization: 'Bearer test' },
-      payload: {
-        tenantResponse: VALID_RESPONSE,
-        disputeId: DISPUTE_ID,
-        attachmentIds: [ATTACHMENT_ID],
-      },
-    });
-
-    expect(res.statusCode).toBe(422);
-    const body = res.json() as { code: string };
-    expect(body.code).toBe('intervention.dispute.attachment_not_processed');
-    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('409 attachment_already_claimed', async () => {
-    const target = buildOpenDispute(DISPUTE_ID);
-    const prisma = buildFakePrisma({
-      interventionStatus: 'disputed',
-      singleTarget: target,
-      attachmentRows: [buildAttachmentRow({ disputeId: 'd-other-dispute-id' })],
-    });
-    app = await buildApp({ prisma });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
-      headers: { authorization: 'Bearer test' },
-      payload: {
-        tenantResponse: VALID_RESPONSE,
-        disputeId: DISPUTE_ID,
-        attachmentIds: [ATTACHMENT_ID],
-      },
-    });
-
-    expect(res.statusCode).toBe(409);
-    const body = res.json() as { code: string };
-    expect(body.code).toBe('intervention.dispute.attachment_already_claimed');
-    expect(prisma.interventionDispute.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('happy path — fanout with empty attachmentIds (no attachmentIds field)', async () => {
-    const D1 = '01010101-0101-4101-8101-010101010101';
-    const D2 = '02020202-0202-4202-8202-020202020202';
-    const responded = [buildRespondedDispute(D1), buildRespondedDispute(D2)];
-    const prisma = buildFakePrisma({
-      interventionStatus: 'disputed',
-      openTargets: [{ id: D1 }, { id: D2 }],
-      respondedRows: responded,
-      remainingOpen: 0,
-    });
-    app = await buildApp({ prisma });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
-      headers: { authorization: 'Bearer test' },
-      payload: { tenantResponse: VALID_RESPONSE },
-      // NO disputeId, NO attachmentIds
-    });
-
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as {
-      disputes: Array<{ id: string; attachment_ids: string[] }>;
-    };
-    for (const d of body.disputes) {
-      expect(d.attachment_ids).toEqual([]);
-    }
-    expect(prisma.attachment.findMany).not.toHaveBeenCalled();
-    expect(prisma.attachment.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('happy path — single dispute with empty attachmentIds', async () => {
-    const target = buildOpenDispute(DISPUTE_ID);
-    const responded = buildRespondedDispute(DISPUTE_ID);
-    const prisma = buildFakePrisma({
-      interventionStatus: 'disputed',
-      singleTarget: target,
-      respondedRows: [responded],
-      remainingOpen: 0,
-    });
-    app = await buildApp({ prisma });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute-response`,
-      headers: { authorization: 'Bearer test' },
-      payload: { tenantResponse: VALID_RESPONSE, disputeId: DISPUTE_ID },
-      // NO attachmentIds
-    });
-
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as {
-      disputes: Array<{ id: string; attachment_ids: string[] }>;
-    };
-    expect(body.disputes[0]!.attachment_ids).toEqual([]);
-    expect(prisma.attachment.findMany).not.toHaveBeenCalled();
-    expect(prisma.attachment.updateMany).not.toHaveBeenCalled();
   });
 });
 

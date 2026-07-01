@@ -15,9 +15,6 @@ const OWNERSHIP_ID = '55555555-5555-4555-8555-555555555555';
 const TENANT_ID = '66666666-6666-4666-8666-666666666666';
 const DISPUTE_ID = '77777777-7777-4777-8777-777777777777';
 
-const ATTACHMENT_ID_1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const ATTACHMENT_ID_2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-
 interface FakePrisma {
   intervention: {
     findUniqueOrThrow: ReturnType<typeof vi.fn>;
@@ -27,10 +24,6 @@ interface FakePrisma {
   interventionDispute: {
     findFirst: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
-  };
-  attachment: {
-    findMany: ReturnType<typeof vi.fn>;
-    updateMany: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -72,10 +65,6 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     interventionDispute: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue(buildDisputeRow()),
-    },
-    attachment: {
-      findMany: vi.fn().mockResolvedValue([]),
-      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     ...overrides,
   };
@@ -230,17 +219,6 @@ describe('POST /v1/interventions/:id/dispute — preconditions', () => {
   });
   afterEach(async () => {
     await app?.close();
-  });
-
-  it('accepts an explicitly empty attachmentIds array', async () => {
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute`,
-      headers: { authorization: 'Bearer x' },
-      payload: { ...validBody, attachmentIds: [] },
-    });
-    expect(res.statusCode).toBe(201);
   });
 
   it('returns 404 when the intervention does not exist (Prisma P2025)', async () => {
@@ -435,137 +413,5 @@ describe('POST /v1/interventions/:id/dispute — happy path', () => {
       payload: validBody,
     });
     expect(res.statusCode).toBe(201);
-  });
-});
-
-describe('POST /v1/interventions/:id/dispute — attachments wiring', () => {
-  let app: FastifyInstance | undefined;
-  let prisma: FakePrisma;
-
-  beforeEach(() => {
-    app = undefined;
-    prisma = buildFakePrisma();
-  });
-  afterEach(async () => {
-    await app?.close();
-  });
-
-  it('happy path — creates dispute and claims attachments', async () => {
-    // Two valid attachments: processed=true, disputeId=null, owned by customer
-    prisma.attachment.findMany.mockResolvedValue([
-      { id: ATTACHMENT_ID_1, processed: true, disputeId: null },
-      { id: ATTACHMENT_ID_2, processed: true, disputeId: null },
-    ]);
-    prisma.attachment.updateMany.mockResolvedValue({ count: 2 });
-
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute`,
-      headers: { authorization: 'Bearer x' },
-      payload: { ...validBody, attachmentIds: [ATTACHMENT_ID_1, ATTACHMENT_ID_2] },
-    });
-    expect(res.statusCode).toBe(201);
-    const body = res.json() as {
-      dispute: { attachment_ids: string[] };
-      interventionStatus: string;
-    };
-    expect(body.dispute.attachment_ids).toEqual([ATTACHMENT_ID_1, ATTACHMENT_ID_2]);
-    expect(prisma.attachment.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: [ATTACHMENT_ID_1, ATTACHMENT_ID_2] } },
-      data: { disputeId: DISPUTE_ID },
-    });
-  });
-
-  it('422 attachment_not_found when count mismatch', async () => {
-    // Only 1 row returned for 2 requested IDs
-    prisma.attachment.findMany.mockResolvedValue([
-      { id: ATTACHMENT_ID_1, processed: true, disputeId: null },
-    ]);
-
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute`,
-      headers: { authorization: 'Bearer x' },
-      payload: { ...validBody, attachmentIds: [ATTACHMENT_ID_1, ATTACHMENT_ID_2] },
-    });
-    expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({
-      code: 'intervention.dispute.attachment_not_found',
-    });
-    expect(prisma.interventionDispute.create).not.toHaveBeenCalled();
-    expect(prisma.attachment.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('422 attachment_not_processed when attachment not yet confirmed', async () => {
-    prisma.attachment.findMany.mockResolvedValue([
-      { id: ATTACHMENT_ID_1, processed: false, disputeId: null },
-    ]);
-
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute`,
-      headers: { authorization: 'Bearer x' },
-      payload: { ...validBody, attachmentIds: [ATTACHMENT_ID_1] },
-    });
-    expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({
-      code: 'intervention.dispute.attachment_not_processed',
-    });
-    expect(prisma.interventionDispute.create).not.toHaveBeenCalled();
-    expect(prisma.attachment.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('409 attachment_already_claimed when attachment belongs to another dispute', async () => {
-    prisma.attachment.findMany.mockResolvedValue([
-      { id: ATTACHMENT_ID_1, processed: true, disputeId: 'd-other-dispute-id-here' },
-    ]);
-
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute`,
-      headers: { authorization: 'Bearer x' },
-      payload: { ...validBody, attachmentIds: [ATTACHMENT_ID_1] },
-    });
-    expect(res.statusCode).toBe(409);
-    expect(res.json()).toMatchObject({
-      code: 'intervention.dispute.attachment_already_claimed',
-    });
-    expect(prisma.interventionDispute.create).not.toHaveBeenCalled();
-    expect(prisma.attachment.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('happy path — empty attachmentIds (omitted in body)', async () => {
-    // No attachmentIds key in body — should succeed without touching attachment table
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute`,
-      headers: { authorization: 'Bearer x' },
-      payload: validBody,
-    });
-    expect(res.statusCode).toBe(201);
-    const body = res.json() as { dispute: { attachment_ids: string[] } };
-    expect(body.dispute.attachment_ids).toEqual([]);
-    expect(prisma.attachment.findMany).not.toHaveBeenCalled();
-    expect(prisma.attachment.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('happy path — empty attachmentIds (explicit empty array)', async () => {
-    app = await buildApp({ prisma });
-    const res = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${INTERVENTION_ID}/dispute`,
-      headers: { authorization: 'Bearer x' },
-      payload: { ...validBody, attachmentIds: [] },
-    });
-    expect(res.statusCode).toBe(201);
-    const body = res.json() as { dispute: { attachment_ids: string[] } };
-    expect(body.dispute.attachment_ids).toEqual([]);
-    expect(prisma.attachment.findMany).not.toHaveBeenCalled();
-    expect(prisma.attachment.updateMany).not.toHaveBeenCalled();
   });
 });

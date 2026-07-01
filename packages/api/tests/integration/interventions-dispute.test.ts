@@ -1,9 +1,6 @@
-import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { mockClient } from 'aws-sdk-client-mock';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { _resetS3ClientForTests } from '../../src/lib/s3.js';
 import { buildTestServer } from './fixtures.js';
 import {
   createCustomer,
@@ -18,8 +15,6 @@ import {
 import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
-const s3Mock = mockClient(S3Client);
-
 // POST /v1/interventions/:id/dispute end-to-end.
 //   - Happy path (201) inserts dispute row + flips intervention.status
 //   - BR-120 (only current owner)         → 403 not_owner
@@ -27,7 +22,6 @@ const s3Mock = mockClient(S3Client);
 //   - BR-130 implication (cancelled)      → 422 intervention_cancelled
 //   - Pool guard (officine token)         → 403
 //   - Idempotent re-dispute after closed dispute (resolved_by_cancellation)
-//   - Attachments full flow + rollback safety (see second describe below)
 
 async function seedScenario(suffix: string): Promise<{
   tenantId: string;
@@ -79,10 +73,6 @@ describe('POST /v1/interventions/:id/dispute (integration)', () => {
   });
   beforeEach(async () => {
     await resetDb();
-    s3Mock.reset();
-    _resetS3ClientForTests();
-    s3Mock.on(PutObjectCommand).resolves({});
-    s3Mock.on(HeadObjectCommand).resolves({ ContentLength: 1024, ContentType: 'image/jpeg' });
   });
 
   it('happy path: creates dispute row and flips intervention.status to disputed (BR-127)', async () => {
@@ -291,172 +281,5 @@ describe('POST /v1/interventions/:id/dispute (integration)', () => {
       [s.interventionId],
     );
     expect(Number(rows[0]!.count)).toBe(0);
-  });
-});
-
-describe('POST /v1/interventions/:id/dispute — attachments integration', () => {
-  let app: FastifyInstance;
-  beforeAll(async () => {
-    app = await buildTestServer();
-  });
-  afterAll(async () => {
-    await app.close();
-  });
-  beforeEach(async () => {
-    await resetDb();
-    s3Mock.reset();
-    _resetS3ClientForTests();
-    s3Mock.on(PutObjectCommand).resolves({});
-    s3Mock.on(HeadObjectCommand).resolves({ ContentLength: 1024, ContentType: 'image/jpeg' });
-  });
-
-  it('full flow: customer uploads dispute attachment → confirms → creates dispute with attachmentIds', async () => {
-    const s = await seedScenario('disp-attach-full');
-    const customerToken = await signTestToken({
-      pool: 'clienti',
-      sub: s.cognitoSub,
-      customerId: s.customerId,
-    });
-
-    // Step A: POST /v1/attachments/upload-url — customer-pool, owner_type='intervention_dispute'
-    const upload = await app.inject({
-      method: 'POST',
-      url: '/v1/attachments/upload-url',
-      headers: { authorization: `Bearer ${customerToken}` },
-      payload: {
-        owner_type: 'intervention_dispute',
-        owner_id: s.interventionId,
-        file_name: 'prova.jpg',
-        mime_type: 'image/jpeg',
-        size_bytes: 1024,
-      },
-    });
-    expect(upload.statusCode).toBe(201);
-    const { attachment_id, callback_url } = upload.json() as {
-      attachment_id: string;
-      callback_url: string;
-    };
-
-    // Verify: attachment row exists with disputeId IS NULL, processed=false
-    const { rows: preConfirmRows } = await pgAdmin.query<{
-      processed: boolean;
-      dispute_id: string | null;
-      owner_type: string;
-    }>(`SELECT processed, dispute_id, owner_type FROM attachments WHERE id = $1`, [attachment_id]);
-    expect(preConfirmRows).toHaveLength(1);
-    expect(preConfirmRows[0]!.processed).toBe(false);
-    expect(preConfirmRows[0]!.dispute_id).toBeNull();
-    expect(preConfirmRows[0]!.owner_type).toBe('intervention_dispute');
-
-    // Step B: POST /v1/attachments/:id/confirm — customer-pool
-    const confirm = await app.inject({
-      method: 'POST',
-      url: callback_url,
-      headers: { authorization: `Bearer ${customerToken}` },
-    });
-    expect(confirm.statusCode).toBe(200);
-    expect((confirm.json() as { processed: boolean }).processed).toBe(true);
-
-    // Verify: processed=true, disputeId still NULL (not yet claimed)
-    const { rows: postConfirmRows } = await pgAdmin.query<{
-      processed: boolean;
-      dispute_id: string | null;
-    }>(`SELECT processed, dispute_id FROM attachments WHERE id = $1`, [attachment_id]);
-    expect(postConfirmRows[0]!.processed).toBe(true);
-    expect(postConfirmRows[0]!.dispute_id).toBeNull();
-
-    // Step C: POST /v1/interventions/:id/dispute with attachmentIds
-    const dispute = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${s.interventionId}/dispute`,
-      headers: { authorization: `Bearer ${customerToken}` },
-      payload: {
-        reasonCategory: 'not_performed',
-        description: goodDescription,
-        attachmentIds: [attachment_id],
-      },
-    });
-    expect(dispute.statusCode).toBe(201);
-    const disputeBody = dispute.json() as {
-      dispute: { id: string; attachment_ids: string[] };
-      interventionStatus: string;
-    };
-    expect(disputeBody.dispute.attachment_ids).toEqual([attachment_id]);
-    expect(disputeBody.interventionStatus).toBe('disputed');
-
-    // Step D: Verify attachment.dispute_id === new dispute id
-    const { rows: claimedRows } = await pgAdmin.query<{ dispute_id: string | null }>(
-      `SELECT dispute_id FROM attachments WHERE id = $1`,
-      [attachment_id],
-    );
-    expect(claimedRows[0]!.dispute_id).toBe(disputeBody.dispute.id);
-  });
-
-  it('rollback safety: dispute create fails (not_owner) leaves attachment unclaimed', async () => {
-    const s = await seedScenario('disp-attach-rollback');
-    const customerToken = await signTestToken({
-      pool: 'clienti',
-      sub: s.cognitoSub,
-      customerId: s.customerId,
-    });
-
-    // Step A: upload + confirm an attachment while still the owner
-    const upload = await app.inject({
-      method: 'POST',
-      url: '/v1/attachments/upload-url',
-      headers: { authorization: `Bearer ${customerToken}` },
-      payload: {
-        owner_type: 'intervention_dispute',
-        owner_id: s.interventionId,
-        file_name: 'prova.jpg',
-        mime_type: 'image/jpeg',
-        size_bytes: 1024,
-      },
-    });
-    expect(upload.statusCode).toBe(201);
-    const { attachment_id, callback_url } = upload.json() as {
-      attachment_id: string;
-      callback_url: string;
-    };
-
-    const confirm = await app.inject({
-      method: 'POST',
-      url: callback_url,
-      headers: { authorization: `Bearer ${customerToken}` },
-    });
-    expect(confirm.statusCode).toBe(200);
-
-    // End the active ownership so the customer is no longer the owner
-    await pgAdmin.query(`UPDATE vehicle_ownerships SET ended_at = NOW() WHERE vehicle_id = $1`, [
-      s.vehicleId,
-    ]);
-
-    // Step B: attempt dispute create → expect 403 not_owner
-    const disputeRes = await app.inject({
-      method: 'POST',
-      url: `/v1/interventions/${s.interventionId}/dispute`,
-      headers: { authorization: `Bearer ${customerToken}` },
-      payload: {
-        reasonCategory: 'not_performed',
-        description: goodDescription,
-        attachmentIds: [attachment_id],
-      },
-    });
-    expect(disputeRes.statusCode).toBe(403);
-    expect((disputeRes.json() as { code: string }).code).toBe('intervention.dispute.not_owner');
-
-    // Verify: attachment.dispute_id is still NULL — no claim happened
-    const { rows } = await pgAdmin.query<{ dispute_id: string | null }>(
-      `SELECT dispute_id FROM attachments WHERE id = $1`,
-      [attachment_id],
-    );
-    expect(rows[0]!.dispute_id).toBeNull();
-
-    // Verify: no dispute row was created
-    const { rows: disputeRows } = await pgAdmin.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM intervention_disputes WHERE intervention_id = $1`,
-      [s.interventionId],
-    );
-    expect(Number(disputeRows[0]!.count)).toBe(0);
   });
 });

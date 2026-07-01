@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
-import { preValidateAttachmentsForDispute } from '../../lib/dispute-attachments.js';
 
 // POST /v1/interventions/:id/dispute — F-CLI-206 / F-OFF-602 customer
 // side. The authenticated customer contests an officina intervention on
@@ -34,10 +33,10 @@ import { preValidateAttachmentsForDispute } from '../../lib/dispute-attachments.
 // open/responded `intervention_disputes` row exists for the current
 // customer — optional column-level guard via BEFORE UPDATE trigger.
 //
-// Attachments: the shared `CreateDisputeSchema` accepts attachmentIds.
-// The storage layer (presigned upload, ownerType='intervention_dispute')
-// shipped in F-OFF-305; attachment IDs are now pre-validated and claimed
-// atomically within the same transaction — see lib/dispute-attachments.ts.
+// Attachments: the upload sub-flow (pre-validation + claim) was removed
+// in PR2 (2026-07). `CreateDisputeSchema` still carries an optional
+// `attachmentIds` field for now (packages/database/ untouched this PR;
+// dropped in a later pass) but it is no longer read here.
 
 const idParamSchema = z.object({
   id: z.uuid(),
@@ -127,16 +126,6 @@ const interventionDisputeRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        // Pre-validate attachments before creating the dispute. This
-        // checks: all IDs exist + belong to this customer + ownerType
-        // matches + processed=true + not yet claimed by another dispute.
-        // See lib/dispute-attachments.ts for full BR details.
-        await preValidateAttachmentsForDispute(tx, {
-          attachmentIds: body.attachmentIds,
-          interventionId,
-          uploader: { customerId },
-        });
-
         // status defaults to 'open' via the Prisma schema default.
         // tenantResponse* and resolvedAt stay null — the officina-side
         // F-OFF-602 handler (future PR) will fill them.
@@ -158,18 +147,6 @@ const interventionDisputeRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        // Atomically claim the attachments by linking them to the new
-        // dispute. The pre-validation above guarantees all IDs are valid
-        // and unclaimed, so this UPDATE should always match exactly
-        // body.attachmentIds.length rows. Skipped when list is empty.
-        const claimedAttachmentIds = body.attachmentIds ?? [];
-        if (claimedAttachmentIds.length > 0) {
-          await tx.attachment.updateMany({
-            where: { id: { in: claimedAttachmentIds } },
-            data: { disputeId: dispute.id },
-          });
-        }
-
         // BR-127: the parent intervention is marked `disputed` whenever
         // at least one open/responded dispute exists on it. The flip is
         // idempotent — skip the UPDATE when the row is already
@@ -190,10 +167,7 @@ const interventionDisputeRoutes: FastifyPluginAsync = async (app) => {
 
         reply.code(201);
         return {
-          dispute: {
-            ...dispute,
-            attachment_ids: claimedAttachmentIds,
-          },
+          dispute,
           interventionStatus: 'disputed' as const,
         };
       });
