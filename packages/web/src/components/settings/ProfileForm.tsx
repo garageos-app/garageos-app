@@ -12,7 +12,6 @@ import {
   type ProfileFormValues,
   type ProfileFormParsed,
 } from '@/lib/validators/profile';
-import { AvatarSection } from './AvatarSection';
 
 interface Props {
   profile: ProfileMeDto;
@@ -67,7 +66,6 @@ export function ProfileForm({ profile, formRef }: Props) {
 
   return (
     <div className="max-w-xl">
-      <AvatarSection profile={profile} />
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="space-y-2">
           <Label htmlFor="firstName">Nome</Label>

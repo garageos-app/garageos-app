@@ -6,12 +6,6 @@ import { ProfileForm } from './ProfileForm';
 import * as profileUpdateModule from '@/queries/profileUpdate';
 import type { ProfileMeDto } from '@/queries/profileMe';
 
-// AvatarSection has its own test suite; stub it here to avoid
-// pulling in useAuth/useApiFetch dependencies outside this unit's scope.
-vi.mock('./AvatarSection', () => ({
-  AvatarSection: () => <div data-testid="avatar-section-stub" />,
-}));
-
 const baseProfile: ProfileMeDto = {
   id: 'u-1',
   email: 'u@t.test',
@@ -19,7 +13,6 @@ const baseProfile: ProfileMeDto = {
   lastName: 'Rossi',
   role: 'mechanic',
   tenantId: 't-1',
-  avatarUrl: null,
   phone: '+39 333 1112233',
   status: 'active',
   createdAt: '2026-05-15T00:00:00Z',

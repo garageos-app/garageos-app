@@ -39,27 +39,11 @@ function wrapper({ children }: { children: React.ReactNode }) {
 const noop = vi.fn();
 
 describe('TopBar', () => {
-  it('renders avatar img when profile.avatarUrl present', () => {
-    profileQueryRef.current = {
-      data: {
-        firstName: 'Mario',
-        lastName: 'Rossi',
-        avatarUrl: 'https://signed-url',
-        tenant: { businessName: 'Matula' },
-      },
-    };
-    render(<TopBar onMenuClick={noop} />, { wrapper });
-    const img = screen.getByTestId('topbar-avatar-img') as HTMLImageElement;
-    expect(img).toBeInTheDocument();
-    expect(img.src).toBe('https://signed-url/');
-  });
-
   it('renders officina business name in the brand strip', () => {
     profileQueryRef.current = {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -67,12 +51,11 @@ describe('TopBar', () => {
     expect(screen.getByText('Officina Matula')).toBeInTheDocument();
   });
 
-  it('renders initials fallback when avatarUrl is null', () => {
+  it('renders initials avatar from profile', () => {
     profileQueryRef.current = {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -91,7 +74,6 @@ describe('TopBar', () => {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -136,7 +118,6 @@ describe('<TopBar /> global search', () => {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -151,7 +132,6 @@ describe('<TopBar /> global search', () => {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -171,7 +151,6 @@ describe('<TopBar /> global search', () => {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -191,7 +170,6 @@ describe('<TopBar /> global search', () => {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -211,7 +189,6 @@ describe('<TopBar /> global search', () => {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -231,7 +208,6 @@ describe('<TopBar /> global search', () => {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -251,7 +227,6 @@ describe('<TopBar /> global search', () => {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };
@@ -273,7 +248,6 @@ describe('<TopBar /> global search', () => {
       data: {
         firstName: 'Mario',
         lastName: 'Rossi',
-        avatarUrl: null,
         tenant: { businessName: 'Matula' },
       },
     };

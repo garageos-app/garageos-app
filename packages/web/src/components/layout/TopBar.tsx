@@ -14,9 +14,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-// TopBar shows the brand strip + global search input + user menu (avatar /
-// email + signOut). Avatar comes from useProfileMe (already cached by
-// ProfileForm); when absent or loading, fallback to initials.
+// TopBar shows the brand strip + global search input + user menu (initials
+// avatar + email + signOut). Initials come from useProfileMe (already
+// cached by ProfileForm); render '?' while the profile query is loading.
 // Global search (F-OFF-502): on submit, any input of >= 2 chars routes to
 // `/search?q=<raw>`. Classification (vehicle identifier vs customer
 // name/phone) happens in SearchResults, which runs both a vehicle search
@@ -34,7 +34,6 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
 
   const authedEmail = state.status === 'authenticated' ? state.user.email : '';
   const profile = profileQuery.data;
-  const avatarUrl = profile?.avatarUrl ?? null;
   const initials = profile ? getInitials(profile.firstName, profile.lastName) : '?';
   // Brand strip: officina business name.
   // Falls back to a neutral label until the profile query resolves.
@@ -120,21 +119,12 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
         <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 text-sm text-foreground hover:opacity-80 transition">
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt=""
-                className="w-8 h-8 rounded-full object-cover bg-muted"
-                data-testid="topbar-avatar-img"
-              />
-            ) : (
-              <div
-                className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold"
-                data-testid="topbar-avatar-initials"
-              >
-                {initials}
-              </div>
-            )}
+            <div
+              className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold"
+              data-testid="topbar-avatar-initials"
+            >
+              {initials}
+            </div>
             {/* Email is noise on mobile — desktop only */}
             <span className="hidden lg:inline">{authedEmail}</span>
             <ChevronDown size={14} />

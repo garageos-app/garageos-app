@@ -9,7 +9,6 @@ export interface ProfileMeDto {
   lastName: string;
   role: 'super_admin' | 'mechanic';
   tenantId: string;
-  avatarUrl: string | null;
   phone: string | null;
   status: string;
   createdAt: string;

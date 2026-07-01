@@ -150,8 +150,7 @@ describe('useInviteUser', () => {
 
 // Regression guard: apiFetch hardcodes Content-Type: application/json and
 // Fastify rejects DELETE requests with that header but no body. Both
-// DELETE mutations must pass `body: '{}'`. See:
-//   packages/web/src/queries/avatarUpload.ts:123 for prior incident.
+// DELETE mutations must pass `body: '{}'`.
 
 describe('useRevokeInvitation', () => {
   beforeEach(() => {
