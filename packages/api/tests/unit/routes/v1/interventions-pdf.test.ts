@@ -247,6 +247,19 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     expect(callArg.customerName).toBe('Mario Rossi');
   });
 
+  it('502 — intervention_pdf.render_failed when renderer throws', async () => {
+    const prisma = buildFakePrisma({});
+    vi.mocked(renderInterventionPdf).mockRejectedValue(new Error('render boom'));
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json<{ code: string }>().code).toBe('intervention_pdf.render_failed');
+  });
+
   it('400 — invalid UUID', async () => {
     const prisma = buildFakePrisma({});
     app = await buildApp(prisma);

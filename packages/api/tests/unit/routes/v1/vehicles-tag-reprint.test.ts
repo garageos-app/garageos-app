@@ -278,6 +278,24 @@ describe('POST /v1/vehicles/:id/tag-reprint (unit)', () => {
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
+  it('502 — vehicle_tag.render_failed when renderer throws; no new audit row created', async () => {
+    const prisma = buildFakePrisma();
+    vi.mocked(renderTagPdf).mockRejectedValue(new Error('render boom'));
+    app = await buildApp(prisma);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/tag-reprint`,
+      headers: { authorization: 'Bearer fake-jwt' },
+      payload: { reason: 'lost', documentVerified: true },
+    });
+
+    expect(res.statusCode).toBe(502);
+    const body = res.json<{ code: string }>();
+    expect(body.code).toBe('vehicle_tag.render_failed');
+    expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
+  });
+
   it('401 — unauthenticated when Authorization header is missing', async () => {
     const prisma = buildFakePrisma();
     app = await buildApp(prisma);

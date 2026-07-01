@@ -195,6 +195,23 @@ describe('GET /v1/vehicles/:id/tag (unit)', () => {
     expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
   });
 
+  it('502 — vehicle_tag.render_failed when renderer throws; no audit row created', async () => {
+    const prisma = buildFakePrisma();
+    vi.mocked(renderTagPdf).mockRejectedValue(new Error('render boom'));
+    app = await buildApp(prisma);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}/tag`,
+      headers: { authorization: 'Bearer test' },
+    });
+
+    expect(res.statusCode).toBe(502);
+    const body = res.json<{ code: string }>();
+    expect(body.code).toBe('vehicle_tag.render_failed');
+    expect(prisma.vehicleTagPrint.create).not.toHaveBeenCalled();
+  });
+
   it('400 — VALIDATION_ERROR when :id is not a valid UUID v4', async () => {
     const prisma = buildFakePrisma();
     app = await buildApp(prisma);
