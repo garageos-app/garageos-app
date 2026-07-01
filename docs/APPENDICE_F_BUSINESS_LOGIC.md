@@ -766,54 +766,77 @@ Quando un customer richiede la cancellazione del proprio account (F-CLI-006):
 
 ## 9. Regole sugli allegati
 
-### BR-180 — Dimensioni e formato
-Un allegato:
-- **Max 10 MB** per file
-- **Max 10 allegati** per intervento (officina o privato)
-- Formati accettati: `image/jpeg`, `image/png`, `image/heic`, `image/webp`, `application/pdf`
-- Niente video, niente eseguibili, niente archivi
+> **DEPRECATED/REMOVED — rimozione upload, 2026-07-01.** BR-180…BR-185
+> descrivevano la feature di upload allegati (intervention/dispute/private),
+> rimossa integralmente nell'arco "remove uploads and S3" (PR2
+> `feat/remove-uploads`). Nessun endpoint o codice descritto da queste regole
+> è più presente nell'API; la tabella `attachments` e le colonne S3-correlate
+> saranno rimosse dal DB in una PR successiva dello stesso arco (contract
+> migration, operator-driven). Vedi
+> `docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md` per il
+> design completo. Il testo originale delle regole è mantenuto sotto solo
+> come riferimento storico.
 
-### BR-181 — Compressione automatica lato server
-Per le immagini:
-- Resize: lato lungo max **2048 pixel** (mantiene aspect ratio)
-- Conversione: HEIC → WebP, PNG>1MB → WebP, altri → mantenuti
-- Qualità: 85% per JPEG/WebP
-- Thumbnail separata: 400x400 max, WebP qualità 75%
+### BR-180 — Dimensioni e formato *(DEPRECATED/REMOVED — 2026-07-01)*
 
-Per i PDF: mantenuti as-is (già compressi tipicamente).
+> **Storico (pre rimozione upload):**
+> Un allegato:
+> - **Max 10 MB** per file
+> - **Max 10 allegati** per intervento (officina o privato)
+> - Formati accettati: `image/jpeg`, `image/png`, `image/heic`, `image/webp`, `application/pdf`
+> - Niente video, niente eseguibili, niente archivi
 
-### BR-182 — Chi può caricare
-Allegati a `intervention`:
-- Caricabili solo dal `tenant` che ha creato l'intervento
-- Finché l'intervento è in finestra wiki (BR-062), caricamento libero
-- Dopo lock wiki, upload ancora consentito ma crea una `intervention_revision` (l'aggiunta di allegati è una modifica tracciata)
+### BR-181 — Compressione automatica lato server *(DEPRECATED/REMOVED — 2026-07-01)*
 
-Allegati a `private_intervention`:
-- Caricabili solo dal customer proprietario
+> **Storico (pre rimozione upload):**
+> Per le immagini:
+> - Resize: lato lungo max **2048 pixel** (mantiene aspect ratio)
+> - Conversione: HEIC → WebP, PNG>1MB → WebP, altri → mantenuti
+> - Qualità: 85% per JPEG/WebP
+> - Thumbnail separata: 400x400 max, WebP qualità 75%
+>
+> Per i PDF: mantenuti as-is (già compressi tipicamente).
 
-### BR-183 — Eliminazione allegati
-- Officina può eliminare allegati dei propri interventi (in finestra wiki, libero; dopo, crea revisione)
-- Customer può eliminare allegati dei propri interventi privati senza restrizioni
-- L'eliminazione è soft (`deleted_at` nel DB), ma il file S3 viene schedulato per cancellazione fisica dopo 30 giorni (retention buffer per recovery)
+### BR-182 — Chi può caricare *(DEPRECATED/REMOVED — 2026-07-01)*
 
-### BR-184 — Accesso agli allegati (download)
-Gli allegati sono acceduti via **presigned URL** temporanei (durata 15 minuti).
+> **Storico (pre rimozione upload):**
+> Allegati a `intervention`:
+> - Caricabili solo dal `tenant` che ha creato l'intervento
+> - Finché l'intervento è in finestra wiki (BR-062), caricamento libero
+> - Dopo lock wiki, upload ancora consentito ma crea una `intervention_revision` (l'aggiunta di allegati è una modifica tracciata)
+>
+> Allegati a `private_intervention`:
+> - Caricabili solo dal customer proprietario
 
-**Visibilità allegati intervento officina:**
-- Caricatore (tenant): sempre
-- Tutti i tenant che possono vedere l'intervento: sì (coerente con visibilità timeline)
-- Customer proprietario: sì
-- Customer futuri proprietari: sì
-- Acquirenti di usato via link pubblico condiviso: sì (gli allegati sono parte dello storico)
+### BR-183 — Eliminazione allegati *(DEPRECATED/REMOVED — 2026-07-01)*
 
-**Visibilità allegati intervento privato:**
-- Solo il customer proprietario
-- MAI esposti in link pubblici o export
+> **Storico (pre rimozione upload):**
+> - Officina può eliminare allegati dei propri interventi (in finestra wiki, libero; dopo, crea revisione)
+> - Customer può eliminare allegati dei propri interventi privati senza restrizioni
+> - L'eliminazione è soft (`deleted_at` nel DB), ma il file S3 viene schedulato per cancellazione fisica dopo 30 giorni (retention buffer per recovery)
 
-### BR-185 — Nessun filtro contenuti v1
-In v1, non c'è scansione dei contenuti degli allegati (niente virus scan, niente content moderation).
+### BR-184 — Accesso agli allegati (download) *(DEPRECATED/REMOVED — 2026-07-01)*
 
-**Roadmap v1.1+:** integrazione con AWS Rekognition o servizio simile per rilevare contenuti inappropriati, virus scan via AWS GuardDuty.
+> **Storico (pre rimozione upload):**
+> Gli allegati sono acceduti via **presigned URL** temporanei (durata 15 minuti).
+>
+> **Visibilità allegati intervento officina:**
+> - Caricatore (tenant): sempre
+> - Tutti i tenant che possono vedere l'intervento: sì (coerente con visibilità timeline)
+> - Customer proprietario: sì
+> - Customer futuri proprietari: sì
+> - Acquirenti di usato via link pubblico condiviso: sì (gli allegati sono parte dello storico)
+>
+> **Visibilità allegati intervento privato:**
+> - Solo il customer proprietario
+> - MAI esposti in link pubblici o export
+
+### BR-185 — Nessun filtro contenuti v1 *(DEPRECATED/REMOVED — 2026-07-01)*
+
+> **Storico (pre rimozione upload):**
+> In v1, non c'è scansione dei contenuti degli allegati (niente virus scan, niente content moderation).
+>
+> **Roadmap v1.1+:** integrazione con AWS Rekognition o servizio simile per rilevare contenuti inappropriati, virus scan via AWS GuardDuty.
 
 ---
 
