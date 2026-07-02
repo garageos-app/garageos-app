@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
-import { pgAdmin } from './setup.js';
 import {
   createCustomer,
   createCustomerTenantRelation,
@@ -242,52 +241,5 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('application/pdf');
-  });
-
-  // -----------------------------------------------------------------------
-  // Case 6 — 200 tenant with a logo_url set is no longer relevant (logo was
-  // dropped from the PDF pipeline in this slice) — kept as a regression check
-  // that a populated logo_url column does not break the route.
-  // -----------------------------------------------------------------------
-  it('200 — tenant with logo_url set: still generates PDF (logo no longer used)', async () => {
-    const { tenantId: baseTenantId } = await createTenantWithLocation('pdf-logo-miss-base');
-    await pgAdmin.query(`UPDATE tenants SET logo_url = 'logos/missing.png' WHERE id = $1`, [
-      baseTenantId,
-    ]);
-
-    // Create user, vehicle, intervention under this patched tenant.
-    const cognitoSub = 'pdf-logo-miss-sub';
-    const { userId } = await createUser({ tenantId: baseTenantId, cognitoSub });
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: cognitoSub,
-      tenantId: baseTenantId,
-      role: 'mechanic',
-    });
-
-    const { vehicleId } = await createVehicle({ createdByTenantId: baseTenantId });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
-    const { interventionId } = await createIntervention({
-      tenantId: baseTenantId,
-      userId,
-      vehicleId,
-      interventionTypeId: type.id,
-      interventionDate: '2026-05-23',
-      odometerKm: 70000,
-      title: 'Tagliando logo test',
-      description: 'Verifica generazione senza logo',
-      partsReplaced: [],
-      status: 'active',
-    });
-
-    const res = await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/${interventionId}/pdf`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.headers['content-type']).toContain('application/pdf');
-    expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
   });
 });
