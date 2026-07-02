@@ -10,11 +10,10 @@ import { MonitoringConstruct } from '../constructs/monitoring.js';
 import { SchedulerConstruct } from '../constructs/scheduler.js';
 import { SecretsConstruct } from '../constructs/secrets.js';
 import { SesConstruct } from '../constructs/ses.js';
-import { StorageConstruct } from '../constructs/storage.js';
 import { type EnvironmentConfig } from '../config/production.js';
 
-// Single production stack hosting the six constructs shipped through
-// PR 23 (DNS, Secrets, Cognito, Storage, Lambda API, API Gateway).
+// Single production stack hosting the core constructs (DNS, Secrets,
+// Cognito, Lambda API, API Gateway, SES, Scheduler, Monitoring).
 //
 // Web hosting (S3 + CloudFront + Route53 alias for app.<domain>) lives
 // in a dedicated WebStack (eu-central-1) plus a WebCertStack
@@ -68,28 +67,6 @@ export class MainStack extends cdk.Stack {
       clientiTriggerFunction: cognitoTriggers.function,
     });
 
-    // Storage construct ships PRIMA del LambdaApi perché LambdaApi
-    // consuma il bucket via prop (CDK dep graph order).
-    const storage = new StorageConstruct(this, 'Storage', {
-      environment: config.environment,
-      corsAllowedOrigins: [
-        `https://${config.appSubdomain}.${config.domainName}`,
-        `https://${config.domainName}`,
-      ],
-    });
-
-    // The Cognito trigger Lambda reuses the API's env schema (parseEnv), which
-    // requires S3_ATTACHMENTS_BUCKET even though the trigger never touches S3.
-    // Wire it post-construction (the bucket is created after the trigger) so the
-    // shared env validation passes at cold start; no S3 IAM grant is added since
-    // the trigger makes no S3 calls. Same addEnvironment pattern as the scheduler
-    // env vars below. (Cleaner fix — a trigger-specific env schema — tracked as
-    // follow-up tech debt.)
-    cognitoTriggers.function.addEnvironment(
-      'S3_ATTACHMENTS_BUCKET',
-      storage.attachmentsBucket.bucketName,
-    );
-
     // SES domain identity + config set + IAM grant. Operator post-merge
     // submits AWS production-access ticket (sandbox is account-level).
     const sesConstruct = new SesConstruct(this, 'Ses', {
@@ -107,7 +84,6 @@ export class MainStack extends cdk.Stack {
       appSecret: secrets.appSecret,
       officineUserPoolArn: cognito.officineUserPool.userPoolArn,
       clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
-      attachmentsBucket: storage.attachmentsBucket,
       sesIdentityArn: sesConstruct.identityArn,
       sesConfigurationSetArn: sesConstruct.configurationSetArn,
       sesFromAddress: config.emailFromAddress,
@@ -202,10 +178,6 @@ export class MainStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'CognitoClientiHostedUiDomain', {
       value: `https://${config.cognito.clientiHostedUiDomainPrefix}.auth.${this.region}.amazoncognito.com`,
       description: 'Hosted UI base URL — feed into mobile EXPO_PUBLIC_COGNITO_HOSTED_UI (PR 3)',
-    });
-    new cdk.CfnOutput(this, 'AttachmentsBucketName', {
-      value: storage.attachmentsBucket.bucketName,
-      description: 'S3 bucket per allegati intervention/dispute (presigned URL upload F-OFF-305)',
     });
     new cdk.CfnOutput(this, 'SesEmailIdentityArn', {
       value: sesConstruct.identityArn,
