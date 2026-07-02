@@ -64,3 +64,12 @@ export const CATALOG_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export const GENERIC_CATALOG_ERROR = 'Operazione non riuscita. Riprova.';
+
+// Error-code → Italian message map for checklist-item CRUD mutations (Task 4).
+// Looked up alongside CATALOG_ERROR_MESSAGES (e.g. the parent-type
+// admin.intervention_type.not_found can also surface from the nested
+// POST/GET checklist-items routes) — see CatalogoInterventoDetail.tsx.
+export const CHECKLIST_ITEM_ERROR_MESSAGES: Record<string, string> = {
+  'admin.checklist_item.code_conflict': 'Codice voce già esistente per questo tipo.',
+  'admin.checklist_item.not_found': 'Voce non trovata.',
+};
