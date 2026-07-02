@@ -62,8 +62,11 @@ const CreateTypeBody = z
 const UpdateTypeBody = z
   .object({
     nameIt: z.string().trim().min(1).max(150).optional(),
-    description: z.string().trim().max(1000).optional(),
-    icon: z.string().trim().max(50).optional(),
+    // Nullable: PATCH { description: null } explicitly clears a previously
+    // set value (columns are String? in schema.prisma). Distinct from
+    // omitting the key entirely, which leaves the current value untouched.
+    description: z.string().trim().max(1000).nullable().optional(),
+    icon: z.string().trim().max(50).nullable().optional(),
     suggestsDeadline: z.boolean().optional(),
     defaultDeadlineMonths: z.number().int().positive().max(600).nullable().optional(),
     defaultDeadlineKm: z.number().int().positive().max(2_000_000).nullable().optional(),
@@ -262,7 +265,7 @@ export const adminInterventionTypesRoutes: FastifyPluginAsync = async (app) => {
             throw businessError(
               'admin.intervention_type.in_use',
               409,
-              'Tipo in uso da uno o più interventi: disattivalo invece di eliminarlo.',
+              'Tipo in uso da uno o più interventi o scadenze: disattivalo invece di eliminarlo.',
             );
           }
           throw err;

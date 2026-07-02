@@ -52,6 +52,7 @@ function uniqueCode(prefix: string): string {
 async function seedGlobalType(params: {
   code?: string;
   nameIt?: string;
+  description?: string | null;
   category?: 'maintenance' | 'repair' | 'tires' | 'body' | 'inspection' | 'other';
   active?: boolean;
   suggestsDeadline?: boolean;
@@ -61,6 +62,7 @@ async function seedGlobalType(params: {
   const {
     code = uniqueCode('ZTEST'),
     nameIt = `Test type ${code}`,
+    description = null,
     category = 'maintenance',
     active = true,
     suggestsDeadline = false,
@@ -69,11 +71,20 @@ async function seedGlobalType(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO intervention_types
-       (id, tenant_id, code, name_it, category, suggests_deadline,
+       (id, tenant_id, code, name_it, description, category, suggests_deadline,
         default_deadline_months, default_deadline_km, active, created_at, updated_at)
-     VALUES (gen_random_uuid(), NULL, $1, $2, $3::"InterventionTypeCategory", $4, $5, $6, $7, NOW(), NOW())
+     VALUES (gen_random_uuid(), NULL, $1, $2, $3, $4::"InterventionTypeCategory", $5, $6, $7, $8, NOW(), NOW())
      RETURNING id`,
-    [code, nameIt, category, suggestsDeadline, defaultDeadlineMonths, defaultDeadlineKm, active],
+    [
+      code,
+      nameIt,
+      description,
+      category,
+      suggestsDeadline,
+      defaultDeadlineMonths,
+      defaultDeadlineKm,
+      active,
+    ],
   );
   return { id: rows[0]!.id, code };
 }
@@ -369,6 +380,29 @@ describe('Admin intervention-types — business cases (integration)', () => {
       [seeded.id],
     );
     expect(auditRows).toHaveLength(1);
+  });
+
+  // ── 6b. PATCH description: null → clears a previously set value ─────────────
+  it('PATCH with description: null clears a previously set description (SQL NULL)', async () => {
+    const seeded = await seedGlobalType({ description: 'Descrizione originale' });
+    const token = await signTestToken({ pool: 'platform-admins' });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/admin/intervention-types/${seeded.id}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: JSON.stringify({ description: null }),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { interventionType: InterventionTypeAdminDto };
+    expect(body.interventionType.description).toBeNull();
+
+    const { rows } = await pgAdmin.query<{ description: string | null }>(
+      `SELECT description FROM intervention_types WHERE id = $1`,
+      [seeded.id],
+    );
+    expect(rows[0]!.description).toBeNull();
   });
 
   // ── 7. PATCH unknown id → 404 ────────────────────────────────────────────────

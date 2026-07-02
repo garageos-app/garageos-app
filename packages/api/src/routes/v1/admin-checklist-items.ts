@@ -210,8 +210,10 @@ export const adminChecklistItemsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const row = await app.withContext({ role: 'admin' as const }, async (tx) => {
+        // Defense-in-depth: scope to items whose parent type is global,
+        // matching the nested routes' global-only guarantee.
         const existing = await tx.interventionChecklistItem.findFirst({
-          where: { id },
+          where: { id, interventionType: { tenantId: null } },
           select: { id: true },
         });
         if (!existing) {
@@ -256,8 +258,10 @@ export const adminChecklistItemsRoutes: FastifyPluginAsync = async (app) => {
       const { id } = parsedParams.data;
 
       await app.withContext({ role: 'admin' as const }, async (tx) => {
+        // Defense-in-depth: scope to items whose parent type is global,
+        // matching the nested routes' global-only guarantee.
         const existing = await tx.interventionChecklistItem.findFirst({
-          where: { id },
+          where: { id, interventionType: { tenantId: null } },
           select: { id: true },
         });
         if (!existing) {

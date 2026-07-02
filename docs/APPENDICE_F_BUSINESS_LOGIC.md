@@ -1226,7 +1226,7 @@ Il catalogo globale (`intervention_types` con `tenant_id IS NULL` e `interventio
 - `GET /v1/admin/intervention-types` — lista completa (inclusi tipi inattivi)
 - `POST /v1/admin/intervention-types` — crea tipo globale
 - `PATCH /v1/admin/intervention-types/:id` — modifica tipo globale (mai `code`/`category`)
-- `DELETE /v1/admin/intervention-types/:id` — hard delete (409 `admin.intervention_type.in_use` se referenziato da un `intervention`, FK `onDelete: Restrict`)
+- `DELETE /v1/admin/intervention-types/:id` — hard delete (409 `admin.intervention_type.in_use` se referenziato da un `intervention` o da una `deadline` (`Deadline.interventionType`), entrambe FK `onDelete: Restrict`)
 
 Ogni scrittura genera una riga `audit_logs` (`intervention_type_created|updated|deleted`, `actorType:'system'`, `metadata.actorCognitoSub`) nella stessa transazione, per rollback atomico in caso di errore successivo.
 
