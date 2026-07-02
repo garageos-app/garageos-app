@@ -9,8 +9,6 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 //
 // Select list is the public tenant profile. Intentionally excluded:
 // - settings (JSON bag that may contain internal flags / PII)
-// - logoUrl (will need a signed URL layer if it becomes customer-
-//   visible — not in scope for PR 7)
 // - taxCode (sometimes present for sole proprietors; handle with
 //   the PII layer when it arrives)
 // - deletedAt / updatedAt (internal lifecycle)

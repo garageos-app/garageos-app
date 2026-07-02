@@ -313,11 +313,6 @@ enum NotificationDeliveryStatus {
   cancelled
 }
 
-enum AttachmentOwnerType {
-  intervention
-  private_intervention
-}
-
 enum AccessLogAction {
   view
   create
@@ -359,7 +354,6 @@ model Tenant {
   city            String?        @db.VarChar(100)
   province        String?        @db.VarChar(2)
   postalCode      String?        @map("postal_code") @db.VarChar(10)
-  logoUrl         String?        @map("logo_url") @db.VarChar(500)
   status          TenantStatus   @default(active)
   billingStatus   BillingStatus  @default(manual) @map("billing_status")
   plan            String         @default("starter") @db.VarChar(50)
@@ -401,7 +395,6 @@ model User {
   firstName    String     @map("first_name") @db.VarChar(100)
   lastName     String     @map("last_name") @db.VarChar(100)
   role         UserRole
-  avatarUrl    String?    @map("avatar_url") @db.VarChar(500)
   phone        String?    @db.VarChar(30)
   lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz
   status       UserStatus @default(active)
@@ -699,32 +692,10 @@ model PrivateIntervention {
   @@map("private_interventions")
 }
 
-// ---------------------------------------------------
-// ATTACHMENTS
-// ---------------------------------------------------
-
-model Attachment {
-  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ownerType                AttachmentOwnerType @map("owner_type")
-  ownerId                  String              @map("owner_id") @db.Uuid
-  tenantId                 String?             @map("tenant_id") @db.Uuid
-  customerId               String?             @map("customer_id") @db.Uuid
-  uploadedByUserId         String?             @map("uploaded_by_user_id") @db.Uuid
-  uploadedByCustomerId     String?             @map("uploaded_by_customer_id") @db.Uuid
-  fileName                 String              @map("file_name") @db.VarChar(255)
-  mimeType                 String              @map("mime_type") @db.VarChar(100)
-  sizeBytes                Int                 @map("size_bytes")
-  s3Key                    String              @map("s3_key") @db.VarChar(500)
-  s3Bucket                 String              @map("s3_bucket") @db.VarChar(100)
-  processed                Boolean             @default(false)
-  thumbnailS3Key           String?             @map("thumbnail_s3_key") @db.VarChar(500)
-  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  deletedAt                DateTime?           @map("deleted_at") @db.Timestamptz
-
-  @@index([ownerType, ownerId], map: "idx_attachments_owner")
-  @@index([tenantId], map: "idx_attachments_tenant")
-  @@map("attachments")
-}
+// ATTACHMENTS: modello e tabella RIMOSSI (arc "remove uploads and S3", PR4,
+// migration 20260702120000_drop_attachments_avatar_logo). Enum
+// AttachmentOwnerType, tabella attachments, indici, constraint e RLS policy
+// tutti droppati insieme alle feature upload.
 
 // ---------------------------------------------------
 // DEADLINES & NOTIFICATIONS
@@ -1104,18 +1075,8 @@ ALTER TABLE deadlines DROP CONSTRAINT IF EXISTS chk_deadline_has_criterion;
 ALTER TABLE deadlines ADD CONSTRAINT chk_deadline_has_criterion
 CHECK (due_date IS NOT NULL OR due_odometer_km IS NOT NULL);
 
--- BR-180: Dimensione allegati
-ALTER TABLE attachments DROP CONSTRAINT IF EXISTS chk_attachment_size;
-ALTER TABLE attachments ADD CONSTRAINT chk_attachment_size
-CHECK (size_bytes > 0 AND size_bytes <= 10485760);
-
--- Attachment owner consistency (XOR logic)
-ALTER TABLE attachments DROP CONSTRAINT IF EXISTS chk_attachment_owner_consistent;
-ALTER TABLE attachments ADD CONSTRAINT chk_attachment_owner_consistent
-CHECK (
-    (owner_type = 'intervention' AND tenant_id IS NOT NULL AND customer_id IS NULL) OR
-    (owner_type = 'private_intervention' AND customer_id IS NOT NULL AND tenant_id IS NULL)
-);
+-- BR-180 (chk_attachment_size) e chk_attachment_owner_consistent: RIMOSSI con
+-- la tabella attachments (PR4, migration 20260702120000_drop_attachments_avatar_logo).
 
 -- BR-203: Un tenant deve avere almeno un super_admin attivo
 -- Questa è controllata a livello applicativo perché è cross-row
@@ -1426,38 +1387,10 @@ FOR INSERT
 WITH CHECK (true);  -- Write-only per utenti non admin
 
 -- =====================================================
--- ATTACHMENTS (post migration 0003): SELECT cross-pool, WRITE
--- owner-scoped (intervention attachments → tenant; private →
--- customer).
+-- ATTACHMENTS RLS: RIMOSSA con la tabella (PR4, migration
+-- 20260702120000_drop_attachments_avatar_logo). Le policy
+-- attachments_read/insert/update sono state droppate in CASCADE.
 -- =====================================================
-
-ALTER TABLE attachments ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS attachments_read ON attachments;
-CREATE POLICY attachments_read ON attachments
-FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS attachments_insert ON attachments;
-CREATE POLICY attachments_insert ON attachments
-FOR INSERT WITH CHECK (
-    is_admin_role()
-    OR (owner_type = 'intervention' AND tenant_id = current_tenant_id())
-    OR (owner_type = 'private_intervention' AND customer_id = current_customer_id())
-);
-
-DROP POLICY IF EXISTS attachments_update ON attachments;
-CREATE POLICY attachments_update ON attachments
-FOR UPDATE
-USING (
-    is_admin_role()
-    OR (owner_type = 'intervention' AND tenant_id = current_tenant_id())
-    OR (owner_type = 'private_intervention' AND customer_id = current_customer_id())
-)
-WITH CHECK (
-    is_admin_role()
-    OR (owner_type = 'intervention' AND tenant_id = current_tenant_id())
-    OR (owner_type = 'private_intervention' AND customer_id = current_customer_id())
-);
 ```
 
 ### 3.3 File `sql/functions.sql`
@@ -1923,7 +1856,6 @@ export const CreateInterventionSchema = z.object({
 export const CreateDisputeSchema = z.object({
   reasonCategory: z.enum(['not_performed', 'wrong_data', 'not_authorized', 'other']),
   description: z.string().min(20).max(2000),
-  attachmentIds: z.array(z.uuid()).max(10).optional(),
 });
 
 export type CreateInterventionInput = z.infer<typeof CreateInterventionSchema>;

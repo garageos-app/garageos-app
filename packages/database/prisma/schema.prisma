@@ -177,12 +177,6 @@ enum PersonalDeadlineReminderKind {
   tail
 }
 
-enum AttachmentOwnerType {
-  intervention
-  private_intervention
-  intervention_dispute
-}
-
 enum AccessLogAction {
   view
   create
@@ -226,7 +220,6 @@ model Tenant {
   city            String?        @db.VarChar(100)
   province        String?        @db.VarChar(2)
   postalCode      String?        @map("postal_code") @db.VarChar(10)
-  logoUrl         String?        @map("logo_url") @db.VarChar(500)
   status          TenantStatus   @default(active)
   billingStatus   BillingStatus  @default(manual) @map("billing_status")
   plan            String         @default("starter") @db.VarChar(50)
@@ -259,7 +252,6 @@ model User {
   firstName    String     @map("first_name") @db.VarChar(100)
   lastName     String     @map("last_name") @db.VarChar(100)
   role         UserRole
-  avatarUrl    String?    @map("avatar_url") @db.VarChar(500)
   phone        String?    @db.VarChar(30)
   lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz
   status       UserStatus @default(active)
@@ -548,7 +540,6 @@ model InterventionDispute {
   intervention       Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
   customer           Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
   tenantResponseUser User?        @relation(fields: [tenantResponseUserId], references: [id], onDelete: SetNull)
-  attachments        Attachment[]
 
   @@index([interventionId], map: "idx_disputes_intervention")
   @@index([customerId], map: "idx_disputes_customer")
@@ -577,36 +568,6 @@ model PrivateIntervention {
   @@map("private_interventions")
 }
 
-// ---------------------------------------------------
-// ATTACHMENTS
-// ---------------------------------------------------
-
-model Attachment {
-  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ownerType                AttachmentOwnerType @map("owner_type")
-  ownerId                  String              @map("owner_id") @db.Uuid
-  tenantId                 String?             @map("tenant_id") @db.Uuid
-  customerId               String?             @map("customer_id") @db.Uuid
-  uploadedByUserId         String?             @map("uploaded_by_user_id") @db.Uuid
-  uploadedByCustomerId     String?             @map("uploaded_by_customer_id") @db.Uuid
-  fileName                 String              @map("file_name") @db.VarChar(255)
-  mimeType                 String              @map("mime_type") @db.VarChar(100)
-  sizeBytes                Int                 @map("size_bytes")
-  s3Key                    String              @map("s3_key") @db.VarChar(500)
-  s3Bucket                 String              @map("s3_bucket") @db.VarChar(100)
-  processed                Boolean             @default(false)
-  thumbnailS3Key           String?             @map("thumbnail_s3_key") @db.VarChar(500)
-  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  deletedAt                DateTime?           @map("deleted_at") @db.Timestamptz
-  disputeId                String?             @map("dispute_id") @db.Uuid
-
-  dispute                  InterventionDispute? @relation(fields: [disputeId], references: [id], onDelete: NoAction)
-
-  @@index([ownerType, ownerId], map: "idx_attachments_owner")
-  @@index([tenantId], map: "idx_attachments_tenant")
-  @@index([disputeId], map: "idx_attachments_dispute_id")
-  @@map("attachments")
-}
 
 // ---------------------------------------------------
 // DEADLINES & NOTIFICATIONS

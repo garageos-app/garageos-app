@@ -5,7 +5,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
 import {
-  createAttachment,
   createCustomer,
   createOwnership,
   createPrivateIntervention,
@@ -1694,47 +1693,5 @@ describe('DELETE /v1/me/private-interventions/:id (integration)', () => {
     expect(list.statusCode).toBe(200);
     const body = list.json() as { data: Array<{ description: string }> };
     expect(body.data.map((d) => d.description)).toEqual(['to-keep']);
-  });
-
-  it('DELETE does not cascade-delete attached files (orphan policy)', async () => {
-    const cognitoSub = 'me-pid-orphan-' + Math.random().toString(36).slice(2, 10);
-    const { customerId } = await createCustomer({ cognitoSub });
-    const { tenantId } = await createTenantWithLocation('me-pid-orphan');
-    const { vehicleId } = await createVehicle({
-      createdByTenantId: tenantId,
-      vin: 'PIDELORPHAN00001',
-      plate: 'PD006AA',
-      make: 'Fiat',
-      model: 'Panda',
-    });
-    await createOwnership({ vehicleId, customerId });
-    const { privateInterventionId } = await createPrivateIntervention({
-      customerId,
-      vehicleId,
-      interventionDate: '2026-03-10',
-    });
-    // Seed an attachment directly. customerId XOR per chk_attachment_owner_consistent.
-    const { attachmentId } = await createAttachment({
-      ownerType: 'private_intervention',
-      ownerId: privateInterventionId,
-      customerId,
-      uploadedByCustomerId: customerId,
-    });
-
-    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
-
-    await app.inject({
-      method: 'DELETE',
-      url: `/v1/me/private-interventions/${privateInterventionId}`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP_DELETE },
-    });
-
-    // Verify attachment row still exists (no cascade soft delete).
-    const { rows } = await pgAdmin.query<{ id: string; deleted_at: Date | null }>(
-      `SELECT id, deleted_at FROM attachments WHERE id = $1`,
-      [attachmentId],
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.deleted_at).toBeNull();
   });
 });
