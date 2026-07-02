@@ -1,6 +1,6 @@
 // IT-strings — hardcoded, no i18n in this app.
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Building2, ScrollText } from 'lucide-react';
+import { LayoutDashboard, Building2, ScrollText, ClipboardList } from 'lucide-react';
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -12,12 +12,14 @@ import {
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, to: '/' },
   { id: 'officine', label: 'Officine', icon: Building2, to: '/officine' },
+  { id: 'catalogo', label: 'Catalogo interventi', icon: ClipboardList, to: '/catalogo' },
   { id: 'audit', label: 'Audit', icon: ScrollText, to: '/audit' },
 ] as const;
 
 function isActiveFor(id: string, pathname: string): boolean {
   if (id === 'dashboard') return pathname === '/';
   if (id === 'officine') return pathname.startsWith('/officine');
+  if (id === 'catalogo') return pathname.startsWith('/catalogo');
   if (id === 'audit') return pathname.startsWith('/audit');
   return false;
 }

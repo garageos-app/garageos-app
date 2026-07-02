@@ -9,6 +9,7 @@ export function titleForPath(pathname: string): string {
   if (pathname.startsWith('/officine/nuova')) return 'Crea officina';
   if (/^\/officine\/[^/]+$/.test(pathname)) return 'Dettaglio officina';
   if (pathname.startsWith('/officine')) return 'Officine';
+  if (pathname.startsWith('/catalogo')) return 'Catalogo interventi';
   if (pathname.startsWith('/audit')) return 'Audit';
   return 'Console piattaforma';
 }
