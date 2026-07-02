@@ -68,6 +68,7 @@ import { adminAuditLogsRoutes } from './routes/v1/admin-audit-logs.js';
 import { adminTenantUsersRoutes } from './routes/v1/admin-tenant-users.js';
 import { adminTenantUsersInvitationsRoutes } from './routes/v1/admin-tenant-users-invitations.js';
 import { adminInterventionTypesRoutes } from './routes/v1/admin-intervention-types.js';
+import { adminChecklistItemsRoutes } from './routes/v1/admin-checklist-items.js';
 import customerCreateRoutes from './routes/v1/customers-create.js';
 import customerDetailRoutes from './routes/v1/customers-detail.js';
 import customerListRoutes from './routes/v1/customers-list.js';
@@ -188,6 +189,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(adminTenantUsersRoutes);
   await app.register(adminTenantUsersInvitationsRoutes);
   await app.register(adminInterventionTypesRoutes);
+  await app.register(adminChecklistItemsRoutes);
   await app.register(tenantRoutes);
   await app.register(tenantUpdateRoutes);
   await app.register(customerRoutes);

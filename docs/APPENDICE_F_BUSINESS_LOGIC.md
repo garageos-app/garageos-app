@@ -1231,7 +1231,20 @@ Il catalogo globale (`intervention_types` con `tenant_id IS NULL` e `interventio
 Ogni scrittura genera una riga `audit_logs` (`intervention_type_created|updated|deleted`, `actorType:'system'`, `metadata.actorCognitoSub`) nella stessa transazione, per rollback atomico in caso di errore successivo.
 
 ### BR-307 — Unicità code voce per tipo
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Il `code` di una voce checklist (`intervention_checklist_items.code`) deve essere univoco **all'interno del proprio tipo di intervento** (`intervention_type_id`), non globalmente — lo stesso `code` può comparire su tipi diversi (es. `OLIO` sotto `MECCANICO` e sotto `GOMME`).
+
+**Enforcement:**
+- **DB layer:** indice univoco `uq_checklist_item_code_type` su `(intervention_type_id, code)`. A differenza di BR-306 (unicità `code` dei tipi globali, verificata in applicazione perché `tenant_id IS NULL` rende NULLS-DISTINCT il vincolo DB inutile), qui **entrambe** le colonne sono `NOT NULL`: due righe con lo stesso `(intervention_type_id, code)` collidono sempre a livello Postgres, quindi il vincolo DB è affidabile e sufficiente.
+- **Application layer:** `POST /v1/admin/intervention-types/:id/checklist-items` cattura l'eccezione Prisma `P2002` sull'indice e la mappa a `409 admin.checklist_item.code_conflict` — nessun pre-check applicativo (a differenza di BR-306), perché qui non serve aggirare una lacuna NULLS-DISTINCT.
+
+**Endpoint coperti:**
+- `GET /v1/admin/intervention-types/:id/checklist-items` — lista voci del tipo (incluse inattive), ordinate `sortOrder ASC, nameIt ASC`
+- `POST /v1/admin/intervention-types/:id/checklist-items` — crea voce sotto il tipo
+- `PATCH /v1/admin/checklist-items/:id` — modifica voce (mai `code`/`interventionTypeId`)
+- `DELETE /v1/admin/checklist-items/:id` — hard delete; `InterventionChecklistSelection.checklistItem` è `onDelete: SetNull`, quindi le selezioni storiche sopravvivono con `checklist_item_id = NULL` e `label_snapshot` intatto (BR-303/D8) — nessun vincolo `Restrict` da gestire qui, a differenza della DELETE dei tipi globali (BR-306).
+
+Ogni scrittura genera una riga `audit_logs` (`checklist_item_created|updated|deleted`, `entityType:'intervention_checklist_item'`, `actorType:'system'`, `metadata.actorCognitoSub`) nella stessa transazione, per rollback atomico in caso di errore successivo.
 
 ### BR-308 — Titolo rimosso
 **RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
