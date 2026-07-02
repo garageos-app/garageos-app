@@ -1214,7 +1214,21 @@ Numerazione riservata per l'arco di redesign checklist interventi/tipi, per evit
 **RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
 
 ### BR-306 — Governance catalogo (admin-only write)
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Il catalogo globale (`intervention_types` con `tenant_id IS NULL` e `intervention_checklist_items` collegati) è scrivibile **esclusivamente** dal platform admin. Nessun endpoint officina espone create/update/delete su questo catalogo — le officine possono solo leggerlo (`GET /v1/intervention-types`) ed escluderne singole voci per il proprio tenant (`tenant_intervention_type_exclusions` / `tenant_checklist_item_exclusions`, arco futuro).
+
+**Enforcement:**
+- **Auth layer:** `requireAuth → requirePlatformAdminsPool` su tutte le route `/v1/admin/intervention-types*` — nessun claim tenant è richiesto o accettato.
+- **RLS layer:** la policy `intervention_types_isolation` consente le scritture solo quando `is_admin_role()` è vero, cioè quando la sessione ha impostato la GUC `app.current_role = 'admin'` via `withContext({ role: 'admin' })`. Nessun bypass RLS (BYPASSRLS) è usato per queste route.
+- **Uniqueness applicativa:** l'unicità di `code` per i tipi globali è verificata a livello applicativo (`findFirst({ tenantId: null, code })` prima della `create`), non dal DB: l'indice `uq_intervention_type_code_tenant` è `(tenant_id, code)` con semantica NULLS-DISTINCT di default, quindi due righe con `tenant_id IS NULL` e lo stesso `code` non collidono a livello Postgres. Una finestra TOCTOU residua tra pre-check e create è accettata (catalogo a operatore singolo).
+
+**Endpoint coperti:**
+- `GET /v1/admin/intervention-types` — lista completa (inclusi tipi inattivi)
+- `POST /v1/admin/intervention-types` — crea tipo globale
+- `PATCH /v1/admin/intervention-types/:id` — modifica tipo globale (mai `code`/`category`)
+- `DELETE /v1/admin/intervention-types/:id` — hard delete (409 `admin.intervention_type.in_use` se referenziato da un `intervention`, FK `onDelete: Restrict`)
+
+Ogni scrittura genera una riga `audit_logs` (`intervention_type_created|updated|deleted`, `actorType:'system'`, `metadata.actorCognitoSub`) nella stessa transazione, per rollback atomico in caso di errore successivo.
 
 ### BR-307 — Unicità code voce per tipo
 **RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.

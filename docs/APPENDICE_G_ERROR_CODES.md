@@ -382,6 +382,9 @@ Nessun error code di questa famiglia è più emesso dall'API.*
 | `admin.impersonation.target_not_found` | 404 | info | Tenant da impersonare non trovato | |
 | `admin.impersonation.not_allowed` | 403 | critical | Impersonation non consentita | Target è admin |
 | `admin.tenant.rate_limited` | 429 | warning | Troppe richieste | POST /v1/admin/tenants, /:id/regenerate-invitation e /:id/users/invitations — oltre 30 richieste/ora per platform-admin |
+| `admin.intervention_type.not_found` | 404 | info | Tipo di intervento non trovato | PATCH/DELETE `/v1/admin/intervention-types/:id`; UUID malformato e ID inesistente restituiscono lo stesso codice (anti-enum) |
+| `admin.intervention_type.code_conflict` | 409 | info | Codice tipo già esistente | POST `/v1/admin/intervention-types` con `code` già usato da un altro tipo globale (pre-check app-layer, non un P2002 — vedi BR-306) |
+| `admin.intervention_type.in_use` | 409 | info | Tipo in uso da uno o più interventi | DELETE `/v1/admin/intervention-types/:id` quando esistono righe `interventions` che referenziano il tipo (FK `onDelete: Restrict`) |
 | `system.database.connection_failed` | 503 | critical | Database non raggiungibile | |
 | `system.email.send_failed` | 502 | error | Invio email fallito | SES error |
 | `system.push.send_failed` | 502 | error | Invio push fallito | Expo Push error |

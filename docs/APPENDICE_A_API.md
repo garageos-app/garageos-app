@@ -2417,6 +2417,10 @@ uploads and S3" — vedi §2.7 e
 | GET | `/v1/admin/metrics` | Slice 4 | Platform Admin | **[DETTAGLIATO §3.12.11]** Metriche aggregate cross-tenant per dashboard admin |
 | GET | `/v1/admin/tenants/:id/metrics` | Slice 4 | Platform Admin | **[DETTAGLIATO §3.12.12]** Metriche per-officina (conteggi + attività + scadenze + inviti) |
 | GET | `/v1/admin/audit-logs` | Slice 5 | Platform Admin | **[DETTAGLIATO §3.12.13]** Log di audit globale con filtri e paginazione keyset |
+| GET | `/v1/admin/intervention-types` | PR-2 (BR-306) | Platform Admin | **[DETTAGLIATO §3.12.14]** Lista catalogo tipi globali (inclusi inattivi) |
+| POST | `/v1/admin/intervention-types` | PR-2 (BR-306) | Platform Admin | **[DETTAGLIATO §3.12.15]** Crea tipo globale |
+| PATCH | `/v1/admin/intervention-types/:id` | PR-2 (BR-306) | Platform Admin | **[DETTAGLIATO §3.12.16]** Modifica tipo globale (mai `code`/`category`) |
+| DELETE | `/v1/admin/intervention-types/:id` | PR-2 (BR-306) | Platform Admin | **[DETTAGLIATO §3.12.17]** Elimina tipo globale (hard delete, 409 se in uso) |
 | GET | `/admin/tenants` | F-ADM-001 | Admin | Lista tutti i tenant |
 | POST | `/admin/tenants/:id/suspend` | F-ADM-002 | Admin | Sospendi tenant |
 | POST | `/admin/tenants/:id/activate` | F-ADM-002 | Admin | Riattiva tenant |
@@ -3100,6 +3104,160 @@ Log di audit cross-tenant con paginazione keyset, ordinato per `createdAt DESC, 
 - `400 VALIDATION_ERROR` — query non valida: `limit` < 1 o > 100, `actorType` non riconosciuto, `tenantId` non `'platform'` né UUID, `cursor` malformato
 - `401` — token mancante o non valido (`requireAuth`)
 - `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+
+#### 3.12.14 `GET /v1/admin/intervention-types` — Lista catalogo tipi globali
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno (solo lettura)
+**Shipped:** PR-2 (BR-306)
+
+Restituisce **tutti** i tipi di intervento globali (`tenant_id IS NULL`), **inclusi quelli inattivi** — a differenza di `GET /v1/intervention-types` (officine), che filtra implicitamente per uso operativo. Ordinamento `category ASC, nameIt ASC`. Ogni riga include `checklistItemCount`, il conteggio delle voci checklist collegate (`_count.checklistItems`).
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant (`withContext({ role: 'admin' })` diretto).
+
+**Response `200 OK`:**
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "code": "MECCANICO",
+      "nameIt": "Intervento Meccanico",
+      "description": null,
+      "icon": null,
+      "category": "maintenance",
+      "suggestsDeadline": true,
+      "defaultDeadlineMonths": 12,
+      "defaultDeadlineKm": 15000,
+      "active": true,
+      "checklistItemCount": 4,
+      "createdAt": "2026-06-01T10:00:00.000Z",
+      "updatedAt": "2026-06-01T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+
+#### 3.12.15 `POST /v1/admin/intervention-types` — Crea tipo globale
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno
+**Shipped:** PR-2 (BR-306)
+
+Crea un nuovo tipo di intervento globale (`tenant_id = NULL`). L'unicità di `code` tra i tipi globali è verificata con un pre-check applicativo (non un vincolo DB — vedi BR-306) prima dell'insert. La creazione e la riga di audit `intervention_type_created` sono atomiche nella stessa transazione Postgres.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`.
+
+**Request body:**
+
+```json
+{
+  "code": "TAGLIANDO_EXTRA",
+  "nameIt": "Tagliando extra",
+  "description": "Tagliando aggiuntivo fuori piano",
+  "icon": "wrench",
+  "category": "maintenance",
+  "suggestsDeadline": true,
+  "defaultDeadlineMonths": 12,
+  "defaultDeadlineKm": 15000,
+  "active": true
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `code` | string | **Obbligatorio.** `^[A-Z][A-Z0-9_]{0,49}$` — lettere maiuscole, cifre, underscore |
+| `nameIt` | string | **Obbligatorio.** 1-150 caratteri |
+| `description` | string | Opzionale, max 1000 caratteri |
+| `icon` | string | Opzionale, max 50 caratteri |
+| `category` | enum | **Obbligatorio.** `maintenance \| repair \| tires \| body \| inspection \| other` |
+| `suggestsDeadline` | boolean | Opzionale, default `false` |
+| `defaultDeadlineMonths` | integer \| null | Opzionale, 1-600 |
+| `defaultDeadlineKm` | integer \| null | Opzionale, 1-2.000.000 |
+| `active` | boolean | Opzionale, default `true` |
+
+Body validato con Zod `.strict()` — campi non riconosciuti restituiscono `400 VALIDATION_ERROR`.
+
+**Response `201 Created`:** `{ "interventionType": <stessa shape di §3.12.14> }`
+
+**Errori:**
+
+- `400 VALIDATION_ERROR` — validazione campi fallita (inclusa `category` fuori enum)
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `409 admin.intervention_type.code_conflict` — esiste già un tipo globale con lo stesso `code`
+
+#### 3.12.16 `PATCH /v1/admin/intervention-types/:id` — Modifica tipo globale
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno
+**Shipped:** PR-2 (BR-306)
+
+Modifica un tipo globale esistente. **`code` e `category` non sono modificabili** da questo endpoint (immutabili dopo la creazione). Aggiornamento e riga di audit `intervention_type_updated` sono atomici nella stessa transazione.
+
+Anti-enumerazione: UUID non valido nel formato e ID sconosciuto restituiscono entrambi `404 admin.intervention_type.not_found`.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`.
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | ID del tipo di intervento |
+
+**Request body** (parziale, almeno un campo, `.strict()`):
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `nameIt` | string | 1-150 caratteri |
+| `description` | string | Max 1000 caratteri (non è possibile azzerarla a `null` da questo endpoint) |
+| `icon` | string | Max 50 caratteri (idem) |
+| `suggestsDeadline` | boolean | |
+| `defaultDeadlineMonths` | integer \| null | 1-600 |
+| `defaultDeadlineKm` | integer \| null | 1-2.000.000 |
+| `active` | boolean | |
+
+**Response `200 OK`:** `{ "interventionType": <stessa shape di §3.12.14> }`
+
+**Errori:**
+
+- `400 VALIDATION_ERROR` — validazione fallita, campo sconosciuto (`code`/`category` inclusi) o body vuoto
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 admin.intervention_type.not_found` — UUID non valido o tipo inesistente (anti-enum)
+
+#### 3.12.17 `DELETE /v1/admin/intervention-types/:id` — Elimina tipo globale
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno
+**Shipped:** PR-2 (BR-306)
+
+Hard delete di un tipo globale. Le voci checklist (`intervention_checklist_items`) e le esclusioni per-tenant collegate vengono eliminate a cascata (FK `onDelete: Cascade`). Se il tipo è referenziato da almeno un `intervention` (FK `onDelete: Restrict`), l'eliminazione è rifiutata con `409 admin.intervention_type.in_use` — il tipo va disattivato (`PATCH { active: false }`) invece che eliminato. Eliminazione e riga di audit `intervention_type_deleted` sono atomiche nella stessa transazione.
+
+Anti-enumerazione: UUID non valido nel formato e ID sconosciuto restituiscono entrambi `404 admin.intervention_type.not_found`.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`.
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `id` | `string` (UUID) | ID del tipo di intervento |
+
+**Response:** `204 No Content` (nessun body)
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 admin.intervention_type.not_found` — UUID non valido o tipo inesistente (anti-enum)
+- `409 admin.intervention_type.in_use` — il tipo è referenziato da uno o più interventi
 
 ### 3.13 Public
 
