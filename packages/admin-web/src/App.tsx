@@ -11,6 +11,7 @@ import { CreateTenant } from '@/pages/CreateTenant';
 import { TenantDetail } from '@/pages/TenantDetail';
 import { TenantList } from '@/pages/TenantList';
 import { AuditLogs } from '@/pages/AuditLogs';
+import { CatalogoInterventi } from '@/pages/CatalogoInterventi';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +42,8 @@ export function App() {
                   <Route path="/officine/nuova" element={<CreateTenant />} />
                   {/* /officine/nuova before /officine/:id — static ranks over dynamic. */}
                   <Route path="/officine/:id" element={<TenantDetail />} />
+                  <Route path="/catalogo" element={<CatalogoInterventi />} />
+                  {/* /catalogo before /catalogo/:id (Task 4) — static ranks over dynamic. */}
                   <Route path="/audit" element={<AuditLogs />} />
                 </Route>
               </Route>
