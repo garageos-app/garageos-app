@@ -28,7 +28,6 @@ export const TenantFactory = Factory.define<Prisma.TenantUncheckedCreateInput>(
       province: 'MI',
       postalCode: '20100',
       taxCode: null,
-      logoUrl: null,
       status: 'active',
       billingStatus: 'manual',
       plan: 'starter',
