@@ -188,7 +188,7 @@ describe('LambdaApiConstruct', () => {
     }
   });
 
-  it('Lambda env wires NODE_ENV, APP_SECRETS_ARN, NODE_EXTRA_CA_CERTS, EMAIL_PROVIDER, and S3_ATTACHMENTS_BUCKET', () => {
+  it('Lambda env wires NODE_ENV, APP_SECRETS_ARN, NODE_EXTRA_CA_CERTS, and EMAIL_PROVIDER', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       Environment: {
         Variables: Match.objectLike({
@@ -196,7 +196,6 @@ describe('LambdaApiConstruct', () => {
           APP_SECRETS_ARN: Match.anyValue(),
           NODE_EXTRA_CA_CERTS: '/var/task/supabase-ca.crt',
           EMAIL_PROVIDER: 'resend',
-          S3_ATTACHMENTS_BUCKET: Match.anyValue(),
         }),
       },
     });
