@@ -240,6 +240,7 @@ model Tenant {
   tagPrints       VehicleTagPrint[]
   interventionTypeExclusions TenantInterventionTypeExclusion[]
   checklistItemExclusions    TenantChecklistItemExclusion[]
+  checklistSelections        InterventionChecklistSelection[]
 
   @@index([vatNumber], map: "idx_tenants_vat_number")
   @@index([status], map: "idx_tenants_status")
@@ -528,6 +529,7 @@ model InterventionChecklistSelection {
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   intervention  Intervention               @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  tenant        Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   checklistItem InterventionChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
 
   @@unique([interventionId, checklistItemId], map: "uq_selection_intervention_item")
