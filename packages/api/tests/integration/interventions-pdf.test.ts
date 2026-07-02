@@ -35,7 +35,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     await resetDb();
     // resetDb() truncates intervention_types as a CASCADE side-effect of
     // TRUNCATE tenants — re-seed so each test has a stable type FK.
-    await ensureSystemInterventionType('TAGLIANDO');
+    await ensureSystemInterventionType('MECCANICO');
     vi.clearAllMocks();
   });
 
@@ -63,7 +63,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     userId: string;
     status?: 'active' | 'disputed' | 'cancelled';
   }) {
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: args.tenantId });
     const { interventionId } = await createIntervention({
       tenantId: args.tenantId,
@@ -94,7 +94,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     // BR-151: CTR row makes PII visible.
     await createCustomerTenantRelation({ tenantId, customerId });
 
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { interventionId } = await createIntervention({
       tenantId,
       userId,
@@ -156,7 +156,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     await createOwnership({ vehicleId, customerId });
     // Intentionally NO CustomerTenantRelation → PII not visible → placeholder.
 
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { interventionId } = await createIntervention({
       tenantId,
       userId,
@@ -219,7 +219,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
       endedAt: new Date('2025-01-01T00:00:00.000Z'),
     });
 
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { interventionId } = await createIntervention({
       tenantId,
       userId,

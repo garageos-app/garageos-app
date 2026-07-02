@@ -199,7 +199,7 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const dueDate = opts.dueDate ?? farFutureDueDateIso();
     const { deadlineId } = await seedDeadline({
@@ -440,7 +440,7 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
     const { tenantId } = await createTenantWithLocation('complete-already-completed');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
@@ -477,7 +477,7 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
     const { tenantId } = await createTenantWithLocation('complete-cancelled');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
@@ -597,7 +597,7 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
 
   it('404 cross-tenant deadline: deadlines_tenant_isolation RLS-as-404', async () => {
     const a = await createTenantWithLocation('complete-xt-a');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId: a.tenantId,
@@ -714,7 +714,7 @@ describe('POST /v1/deadlines/:id/complete (F-OFF-405)', () => {
     const { tenantId } = await createTenantWithLocation('complete-sent-preserved');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,

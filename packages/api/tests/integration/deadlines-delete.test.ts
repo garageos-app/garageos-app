@@ -152,7 +152,7 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation(opts.tenantSuffix);
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
@@ -241,7 +241,7 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('delete-idempotent');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
@@ -301,7 +301,7 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('delete-completed');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
@@ -343,7 +343,7 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
 
   it('404 cross-tenant deadline: deadlines_tenant_isolation RLS-as-404', async () => {
     const a = await createTenantWithLocation('delete-xt-a');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId: a.tenantId,
@@ -412,7 +412,7 @@ describe('DELETE /v1/deadlines/:id (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('delete-sent');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,

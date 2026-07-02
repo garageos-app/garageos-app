@@ -161,7 +161,7 @@ describe('RLS — interventions split (post-migration 0003)', () => {
     );
 
     const { rows: it } = await pgAdmin.query<{ id: string }>(
-      `SELECT id FROM intervention_types WHERE tenant_id IS NULL AND code = 'TAGLIANDO' LIMIT 1`,
+      `SELECT id FROM intervention_types WHERE tenant_id IS NULL AND code = 'MECCANICO' LIMIT 1`,
     );
     const interventionTypeId = it[0]!.id;
 
@@ -268,7 +268,7 @@ describe('RLS — interventions split (post-migration 0003)', () => {
         select: { id: true, code: true, nameIt: true },
       }),
     );
-    expect(seenByB?.code).toBe('TAGLIANDO');
+    expect(seenByB?.code).toBe('MECCANICO');
   });
 });
 
@@ -464,7 +464,7 @@ describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)'
     );
 
     const { rows: it } = await pgAdmin.query<{ id: string }>(
-      `SELECT id FROM intervention_types WHERE tenant_id IS NULL AND code = 'TAGLIANDO' LIMIT 1`,
+      `SELECT id FROM intervention_types WHERE tenant_id IS NULL AND code = 'MECCANICO' LIMIT 1`,
     );
     const interventionTypeId = it[0]!.id;
 

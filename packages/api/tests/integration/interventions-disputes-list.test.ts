@@ -48,7 +48,7 @@ describe('GET /v1/interventions/:id/disputes (integration)', () => {
   async function setupInterventionForTenant(args: { tenantId: string; userId: string }) {
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: args.tenantId });
-    const interventionType = await ensureSystemInterventionType('TAGLIANDO');
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
     const { interventionId } = await createIntervention({
       tenantId: args.tenantId,
       userId: args.userId,

@@ -559,36 +559,28 @@ type SystemInterventionTypeSeed = {
 };
 
 const SYSTEM_TYPE_FALLBACKS: Record<string, SystemInterventionTypeSeed> = {
-  TAGLIANDO: {
-    code: 'TAGLIANDO',
-    nameIt: 'Tagliando',
+  MECCANICO: {
+    code: 'MECCANICO',
+    nameIt: 'Intervento Meccanico',
     category: 'maintenance',
     suggestsDeadline: true,
     defaultDeadlineMonths: 12,
     defaultDeadlineKm: 15000,
-  },
-  CAMBIO_OLIO: {
-    code: 'CAMBIO_OLIO',
-    nameIt: 'Cambio olio',
-    category: 'maintenance',
-    suggestsDeadline: true,
-    defaultDeadlineMonths: 12,
-    defaultDeadlineKm: 15000,
-  },
-  REVISIONE: {
-    code: 'REVISIONE',
-    nameIt: 'Revisione ministeriale',
-    category: 'inspection',
-    suggestsDeadline: true,
-    defaultDeadlineMonths: 24,
-    defaultDeadlineKm: null,
   },
   GOMME: {
     code: 'GOMME',
-    nameIt: 'Cambio gomme',
+    nameIt: 'Cambio Gomme',
     category: 'tires',
-    suggestsDeadline: false,
-    defaultDeadlineMonths: null,
+    suggestsDeadline: true,
+    defaultDeadlineMonths: 6,
+    defaultDeadlineKm: null,
+  },
+  REVISIONE: {
+    code: 'REVISIONE',
+    nameIt: 'Revisione',
+    category: 'inspection',
+    suggestsDeadline: true,
+    defaultDeadlineMonths: 24,
     defaultDeadlineKm: null,
   },
 };

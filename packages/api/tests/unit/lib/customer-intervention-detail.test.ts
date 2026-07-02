@@ -15,7 +15,7 @@ const baseRow: RawInterventionRow = {
   description: 'Sostituzione olio e filtri',
   partsReplaced: [{ name: 'Olio' }, { name: 'Filtro' }, { name: 'Candele' }],
   status: 'disputed',
-  interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
+  interventionType: { code: 'MECCANICO', nameIt: 'Tagliando' },
   tenant: { businessName: 'Officina Rossi' },
   sourceDeadlines: [],
 };
@@ -28,7 +28,7 @@ describe('projectShopInterventionDetail', () => {
       vehicleId: 'veh-1',
       interventionDate: '2026-05-01',
       odometerKm: 84210,
-      type: { code: 'TAGLIANDO', name_it: 'Tagliando' },
+      type: { code: 'MECCANICO', name_it: 'Tagliando' },
       title: 'Tagliando completo',
       description: 'Sostituzione olio e filtri',
       partsReplaced: [
@@ -64,7 +64,7 @@ describe('projectShopInterventionDetail', () => {
             dueOdometerKm: 150000,
             description: null,
             status: 'overdue',
-            interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
+            interventionType: { code: 'MECCANICO', nameIt: 'Tagliando' },
           },
         ],
       },
@@ -81,7 +81,7 @@ describe('projectShopInterventionDetail', () => {
       },
       {
         id: 'dl-2',
-        type: { code: 'TAGLIANDO', name_it: 'Tagliando' },
+        type: { code: 'MECCANICO', name_it: 'Tagliando' },
         dueDate: null,
         dueOdometerKm: 150000,
         description: null,

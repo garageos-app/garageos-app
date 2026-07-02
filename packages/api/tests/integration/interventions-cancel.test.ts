@@ -59,7 +59,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -129,7 +129,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'mechanic',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -174,7 +174,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -212,7 +212,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -274,7 +274,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub: aSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     const { interventionId } = await createIntervention({
       tenantId: a.tenantId,
@@ -325,7 +325,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { customerId } = await createCustomer({});
     await createOwnership({ vehicleId, customerId });
@@ -386,7 +386,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { customerId: c1 } = await createCustomer({});
     const { customerId: c2 } = await createCustomer({});
@@ -457,7 +457,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { customerId } = await createCustomer({});
     await createOwnership({ vehicleId, customerId });
@@ -516,7 +516,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -564,7 +564,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -613,7 +613,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub: `office-${randomUUID().slice(0, 8)}`,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -640,7 +640,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -677,7 +677,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -711,7 +711,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -748,7 +748,7 @@ describe('POST /v1/interventions/:id/cancel (F-OFF-307)', () => {
         cognitoSub,
         role: 'super_admin',
       });
-      const type = await ensureSystemInterventionType('TAGLIANDO');
+      const type = await ensureSystemInterventionType('MECCANICO');
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
       const { customerId } = await createCustomer({

@@ -80,7 +80,7 @@ function buildReloadedRow(): Record<string, unknown> {
     updatedAt: new Date('2026-04-27T12:00:00.000Z'),
     interventionType: {
       id: '88888888-8888-4888-8888-888888888888',
-      code: 'TAGLIANDO',
+      code: 'MECCANICO',
       nameIt: 'Tagliando',
     },
   };

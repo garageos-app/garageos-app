@@ -39,7 +39,7 @@ async function seedScenario(suffix: string): Promise<{
   const { customerId } = await createCustomer({ cognitoSub });
   const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
   await createOwnership({ vehicleId, customerId });
-  const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+  const tagliando = await ensureSystemInterventionType('MECCANICO');
   const { interventionId } = await createIntervention({
     tenantId,
     userId,

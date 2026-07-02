@@ -22,7 +22,7 @@ async function seed(suffix: string, interventionStatus?: 'active' | 'disputed' |
   const { customerId } = await createCustomer({ cognitoSub: `cust-${suffix}` });
   const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
   await createOwnership({ vehicleId, customerId });
-  const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+  const tagliando = await ensureSystemInterventionType('MECCANICO');
   const { interventionId } = await createIntervention({
     tenantId,
     userId,

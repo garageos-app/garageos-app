@@ -491,7 +491,7 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
       model: 'Panda',
     });
     await createOwnership({ vehicleId, customerId });
-    const interventionType = await ensureSystemInterventionType('CAMBIO_OLIO');
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
 
     const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
 
@@ -514,7 +514,7 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
 
     expect(res.statusCode).toBe(201);
     expect(res.json()).toMatchObject({
-      type: { id: interventionType.id, name_it: 'Cambio olio' },
+      type: { id: interventionType.id, name_it: 'Intervento Meccanico' },
       custom_type: null,
     });
   });
@@ -566,7 +566,7 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
       model: 'Panda',
     });
     await createOwnership({ vehicleId, customerId });
-    const interventionType = await ensureSystemInterventionType('TAGLIANDO');
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
 
     const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
 
@@ -965,7 +965,7 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
       model: 'Panda',
     });
     await createOwnership({ vehicleId, customerId });
-    const interventionType = await ensureSystemInterventionType('CAMBIO_OLIO');
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
     const { privateInterventionId } = await createPrivateIntervention({
       customerId,
       vehicleId,
@@ -998,7 +998,7 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
     expect(res.json()).toMatchObject({
       intervention_date: '2026-04-10',
       odometer_km: 45000,
-      type: { id: interventionType.id, name_it: 'Cambio olio' },
+      type: { id: interventionType.id, name_it: 'Intervento Meccanico' },
       custom_type: null,
       description: 'updated',
     });
@@ -1016,7 +1016,7 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
       model: 'Panda',
     });
     await createOwnership({ vehicleId, customerId });
-    const interventionType = await ensureSystemInterventionType('TAGLIANDO');
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
     const { privateInterventionId } = await createPrivateIntervention({
       customerId,
       vehicleId,
@@ -1042,7 +1042,7 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
-      type: { id: interventionType.id, name_it: 'Tagliando' },
+      type: { id: interventionType.id, name_it: 'Intervento Meccanico' },
       custom_type: null,
     });
   });

@@ -83,7 +83,7 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const token = await signTestToken({
@@ -144,7 +144,7 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const token = await signTestToken({
@@ -209,7 +209,7 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
 
     const token = await signTestToken({
       pool: 'officine',
@@ -238,7 +238,7 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     // The deadline row carries tenant B's tenantId (caller tenant), not
     // tenant A's. This is the documented multi-tenant behavior.
     const a = await createTenantWithLocation('rls-a');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
 
     const b = await createTenantWithLocation('rls-b');
@@ -362,7 +362,7 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId: targetVehicleId } = await createVehicle({
       createdByTenantId: tenantId,
     });
@@ -410,7 +410,7 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const token = await signTestToken({
@@ -444,7 +444,7 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     // Override default: every CreateSchedule call rejects.
@@ -492,7 +492,7 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     // 5 days from now: T-30 and T-7 windows have already elapsed,

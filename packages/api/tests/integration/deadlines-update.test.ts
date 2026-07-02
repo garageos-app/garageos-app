@@ -175,7 +175,7 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
       cognitoSub,
       role: 'super_admin',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
@@ -339,7 +339,7 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('patch-cancelled');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
@@ -374,7 +374,7 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('patch-completed');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,
@@ -451,7 +451,7 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
     // Tenant A owns a deadline; tenant B's user PATCHes it. RLS denies
     // both SELECT (findUniqueOrThrow → P2025) and any subsequent UPDATE.
     const a = await createTenantWithLocation('patch-xt-a');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId: a.tenantId,
@@ -562,7 +562,7 @@ describe('PATCH /v1/deadlines/:id (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('patch-sent');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { deadlineId } = await seedDeadline({
       tenantId,

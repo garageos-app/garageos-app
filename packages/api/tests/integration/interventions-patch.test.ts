@@ -51,7 +51,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -91,7 +91,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -128,7 +128,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -165,7 +165,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
@@ -213,7 +213,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -251,7 +251,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
@@ -298,7 +298,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
@@ -336,7 +336,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -373,7 +373,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
@@ -421,7 +421,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -462,7 +462,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       tenantId: tenantB.tenantId,
       cognitoSub: cognitoSubB,
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantA.tenantId });
     const { interventionId } = await createIntervention({
       tenantId: tenantA.tenantId,
@@ -517,7 +517,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -550,7 +550,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -582,7 +582,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const fortyNineHoursAgo = new Date(Date.now() - 49 * 3600 * 1000);
     const { interventionId } = await createIntervention({
@@ -622,7 +622,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
     const { tenantId } = await createTenantWithLocation();
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -672,7 +672,7 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
         cognitoSub,
         role: 'super_admin',
       });
-      const type = await ensureSystemInterventionType('TAGLIANDO');
+      const type = await ensureSystemInterventionType('MECCANICO');
       const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
       if (opts.withOwnership !== false) {

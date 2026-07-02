@@ -5,7 +5,7 @@ import { deriveDeadlineSuggestion, formatDeadlineSuggestion } from './deadline-s
 function makeType(overrides: Partial<InterventionType>): InterventionType {
   return {
     id: 'uuid-1',
-    code: 'TAGLIANDO',
+    code: 'MECCANICO',
     nameIt: 'Tagliando',
     description: '',
     icon: 'wrench',

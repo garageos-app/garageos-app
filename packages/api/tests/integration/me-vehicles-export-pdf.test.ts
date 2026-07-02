@@ -25,7 +25,7 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
   });
   beforeEach(async () => {
     await resetDb();
-    await ensureSystemInterventionType('TAGLIANDO');
+    await ensureSystemInterventionType('MECCANICO');
     vi.clearAllMocks();
   });
 
@@ -36,7 +36,7 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
     status?: 'active' | 'disputed' | 'cancelled';
     date?: string;
   }) {
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     return createIntervention({
       tenantId: args.tenantId,
       userId: args.userId,
