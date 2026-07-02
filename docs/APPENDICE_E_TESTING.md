@@ -778,7 +778,6 @@ Lista delle BR per cui **è obbligatorio** avere un test in v1:
 | BR-121 | Nessun limite temporale contestazione | Integration | SHOULD |
 | BR-151 | Visibilità PII basata su relazione | Integration | Obbligatorio |
 | BR-158 | Anonimizzazione diritto all'oblio | Integration | Obbligatorio |
-| BR-180 | Dimensione massima allegati | Unit | Obbligatorio |
 | BR-201 | Una sola location primaria | Integration | Obbligatorio |
 | BR-203 | Almeno un super_admin attivo | Integration | Obbligatorio |
 | BR-213 | Operator fallback PDF (deleted user → "Operatore") | Unit + Integration | Obbligatorio |

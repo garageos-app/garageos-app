@@ -243,61 +243,9 @@ Stessa logica di F7.5.a su `updated_at`: raw SQL bypassa il `@updatedAt` Prisma,
 4. `curl -H "Authorization: Bearer $ID_TOKEN" https://api.garageos.it/v1/vehicles` — attendersi `200` con array vuoto, o `404`.
 5. Se ricevuto `401`: probabile mismatch issuer/audience nel JWT verifier vs pool/client ID nel secret. Verificare con la Cognito console + il secret content (`aws secretsmanager get-secret-value --secret-id garageos/production/app`).
 
-### F-Storage. Verifica S3 attachments bucket post-deploy
+### F-Storage. ~~Verifica S3 attachments bucket post-deploy~~ (RIMOSSO)
 
-Dopo il primo deploy che ship-a la `StorageConstruct` (PR 23), valida i 5 punti seguenti dalla shell con AWS CLI configurato per l'account production. Il bucket name è esposto come CfnOutput `AttachmentsBucketName` (anche su SSM ricavabile da CloudFormation describe-stacks).
-
-#### F-Storage.a — Bucket esiste
-
-```bash
-aws s3api head-bucket --bucket garageos-production-attachments
-```
-
-Expected: zero output, exit 0. Failure mode `404 NoSuchBucket` → CDK deploy non è atterrato. `403 Forbidden` → AWS principal manca permission (escalation IAM).
-
-#### F-Storage.b — Encryption AES256
-
-```bash
-aws s3api get-bucket-encryption --bucket garageos-production-attachments
-```
-
-Expected JSON contiene `Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm = "AES256"`.
-
-#### F-Storage.c — Versioning enabled
-
-```bash
-aws s3api get-bucket-versioning --bucket garageos-production-attachments
-```
-
-Expected `{"Status": "Enabled"}`. Non confondere con `MFADelete` (separato, non config-ato in v1).
-
-#### F-Storage.d — CORS configurato
-
-```bash
-aws s3api get-bucket-cors --bucket garageos-production-attachments
-```
-
-Expected JSON con 1 rule: `AllowedMethods: ["GET", "PUT"]`, `AllowedOrigins: ["https://app.garageos.aifollyadvisor.com", "https://garageos.aifollyadvisor.com"]`, `AllowedHeaders: ["*"]`, `MaxAgeSeconds: 3000`.
-
-Failure: se `CORSRule` array vuoto, il CDK deploy non ha applicato la CORS (cd `infrastructure/` && `cdk diff` per check).
-
-#### F-Storage.e — Lifecycle rules
-
-```bash
-aws s3api get-bucket-lifecycle-configuration --bucket garageos-production-attachments
-```
-
-Expected JSON con 2 rule:
-
-1. `Id: "transition-to-ia"`, `Transitions[0]: {Days: 90, StorageClass: "STANDARD_IA"}`, `NoncurrentVersionExpiration: {NoncurrentDays: 30}`.
-2. `Id: "abort-incomplete-uploads"`, `AbortIncompleteMultipartUpload: {DaysAfterInitiation: 7}`.
-
-#### Failure modes
-
-- **`BucketAlreadyExists`** (deploy time): name `garageos-production-attachments` è globalmente reservato da altro account AWS. Workaround: rinominare in `productionConfig` e re-deploy. Probabilità bassissima (nome semantic specifico al progetto).
-- **CORS preflight 403 da browser**: l'origine richiedente non matcha la lista. Verificare che la web app usi esattamente `https://app.garageos.aifollyadvisor.com` (no trailing slash, no `www.`).
-- **Lifecycle non scatta visibile**: AWS applica le rule entro ~24h dal trigger event. Per test rapido, set un object con `aws s3api put-object` e check manuale dopo 24h.
-- **Versioning impossibile da disabilitare**: una volta enabled, AWS permette solo Suspended (non Off). Decisione consapevole, mantenere Enabled.
+> **RIMOSSO — 2026-07-02.** La `StorageConstruct` (bucket S3 `garageos-production-attachments`) è stata eliminata insieme alla feature upload. PDF e tag sono ora generati e streammati direttamente dalla Lambda (nessun persist S3). Il bucket resta orfano in AWS per `removalPolicy: RETAIN` finché lo step operator non lo svuota ed elimina (vedi `docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md` §Blocco E). Nessuna verifica bucket post-deploy è più applicabile.
 
 ### F-WAF. Verifica WAF Web ACL + association post-deploy
 
