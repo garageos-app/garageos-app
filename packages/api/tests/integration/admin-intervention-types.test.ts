@@ -249,9 +249,11 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect(inactiveDto!.active).toBe(false);
     expect(inactiveDto!.checklistItemCount).toBe(2);
 
-    // category asc → nameIt asc: 'body' < 'maintenance' alphabetically, so
-    // bodyTypeA must appear before maintenanceTypeB regardless of other rows.
-    expect(codes.indexOf(bodyTypeA.code)).toBeLessThan(codes.indexOf(maintenanceTypeB.code));
+    // category asc → nameIt asc. Prisma/Postgres orders the enum by its
+    // DEFINITION order (maintenance, repair, tires, body, inspection, other —
+    // schema.prisma), NOT alphabetically. So 'maintenance' precedes 'body';
+    // maintenanceTypeB must appear before bodyTypeA regardless of other rows.
+    expect(codes.indexOf(maintenanceTypeB.code)).toBeLessThan(codes.indexOf(bodyTypeA.code));
 
     const activeDto = body.data.find((t) => t.code === maintenanceTypeB.code);
     expect(activeDto!.checklistItemCount).toBe(0);
