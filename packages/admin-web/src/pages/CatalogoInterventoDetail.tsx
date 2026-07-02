@@ -159,6 +159,8 @@ export function CatalogoInterventoDetail() {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin-catalog-items', id] });
+      // Also refresh the types list so checklistItemCount on /catalogo updates.
+      void queryClient.invalidateQueries({ queryKey: ['admin-catalog-types'] });
       toast.success('Voce creata.');
       setCreateOpen(false);
       createForm.reset(CREATE_DEFAULTS);
@@ -185,6 +187,8 @@ export function CatalogoInterventoDetail() {
       apiFetch<void>(`/v1/admin/checklist-items/${itemId}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin-catalog-items', id] });
+      // Also refresh the types list so checklistItemCount on /catalogo updates.
+      void queryClient.invalidateQueries({ queryKey: ['admin-catalog-types'] });
       toast.success('Voce eliminata.');
       setDeleteTarget(null);
     },

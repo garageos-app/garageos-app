@@ -11,7 +11,10 @@ import { z } from 'zod';
 // valueAsNumber), but this field is always required (server default is 0,
 // which the form pre-fills, so an empty submission is a validation error
 // rather than "unset").
-function requiredNonNegativeInt(message: string) {
+// `max`/`maxMessage` mirror the API's smallint cap (CreateItemBody/
+// UpdateItemBody sortOrder .max(32767)) — checked inside the transform
+// since `.max()` cannot chain after `.transform()`.
+function requiredNonNegativeInt(message: string, max: number, maxMessage: string) {
   return z
     .string()
     .trim()
@@ -19,6 +22,10 @@ function requiredNonNegativeInt(message: string) {
       const n = Number(s);
       if (s === '' || !Number.isInteger(n) || n < 0) {
         ctx.addIssue({ code: 'custom', message });
+        return z.NEVER;
+      }
+      if (n > max) {
+        ctx.addIssue({ code: 'custom', message: maxMessage });
         return z.NEVER;
       }
       return n;
@@ -32,7 +39,7 @@ export const catalogItemSchema = z.object({
     .trim()
     .regex(/^[A-Z][A-Z0-9_]{0,49}$/, 'Codice non valido: lettere maiuscole, cifre e underscore'),
   nameIt: z.string().trim().min(1, 'Nome obbligatorio').max(150, 'Nome troppo lungo'),
-  sortOrder: requiredNonNegativeInt('Ordine: intero non negativo'),
+  sortOrder: requiredNonNegativeInt('Ordine: intero non negativo', 32767, 'Massimo 32767'),
   active: z.boolean(),
 });
 
@@ -43,7 +50,7 @@ export type CatalogItemParsed = z.output<typeof catalogItemSchema>;
 // (mirrors UpdateItemBody server-side).
 export const editCatalogItemSchema = z.object({
   nameIt: z.string().trim().min(1, 'Nome obbligatorio').max(150, 'Nome troppo lungo'),
-  sortOrder: requiredNonNegativeInt('Ordine: intero non negativo'),
+  sortOrder: requiredNonNegativeInt('Ordine: intero non negativo', 32767, 'Massimo 32767'),
   active: z.boolean(),
 });
 
