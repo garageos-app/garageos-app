@@ -1191,6 +1191,39 @@ Lo sweep giornaliero porta a `overdue` ogni `PersonalDeadline` in stato `open` c
 
 ---
 
+## 15. Regole riservate — Checklist interventi (arco in corso)
+
+Numerazione riservata per l'arco di redesign checklist interventi/tipi, per evitare collisioni tra i PR paralleli dell'arco (vedi `docs/superpowers/specs/2026-07-02-intervention-types-checklist-redesign-design.md`). Definizione completa nei PR di validazione dell'arco checklist.
+
+### BR-300 — Checklist obbligatoria (≥1 voce)
+**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+### BR-301 — Appartenenza voce↔tipo
+**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+### BR-302 — Visibilità/attività voce
+**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+### BR-303 — Snapshot etichetta
+**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+### BR-304 — Opt-out visibilità
+**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+### BR-305 — Selezionabilità tipo (≥1 voce visibile)
+**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+### BR-306 — Governance catalogo (admin-only write)
+**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+### BR-307 — Unicità code voce per tipo
+**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+### BR-308 — Titolo rimosso
+**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+---
+
 ## Appendice alla Appendice: template test case
 
 Ogni regola business può (e dovrebbe) essere coperta da test. Template:
