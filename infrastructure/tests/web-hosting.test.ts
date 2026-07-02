@@ -67,7 +67,7 @@ describe('WebHostingConstruct', () => {
     });
   });
 
-  it('uses RETAIN as removal policy (consistent with StorageConstruct)', () => {
+  it('uses RETAIN as removal policy', () => {
     template.hasResource('AWS::S3::Bucket', {
       DeletionPolicy: 'Retain',
       UpdateReplacePolicy: 'Retain',

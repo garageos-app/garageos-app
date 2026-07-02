@@ -7,7 +7,6 @@ import { CognitoConstruct } from '../lib/constructs/cognito.js';
 import { DnsConstruct } from '../lib/constructs/dns.js';
 import { LambdaApiConstruct } from '../lib/constructs/lambda-api.js';
 import { SecretsConstruct } from '../lib/constructs/secrets.js';
-import { StorageConstruct } from '../lib/constructs/storage.js';
 import { MainStack } from '../lib/stacks/main-stack.js';
 import { OidcStack } from '../lib/stacks/oidc-stack.js';
 import { productionConfig } from '../lib/config/production.js';
@@ -150,10 +149,6 @@ describe('LambdaApiConstruct', () => {
     clientiCallbackUrls: ['garageos://auth/callback'],
     clientiLogoutUrls: ['garageos://auth/logout'],
   });
-  const storage = new StorageConstruct(stack, 'Storage', {
-    environment: 'production',
-    corsAllowedOrigins: ['https://app.garageos.it'],
-  });
   new LambdaApiConstruct(stack, 'LambdaApi', {
     memoryMb: 1024,
     architecture: 'arm64',
@@ -163,7 +158,6 @@ describe('LambdaApiConstruct', () => {
     appSecret: secrets.appSecret,
     officineUserPoolArn: cognito.officineUserPool.userPoolArn,
     clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
-    attachmentsBucket: storage.attachmentsBucket,
     sesIdentityArn: 'arn:aws:ses:eu-central-1:123456789012:identity/garageos.it',
     sesConfigurationSetArn:
       'arn:aws:ses:eu-central-1:123456789012:configuration-set/garageos-production',
@@ -227,11 +221,10 @@ describe('LambdaApiConstruct', () => {
     expect(JSON.stringify(arnValue)).toContain('garageos-api');
   });
 
-  it('execution role has secretsmanager + cognito-idp Admin* + ListUsers + s3:GetObject + s3:PutObject', () => {
+  it('execution role has secretsmanager + cognito-idp Admin* + ListUsers', () => {
     // Find the inline policy attached to the execution role and check its
     // statements. Presence: secretsmanager:GetSecretValue + cognito-idp
-    // Admin/List actions (CRUD + SignOut + Disable + Enable for F-OFF-004 PR1/PR2 + #118 reactivation) +
-    // s3:GetObject + s3:PutObject (pre-emptive grant added in PR 23).
+    // Admin/List actions (CRUD + SignOut + Disable + Enable for F-OFF-004 PR1/PR2 + #118 reactivation).
     const policies = template.findResources('AWS::IAM::Policy');
     const inlineStatements = Object.values(policies).flatMap(
       (res) => res.Properties.PolicyDocument.Statement as Array<{ Action: string | string[] }>,
@@ -249,8 +242,6 @@ describe('LambdaApiConstruct', () => {
     expect(allActions).toContain('cognito-idp:AdminEnableUser');
     expect(allActions).toContain('cognito-idp:AdminUserGlobalSignOut');
     expect(allActions).toContain('cognito-idp:ListUsers');
-    expect(allActions).toContain('s3:GetObject');
-    expect(allActions).toContain('s3:PutObject');
   });
 
   it('cognito-idp policy is scoped to both user pool ARNs (not Resource: *)', () => {
@@ -335,10 +326,6 @@ describe('ApiGatewayConstruct', () => {
       clientiCallbackUrls: ['garageos://auth/callback'],
       clientiLogoutUrls: ['garageos://auth/logout'],
     });
-    const storage = new StorageConstruct(stack, 'Storage', {
-      environment: 'production',
-      corsAllowedOrigins: ['https://app.garageos.it'],
-    });
     const lambdaApi = new LambdaApiConstruct(stack, 'LambdaApi', {
       memoryMb: 1024,
       architecture: 'arm64',
@@ -348,7 +335,6 @@ describe('ApiGatewayConstruct', () => {
       appSecret: secrets.appSecret,
       officineUserPoolArn: cognito.officineUserPool.userPoolArn,
       clientiUserPoolArn: cognito.clientiUserPool.userPoolArn,
-      attachmentsBucket: storage.attachmentsBucket,
       sesIdentityArn: 'arn:aws:ses:eu-central-1:123456789012:identity/garageos.it',
       sesConfigurationSetArn:
         'arn:aws:ses:eu-central-1:123456789012:configuration-set/garageos-production',
@@ -440,24 +426,21 @@ describe('MainStack (integration)', () => {
     template.hasOutput('CognitoClientiHostedUiDomain', {});
     template.hasOutput('CognitoPlatformAdminsUserPoolId', {});
     template.hasOutput('CognitoPlatformAdminsClientId', {});
-    template.hasOutput('AttachmentsBucketName', {});
     template.hasOutput('SesEmailIdentityArn', {});
     template.hasOutput('SesConfigurationSetName', {});
   });
 
-  it('Cognito trigger Lambda env includes S3_ATTACHMENTS_BUCKET (shared parseEnv schema requires it)', () => {
-    // Regression for the prod sign-up failure: the trigger Lambda reuses the
-    // API's parseEnv schema, which requires S3_ATTACHMENTS_BUCKET. Without it
-    // PreSignUp crashed with a Zod invalid_type and Cognito returned
-    // invalid_request, blocking every Google sign-in. The trigger never calls
-    // S3 (no IAM grant) — the var only satisfies the shared env validation.
+  it('Cognito trigger Lambda env has APP_SECRETS_ARN + CA cert (shared parseEnv schema, no S3)', () => {
+    // The trigger Lambda reuses the API's parseEnv schema. S3_ATTACHMENTS_BUCKET
+    // was removed from that schema with the upload feature, so the trigger no
+    // longer needs it wired (see #217 for the historical cold-start failure this
+    // env plumbing originally guarded against).
     template.hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: 'garageos-cognito-clienti-triggers',
       Environment: {
         Variables: Match.objectLike({
           APP_SECRETS_ARN: Match.anyValue(),
           NODE_EXTRA_CA_CERTS: '/var/task/supabase-ca.crt',
-          S3_ATTACHMENTS_BUCKET: Match.anyValue(),
         }),
       },
     });
@@ -482,31 +465,16 @@ describe('MainStack (integration)', () => {
     // Google IdP on the clienti pool; Hosted UI domain for OAuth PKCE flow.
     template.resourceCountIs('AWS::Cognito::UserPoolIdentityProvider', 1);
     template.resourceCountIs('AWS::Cognito::UserPoolDomain', 1);
-    // PR 23: S3 attachments bucket. WAF deferred a PR 25 (CloudFront
+    // S3 attachments bucket removed with the upload feature (PDFs/tags now
+    // stream directly from the Lambda). WAF deferred a PR 25 (CloudFront
     // + WAF CLOUDFRONT scope) — WAFv2 REGIONAL non supporta API
     // Gateway HTTP API v2.
-    template.resourceCountIs('AWS::S3::Bucket', 1);
+    template.resourceCountIs('AWS::S3::Bucket', 0);
     template.resourceCountIs('AWS::WAFv2::WebACL', 0);
     template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 0);
     // PR G1: SES domain identity + configuration set.
     template.resourceCountIs('AWS::SES::EmailIdentity', 1);
     template.resourceCountIs('AWS::SES::ConfigurationSet', 1);
-  });
-
-  it('grants the Lambda execution role minimal S3 permissions on the attachments bucket', () => {
-    // Verify s3:GetObject + s3:PutObject scoped al bucket arn/*.
-    // Action assertion stringent — la grant è raw addToPolicy con
-    // exactly 2 actions, niente espansione.
-    template.hasResourceProperties('AWS::IAM::Policy', {
-      PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({
-            Effect: 'Allow',
-            Action: ['s3:GetObject', 's3:PutObject'],
-          }),
-        ]),
-      },
-    });
   });
 
   it('SchedulerConstruct provisions one ScheduleGroup and three Schedules (warming + transfer-expiry + personal-deadline-sweep)', () => {
