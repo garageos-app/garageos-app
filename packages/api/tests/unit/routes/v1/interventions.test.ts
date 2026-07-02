@@ -70,7 +70,7 @@ function buildInterventionTypeRow(
 ) {
   return {
     id: INTERVENTION_TYPE_ID,
-    code: 'TAGLIANDO',
+    code: 'MECCANICO',
     nameIt: 'Tagliando',
     suggestsDeadline: true,
     defaultDeadlineMonths: 12 as number | null,
@@ -145,7 +145,7 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
           updatedAt: new Date(),
           interventionType: {
             id: INTERVENTION_TYPE_ID,
-            code: 'TAGLIANDO',
+            code: 'MECCANICO',
             nameIt: 'Tagliando',
           },
         }),
@@ -679,7 +679,7 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
     expect(body.intervention.vehicleId).toBe(VEHICLE_ID);
     expect(body.intervention.interventionType).toEqual({
       id: INTERVENTION_TYPE_ID,
-      code: 'TAGLIANDO',
+      code: 'MECCANICO',
       nameIt: 'Tagliando',
     });
     expect(body.deadline).toBeNull();
@@ -850,7 +850,7 @@ describe('PATCH /v1/interventions/:id (unit)', () => {
         updatedAt: new Date(),
         interventionType: {
           id: INTERVENTION_TYPE_ID,
-          code: 'TAGLIANDO',
+          code: 'MECCANICO',
           nameIt: 'Tagliando',
         },
       });

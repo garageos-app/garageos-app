@@ -91,7 +91,7 @@ describe('RLS — deadlines customer SELECT (post-migration H3)', () => {
 
     // Retrieve a seeded system intervention type
     const { rows: itRows } = await pgAdmin.query<{ id: string }>(
-      `SELECT id FROM intervention_types WHERE tenant_id IS NULL AND code = 'TAGLIANDO' LIMIT 1`,
+      `SELECT id FROM intervention_types WHERE tenant_id IS NULL AND code = 'MECCANICO' LIMIT 1`,
     );
     const interventionTypeId = itRows[0]!.id;
 

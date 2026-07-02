@@ -168,7 +168,7 @@ describe('GET /v1/admin/tenants/:id/metrics — scoping & correctness (integrati
   });
 
   it('counts only tenant A rows, excludes soft-deleted, and reports lastAt', async () => {
-    const itype = await ensureSystemInterventionType('TAGLIANDO');
+    const itype = await ensureSystemInterventionType('MECCANICO');
     const { tenantId: tenantA } = await createTenant('tm-A');
     const { tenantId: tenantB } = await createTenant('tm-B');
 

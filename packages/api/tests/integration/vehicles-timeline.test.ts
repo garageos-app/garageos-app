@@ -32,8 +32,8 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   beforeEach(async () => {
     await resetDb();
     // resetDb() truncates intervention_types as a CASCADE side-effect of
-    // tenants — re-seed TAGLIANDO so each test has a stable type FK.
-    await ensureSystemInterventionType('TAGLIANDO');
+    // tenants — re-seed MECCANICO so each test has a stable type FK.
+    await ensureSystemInterventionType('MECCANICO');
   });
 
   it('returns shop_interventions cross-tenant for officine pool (BR-150)', async () => {
@@ -55,7 +55,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
     await createOwnership({ vehicleId, customerId });
 
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
 
     await createIntervention({
       tenantId: tenantA,
@@ -137,7 +137,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
     await createOwnership({ vehicleId, customerId });
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
     // Two interventions by A (must be DISTINCT-collapsed to one officina) + one by B.
     for (const date of ['2026-04-15', '2026-02-01']) {
       await createIntervention({
@@ -196,7 +196,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
     await createOwnership({ vehicleId, customerId });
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
     await createIntervention({
       tenantId: tenantA,
       userId: userA,
@@ -259,7 +259,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
 
     const lockedAt = new Date('2026-05-01T10:00:00.000Z');
     const { interventionId } = await createIntervention({
@@ -300,8 +300,8 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     expect(found!.wiki_window_open).toBe(false);
     expect(found!.type).toMatchObject({
       id: tagliando.id,
-      code: 'TAGLIANDO',
-      name_it: 'Tagliando',
+      code: 'MECCANICO',
+      name_it: 'Intervento Meccanico',
     });
   });
 
@@ -312,7 +312,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
 
     const { interventionId } = await createIntervention({
       tenantId,
@@ -363,7 +363,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
 
     await createIntervention({
       tenantId,
@@ -412,7 +412,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const { customerId } = await createCustomer({ cognitoSub: customerSub });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
 
     await createIntervention({
       tenantId,
@@ -563,7 +563,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const { customerId } = await createCustomer({});
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
 
     await createIntervention({
       tenantId,
@@ -610,7 +610,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const { customerId } = await createCustomer({ cognitoSub: customerSub });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
 
     // 3 shop + 2 private, dates spread to keep ordering deterministic.
     const dates = ['2026-04-20', '2026-04-15', '2026-04-10', '2026-04-05', '2026-04-01'];

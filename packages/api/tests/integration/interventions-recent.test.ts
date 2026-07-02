@@ -42,7 +42,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
       tenantId: tB,
       cognitoSub: '22222222-2222-4222-8222-222222222222',
     });
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId: vA } = await createVehicle({ createdByTenantId: tA });
     const { vehicleId: vB } = await createVehicle({ createdByTenantId: tB });
 
@@ -86,7 +86,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rec-status');
     const cognitoSub = '33333333-3333-4333-8333-333333333333';
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await createIntervention({
@@ -142,7 +142,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rec-order');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     // Force identical createdAt to exercise tiebreaker by id DESC.
@@ -203,7 +203,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rec-limit');
     const cognitoSub = '55555555-5555-4555-8555-555555555555';
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     for (let i = 0; i < 12; i++) {
@@ -278,7 +278,7 @@ describe('GET /v1/interventions/recent — BR-205 relaxed (sede unica)', () => {
 
   it('mechanic sees all tenant interventions (BR-205 relaxed — sede unica)', async () => {
     const { tenantId } = await createTenantWithLocation('rec-all');
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const cognitoSub = '10000000-0000-4000-8000-000000000001';
     const { userId } = await createUser({ tenantId, cognitoSub });

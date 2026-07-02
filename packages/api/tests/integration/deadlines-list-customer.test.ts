@@ -72,7 +72,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
   it('200 returns only deadlines on customer-owned vehicles (RLS filter)', async () => {
     const { tenantId } = await createTenantWithLocation('me-dl-owns');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
 
     // Vehicle A: owned by the calling customer.
     const { vehicleId: ownedVehicle } = await createVehicle({
@@ -135,7 +135,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
   it('default filter excludes completed and cancelled (status defaults to open|overdue)', async () => {
     const { tenantId } = await createTenantWithLocation('me-dl-default');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const customerSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -197,7 +197,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
   it('?status=completed overrides default and returns completed only', async () => {
     const { tenantId } = await createTenantWithLocation('me-dl-status');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const customerSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -252,7 +252,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
   it('cursor pagination returns subsequent pages', async () => {
     const { tenantId } = await createTenantWithLocation('me-dl-cursor');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const customerSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -341,7 +341,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
   it('customer with ENDED ownership does not see those vehicles deadlines (RLS endedAt IS NULL)', async () => {
     const { tenantId } = await createTenantWithLocation('me-dl-ended');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const customerSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -413,7 +413,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
 
   it('response includes nested vehicle and interventionType', async () => {
     const { tenantId } = await createTenantWithLocation('me-dl-nested');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({
       createdByTenantId: tenantId,
       vin: 'ZFA1NESTED0000001',
@@ -463,7 +463,7 @@ describe('GET /v1/me/deadlines (F-CLI-301)', () => {
       model: 'Panda',
     });
     expect(row.interventionType.id).toBe(type.id);
-    expect(row.interventionType.code).toBe('TAGLIANDO');
+    expect(row.interventionType.code).toBe('MECCANICO');
     expect(typeof row.interventionType.nameIt).toBe('string');
   });
 });

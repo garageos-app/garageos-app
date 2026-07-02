@@ -29,7 +29,7 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
         description: 'desc',
         partsReplaced: [],
         status: 'active',
-        interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
+        interventionType: { code: 'MECCANICO', nameIt: 'Tagliando' },
         tenant: { businessName: 'Officina Rossi' },
         location: { city: 'Milano' },
         sourceDeadlines: [],
@@ -88,7 +88,7 @@ describe('GET /v1/me/interventions/:id (unit)', () => {
           description: 'desc',
           partsReplaced: [{ name: 'Olio', code: 'OIL-1', quantity: 1, notes: null }],
           status: 'active',
-          interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
+          interventionType: { code: 'MECCANICO', nameIt: 'Tagliando' },
           tenant: { businessName: 'Officina Rossi' },
           location: { city: 'Milano' },
           sourceDeadlines: [

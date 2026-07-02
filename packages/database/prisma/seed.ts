@@ -1,6 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 
-import { SYSTEM_INTERVENTION_TYPES } from '../src/seed-data.js';
+import { SYSTEM_INTERVENTION_TYPES, SYSTEM_CHECKLIST_ITEMS } from '../src/seed-data.js';
 
 import { PrismaClient } from './generated/prisma/client/client.js';
 
@@ -41,12 +41,50 @@ async function seedInterventionTypes(prisma: PrismaClient): Promise<number> {
   return written;
 }
 
+async function seedChecklistItems(prisma: PrismaClient): Promise<number> {
+  // Idempotent upsert by (intervention_type_id, code), same pattern as
+  // seedInterventionTypes above. Must run after intervention types are
+  // seeded, since each item is resolved against its parent type by code.
+  let written = 0;
+  for (const item of SYSTEM_CHECKLIST_ITEMS) {
+    const type = await prisma.interventionType.findFirst({
+      where: { tenantId: null, code: item.typeCode },
+      select: { id: true },
+    });
+    if (!type) throw new Error(`seed: intervention type ${item.typeCode} not found`);
+
+    const existing = await prisma.interventionChecklistItem.findFirst({
+      where: { interventionTypeId: type.id, code: item.code },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.interventionChecklistItem.update({
+        where: { id: existing.id },
+        data: { nameIt: item.nameIt, sortOrder: item.sortOrder, active: true },
+      });
+    } else {
+      await prisma.interventionChecklistItem.create({
+        data: {
+          interventionTypeId: type.id,
+          code: item.code,
+          nameIt: item.nameIt,
+          sortOrder: item.sortOrder,
+        },
+      });
+    }
+    written += 1;
+  }
+  return written;
+}
+
 async function main(): Promise<void> {
   const prisma = createClient();
   try {
     console.log('[seed] starting...');
-    const count = await seedInterventionTypes(prisma);
-    console.log(`[seed] upserted ${count} system intervention types`);
+    const typeCount = await seedInterventionTypes(prisma);
+    console.log(`[seed] upserted ${typeCount} system intervention types`);
+    const itemCount = await seedChecklistItems(prisma);
+    console.log(`[seed] upserted ${itemCount} system checklist items`);
     console.log('[seed] done');
   } finally {
     await prisma.$disconnect();

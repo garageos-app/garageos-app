@@ -89,7 +89,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       firstName: 'Mario',
       lastName: 'Rossi',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -169,7 +169,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       firstName: 'Bruno',
       lastName: 'Bianchi',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantB });
     const { interventionId } = await createIntervention({
       tenantId: tenantB,
@@ -232,7 +232,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       tenantId: tenantB,
       cognitoSub: subB,
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantB });
     const { interventionId } = await createIntervention({
       tenantId: tenantB,
@@ -285,7 +285,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       firstName: 'Mario',
       lastName: 'Rossi',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -331,7 +331,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-off-empty');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -368,7 +368,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       firstName: 'Mario',
       lastName: 'Rossi',
     });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const customerCognitoSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -422,7 +422,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-cli-403');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const ownerSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -466,7 +466,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-cli-past');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const pastSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -509,7 +509,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-cli-strip');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const custSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -558,7 +558,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-cli-drop');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const custSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -608,7 +608,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-cli-shrink');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const custSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -659,7 +659,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-cancelled');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -697,7 +697,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-disputed');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -735,7 +735,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-bogus-cur');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,
@@ -772,7 +772,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('rev-pagi');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     const { userId } = await createUser({ tenantId, cognitoSub });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     const { interventionId } = await createIntervention({
       tenantId,

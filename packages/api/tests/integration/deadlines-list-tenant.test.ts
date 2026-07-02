@@ -66,7 +66,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const cognitoSub = '11111111-1111-4111-8111-111111111111';
     await createUser({ tenantId: tA, cognitoSub });
 
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
 
     const { vehicleId: vA1 } = await createVehicle({ createdByTenantId: tA });
     const { vehicleId: vA2 } = await createVehicle({ createdByTenantId: tA });
@@ -193,7 +193,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId } = await createTenantWithLocation('dl-type-filter');
     const cognitoSub = '44444444-4444-4444-8444-444444444444';
     await createUser({ tenantId, cognitoSub });
-    const { id: typeA } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeA } = await ensureSystemInterventionType('MECCANICO');
     const { id: typeB } = await ensureSystemInterventionType('GOMME');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
@@ -221,7 +221,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId } = await createTenantWithLocation('dl-pii-related');
     const cognitoSub = '55555555-5555-4555-8555-555555555555';
     await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
     const { customerId } = await createCustomer({ firstName: 'Mario', lastName: 'Rossi' });
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
     await createOwnership({ vehicleId, customerId });
@@ -260,7 +260,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId: tB } = await createTenantWithLocation('dl-pii-B');
     const cognitoSub = '66666666-6666-4666-8666-666666666666';
     await createUser({ tenantId: tA, cognitoSub });
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
 
     // Customer + vehicle + ownership exist but tenant A has NO CTR with the customer.
     const { customerId } = await createCustomer({ firstName: 'Hidden', lastName: 'Customer' });
@@ -301,7 +301,7 @@ describe('GET /v1/deadlines (integration)', () => {
     const { tenantId } = await createTenantWithLocation('dl-pagination');
     const cognitoSub = '77777777-7777-4777-8777-777777777777';
     await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const seededIds: string[] = [];
@@ -385,7 +385,7 @@ describe('GET /v1/deadlines — BR-205 relaxed (sede unica)', () => {
     const { tenantId } = await createTenantWithLocation('dl-all');
     const cognitoSub = '20000000-0000-4000-8000-000000000001';
     await createUser({ tenantId, cognitoSub });
-    const { id: typeId } = await ensureSystemInterventionType('TAGLIANDO');
+    const { id: typeId } = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({

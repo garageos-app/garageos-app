@@ -30,8 +30,8 @@ describe('GET /v1/intervention-types (integration)', () => {
     // resetDb() TRUNCATEs tenants CASCADE — Postgres truncates the entire
     // intervention_types table even though tenant_id NULL rows have no
     // matching tenant FK. Re-seed the system rows used in these tests.
-    await ensureSystemInterventionType('TAGLIANDO');
-    await ensureSystemInterventionType('CAMBIO_OLIO');
+    await ensureSystemInterventionType('MECCANICO');
+    await ensureSystemInterventionType('GOMME');
     await ensureSystemInterventionType('REVISIONE');
   });
 

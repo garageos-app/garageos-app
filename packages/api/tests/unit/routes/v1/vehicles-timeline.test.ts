@@ -25,7 +25,7 @@ const SHOP_ROW_1 = {
   status: 'active' as const,
   tenant: { businessName: 'Officina Rossi' },
   location: { city: 'Milano' },
-  interventionType: { code: 'TAGLIANDO', nameIt: 'Tagliando' },
+  interventionType: { code: 'MECCANICO', nameIt: 'Tagliando' },
 };
 const SHOP_ROW_2_DISPUTED = {
   ...SHOP_ROW_1,

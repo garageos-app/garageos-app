@@ -70,7 +70,7 @@ export async function resetDb(): Promise<void> {
  * that need a valid interventionTypeId without setting up one
  * manually.
  */
-export async function getSystemInterventionTypeId(code = 'TAGLIANDO'): Promise<string> {
+export async function getSystemInterventionTypeId(code = 'MECCANICO'): Promise<string> {
   const { rows } = await pgAdmin.query<{ id: string }>(
     `SELECT id FROM intervention_types WHERE tenant_id IS NULL AND code = $1 LIMIT 1`,
     [code],

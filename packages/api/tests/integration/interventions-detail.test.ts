@@ -30,7 +30,7 @@ describe('GET /v1/interventions/:id (officina)', () => {
     await resetDb();
     // resetDb() truncates intervention_types as a CASCADE side-effect
     // of TRUNCATE tenants — re-seed so each test has a stable type FK.
-    await ensureSystemInterventionType('TAGLIANDO');
+    await ensureSystemInterventionType('MECCANICO');
   });
 
   // -----------------------------------------------------------------------
@@ -60,7 +60,7 @@ describe('GET /v1/interventions/:id (officina)', () => {
     userId: string;
     overrides?: Partial<Parameters<typeof createIntervention>[0]>;
   }) {
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: args.tenantId });
     const { interventionId } = await createIntervention({
       tenantId: args.tenantId,
@@ -126,8 +126,8 @@ describe('GET /v1/interventions/:id (officina)', () => {
     // Nested relation: type
     const type = body.type as Record<string, unknown>;
     expect(type.id).toBe(typeId);
-    expect(type.code).toBe('TAGLIANDO');
-    expect(type.name_it).toBe('Tagliando');
+    expect(type.code).toBe('MECCANICO');
+    expect(type.name_it).toBe('Intervento Meccanico');
 
     // Nested relation: tenant
     const tenant = body.tenant as Record<string, unknown>;
@@ -386,10 +386,10 @@ describe('GET /v1/interventions/:id (officina)', () => {
   // -----------------------------------------------------------------------
   it('normalizes parts_replaced correctly for empty and non-empty cases', async () => {
     const { tenantId, userId, token } = await setupCaller('det-parts');
-    // beforeEach already calls ensureSystemInterventionType('TAGLIANDO'); look up
+    // beforeEach already calls ensureSystemInterventionType('MECCANICO'); look up
     // the existing row rather than re-creating it.
     const type = await pgAdmin
-      .query<{ id: string }>(`SELECT id FROM intervention_types WHERE code = 'TAGLIANDO' LIMIT 1`)
+      .query<{ id: string }>(`SELECT id FROM intervention_types WHERE code = 'MECCANICO' LIMIT 1`)
       .then((r) => r.rows[0]!);
 
     // Intervention with empty partsReplaced

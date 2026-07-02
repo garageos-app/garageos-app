@@ -70,9 +70,9 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
     process.env.SES_CONFIGURATION_SET = 'test-config-set';
     // resetDb() TRUNCATEs tenants CASCADE, which Postgres extends to
     // intervention_types as a whole — system-row tenant_id NULL doesn't
-    // shield it. Re-seed TAGLIANDO per test so each scenario has a stable
+    // shield it. Re-seed MECCANICO per test so each scenario has a stable
     // type to FK against.
-    const tagliando = await ensureSystemInterventionType('TAGLIANDO');
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
     taglianodoTypeId = tagliando.id;
   });
 
@@ -112,7 +112,7 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
     expect(json.intervention.odometerKm).toBe(45000);
     expect(json.intervention.kmAnomaly).toBe(false);
     expect(json.intervention.status).toBe('active');
-    expect(json.intervention.interventionType.code).toBe('TAGLIANDO');
+    expect(json.intervention.interventionType.code).toBe('MECCANICO');
     expect(json.deadline).toBeNull();
 
     // BR-152: relation auto-created.
@@ -268,7 +268,7 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
       deadline: { id: string; dueOdometerKm: number; status: string } | null;
     };
     expect(json.deadline).not.toBeNull();
-    // TAGLIANDO defaults: 12 months / 15000 km. 45000 + 15000 = 60000.
+    // MECCANICO defaults: 12 months / 15000 km. 45000 + 15000 = 60000.
     expect(json.deadline!.dueOdometerKm).toBe(60000);
     expect(json.deadline!.status).toBe('open');
 

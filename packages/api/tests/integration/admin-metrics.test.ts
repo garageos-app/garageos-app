@@ -118,7 +118,7 @@ describe('GET /v1/admin/metrics — aggregate counts (integration)', () => {
     // Tenant A: active, 1 user, 2 vehicles, 2 customers, 3 interventions
     //   (2 recent + 1 backdated 3 weeks ago).
     // Tenant B: suspended, 1 user, 1 vehicle, 1 customer, 1 recent intervention.
-    const itype = await ensureSystemInterventionType('TAGLIANDO');
+    const itype = await ensureSystemInterventionType('MECCANICO');
 
     const { tenantId: tenantA } = await createTenant('metrics-A');
     const { tenantId: tenantB } = await createTenant('metrics-B');
@@ -218,7 +218,7 @@ describe('GET /v1/admin/metrics — aggregate counts (integration)', () => {
   });
 
   it('excludes soft-deleted users/customers and cancelled interventions from counts and trend', async () => {
-    const itype = await ensureSystemInterventionType('TAGLIANDO');
+    const itype = await ensureSystemInterventionType('MECCANICO');
     const { tenantId } = await createTenant('metrics-excl');
 
     // Users: active (counted) + inactive non-deleted (counted) + deleted (NOT counted).

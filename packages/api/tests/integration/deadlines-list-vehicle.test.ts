@@ -82,7 +82,7 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('list-asc');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     // Insert in non-sorted order to verify the orderBy.
@@ -135,7 +135,7 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('list-status');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({
@@ -189,7 +189,7 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('list-limit');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({
@@ -241,7 +241,7 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('list-cursor');
     const cognitoSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     await seedDeadline({
@@ -308,7 +308,7 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     // Net effect for caller B looking at vehicle owned by tenant A: 200
     // with empty list (mirrors POST behavior — see deadlines-create.test.ts).
     const a = await createTenantWithLocation('xt-a');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: a.tenantId });
     await seedDeadline({
       tenantId: a.tenantId,
@@ -347,7 +347,7 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('cust-owns');
     const tenantSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub: tenantSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const customerSub = `cust-${randomUUID().slice(0, 8)}`;
@@ -387,7 +387,7 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     const { tenantId } = await createTenantWithLocation('cust-noown');
     const tenantSub = `office-${randomUUID().slice(0, 8)}`;
     await createUser({ tenantId, cognitoSub: tenantSub, role: 'super_admin' });
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     // Owner customer, but caller is a DIFFERENT customer with no ownership.
@@ -425,7 +425,7 @@ describe('GET /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
   it('customer with ENDED ownership returns 404 (defense in depth)', async () => {
     // ended_at IS NOT NULL → no active ownership → 404.
     const { tenantId } = await createTenantWithLocation('cust-ended');
-    const type = await ensureSystemInterventionType('TAGLIANDO');
+    const type = await ensureSystemInterventionType('MECCANICO');
     const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
 
     const customerSub = `cust-${randomUUID().slice(0, 8)}`;
