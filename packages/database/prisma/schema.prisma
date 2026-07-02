@@ -238,6 +238,8 @@ model Tenant {
   certifiedVehicles Vehicle[] @relation("CertifiedBy")
   createdVehicles Vehicle[] @relation("CreatedByTenant")
   tagPrints       VehicleTagPrint[]
+  interventionTypeExclusions TenantInterventionTypeExclusion[]
+  checklistItemExclusions    TenantChecklistItemExclusion[]
 
   @@index([vatNumber], map: "idx_tenants_vat_number")
   @@index([status], map: "idx_tenants_status")
@@ -464,9 +466,73 @@ model InterventionType {
   interventions             Intervention[]
   privateInterventions      PrivateIntervention[]
   deadlines                 Deadline[]
+  checklistItems            InterventionChecklistItem[]
+  tenantExclusions          TenantInterventionTypeExclusion[]
 
   @@unique([tenantId, code], map: "uq_intervention_type_code_tenant")
   @@map("intervention_types")
+}
+
+model InterventionChecklistItem {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  interventionTypeId String   @map("intervention_type_id") @db.Uuid
+  code               String   @db.VarChar(50)
+  nameIt             String   @map("name_it") @db.VarChar(150)
+  sortOrder          Int      @default(0) @map("sort_order") @db.SmallInt
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  interventionType InterventionType                 @relation(fields: [interventionTypeId], references: [id], onDelete: Cascade)
+  selections       InterventionChecklistSelection[]
+  tenantExclusions TenantChecklistItemExclusion[]
+
+  @@unique([interventionTypeId, code], map: "uq_checklist_item_code_type")
+  @@index([interventionTypeId], map: "idx_checklist_items_type")
+  @@map("intervention_checklist_items")
+}
+
+model TenantInterventionTypeExclusion {
+  tenantId           String   @map("tenant_id") @db.Uuid
+  interventionTypeId String   @map("intervention_type_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  interventionType InterventionType @relation(fields: [interventionTypeId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, interventionTypeId])
+  @@index([interventionTypeId], map: "idx_type_excl_type")
+  @@map("tenant_intervention_type_exclusions")
+}
+
+model TenantChecklistItemExclusion {
+  tenantId        String   @map("tenant_id") @db.Uuid
+  checklistItemId String   @map("checklist_item_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  checklistItem InterventionChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, checklistItemId])
+  @@index([checklistItemId], map: "idx_item_excl_item")
+  @@map("tenant_checklist_item_exclusions")
+}
+
+model InterventionChecklistSelection {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  interventionId    String   @map("intervention_id") @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  checklistItemId   String?  @map("checklist_item_id") @db.Uuid
+  labelSnapshot     String   @map("label_snapshot") @db.VarChar(150)
+  sortOrderSnapshot Int?     @map("sort_order_snapshot") @db.SmallInt
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  intervention  Intervention               @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  checklistItem InterventionChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+
+  @@unique([interventionId, checklistItemId], map: "uq_selection_intervention_item")
+  @@index([interventionId], map: "idx_selections_intervention")
+  @@map("intervention_checklist_selections")
 }
 
 model Intervention {
@@ -500,6 +566,7 @@ model Intervention {
   disputes          InterventionDispute[]
   completedDeadlines Deadline[]            @relation("CompletedByIntervention")
   sourceDeadlines   Deadline[]             @relation("SourceIntervention")
+  checklistSelections InterventionChecklistSelection[]
 
   @@index([tenantId], map: "idx_interventions_tenant_id")
   @@index([vehicleId], map: "idx_interventions_vehicle_id")
