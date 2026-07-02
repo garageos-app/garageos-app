@@ -943,6 +943,95 @@ Due tabelle **customer-owned** aggiunte dalla migration `20260616120000_personal
 
 ---
 
+### 2.5 Checklist interventi — 4 tabelle nuove (BR-303, BR-304, BR-306, BR-307)
+
+Quattro tabelle aggiunte dalla migration `20260702130000_checklist_foundation` (arco "ridisegno tipi + checklist"; vedi `docs/superpowers/specs/2026-07-02-intervention-types-checklist-redesign-design.md`). Modellano una checklist di voci per ogni `intervention_type`, con un meccanismo di **opt-out per tenant**: una nuova voce o un nuovo tipo sono visibili a **tutti** i tenant appena creati dal platform admin, salvo esclusione esplicita registrata in una delle due tabelle di eccezione (**BR-304**). Il catalogo (tipi, voci, esclusioni) è scrivibile solo dal platform admin; l'officina ha sola lettura (**BR-306**).
+
+Le selezioni effettive su un intervento **congelano** l'etichetta della voce al momento del salvataggio (`label_snapshot`) proprio perché il catalogo può essere rinominato o disattivato dall'admin in seguito: la rinomina non deve alterare il testo già stampato/mostrato per interventi passati (**BR-303**, D8). Per lo stesso motivo `checklist_item_id` è nullable con `ON DELETE SET NULL` — se la voce catalogo viene eliminata, la selezione storica resta con lo snapshot testuale intatto e perde solo il link al catalogo vivo.
+
+#### Tabella `intervention_checklist_items`
+
+Catalogo delle voci checklist, legate a un tipo di intervento.
+
+| Campo | Tipo DB | Note |
+|---|---|---|
+| `id` | `UUID DEFAULT gen_random_uuid()` | PK |
+| `intervention_type_id` | `UUID NOT NULL` | FK → `intervention_types.id` ON DELETE CASCADE |
+| `code` | `VARCHAR(50) NOT NULL` | Identificativo stabile della voce entro il tipo |
+| `name_it` | `VARCHAR(150) NOT NULL` | Etichetta italiana mostrata in UI (sorgente di `label_snapshot` al momento della selezione) |
+| `sort_order` | `SMALLINT NOT NULL DEFAULT 0` | Ordine di visualizzazione entro il tipo |
+| `active` | `BOOLEAN NOT NULL DEFAULT true` | Disattivabile senza cancellare la riga (le selezioni storiche restano valide via snapshot) |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Trigger `trg_intervention_checklist_items_updated_at` |
+
+**Indici:**
+
+- `uq_checklist_item_code_type` UNIQUE `(intervention_type_id, code)` — unicità `code` per tipo (**BR-307**)
+- `idx_checklist_items_type (intervention_type_id)`
+
+**RLS:** `checklist_items_read USING(true)` — permissiva, il catalogo è leggibile da qualunque tenant (le esclusioni si applicano app-layer/join, non qui). `checklist_items_write FOR ALL USING/WITH CHECK (is_admin_role())` — scrittura riservata al platform admin (BR-306).
+
+#### Tabella `tenant_intervention_type_exclusions`
+
+Opt-out per tenant: una riga presente significa che il tipo di intervento indicato è **nascosto** per quel tenant.
+
+| Campo | Tipo DB | Note |
+|---|---|---|
+| `tenant_id` | `UUID NOT NULL` | FK → `tenants.id` ON DELETE CASCADE — parte della PK composita |
+| `intervention_type_id` | `UUID NOT NULL` | FK → `intervention_types.id` ON DELETE CASCADE — parte della PK composita |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+PK: `(tenant_id, intervention_type_id)`. Nessun `updated_at`: la riga esiste (escluso) o non esiste (visibile), non ha stato intermedio.
+
+**Indici:**
+
+- `idx_type_excl_type (intervention_type_id)`
+
+**RLS:** `type_excl_read USING(is_admin_role() OR tenant_id = current_tenant_id())` — tenant-scoped, ogni tenant vede solo le proprie esclusioni (più bypass admin). `type_excl_write FOR ALL USING/WITH CHECK (is_admin_role())` — scrittura riservata al platform admin (BR-306).
+
+#### Tabella `tenant_checklist_item_exclusions`
+
+Opt-out per tenant a livello di singola voce checklist (indipendente dall'esclusione del tipo intero).
+
+| Campo | Tipo DB | Note |
+|---|---|---|
+| `tenant_id` | `UUID NOT NULL` | FK → `tenants.id` ON DELETE CASCADE — parte della PK composita |
+| `checklist_item_id` | `UUID NOT NULL` | FK → `intervention_checklist_items.id` ON DELETE CASCADE — parte della PK composita |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+PK: `(tenant_id, checklist_item_id)`.
+
+**Indici:**
+
+- `idx_item_excl_item (checklist_item_id)`
+
+**RLS:** `item_excl_read USING(is_admin_role() OR tenant_id = current_tenant_id())` — tenant-scoped. `item_excl_write FOR ALL USING/WITH CHECK (is_admin_role())` — scrittura riservata al platform admin (BR-306).
+
+#### Tabella `intervention_checklist_selections`
+
+Voci checklist effettivamente selezionate su un intervento, con etichetta congelata.
+
+| Campo | Tipo DB | Note |
+|---|---|---|
+| `id` | `UUID DEFAULT gen_random_uuid()` | PK |
+| `intervention_id` | `UUID NOT NULL` | FK → `interventions.id` ON DELETE CASCADE |
+| `tenant_id` | `UUID NOT NULL` | FK → `tenants.id` ON DELETE CASCADE — denormalizzato per lo scoping RLS (evita join su `interventions` nelle policy) |
+| `checklist_item_id` | `UUID NULL` | FK → `intervention_checklist_items.id` ON DELETE **SET NULL** — nullable: se la voce catalogo viene eliminata, la selezione storica resta con lo snapshot testuale (vedi intro §2.5) |
+| `label_snapshot` | `VARCHAR(150) NOT NULL` | Etichetta congelata al salvataggio; non ricalcolata da rinomina/disattivazione admin successiva (**BR-303**) |
+| `sort_order_snapshot` | `SMALLINT NULL` | Ordine di visualizzazione congelato al salvataggio |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Nessun `updated_at`: una selezione non si modifica, si sostituisce (replace del set su edit intervento) |
+
+**Indici:**
+
+- `uq_selection_intervention_item` UNIQUE `(intervention_id, checklist_item_id)` — evita doppia selezione della stessa voce sullo stesso intervento; essendo `checklist_item_id` nullable, più righe con valore `NULL` per lo stesso intervento restano ammesse da Postgres (NULL non è confrontabile per uguaglianza in un vincolo UNIQUE), coerente con selezioni storiche orfane dopo eliminazione voce
+- `idx_selections_intervention (intervention_id)`
+
+**RLS:** mirror di `interventions` (pattern §2.x "split" — lezione RLS split). `selections_read USING(true)` — permissiva in lettura. Scrittura granulare: `selections_insert WITH CHECK`, `selections_update USING/WITH CHECK`, `selections_delete USING`, tutte `(is_admin_role() OR tenant_id = current_tenant_id())` — tenant-scoped.
+
+**Grants:** `garageos_app` ottiene `SELECT, INSERT, UPDATE, DELETE` esplicite su tutte e 4 le tabelle (ruolo `NOBYPASSRLS` — vedi §9, lezione least-privilege).
+
+---
+
 ## 3. Migration SQL aggiuntive (RLS, trigger)
 
 > **Nota di implementazione (PR 4b, 2026-04-24).** I tre file `sql/triggers.sql`, `sql/rls-policies.sql` e `sql/functions.sql` descritti qui di seguito sono stati **consolidati in un'unica migration Prisma** (`prisma/migrations/20260424100000_rls_triggers_checks/migration.sql`). Motivazione:
