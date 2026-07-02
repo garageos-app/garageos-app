@@ -385,7 +385,6 @@ Nessun error code di questa famiglia è più emesso dall'API.*
 | `system.database.connection_failed` | 503 | critical | Database non raggiungibile | |
 | `system.email.send_failed` | 502 | error | Invio email fallito | SES error |
 | `system.push.send_failed` | 502 | error | Invio push fallito | Expo Push error |
-| `system.s3.upload_failed` | 502 | error | Upload S3 fallito | |
 | `system.scheduler.schedule_failed` | 502 | error | Creazione schedule EventBridge fallita | |
 
 **Slice 3 — route `admin/tenants/:id` (profilo + utenti):** le route Slice 3 non introducono nuovi codici; riutilizzano le famiglie `tenant.*`, `user.*` e `user.invitation.*` esistenti. Codici applicabili per route:
@@ -455,21 +454,13 @@ dall'API.*
 
 **HTTP 409.** Operazione richiede veicolo `certified`, ma è in stato `pending`. Il tag PDF (BR-026) è disponibile solo post-certificazione.
 
-#### `vehicle_tag.s3_head_failed`
-
-**HTTP 500.** S3 HeadObject ha fallito per ragioni diverse da NoSuchKey (IAM denial, network, throttle). Server log contiene dettaglio. Cliente riceve `internal_error` generico.
-
-#### `vehicle_tag.s3_upload_failed`
-
-**HTTP 500.** S3 PutObject ha fallito dopo render PDF success. PDF buffer perso; next retry rifa render + upload (idempotente).
-
 #### `vehicle_tag.render_failed`
 
-**HTTP 500.** `pdf-lib` o `qrcode` ha lanciato durante render. Verificare deps e input.
+**HTTP 502.** `pdf-lib` o `qrcode` ha lanciato durante il render del tag (`GET /v1/vehicles/:id/tag`, `POST /v1/vehicles/:id/tag-reprint`). Verificare deps e input; l'errore originale è loggato server-side (`request.log.error`). Il tag è streammato direttamente dalla Lambda — nessun persist S3.
 
 #### `vehicle_tag.audit_insert_failed`
 
-**HTTP 500.** INSERT su `vehicle_tag_prints` ha fallito (DB down, FK violation, RLS deny). Fail-closed: response non inviata. S3 PUT è già successo idempotentemente, next retry trova cache-hit + INSERT retry.
+**HTTP 500.** INSERT su `vehicle_tag_prints` ha fallito (DB down, FK violation, RLS deny). Fail-closed: response non inviata. Il render è avvenuto prima dell'INSERT ed è idempotente (deterministico su `garage_code`), quindi il retry rifa render + INSERT.
 
 #### `vehicle_tag.never_printed`
 
@@ -950,7 +941,6 @@ private_intervention.vehicle_not_owned
 system.database.connection_failed
 system.email.send_failed
 system.push.send_failed
-system.s3.upload_failed
 system.scheduler.schedule_failed
 tenant.billing.past_due
 tenant.invalid_status
@@ -1021,11 +1011,9 @@ vehicle_history_pdf.render_failed
 vehicle_tag.audit_insert_failed
 vehicle_tag.never_printed
 vehicle_tag.render_failed
-vehicle_tag.s3_head_failed
-vehicle_tag.s3_upload_failed
 ```
 
-**Totale: 159 error code documentati in v1.0** (aggiornato post F-OFF-104 tag PDF, +6 codici: `vehicle.archived`, `vehicle.not_certified`, `vehicle_tag.s3_head_failed`, `vehicle_tag.s3_upload_failed`, `vehicle_tag.render_failed`, `vehicle_tag.audit_insert_failed`). (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004 + 3 codici F-OFF-004 reactivation slice 2026-05-21; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`). (aggiornato post F-OFF-309/F-CLI-501 PDF rendering diretto, +2 codici: `intervention_pdf.render_failed`, `vehicle_history_pdf.render_failed`). (aggiornato 2026-07-01 post rimozione upload/allegati/avatar/documenti passaggio proprietà — arco "remove uploads and S3": -21 codici rimossi: 14 `attachment.upload.*`/`attachment.*`, 4 `intervention.dispute.attachment*`/`response.attachments_require_dispute_id`, 3 `users.me.avatar.*`; totale netto 159, vedi `docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md`).
+**Totale: 159 error code documentati in v1.0** (aggiornato post F-OFF-104 tag PDF, +6 codici: `vehicle.archived`, `vehicle.not_certified`, `vehicle_tag.s3_head_failed`, `vehicle_tag.s3_upload_failed`, `vehicle_tag.render_failed`, `vehicle_tag.audit_insert_failed`). (aggiornato post F-OFF-004 multi-user, +11 codici F-OFF-004 + 3 codici F-OFF-004 reactivation slice 2026-05-21; stale spec codes `user.cannot_remove_last_super_admin` + `user.role_change_would_orphan_tenant` sostituiti da `user.last_super_admin`). (aggiornato post F-OFF-309/F-CLI-501 PDF rendering diretto, +2 codici: `intervention_pdf.render_failed`, `vehicle_history_pdf.render_failed`). (aggiornato 2026-07-01 post rimozione upload/allegati/avatar/documenti passaggio proprietà — arco "remove uploads and S3": -21 codici rimossi: 14 `attachment.upload.*`/`attachment.*`, 4 `intervention.dispute.attachment*`/`response.attachments_require_dispute_id`, 3 `users.me.avatar.*`; totale netto 159, vedi `docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md`). (aggiornato 2026-07-02 post rimozione infra/deps S3 — arco "remove uploads and S3" PR3: -3 codici S3 morti rimossi: `system.s3.upload_failed`, `vehicle_tag.s3_head_failed`, `vehicle_tag.s3_upload_failed`; totale netto **156**).
 
 ---
 

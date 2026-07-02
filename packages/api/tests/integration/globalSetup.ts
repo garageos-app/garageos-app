@@ -84,16 +84,10 @@ export async function setup(): Promise<void> {
   process.env.COGNITO_PLATFORM_ADMINS_POOL_ID ??= 'eu-central-1_TESTPLATFORMADMINS';
   process.env.COGNITO_PLATFORM_ADMINS_CLIENT_ID ??= 'test-platform-admins-client';
 
-  // --- S3 (F-OFF-305 attachments) ---
-  // The real bucket is never hit in tests (aws-sdk-client-mock intercepts
-  // all S3Client calls). A placeholder satisfies the Zod schema check.
-  process.env.S3_ATTACHMENTS_BUCKET ??= 'test-attachments-bucket';
-
-  // The presigner code path in lib/s3.ts calls the AWS SDK credential
-  // provider chain (NOT intercepted by aws-sdk-client-mock). CI runners
-  // have no credentials → CredentialsProviderError. Fake static creds
-  // make signature math succeed; the resulting signed URL is never used
-  // because aws-sdk-client-mock catches the eventual send.
+  // Scheduler/SES client construction resolves credentials via the AWS SDK
+  // credential provider chain (separate from aws-sdk-client-mock, which only
+  // intercepts `.send`). CI runners have no credentials → CredentialsProviderError.
+  // Fake static creds keep client construction from throwing; no real call is made.
   process.env.AWS_ACCESS_KEY_ID ??= 'test-access-key-id';
   process.env.AWS_SECRET_ACCESS_KEY ??= 'test-secret-access-key';
 

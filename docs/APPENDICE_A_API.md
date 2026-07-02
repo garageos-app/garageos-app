@@ -1581,15 +1581,16 @@ Authorization: Bearer <officina_user_jwt>
 
 #### Descrizione
 
-Genera (o rigenera) il PDF dell'intervento e ritorna un URL S3 presigned con validità 1h.
+Renderizza il PDF dell'intervento in-Lambda e ne streamma i byte direttamente
+(`Content-Type: application/pdf`) — nessun persist S3, nessun presigned URL.
 Auth operatore (pool officine). RLS tenant-scoped (404 cross-tenant).
 
-Il PDF contiene: intestazione officina (logo se disponibile), intestatario
-(BR-151 PII-gated, fallback "Proprietario non in anagrafica"), veicolo,
-data/km/tipo, titolo/descrizione, ricambi (senza costi), operatore (BR-213
-fallback "Operatore"). Banner "INTERVENTO ANNULLATO" se `status=cancelled`.
-`internal_notes` mai incluse. Il PDF è rigenerato a ogni chiamata (documento
-mutabile, nessuna cache).
+Il PDF contiene: intestazione officina (solo `businessName` + indirizzo/P.IVA —
+la feature logo è stata rimossa), intestatario (BR-151 PII-gated, fallback
+"Proprietario non in anagrafica"), veicolo, data/km/tipo, titolo/descrizione,
+ricambi (senza costi), operatore (BR-213 fallback "Operatore"). Banner
+"INTERVENTO ANNULLATO" se `status=cancelled`. `internal_notes` mai incluse.
+Il PDF è rigenerato a ogni chiamata (documento mutabile, nessuna cache).
 
 #### Request
 
@@ -1606,12 +1607,10 @@ Authorization: Bearer <officine_user_jwt>
 
 #### Response `200 OK`
 
-```json
-{
-  "pdf_download_url": "https://…s3…presigned…",
-  "expires_at": "2026-05-30T19:00:00Z"
-}
-```
+- `Content-Type: application/pdf`
+- `Content-Disposition: inline; filename="intervento-<id>.pdf"`
+
+Body: i byte del PDF renderizzato in-Lambda e streammati direttamente (nessun persist S3, nessun presigned URL).
 
 #### Errori
 
@@ -1620,22 +1619,22 @@ Authorization: Bearer <officine_user_jwt>
 | 401 | (auth middleware) | Authorization header mancante o JWT non valido |
 | 404 | `intervention.not_found` | Intervento non trovato o non accessibile da questa officina (RLS-as-404) |
 | 429 | (rate limit) | Troppe richieste |
-| 500 | `intervention_pdf.render_failed` / `intervention_pdf.s3_upload_failed` | Render PDF o upload S3 falliti |
+| 502 | `intervention_pdf.render_failed` | Render del PDF fallito (streaming diretto, nessun upload S3) |
 
 #### Note
 
 - **PII gating (BR-151)**: il nome del proprietario è visibile solo se il tenant ha una relazione attiva con il customer (`customer_tenant_relations`). Altrimenti il PDF mostra "Proprietario non in anagrafica".
 - **Operator fallback (BR-213)**: se il record utente dell'operatore è stato rimosso (`created_by` null), il PDF mostra "Operatore".
 - **Active owner (BR-040)**: il proprietario è il `VehicleOwnership` con `endedAt=null`.
-- **Nessuna cache**: il PDF è rigenerato a ogni chiamata perché i dati dell'intervento sono mutabili (wiki window aperta). La chiave S3 viene sovrascritta ad ogni generazione.
-- **Logo officina**: se presente (`tenants.logo_url`), il logo viene scaricato da S3 e incluso nell'intestazione. In caso di errore S3 il PDF è generato senza logo (fallback graceful).
+- **Streaming diretto, nessuna cache**: il PDF è renderizzato in-Lambda e i byte sono streammati direttamente nella response (`Content-Type: application/pdf`). Nessun persist S3, nessun presigned URL. Rigenerato a ogni chiamata (i dati dell'intervento sono mutabili nella wiki window).
+- **Nessun logo officina**: l'intestazione riporta solo `businessName` + indirizzo/P.IVA (la feature logo è stata rimossa insieme agli upload).
 
 ---
 
-### 2.14 `GET /v1/vehicles/:id/tag` — Genera o recupera tag PDF veicolo
+### 2.14 `GET /v1/vehicles/:id/tag` — Genera tag PDF veicolo
 
 **Auth:** bearer JWT (qualunque utente attivo del tenant).
-**Feature:** F-OFF-104 (stampa tag). BR-026 (lazy generation), BR-027 (audit log).
+**Feature:** F-OFF-104 (stampa tag). BR-026 (render deterministico), BR-027 (audit log).
 
 #### Request
 
@@ -1650,14 +1649,10 @@ Nessun body, nessun query param.
 
 #### Response 200
 
-```json
-{
-  "tag_download_url": "https://garageos-prod-attachments.s3.eu-south-1.amazonaws.com/tags/GO-288-QPWZ.pdf?X-Amz-...",
-  "expires_at": "2026-05-29T13:00:00.000Z"
-}
-```
+- `Content-Type: application/pdf`
+- `Content-Disposition: inline; filename="tag-<garage_code>.pdf"`
 
-Il `tag_download_url` è un presigned URL S3 valido 1h. Il PDF è A4 14-up con 14 etichette identiche (codice + QR code → `https://app.garageos.it/v/<code>`), formato Avery L7163.
+Body: i byte del PDF renderizzato in-Lambda e streammati direttamente (nessun persist S3, nessun presigned URL). Il PDF è A4 14-up con 14 etichette identiche (codice + QR code → `https://app.garageos.it/v/<code>`), formato Avery L7163.
 
 #### Error matrix
 
@@ -1668,12 +1663,13 @@ Il `tag_download_url` è un presigned URL S3 valido 1h. Il PDF è A4 14-up con 1
 | 404 | `vehicle.not_found` | Veicolo non esistente o cross-tenant. |
 | 409 | `vehicle.archived` | `vehicle.status='archived'`. |
 | 409 | `vehicle.not_certified` | `vehicle.status='pending'`. |
-| 500 | `internal_error` | S3 head/upload/render/audit failure (vedi APPENDICE_G §3.17). |
+| 502 | `vehicle_tag.render_failed` | Render del PDF fallito. |
+| 500 | `internal_error` | Audit insert failure (vedi APPENDICE_G §3.17). |
 
 #### Note
 
 - Audit: ogni richiesta inserisce row in `vehicle_tag_prints` con `kind='first'`.
-- Caching: PDF cached su S3 con key `tags/<garage_code>.pdf` (immutabile per BR-022). Second+ accessi → cache-hit (no re-render).
+- Nessuna cache: il tag è deterministico (solo `garage_code` ne influenza il render — BR-026), quindi viene rirenderizzato a ogni chiamata (cheap, nessuno storage).
 
 ---
 
@@ -1697,14 +1693,10 @@ Il `tag_download_url` è un presigned URL S3 valido 1h. Il PDF è A4 14-up con 1
 
 #### Response 200
 
-```json
-{
-  "tag_download_url": "https://garageos-prod-attachments.s3.eu-south-1.amazonaws.com/tags/GO-288-QPWZ.pdf?X-Amz-...",
-  "expires_at": "2026-05-29T13:00:00.000Z"
-}
-```
+- `Content-Type: application/pdf`
+- `Content-Disposition: inline; filename="tag-<garage_code>.pdf"`
 
-`tag_download_url` presigned valido 1h. PDF identico al primo (BR-022 immutable).
+Body: i byte del PDF streammati direttamente (nessun persist S3, nessun presigned URL). PDF identico al primo (BR-022 immutable).
 
 #### Error matrix
 
@@ -1716,12 +1708,13 @@ Il `tag_download_url` è un presigned URL S3 valido 1h. Il PDF è A4 14-up con 1
 | 409 | `vehicle.archived` | `vehicle.status='archived'`. |
 | 409 | `vehicle.not_certified` | `vehicle.status='pending'` o altro stato non-`certified`. |
 | 409 | `vehicle_tag.never_printed` | Audit count = 0 (mai stampato). |
-| 500 | `internal_error` | S3 / audit failure (vedi APPENDICE_G). |
+| 502 | `vehicle_tag.render_failed` | Render del PDF fallito. |
+| 500 | `internal_error` | Audit insert failure (vedi APPENDICE_G). |
 
 #### Note
 
 - Audit: inserisce row `vehicle_tag_prints` con `kind='reprint'`, `reason`, `reason_note`, `document_verified=true`, `printed_by_user_id`.
-- Cache S3: riusa `tags/<garage_code>.pdf` da PR1 (cache-hit garantito post check audit-count).
+- Render diretto: il PDF è rirenderizzato e streammato in-Lambda (nessuna cache S3), identico al tag `kind='first'`.
 
 #### Campo `tag_first_printed_at` in `GET /v1/vehicles/:id`
 
@@ -2302,7 +2295,7 @@ acquirente. Solo pool clienti.
 > `GET /vehicles/:id/export.pdf`; l'endpoint vive sulla superficie cliente
 > `/me/...` per coerenza con il resto dell'app cliente (stessa scelta di
 > `POST /me/vehicles/claim`, F-CLI-101). Riusa la meccanica PDF di F-OFF-309
-> (`pdf-lib` render server-side → S3 → presigned URL).
+> (`pdf-lib` render server-side → streaming diretto dei byte, nessun S3).
 
 Comportamento:
 
@@ -2315,22 +2308,20 @@ Comportamento:
   esposto; le `internal_notes` non sono mai incluse.
 - Header GarageOS-branded (documento multi-officina, nessun logo officina,
   nessun nome proprietario); ogni intervento è etichettato `officina · città`.
-- PDF rigenerato e sovrascritto a ogni richiesta (storico mutabile), persistito
-  su S3 con chiave `vehicle-history-pdfs/<vehicleId>.pdf`, presigned 1h.
+- PDF renderizzato in-Lambda e streammato direttamente a ogni richiesta (storico
+  mutabile) — nessun persist S3, nessun presigned URL.
 - Storico vuoto (0 interventi) → `200` con PDF "Nessun intervento officina
   registrato".
 
 Risposta `200`:
 
-```jsonc
-{
-  "pdf_download_url": "https://<bucket>.s3.<region>.amazonaws.com/vehicle-history-pdfs/<vehicleId>.pdf?X-Amz-…",
-  "expires_at": "2026-06-09T19:00:00Z"
-}
-```
+- `Content-Type: application/pdf`
+- `Content-Disposition: inline; filename="storico-<vehicleId>.pdf"`
 
-Errori: `401`, `404 me.vehicle.not_found`, `429`, `500`. Nessun codice
-4xx domain-specific nuovo.
+Body: i byte del PDF streammati direttamente.
+
+Errori: `401`, `404 me.vehicle.not_found`, `429`, `502 vehicle_history_pdf.render_failed`.
+Nessun codice 4xx domain-specific nuovo.
 
 ### 3.6 Interventions
 

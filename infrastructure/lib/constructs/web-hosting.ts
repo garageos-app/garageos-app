@@ -16,9 +16,9 @@ import { Construct } from 'constructs';
 //   - Route 53 A + AAAA alias records pointing the configured app
 //     subdomain at the distribution.
 //
-// removalPolicy RETAIN on the bucket (consistent with StorageConstruct):
-// losing the bucket = losing all deployed asset history. Cleanup must
-// be manual via console if ever required.
+// removalPolicy RETAIN on the bucket: losing the bucket = losing all
+// deployed asset history. Cleanup must be manual via console if ever
+// required.
 //
 // No CloudFront access logging in PR demo-0 — deferred until traffic
 // volume justifies the log retention cost.

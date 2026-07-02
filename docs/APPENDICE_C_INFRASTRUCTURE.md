@@ -78,6 +78,7 @@ Dalla Sezione 5 del documento master:
 
 | Versione | Data | Modifiche principali |
 |---|---|---|
+| **v1.5** | 2026-07-02 | **Rimozione S3 (arco "rimuovi upload + elimina S3", PR3)**: eliminato `StorageConstruct` (bucket `garageos-production-attachments`) e tutto il wiring associato. `LambdaApiConstruct` non ha più la prop `attachmentsBucket`, i grant IAM `s3:GetObject`/`s3:PutObject`/`s3:ListBucket`, né l'env `S3_ATTACHMENTS_BUCKET`; rimosso il `CfnOutput AttachmentsBucketName` da `MainStack` e l'`addEnvironment('S3_ATTACHMENTS_BUCKET')` sul trigger Cognito. Rimosse le deps `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` da `packages/api` e la var `S3_ATTACHMENTS_BUCKET` dallo schema `env.ts`. PDF/tag ora streammati direttamente dalla Lambda (nessun persist S3 — vedi §5.4). Il bucket fisico resta orfano (`RemovalPolicy.RETAIN`) fino allo svuotamento+delete operator (spec §Blocco E). §5.2/§5.9 code sample illustrativi non riconciliati (pre-esistente drift). |
 | **v1.4** | 2026-05-04 | **Hot-fix PR #51**: `WafConstruct` rimosso dall'istanziazione `MainStack`. Discovered durante deploy production di PR #49/#50 che AWS WAFv2 REGIONAL scope NON supporta API Gateway HTTP API v2 (solo REST API v1, ALB, AppSync, Cognito user pool, App Runner, Verified Access). Pattern AWS-recommended per HTTP API v2: CloudFront distribution edge + WAF (CLOUDFRONT scope, us-east-1) — entrambi shipped in PR 25. Per v1 pilota: API Gateway throttling (200 burst / 100 rate) + Lambda concurrency cap (100) sono i protection layer attivi. `WafConstruct` resta in `lib/constructs/waf.ts` come reusable scaffolding per PR 25. §5.8 aggiornato con la limitation. **Bucket S3 importato manualmente nello stack** via `cdk import` (era orphaned da `RemovalPolicy.RETAIN` durante rollback di #49). |
 | **v1.3** | 2026-05-04 | PR 23 ship-a Storage (S3 attachments bucket) e WAF (REGIONAL Web ACL) construct in `GarageosMainStack`. §5.4 CORS `allowedOrigins` riconciliato a `garageos.aifollyadvisor.com` (dominio reale acquisito post-spec). §5.8 confermato REGIONAL scope per API Gateway HTTP API v2; CLOUDFRONT scope deferred a PR 25 (web app static + CloudFront). Lambda execution role grant pre-emptive `s3:GetObject` + `s3:PutObject` scoped al bucket arn/\* (raw policy statement, no L2 helper grantRead/grantPut). Env var Lambda `S3_ATTACHMENTS_BUCKET` per consumo F-OFF-305 (PR successivo). Tag PDF bucket deferred fino a F-OFF-104/109 ship. Prop name `WafConstructProps.ipRequestRateLimit` (non `rateLimitPer5Min` come nelle bozze pre-spec — il window 5-min è platform-fixed WAFv2). **Note retrospettiva (v1.4)**: l'assunzione "WAF REGIONAL su HTTP API v2" si è rivelata errata — vedi v1.4. |
 | **v1.2** | 2026-04-29 | Sostituito AWS Lambda Web Adapter con l'in-process adapter `@fastify/aws-lambda`. Rationale e dettagli in [ADR-0002](./adr/ADR-0002-replace-lwa-with-fastify-aws-lambda-adapter.md). §5.9 aggiornata per riflettere il nuovo construct (rimosso layer LWA, rimosse env `AWS_LWA_PORT` / `AWS_LWA_READINESS_CHECK_PATH` / `AWS_LWA_ASYNC_INIT` / `AWS_LAMBDA_EXEC_WRAPPER`, aggiunto banner `createRequire` + handler `awsLambdaFastify`). La decisione fondamentale Lambda + API Gateway HTTP API v2 (v1.1) resta invariata. |
@@ -627,63 +628,9 @@ export class DnsConstruct extends Construct {
 }
 ```
 
-### 5.4 Construct: Storage
+### 5.4 Construct: Storage *(RIMOSSO — 2026-07-02)*
 
-```typescript
-// lib/constructs/storage.ts
-import { Construct } from 'constructs';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as cdk from 'aws-cdk-lib';
-
-interface StorageProps {
-  environment: string;
-}
-
-export class StorageConstruct extends Construct {
-  public readonly attachmentsBucket: s3.IBucket;
-
-  constructor(scope: Construct, id: string, props: StorageProps) {
-    super(scope, id);
-
-    this.attachmentsBucket = new s3.Bucket(this, 'Attachments', {
-      bucketName: `garageos-${props.environment}-attachments`,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      versioned: true,
-      lifecycleRules: [
-        {
-          id: 'transition-to-ia',
-          transitions: [
-            {
-              storageClass: s3.StorageClass.INFREQUENT_ACCESS,
-              transitionAfter: cdk.Duration.days(90),
-            },
-          ],
-          noncurrentVersionExpiration: cdk.Duration.days(30),
-        },
-        {
-          id: 'abort-incomplete-uploads',
-          abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),
-        },
-      ],
-      cors: [
-        {
-          allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
-          allowedOrigins: [
-            'https://app.garageos.aifollyadvisor.com',
-            'https://garageos.aifollyadvisor.com',
-          ],
-          allowedHeaders: ['*'],
-          maxAge: 3000,
-        },
-      ],
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-  }
-}
-```
-
-**Nota retrospettiva (v1.3, 2026-05-04)**: la versione iniziale di questo construct citava `garageos.it` come dominio CORS. Il dominio reale acquisito è `garageos.aifollyadvisor.com` (vedi §7.1) — gli `allowedOrigins` sono allineati di conseguenza. Il bucket name resta `garageos-${environment}-attachments` (stringa semantic, indipendente dal dominio).
+> **RIMOSSO.** Lo `StorageConstruct` (bucket S3 `garageos-${environment}-attachments`) è stato eliminato insieme alla feature upload (allegati, avatar, documenti passaggio proprietà). PDF e tag sono ora renderizzati e streammati direttamente dalla Lambda — nessun persist S3, nessun presigned URL. Il grant IAM `s3:GetObject`/`s3:PutObject`/`s3:ListBucket` e l'env `S3_ATTACHMENTS_BUCKET` sono stati rimossi dal `LambdaApiConstruct`; il `CfnOutput AttachmentsBucketName` non esiste più. Il bucket fisico resta orfano in AWS per `removalPolicy: RETAIN` finché lo step operator non lo svuota ed elimina (vedi `docs/superpowers/specs/2026-07-01-remove-uploads-and-s3-design.md` §Blocco E). Le §5.2 (esempio `MainStack`) e §5.9 (`LambdaApiConstruct`) contengono riferimenti illustrativi ora superati.
 
 ### 5.5 Construct: Cognito User Pools
 

@@ -129,7 +129,6 @@ async function buildApp(prisma: FakePrisma): Promise<FastifyInstance> {
 beforeAll(() => {
   process.env.AWS_ACCESS_KEY_ID ??= 'test';
   process.env.AWS_SECRET_ACCESS_KEY ??= 'test';
-  process.env.S3_ATTACHMENTS_BUCKET ??= 'garageos-test-attachments';
 });
 
 describe('GET /v1/interventions/:id/pdf (unit)', () => {

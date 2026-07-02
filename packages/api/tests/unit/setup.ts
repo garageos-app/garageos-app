@@ -27,18 +27,11 @@ process.env.COGNITO_CLIENTI_CLIENT_ID ??= 'test-clienti-client';
 process.env.COGNITO_PLATFORM_ADMINS_POOL_ID ??= 'eu-central-1_TESTPLATFORMADMINS';
 process.env.COGNITO_PLATFORM_ADMINS_CLIENT_ID ??= 'test-platform-admins-client';
 
-// F-OFF-305: S3 attachments bucket. Unit tests mock the S3Client via
-// aws-sdk-client-mock; this placeholder only needs to satisfy the Zod
-// schema parse at module load — no real S3 call is ever made.
-process.env.S3_ATTACHMENTS_BUCKET ??= 'garageos-test-attachments';
-
-// F-OFF-305: presign URL signing in `lib/s3.ts` calls the AWS SDK
-// credential provider chain (separate code path from `S3Client.send`,
-// NOT intercepted by aws-sdk-client-mock). On CI runners no credentials
-// are configured, causing CredentialsProviderError. Provide fake static
-// credentials — signature math runs locally so any string is fine; the
-// signed URL is never actually used because aws-sdk-client-mock catches
-// the eventual `send`.
+// Scheduler/SES client construction resolves credentials via the AWS SDK
+// credential provider chain (separate code path from `.send`, NOT intercepted
+// by aws-sdk-client-mock). On CI runners no credentials are configured, causing
+// CredentialsProviderError. Provide fake static credentials — client
+// construction succeeds and no real call is ever made (the mock catches send).
 process.env.AWS_ACCESS_KEY_ID ??= 'test-access-key-id';
 process.env.AWS_SECRET_ACCESS_KEY ??= 'test-secret-access-key';
 
