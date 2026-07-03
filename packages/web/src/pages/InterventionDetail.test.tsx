@@ -86,9 +86,9 @@ const BASE_DETAIL: InterventionDetailDto = {
   created_at: '2025-03-15T10:00:00Z',
   cancelled_at: null,
   cancelled_reason: null,
-  title: 'Tagliando 30000 km',
   description: 'Cambio olio e filtri.',
   internal_notes: null,
+  checklist_items: [{ id: 'checklist-1', label: 'Cambio olio' }],
   viewer_is_owner: true,
   parts_replaced: [],
   type: { id: 'type-tagliando', code: 'TAGLIANDO', name_it: 'Tagliando' },
@@ -216,9 +216,9 @@ describe('InterventionDetail', () => {
     });
     render(wrap({ children: <InterventionDetail /> }));
 
-    // h1 title
+    // h1 heading (intervention type name — title field removed web-wide)
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /Tagliando 30000 km/i })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /^Tagliando$/i })).toBeInTheDocument(),
     );
 
     // stats tiles
@@ -242,7 +242,7 @@ describe('InterventionDetail', () => {
     setupApiFetch({ detail: BASE_DETAIL, disputes: [], revisions: [] });
     render(wrap({ children: <InterventionDetail /> }));
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /Tagliando 30000 km/i })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /^Tagliando$/i })).toBeInTheDocument(),
     );
     expect(screen.queryByText('Contestazione')).not.toBeInTheDocument();
   });
@@ -252,7 +252,7 @@ describe('InterventionDetail', () => {
     setupApiFetch({ detail: BASE_DETAIL, disputes: [], revisions: [] });
     render(wrap({ children: <InterventionDetail /> }));
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /Tagliando 30000 km/i })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /^Tagliando$/i })).toBeInTheDocument(),
     );
     expect(screen.queryByText(/Cronologia modifiche/)).not.toBeInTheDocument();
   });
@@ -310,7 +310,7 @@ describe('InterventionDetail', () => {
 
     // Wait for the page to render fully
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /Tagliando 30000 km/i })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /^Tagliando$/i })).toBeInTheDocument(),
     );
 
     // Initially dialog should not show open=true
@@ -337,7 +337,7 @@ describe('InterventionDetail', () => {
     render(wrap({ children: <InterventionDetail /> }));
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /Tagliando 30000 km/i })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /^Tagliando$/i })).toBeInTheDocument(),
     );
 
     // Ricambi card heading shows correct count
@@ -352,6 +352,42 @@ describe('InterventionDetail', () => {
     // Second part: name, quantity rendered; code + notes absent
     expect(screen.getByText('Filtro olio')).toBeInTheDocument();
     expect(screen.getByText(/×1/)).toBeInTheDocument();
+  });
+
+  // 12. Renders Voci eseguite card with both checklist items, including a
+  // historical one whose catalog row was deleted (id: null — label still
+  // survives per BR-303). No "title" field anywhere on the page.
+  it('renders Voci eseguite card with checklist item labels (id and null id)', async () => {
+    const withChecklist: InterventionDetailDto = {
+      ...BASE_DETAIL,
+      checklist_items: [
+        { id: 'checklist-1', label: 'Cambio olio' },
+        { id: null, label: 'Voce storica' },
+      ],
+    };
+    setupApiFetch({ detail: withChecklist, disputes: [], revisions: [] });
+    render(wrap({ children: <InterventionDetail /> }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^Tagliando$/i })).toBeInTheDocument(),
+    );
+
+    expect(screen.getByText('Voci eseguite')).toBeInTheDocument();
+    expect(screen.getByText('Cambio olio')).toBeInTheDocument();
+    expect(screen.getByText('Voce storica')).toBeInTheDocument();
+  });
+
+  // 13. Hides Voci eseguite card when checklist_items is empty (defensive).
+  it('hides Voci eseguite card when checklist_items is empty', async () => {
+    const noChecklist: InterventionDetailDto = { ...BASE_DETAIL, checklist_items: [] };
+    setupApiFetch({ detail: noChecklist, disputes: [], revisions: [] });
+    render(wrap({ children: <InterventionDetail /> }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^Tagliando$/i })).toBeInTheDocument(),
+    );
+
+    expect(screen.queryByText('Voci eseguite')).not.toBeInTheDocument();
   });
 
   // Cross-tenant read-only view (viewer_is_owner=false): owner-only surfaces
@@ -375,7 +411,7 @@ describe('InterventionDetail', () => {
     render(wrap({ children: <InterventionDetail /> }));
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /Tagliando 30000 km/i })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /^Tagliando$/i })).toBeInTheDocument(),
     );
 
     // Read-only notice present (banner + header badge → at least one match)

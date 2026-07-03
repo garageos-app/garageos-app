@@ -75,7 +75,6 @@ const TIMELINE_FIXTURE: TimelineResponse = {
       intervention_date: '2025-03-15T10:00:00Z',
       odometer_km: 30200,
       type: { id: 'type-tagliando', code: 'TAGLIANDO', name_it: 'Tagliando' },
-      title: 'Tagliando 30000 km',
       description: 'Cambio olio.',
       parts_replaced_count: 3,
       status: 'active',
@@ -175,7 +174,7 @@ describe('VehicleDetail', () => {
     setupApiFetch({ detail: VEHICLE_DETAIL_FIXTURE, timeline: TIMELINE_FIXTURE });
     render(wrap({ children: <VehicleDetail /> }));
     await waitFor(() => expect(screen.getByText(/Fiat Panda/)).toBeInTheDocument());
-    expect(screen.getByText('Tagliando 30000 km')).toBeInTheDocument();
+    expect(screen.getByText('Tagliando')).toBeInTheDocument();
     expect(screen.getByText('Cambio gomme')).toBeInTheDocument();
   });
 

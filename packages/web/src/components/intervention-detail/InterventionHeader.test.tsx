@@ -39,9 +39,9 @@ function makeIntervention(overrides: Partial<InterventionDetail> = {}): Interven
     created_at: '2025-06-01T09:00:00Z',
     cancelled_at: null,
     cancelled_reason: null,
-    title: 'Tagliando 60k',
     description: 'Cambio olio e filtri.',
     internal_notes: null,
+    checklist_items: [{ id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', label: 'Cambio olio' }],
     viewer_is_owner: true,
     parts_replaced: [],
     type: {
@@ -86,11 +86,11 @@ function renderHeader(
 }
 
 describe('InterventionHeader', () => {
-  it('active intervention renders title, garage_code, plate, date, km, type subtitle, and BOTH action buttons', () => {
+  it('active intervention renders heading (type name), garage_code, plate, date, km, type subtitle, and BOTH action buttons', () => {
     renderHeader(makeIntervention());
 
-    // Title
-    expect(screen.getByRole('heading', { name: 'Tagliando 60k' })).toBeInTheDocument();
+    // Heading = intervention type name (title field removed web-wide)
+    expect(screen.getByRole('heading', { name: 'Tagliando' })).toBeInTheDocument();
     // garage_code + plate crumb
     expect(screen.getByText(/ROS-001/)).toBeInTheDocument();
     expect(screen.getByText(/AB123CD/)).toBeInTheDocument();

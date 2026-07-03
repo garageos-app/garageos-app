@@ -154,6 +154,7 @@ const TYPES_FIXTURE: InterventionTypesResponse = {
       defaultDeadlineMonths: 12,
       defaultDeadlineKm: 15000,
       custom: false,
+      checklistItems: [],
     },
     {
       id: 't2',
@@ -165,6 +166,7 @@ const TYPES_FIXTURE: InterventionTypesResponse = {
       defaultDeadlineMonths: null,
       defaultDeadlineKm: null,
       custom: false,
+      checklistItems: [],
     },
   ],
 };

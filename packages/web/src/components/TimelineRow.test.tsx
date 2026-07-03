@@ -37,7 +37,6 @@ const SHOP_ITEM: ShopTimelineItem = {
   intervention_date: '2025-03-15T10:00:00Z',
   odometer_km: 30200,
   type: { id: 'type-tagliando', code: 'TAGLIANDO', name_it: 'Tagliando' },
-  title: 'Tagliando 30000 km',
   description: 'Cambio olio motore e filtro olio.\nSostituiti dischi anteriori e pastiglie.',
   parts_replaced_count: 3,
   status: 'active',
@@ -52,7 +51,9 @@ const SHOP_ITEM_DISPUTED: ShopTimelineItem = {
   id: 'shop-disputed',
   status: 'disputed',
   is_disputed: true,
-  title: 'Cambio frizione',
+  // Distinct type (title field removed web-wide — title was the row heading,
+  // now it's type.name_it) so tests can still tell the two fixtures apart by text.
+  type: { id: 'type-frizione', code: 'FRIZIONE', name_it: 'Cambio frizione' },
   description: 'Sostituzione frizione completa.',
   parts_replaced_count: 1,
 };
@@ -83,9 +84,9 @@ function renderRow(item: TimelineItem, vehicleId = 'veh-1') {
 }
 
 describe('TimelineRow — compact rendering', () => {
-  it('renders shop row with title, subtitle, kind badge, no dispute', () => {
+  it('renders shop row with type name, subtitle, kind badge, no dispute', () => {
     renderRow(SHOP_ITEM);
-    expect(screen.getByText('Tagliando 30000 km')).toBeInTheDocument();
+    expect(screen.getByText('Tagliando')).toBeInTheDocument();
     expect(screen.getByText(/Officina Rossi/)).toBeInTheDocument();
     expect(screen.getByText('Officina')).toBeInTheDocument();
     expect(screen.queryByText('Disputa')).not.toBeInTheDocument();
