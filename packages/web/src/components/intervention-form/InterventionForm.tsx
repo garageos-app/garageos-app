@@ -228,7 +228,7 @@ export function InterventionForm({
           </div>
 
           <div>
-            <Label htmlFor="desc">Descrizione *</Label>
+            <Label htmlFor="desc">Descrizione</Label>
             <Textarea id="desc" rows={4} {...methods.register('description')} />
             {methods.formState.errors.description && (
               <p className="text-sm text-red-600 dark:text-red-300 mt-1">

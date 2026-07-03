@@ -103,6 +103,7 @@ function makeRow(over: {
   status?: 'active' | 'disputed' | 'cancelled';
   title?: string | null;
   description?: string;
+  typeName?: string;
   user?: { id: string; firstName: string | null; lastName: string | null } | null;
   userId?: string;
 }): Record<string, unknown> {
@@ -112,6 +113,7 @@ function makeRow(over: {
     status: over.status ?? 'active',
     title: over.title ?? null,
     description: over.description ?? 'desc',
+    interventionType: { nameIt: over.typeName ?? 'Intervento Meccanico' },
     userId: over.userId ?? 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     vehicle: {
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -234,6 +236,20 @@ describe('GET /v1/interventions/recent (unit)', () => {
     });
     const body = res.json() as { items: Array<{ summary: string }> };
     expect(body.items[0]!.summary).toBe('Sostituzione pastiglie freno anteriori');
+  });
+
+  it('summary falls back to intervention type name when title null and description empty', async () => {
+    const prisma = buildFakePrisma([
+      makeRow({ id: 'i1', title: null, description: '', typeName: 'Cambio Gomme' }),
+    ]);
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/interventions/recent',
+      headers: { authorization: 'Bearer test' },
+    });
+    const body = res.json() as { items: Array<{ summary: string }> };
+    expect(body.items[0]!.summary).toBe('Cambio Gomme');
   });
 
   it('summary truncates description longer than 100 chars to 100 chars', async () => {

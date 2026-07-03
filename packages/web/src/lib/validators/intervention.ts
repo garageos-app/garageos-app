@@ -14,7 +14,8 @@ export const CreateInterventionFormSchema = z.object({
   interventionTypeId: z.string().uuid('Seleziona un tipo intervento'),
   interventionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data richiesta (YYYY-MM-DD)'),
   odometerKm: z.number().int().min(0, 'Km ≥ 0'),
-  description: z.string().min(1, 'Descrizione richiesta').max(5000),
+  // Description is optional; the form defaults it to '' so an empty submit is valid.
+  description: z.string().max(5000),
   // BR-300 — checklist selection is mandatory on create (at least one item).
   checklistItemIds: z.array(z.uuid()).min(1, 'Seleziona almeno una voce checklist.'),
   internalNotes: z.string().max(5000).optional().or(z.literal('')),

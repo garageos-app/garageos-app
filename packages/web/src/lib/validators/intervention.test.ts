@@ -16,7 +16,7 @@ describe('CreateInterventionFormSchema', () => {
     expect(result.interventionTypeId).toBe('11111111-1111-4111-8111-111111111111');
   });
 
-  it('rejects empty description', () => {
+  it('accepts empty description (optional field)', () => {
     const r = CreateInterventionFormSchema.safeParse({
       interventionTypeId: '11111111-1111-4111-8111-111111111111',
       interventionDate: '2026-05-06',
@@ -25,7 +25,7 @@ describe('CreateInterventionFormSchema', () => {
       partsReplaced: [],
       checklistItemIds: [CHECKLIST_ITEM_ID],
     });
-    expect(r.success).toBe(false);
+    expect(r.success).toBe(true);
   });
 
   it('rejects invalid date format', () => {

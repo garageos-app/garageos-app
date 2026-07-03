@@ -105,8 +105,18 @@ describe('CreateInterventionSchema', () => {
     expect(() => CreateInterventionSchema.parse({ ...validInput(), odometerKm: -1 })).toThrow();
   });
 
-  it('rejects empty description', () => {
-    expect(() => CreateInterventionSchema.parse({ ...validInput(), description: '' })).toThrow();
+  it('accepts empty description and defaults an omitted description to empty string', () => {
+    expect(() =>
+      CreateInterventionSchema.parse({ ...validInput(), description: '' }),
+    ).not.toThrow();
+    const base = validInput();
+    const parsed = CreateInterventionSchema.parse({
+      interventionTypeId: base.interventionTypeId,
+      interventionDate: base.interventionDate,
+      odometerKm: base.odometerKm,
+      checklistItemIds: base.checklistItemIds,
+    });
+    expect(parsed.description).toBe('');
   });
 
   it('rejects description longer than 5000 chars', () => {
@@ -246,8 +256,9 @@ describe('UpdateInterventionSchema (BR-061, BR-064, BR-065)', () => {
     expect(() => UpdateInterventionSchema.parse({ partsReplaced: 'not an array' })).toThrow();
   });
 
-  it('rejects empty description', () => {
-    expect(() => UpdateInterventionSchema.parse({ description: '' })).toThrow();
+  it('accepts empty description (clears to empty)', () => {
+    const parsed = UpdateInterventionSchema.parse({ description: '' });
+    expect(parsed.description).toBe('');
   });
 
   it('rejects reason shorter than 10 chars', () => {

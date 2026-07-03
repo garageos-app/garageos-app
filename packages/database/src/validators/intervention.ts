@@ -16,7 +16,9 @@ export const CreateInterventionSchema = z.object({
   interventionTypeId: z.uuid(),
   interventionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   odometerKm: z.number().int().min(0),
-  description: z.string().min(1).max(5000),
+  // Description is optional; an omitted or empty value is stored as '' (the DB
+  // column is NOT NULL). default('') guarantees body.description is a string.
+  description: z.string().max(5000).default(''),
   // BR-300 — at least one checklist item is required, but that cardinality
   // check is handler-side (depends on the catalog snapshot at request time);
   // this layer only validates shape, so an empty array parses successfully.
@@ -55,7 +57,9 @@ export const CreateDisputeSchema = z.object({
 export const UpdateInterventionSchema = z
   .object({
     interventionTypeId: z.uuid().optional(),
-    description: z.string().min(1).max(5000).optional(),
+    // Optional: undefined = unchanged, '' = clear to empty (column is NOT NULL,
+    // so null is still rejected). No min length — description is optional.
+    description: z.string().max(5000).optional(),
     partsReplaced: z.array(PartReplacedSchema).optional(),
     internalNotes: z.string().max(5000).nullable().optional(),
     checklistItemIds: z.array(z.uuid()).optional(),

@@ -265,6 +265,42 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
     expect(selectionRows.every((r) => r.tenant_id === tenantId)).toBe(true);
   });
 
+  it('creates an intervention with no description: 201 and persists an empty string', async () => {
+    const { tenantId } = await createTenantWithLocation('int-nodesc');
+    const cognitoSub = '11111111-1111-4111-8111-111111111111';
+    await createUser({ tenantId, cognitoSub });
+    const { customerId } = await createCustomer({});
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    await createOwnership({ vehicleId, customerId });
+    const token = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSub,
+      tenantId,
+      role: 'mechanic',
+    });
+
+    // Description omitted entirely — the schema default('') stores '' on the
+    // NOT NULL column. See CreateInterventionSchema.
+    const bodyWithoutDescription = buildBody(taglianodoTypeId, [itemAId]);
+    delete bodyWithoutDescription.description;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${vehicleId}/interventions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: bodyWithoutDescription,
+    });
+    expect(res.statusCode).toBe(201);
+    const json = res.json() as { intervention: { id: string; description: string } };
+    expect(json.intervention.description).toBe('');
+
+    const { rows } = await pgAdmin.query<{ description: string }>(
+      `SELECT description FROM interventions WHERE id = $1`,
+      [json.intervention.id],
+    );
+    expect(rows[0]!.description).toBe('');
+  });
+
   it('returns 409 odometer_decrease_warning without force, then 201 with kmAnomaly=true on retry (BR-068)', async () => {
     const { tenantId } = await createTenantWithLocation('int-km');
     const cognitoSub = '22222222-2222-4222-8222-222222222222';
