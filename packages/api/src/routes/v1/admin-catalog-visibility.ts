@@ -169,16 +169,32 @@ export const adminCatalogVisibilityRoutes: FastifyPluginAsync = async (app) => {
           }
         }
 
-        // Atomic replace: wipe the tenant's current exclusion set and
-        // re-insert the requested one, in the same transaction.
-        await tx.tenantInterventionTypeExclusion.deleteMany({ where: { tenantId } });
+        // Atomic replace: wipe the tenant's current exclusion set for the
+        // ACTIVE global catalog and re-insert the requested one, in the same
+        // transaction. The delete is scoped to active/global rows only
+        // (mirroring the GET's `active: true, tenantId: null` filter) so
+        // exclusions on types/items that were later deactivated are
+        // preserved rather than dropped — the client never sees or resends
+        // inactive-catalog ids, so an unscoped deleteMany would silently
+        // erase them. Per Deviation #2 (plan): exclusion rows on inactive
+        // catalog entries stay in the DB inert and are not re-written here;
+        // if the entry is reactivated later, the preserved exclusion still
+        // applies.
+        await tx.tenantInterventionTypeExclusion.deleteMany({
+          where: { tenantId, interventionType: { active: true, tenantId: null } },
+        });
         if (uniqueTypeIds.length > 0) {
           await tx.tenantInterventionTypeExclusion.createMany({
             data: uniqueTypeIds.map((interventionTypeId) => ({ tenantId, interventionTypeId })),
           });
         }
 
-        await tx.tenantChecklistItemExclusion.deleteMany({ where: { tenantId } });
+        await tx.tenantChecklistItemExclusion.deleteMany({
+          where: {
+            tenantId,
+            checklistItem: { active: true, interventionType: { active: true, tenantId: null } },
+          },
+        });
         if (uniqueItemIds.length > 0) {
           await tx.tenantChecklistItemExclusion.createMany({
             data: uniqueItemIds.map((checklistItemId) => ({ tenantId, checklistItemId })),

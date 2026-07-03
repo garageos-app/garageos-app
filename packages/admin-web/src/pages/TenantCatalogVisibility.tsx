@@ -55,9 +55,19 @@ export function TenantCatalogVisibility() {
   // against `syncedData` (not a ref/effect) so this runs during render — the
   // React-documented pattern for "adjust state when a prop changes" without
   // an extra effect-triggered re-render/flicker.
+  //
+  // `syncedData` MUST be seeded with a sentinel (`undefined`), never with
+  // `data` itself: on a warm-cache remount (e.g. navigating back to this
+  // page), `data` is already populated on the very FIRST render because
+  // react-query serves it synchronously from cache. Seeding `useState(data)`
+  // would make `syncedData === data` immediately, so the sync guard below
+  // never fires and `visibleTypeIds`/`visibleItemIds` stay empty Sets —
+  // every checkbox renders unchecked and Save would persist a full catalog
+  // exclusion. `undefined` can never equal a defined `data` object, so the
+  // guard always fires on first render, cold or warm.
   const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(new Set());
   const [visibleItemIds, setVisibleItemIds] = useState<Set<string>>(new Set());
-  const [syncedData, setSyncedData] = useState(data);
+  const [syncedData, setSyncedData] = useState<typeof data>(undefined);
 
   if (data && data !== syncedData) {
     setSyncedData(data);

@@ -20,6 +20,10 @@
 //   9. PUT unknown tenant → 404.
 //  10. PUT unknown field (.strict()) → 400 VALIDATION_ERROR.
 //  11. RLS isolation: GET tenant A must not see tenant B's exclusions.
+//  12. PUT preserves the exclusion row of a type deactivated after being
+//      excluded (Deviation #2 — final-review fix): the deleteMany scoping
+//      must not wipe exclusions on catalog entries the client can no
+//      longer see/resend.
 //
 // CI-only (Docker / Testcontainers). Do NOT run locally on Windows.
 // NOTE: resetDb() truncates `tenants` CASCADE, which cascade-deletes rows in
@@ -465,6 +469,42 @@ describe('Admin catalog-visibility — business cases (integration)', () => {
     expect(res.statusCode).toBe(400);
     expect(res.headers['content-type']).toContain(PROBLEM_JSON_CONTENT_TYPE);
     expect((res.json() as { code: string }).code).toBe('VALIDATION_ERROR');
+  });
+
+  // ── 12. PUT preserves exclusion for a deactivated type (Deviation #2) ───────
+  it('PUT preserves the exclusion row of a type that became inactive after exclusion', async () => {
+    const { tenantId } = await createTenant();
+
+    // T: excluded while active, then deactivated. The client's GET no
+    // longer returns T once inactive, so a subsequent PUT payload can never
+    // include T.id — the scoped deleteMany must leave T's exclusion intact.
+    const typeT = await seedGlobalType({});
+    await seedTypeExclusion(tenantId, typeT.id);
+    await pgAdmin.query(`UPDATE intervention_types SET active = false WHERE id = $1`, [typeT.id]);
+
+    // U: a normal active type the admin explicitly excludes in this PUT.
+    const typeU = await seedGlobalType({});
+
+    const token = await signTestToken({ pool: 'platform-admins' });
+    const res = await app.inject({
+      method: 'PUT',
+      url: url(tenantId),
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: JSON.stringify({ excludedTypeIds: [typeU.id], excludedItemIds: [] }),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { excludedTypeIds: string[]; excludedItemIds: string[] };
+    expect(body.excludedTypeIds).toEqual([typeU.id]);
+
+    const { rows } = await pgAdmin.query<{ intervention_type_id: string }>(
+      `SELECT intervention_type_id FROM tenant_intervention_type_exclusions
+        WHERE tenant_id = $1
+        ORDER BY intervention_type_id`,
+      [tenantId],
+    );
+    const excludedIds = rows.map((r) => r.intervention_type_id).sort();
+    expect(excludedIds).toEqual([typeT.id, typeU.id].sort());
   });
 
   // ── 11. RLS isolation (negative) ────────────────────────────────────────────

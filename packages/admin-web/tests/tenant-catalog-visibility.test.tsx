@@ -42,8 +42,14 @@ const VISIBILITY_PATH = `/v1/admin/tenants/${TENANT_ID}/catalog-visibility`;
 // Wrap in MemoryRouter + Routes so useParams returns the correct id, and the
 // "← Torna all'officina" back-link target exists (avoids a react-router
 // "no match" console warning).
-function makeWrapper() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+//
+// Accepts an optional pre-built QueryClient so warm-cache tests can prime
+// the cache with `setQueryData` before the component ever mounts (mirrors a
+// remount where react-query serves cached data synchronously on the very
+// first render).
+function makeWrapper(
+  qc: QueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={qc}>
@@ -116,6 +122,31 @@ describe('TenantCatalogVisibility page', () => {
         }),
       }),
     );
+  });
+
+  it('warm cache: data already present on first render still syncs checkbox state', async () => {
+    // Regression test for the final-review CRITICAL finding: seeding
+    // `syncedData` with `data` itself (instead of a sentinel) meant that on
+    // a warm-cache remount — where react-query's queryFn resolves the cache
+    // synchronously so `data` is already defined on the FIRST render — the
+    // render-phase sync guard `data && data !== syncedData` never fired,
+    // leaving visibleTypeIds/visibleItemIds as empty Sets and every
+    // checkbox rendering unchecked regardless of the server's `visible`
+    // flags. This must FAIL against `useState(data)` and PASS against
+    // `useState<typeof data>(undefined)`.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['admin-tenant-visibility', TENANT_ID], { data: { types: [TYPE_TAGLIANDO] } });
+    // mockApiFetch must not be relied on — a warm cache means queryFn never
+    // (re-)runs on mount. Reject if it's somehow invoked so we know the test
+    // is truly exercising the cached-data path.
+    mockApiFetch.mockRejectedValue(new Error('queryFn should not run against a warm cache'));
+
+    render(<TenantCatalogVisibility />, { wrapper: makeWrapper(qc) });
+
+    await screen.findByRole('region', { name: 'Tagliando' });
+    expect(screen.getByLabelText('Visibile - Tagliando')).toBeChecked();
+    expect(screen.getByLabelText('Visibile - Olio motore')).toBeChecked();
+    expect(screen.getByLabelText('Visibile - Filtro aria')).not.toBeChecked();
   });
 
   it('error state: GET rejects and the error alert renders without crashing', async () => {
