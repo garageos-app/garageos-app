@@ -2,29 +2,6 @@
 // (Task 3: CatalogoInterventi list/CRUD; Task 4: detail page + checklist items).
 // Mirrors packages/api/src/lib/dtos/intervention-type-admin.ts response shapes.
 
-// `as const` tuple (not just a typed array) so it can be passed directly to
-// z.enum(CATEGORY_VALUES) in the validator — z.enum needs the literal tuple,
-// not a widened string[] type.
-export const CATEGORY_VALUES = [
-  'maintenance',
-  'repair',
-  'tires',
-  'body',
-  'inspection',
-  'other',
-] as const;
-
-export type InterventionCategory = (typeof CATEGORY_VALUES)[number];
-
-export const CATEGORY_LABELS: Record<InterventionCategory, string> = {
-  maintenance: 'Manutenzione',
-  repair: 'Riparazione',
-  tires: 'Gomme',
-  body: 'Carrozzeria',
-  inspection: 'Revisione',
-  other: 'Altro',
-};
-
 // GET/POST/PATCH /v1/admin/intervention-types response item.
 export interface InterventionTypeAdmin {
   id: string;
@@ -32,7 +9,6 @@ export interface InterventionTypeAdmin {
   nameIt: string;
   description: string | null;
   icon: string | null;
-  category: InterventionCategory;
   suggestsDeadline: boolean;
   defaultDeadlineMonths: number | null;
   defaultDeadlineKm: number | null;

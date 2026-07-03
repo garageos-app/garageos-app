@@ -54,7 +54,6 @@ const TYPE_TAGLIANDO: InterventionTypeAdmin = {
   nameIt: 'Tagliando',
   description: 'Tagliando periodico',
   icon: 'wrench',
-  category: 'maintenance',
   suggestsDeadline: true,
   defaultDeadlineMonths: 12,
   defaultDeadlineKm: 15000,
@@ -70,7 +69,6 @@ const TYPE_GOMME: InterventionTypeAdmin = {
   nameIt: 'Cambio gomme',
   description: null,
   icon: null,
-  category: 'tires',
   suggestsDeadline: false,
   defaultDeadlineMonths: null,
   defaultDeadlineKm: null,
@@ -85,16 +83,14 @@ beforeEach(() => {
 });
 
 describe('CatalogoInterventi page', () => {
-  it('happy path: renders type rows with code, category and stato', async () => {
+  it('happy path: renders type rows with code and stato', async () => {
     mockApiFetch.mockResolvedValueOnce({ data: [TYPE_TAGLIANDO, TYPE_GOMME] });
 
     render(<CatalogoInterventi />, { wrapper: makeWrapper() });
 
     expect(await screen.findByText('TAGLIANDO')).toBeInTheDocument();
     expect(screen.getByText('Tagliando')).toBeInTheDocument();
-    expect(screen.getByText('Manutenzione')).toBeInTheDocument();
     expect(screen.getByText('CAMBIO_GOMME')).toBeInTheDocument();
-    expect(screen.getByText('Gomme')).toBeInTheDocument();
 
     // Stato badges
     expect(screen.getByText('Attivo')).toBeInTheDocument();
@@ -133,7 +129,6 @@ describe('CatalogoInterventi page', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Codice'), 'REVISIONE');
     await user.type(within(dialog).getByLabelText('Nome'), 'Revisione periodica');
-    // category defaults to 'maintenance' (first <option>) — leave as-is.
     // suggestsDeadline/active checkboxes default unchecked/checked respectively — leave as-is.
 
     await user.click(within(dialog).getByRole('button', { name: /^crea$/i }));
@@ -145,7 +140,6 @@ describe('CatalogoInterventi page', () => {
         body: JSON.stringify({
           code: 'REVISIONE',
           nameIt: 'Revisione periodica',
-          category: 'maintenance',
           suggestsDeadline: false,
           defaultDeadlineMonths: null,
           defaultDeadlineKm: null,
