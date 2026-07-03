@@ -39,6 +39,7 @@ vi.mock('@/components/intervention-form/InterventionForm', () => ({
               interventionDate: '2026-05-06',
               odometerKm: 100,
               description: 'test',
+              checklistItemIds: ['item-1'],
               partsReplaced: [],
             })
           }

@@ -46,6 +46,7 @@ describe('useCreateIntervention', () => {
       interventionDate: '2026-05-06',
       odometerKm: 50000,
       description: 'x',
+      checklistItemIds: ['item-1'],
       partsReplaced: [],
     });
     await waitFor(() => expect(mockToastSuccess).toHaveBeenCalled());
@@ -63,6 +64,7 @@ describe('useCreateIntervention', () => {
         interventionDate: '2026-05-06',
         odometerKm: 1,
         description: 'x',
+        checklistItemIds: ['item-1'],
         partsReplaced: [],
       }),
     ).rejects.toMatchObject({
