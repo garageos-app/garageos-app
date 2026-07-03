@@ -546,6 +546,21 @@ export function TenantDetail() {
             )}
           </CardContent>
         </Card>
+
+        {/* ── Catalog visibility section ────────────────────────────────────── */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Visibilità catalogo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Scegli quali tipi e voci del catalogo sono visibili a questa officina.
+            </p>
+            <Button asChild>
+              <Link to={`/officine/${id}/visibilita-catalogo`}>Gestisci visibilità</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       {/* ── Disable user confirm dialog ────────────────────────────────────────── */}
