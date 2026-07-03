@@ -172,4 +172,32 @@ describe('CatalogoInterventoDetail page', () => {
       }),
     );
   });
+
+  // Regression: DELETE must carry a non-empty '{}' body. api-client sets
+  // Content-Type: application/json unconditionally; Fastify rejects a body-less
+  // DELETE with FST_ERR_CTP_EMPTY_JSON_BODY (400). Caught only by smoke, not
+  // by app.inject integration tests. See feedback_fastify_empty_body...
+  it('delete: sends DELETE with a non-empty {} body', async () => {
+    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return Promise.resolve(undefined);
+      if (path === TYPES_PATH) return Promise.resolve({ data: [TYPE_TAGLIANDO] });
+      if (path === ITEMS_PATH) return Promise.resolve({ data: [ITEM_OLIO] });
+      throw new Error(`Unexpected path: ${path}`);
+    });
+
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+
+    render(<CatalogoInterventoDetail />, { wrapper: makeWrapper() });
+    await screen.findByText('OLIO_MOTORE');
+
+    await user.click(screen.getByRole('button', { name: /^elimina$/i }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: /^elimina$/i }));
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      `/v1/admin/checklist-items/${ITEM_OLIO.id}`,
+      expect.objectContaining({ method: 'DELETE', body: JSON.stringify({}) }),
+    );
+  });
 });
