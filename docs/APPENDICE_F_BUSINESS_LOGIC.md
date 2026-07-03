@@ -1196,16 +1196,28 @@ Lo sweep giornaliero porta a `overdue` ogni `PersonalDeadline` in stato `open` c
 Numerazione riservata per l'arco di redesign checklist interventi/tipi, per evitare collisioni tra i PR paralleli dell'arco (vedi `docs/superpowers/specs/2026-07-02-intervention-types-checklist-redesign-design.md`). Definizione completa nei PR di validazione dell'arco checklist.
 
 ### BR-300 — Checklist obbligatoria (≥1 voce)
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Ogni intervento deve avere **almeno una voce checklist selezionata**: `checklistItemIds` non può essere vuoto, né in creazione né in modifica (Task 4 sostituisce l'intero set — vedi BR-308 su `UpdateInterventionSchema`). La cardinalità non è verificabile a livello Zod (dipende dallo snapshot del catalogo al momento della richiesta, non dalla sola forma del body), quindi il controllo è handler-side nel validatore condiviso `validateChecklistSelection` (`packages/api/src/lib/intervention-shared.ts`), chiamato da `POST /v1/vehicles/:id/interventions` prima della `intervention.create`.
+
+**Enforcement:** dedup degli id in input, poi `if (ids.length === 0) throw 'intervention.creation.checklist_required' (400)`. Messaggio: "Seleziona almeno una voce checklist."
 
 ### BR-301 — Appartenenza voce↔tipo
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Ogni voce checklist selezionata deve appartenere al tipo di intervento scelto (`interventionTypeId`) — non è ammesso selezionare una voce di un tipo diverso, anche se entrambe le voci sono globali/attive.
+
+**Enforcement:** `validateChecklistSelection` carica `interventionChecklistItem.findMany({ where: { id: { in: ids }, interventionTypeId, active: true } })`; se `found.length !== ids.length` (BR-301 appartenenza sbagliata, oppure BR-302 sotto) → `422 intervention.creation.checklist_item_invalid`. Lo stesso codice/messaggio copre entrambe le regole perché, lato client, la distinzione (appartenenza vs. attività) non cambia l'azione correttiva (ricaricare il catalogo del tipo scelto).
 
 ### BR-302 — Visibilità/attività voce
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Una voce checklist selezionabile deve essere **attiva** (`active: true`) e **non esclusa per il tenant chiamante** (`tenant_checklist_item_exclusions`, BR-304). Una voce inattiva o esclusa non è validamente selezionabile anche se appartiene al tipo corretto.
+
+**Enforcement:** oltre al filtro `active: true` nella query BR-301, `validateChecklistSelection` verifica anche che il tipo stesso non sia escluso per il tenant (`tenantInterventionTypeExclusion.findFirst`) e che nessuno degli id selezionati compaia in `tenantChecklistItemExclusion` per quel tenant — in entrambi i casi `422 intervention.creation.checklist_item_invalid`, stesso messaggio: "Una o più voci checklist non sono valide per questo tipo di intervento o non sono disponibili."
 
 ### BR-303 — Snapshot etichetta
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Il nome della voce checklist selezionata viene **congelato** (`label_snapshot`, `sort_order_snapshot`) al momento del salvataggio dell'intervento (`intervention_checklist_selections`), non ricalcolato a lettura. Una rinomina o riordinamento successivo del catalogo (`intervention_checklist_items.name_it`/`sort_order`) **non modifica retroattivamente** ciò che l'intervento storico mostra — il record storico è immutabile rispetto a modifiche future del catalogo globale.
+
+**Enforcement:** `POST /v1/vehicles/:id/interventions` scrive `interventionChecklistSelection.createMany({ data: foundItems.map(it => ({ interventionId, tenantId, checklistItemId: it.id, labelSnapshot: it.nameIt, sortOrderSnapshot: it.sortOrder })) })` nella stessa transazione della `intervention.create`. La risposta serializza le selezioni con `serializeChecklistItems` (helper puro, `packages/api/src/lib/intervention-shared.ts`), che ordina per `sortOrderSnapshot asc` (null in coda) poi `labelSnapshot asc` e ritorna `{ label }` — sempre dallo snapshot, mai da un join live sul catalogo. Se la voce viene poi cancellata (`DELETE /v1/admin/checklist-items/:id`), `checklistItemId` diventa `NULL` (`onDelete: SetNull`) ma `labelSnapshot` resta intatto (vedi anche BR-307).
 
 ### BR-304 — Opt-out visibilità
 

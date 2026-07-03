@@ -299,7 +299,7 @@ Authorization: Bearer <officine_user_jwt>
   "interventionTypeId": "01HSYS...",
   "interventionDate": "2026-04-21",
   "odometerKm": 45000,
-  "title": "Tagliando completo",
+  "checklistItemIds": ["01HITM...", "01HITM..."],
   "description": "Sostituzione olio motore 5W30, filtro olio, filtro aria, filtro abitacolo. Controllo livelli e usura pastiglie freni.",
   "partsReplaced": [
     { "name": "Olio motore Selenia 5W30", "code": "SEL-5W30-4L", "quantity": 4, "notes": "Litri" },
@@ -314,6 +314,8 @@ Authorization: Bearer <officine_user_jwt>
   "forceKmDecrease": false
 }
 ```
+
+> **Nota (PR-4, checklist redesign):** `title` è stato rimosso dal body e dalla risposta (BR-308). `checklistItemIds` (array non vuoto di UUID di `intervention_checklist_items` appartenenti a `interventionTypeId`) lo sostituisce — vedi BR-300/301/302/303.
 
 #### Response `201 Created`
 
@@ -332,14 +334,17 @@ Authorization: Bearer <officine_user_jwt>
     },
     "interventionDate": "2026-04-21",
     "odometerKm": 45000,
-    "title": "Tagliando completo",
     "description": "...",
     "partsReplaced": [...],
     "internalNotes": "...",
     "status": "active",
     "kmAnomaly": false,
     "wikiLockedAt": null,
-    "createdAt": "2026-04-21T14:32:05Z"
+    "createdAt": "2026-04-21T14:32:05Z",
+    "checklistItems": [
+      { "label": "Sostituzione olio motore" },
+      { "label": "Controllo filtri" }
+    ]
   },
   "deadline": {
     "id": "01HKXR...",
@@ -352,6 +357,8 @@ Authorization: Bearer <officine_user_jwt>
 }
 ```
 
+`checklistItems` è derivato dallo snapshot congelato al salvataggio (`label_snapshot`/`sort_order_snapshot`, BR-303), ordinato per `sortOrderSnapshot asc` (null in coda) poi `label asc` — non da un join live sul catalogo corrente.
+
 #### Errori specifici
 
 | Status | Codice | Scenario |
@@ -359,11 +366,13 @@ Authorization: Bearer <officine_user_jwt>
 | 400 | `VALIDATION_ERROR` | Body Zod validation fail (errors[] dettagliato) |
 | 400 | `intervention.creation.date_future` | Data futura non consentita (BR-069) |
 | 400 | `intervention.creation.date_before_registration` | Data precedente all'immatricolazione del veicolo (BR-070) |
+| 400 | `intervention.creation.checklist_required` | `checklistItemIds` vuoto (BR-300) |
 | 401 | `UNAUTHORIZED` | Token assente o invalido |
 | 403 | `FORBIDDEN` | Token clienti pool su route officine |
 | 404 | `NOT_FOUND` | Veicolo o tipo intervento non trovato/non accessibile |
 | 409 | `intervention.creation.odometer_decrease_warning` | Km inferiori al massimo storico (BR-068) — recoverable: re-POST con `forceKmDecrease=true` |
 | 422 | `vehicle.modification.archived` | Veicolo in stato `archived` (BR-061) |
+| 422 | `intervention.creation.checklist_item_invalid` | Voce checklist non appartenente al tipo, inattiva, o esclusa per il tenant (BR-301/BR-302) |
 
 ---
 

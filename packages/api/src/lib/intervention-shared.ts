@@ -89,3 +89,105 @@ export async function assertInterventionTypeExists(tx: PrismaClient, id: string)
     throw businessError('VALIDATION_ERROR', 422, 'Tipo intervento non valido.');
   }
 }
+
+// BR-303 serializer. Turns the frozen (interventionId, checklistItemId)
+// snapshot rows into the wire shape `{ label }`. Pure function — no DB
+// access — so both the create route (Task 3) and the future detail/edit
+// routes (Task 4/5) can reuse it on whatever selection rows they already
+// have in hand. Sort is sortOrderSnapshot asc with nulls last (an item
+// whose snapshot predates BR-303's sort_order column, or was manually
+// null-ed), then labelSnapshot asc as the tiebreaker/fallback.
+export function serializeChecklistItems(
+  selections: { labelSnapshot: string; sortOrderSnapshot: number | null }[],
+): { label: string }[] {
+  return [...selections]
+    .sort((a, b) => {
+      if (a.sortOrderSnapshot === null && b.sortOrderSnapshot === null) {
+        return a.labelSnapshot.localeCompare(b.labelSnapshot, 'it');
+      }
+      if (a.sortOrderSnapshot === null) return 1;
+      if (b.sortOrderSnapshot === null) return -1;
+      if (a.sortOrderSnapshot !== b.sortOrderSnapshot) {
+        return a.sortOrderSnapshot - b.sortOrderSnapshot;
+      }
+      return a.labelSnapshot.localeCompare(b.labelSnapshot, 'it');
+    })
+    .map((s) => ({ label: s.labelSnapshot }));
+}
+
+// BR-300/301/302 shared validator. Both the create route (Task 3) and the
+// PATCH edit route (Task 4, which replaces the full selection set — see
+// BR-308 comment on UpdateInterventionSchema) call this before writing any
+// intervention_checklist_selections row, so the cardinality/ownership/
+// visibility rules stay centralized instead of duplicated per route.
+export async function validateChecklistSelection(
+  tx: PrismaClient,
+  args: { tenantId: string; interventionTypeId: string; checklistItemIds: string[] },
+): Promise<{ id: string; nameIt: string; sortOrder: number }[]> {
+  const { tenantId, interventionTypeId, checklistItemIds } = args;
+
+  // Dedup ids up front: the same id sent twice must resolve to a single
+  // selection row, not a unique constraint violation on
+  // (intervention_id, checklist_item_id) at insert time.
+  const ids = [...new Set(checklistItemIds)];
+
+  // BR-300: at least one checklist item selection is mandatory.
+  if (ids.length === 0) {
+    throw businessError(
+      'intervention.creation.checklist_required',
+      400,
+      'Seleziona almeno una voce checklist.',
+    );
+  }
+
+  const INVALID_SELECTION_DETAIL =
+    'Una o più voci checklist non sono valide per questo tipo di intervento o non sono disponibili.';
+
+  // BR-302: a tenant that opted out of the whole intervention type
+  // (tenant_intervention_type_exclusions) cannot register checklist items
+  // scoped to it either — checked up front so the failure is uniform
+  // regardless of which item ids were submitted.
+  const typeExcluded = await tx.tenantInterventionTypeExclusion.findFirst({
+    where: { tenantId, interventionTypeId },
+    select: { tenantId: true },
+  });
+  if (typeExcluded) {
+    throw businessError(
+      'intervention.creation.checklist_item_invalid',
+      422,
+      INVALID_SELECTION_DETAIL,
+    );
+  }
+
+  // BR-301: every selected id must belong to the chosen intervention type.
+  // BR-302: and must be active. A single findMany covers both — any id
+  // that fails either condition is simply absent from `found`.
+  const found = await tx.interventionChecklistItem.findMany({
+    where: { id: { in: ids }, interventionTypeId, active: true },
+    select: { id: true, nameIt: true, sortOrder: true },
+  });
+  if (found.length !== ids.length) {
+    throw businessError(
+      'intervention.creation.checklist_item_invalid',
+      422,
+      INVALID_SELECTION_DETAIL,
+    );
+  }
+
+  // BR-302: an item can be globally active yet excluded for this specific
+  // tenant (tenant_checklist_item_exclusions) — reject the whole batch if
+  // any selected id is on that list.
+  const exclusions = await tx.tenantChecklistItemExclusion.findMany({
+    where: { tenantId, checklistItemId: { in: ids } },
+    select: { checklistItemId: true },
+  });
+  if (exclusions.length > 0) {
+    throw businessError(
+      'intervention.creation.checklist_item_invalid',
+      422,
+      INVALID_SELECTION_DETAIL,
+    );
+  }
+
+  return found;
+}
