@@ -387,6 +387,8 @@ Nessun error code di questa famiglia è più emesso dall'API.*
 | `admin.intervention_type.in_use` | 409 | info | Tipo in uso da uno o più interventi o scadenze | DELETE `/v1/admin/intervention-types/:id` quando esistono righe `interventions` o `deadlines` che referenziano il tipo (entrambe FK `onDelete: Restrict`) |
 | `admin.checklist_item.not_found` | 404 | info | Voce checklist non trovata | PATCH/DELETE `/v1/admin/checklist-items/:id`; UUID malformato e ID inesistente restituiscono lo stesso codice (anti-enum) |
 | `admin.checklist_item.code_conflict` | 409 | info | Codice voce già esistente per il tipo | POST `/v1/admin/intervention-types/:id/checklist-items` con `code` già usato da un'altra voce dello stesso tipo (BR-307, P2002 su `uq_checklist_item_code_type`) |
+| `admin.catalog_visibility.tenant_not_found` | 404 | info | Officina non trovata | GET/PUT `/v1/admin/tenants/:tenantId/catalog-visibility`; UUID malformato e ID inesistente restituiscono lo stesso codice (anti-enum) |
+| `admin.catalog_visibility.invalid_ref` | 422 | info | Riferimento a tipo o voce inesistente | PUT `/v1/admin/tenants/:tenantId/catalog-visibility` con `excludedTypeIds`/`excludedItemIds` che referenziano un tipo o una voce che non esiste (o non è globale) — pre-check app-layer prima del replace (BR-304) |
 | `system.database.connection_failed` | 503 | critical | Database non raggiungibile | |
 | `system.email.send_failed` | 502 | error | Invio email fallito | SES error |
 | `system.push.send_failed` | 502 | error | Invio push fallito | Expo Push error |
