@@ -238,6 +238,33 @@ describe('GET /v1/intervention-types (integration)', () => {
     expect(dto.checklistItems.find((i) => i.id === inactiveItem.id)).toBeUndefined();
   });
 
+  // ── 5b. nameIt ASC ordering (contract guarantee, APPENDICE_A §2.1bis) ───────
+  it('orders the types by nameIt ASC regardless of insertion order', async () => {
+    const { tenantId } = await createTenant();
+    // Insert alphabetically out of insertion order (Zeta first, then Alfa),
+    // each with an active checklist item so both survive the BR-305 gate.
+    // A passing assertion therefore exercises server-side ordering rather
+    // than incidentally reflecting insertion order.
+    const zeta = await seedGlobalType({ nameIt: 'Zeta Tipo Ordinamento' });
+    await seedChecklistItem({ interventionTypeId: zeta.id });
+    const alfa = await seedGlobalType({ nameIt: 'Alfa Tipo Ordinamento' });
+    await seedChecklistItem({ interventionTypeId: alfa.id });
+
+    const res = await authedRequest(app, tenantId);
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: InterventionTypeDto[] };
+
+    // Global monotonic check across the whole payload.
+    for (let i = 1; i < body.data.length; i++) {
+      expect(body.data[i - 1]!.nameIt.localeCompare(body.data[i]!.nameIt)).toBeLessThanOrEqual(0);
+    }
+    // Explicit relative-position check for the two seeded types.
+    const alfaIdx = body.data.findIndex((t) => t.id === alfa.id);
+    const zetaIdx = body.data.findIndex((t) => t.id === zeta.id);
+    expect(alfaIdx).toBeGreaterThanOrEqual(0);
+    expect(zetaIdx).toBeGreaterThan(alfaIdx);
+  });
+
   // ── 6. Tenant isolation (negative) ──────────────────────────────────────────
   it('does not apply tenant B exclusions to tenant A (RLS/app-layer isolation)', async () => {
     const { tenantId: tenantA } = await createTenant();
