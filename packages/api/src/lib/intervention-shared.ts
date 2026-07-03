@@ -91,15 +91,23 @@ export async function assertInterventionTypeExists(tx: PrismaClient, id: string)
 }
 
 // BR-303 serializer. Turns the frozen (interventionId, checklistItemId)
-// snapshot rows into the wire shape `{ label }`. Pure function — no DB
-// access — so both the create route (Task 3) and the future detail/edit
-// routes (Task 4/5) can reuse it on whatever selection rows they already
-// have in hand. Sort is sortOrderSnapshot asc with nulls last (an item
-// whose snapshot predates BR-303's sort_order column, or was manually
-// null-ed), then labelSnapshot asc as the tiebreaker/fallback.
+// snapshot rows into the wire shape `{ id, label }`. Pure function — no DB
+// access — so the create route, the PATCH route and the detail route all
+// reuse it on whatever selection rows they already have in hand. Sort is
+// sortOrderSnapshot asc with nulls last (an item whose snapshot predates
+// BR-303's sort_order column, or was manually null-ed), then labelSnapshot
+// asc as the tiebreaker/fallback. `id` mirrors `checklistItemId` and is
+// `null` when the catalog item was later deleted (FK is `onDelete:
+// SetNull` — see InterventionChecklistSelection in schema.prisma); the
+// `label` snapshot survives that deletion regardless, so the record stays
+// intact even though the id no longer resolves to a live catalog row.
 export function serializeChecklistItems(
-  selections: { labelSnapshot: string; sortOrderSnapshot: number | null }[],
-): { label: string }[] {
+  selections: {
+    checklistItemId: string | null;
+    labelSnapshot: string;
+    sortOrderSnapshot: number | null;
+  }[],
+): { id: string | null; label: string }[] {
   return [...selections]
     .sort((a, b) => {
       if (a.sortOrderSnapshot === null && b.sortOrderSnapshot === null) {
@@ -112,7 +120,7 @@ export function serializeChecklistItems(
       }
       return a.labelSnapshot.localeCompare(b.labelSnapshot, 'it');
     })
-    .map((s) => ({ label: s.labelSnapshot }));
+    .map((s) => ({ id: s.checklistItemId, label: s.labelSnapshot }));
 }
 
 // BR-300/301/302 shared validator. Both the create route (Task 3) and the

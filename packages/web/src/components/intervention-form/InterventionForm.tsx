@@ -60,13 +60,14 @@ export function InterventionForm({
       interventionDate: '',
       odometerKm: 0,
       description: '',
+      checklistItemIds: [],
       partsReplaced: [],
     },
   });
 
   const interventionTypeId = useWatch({ control: methods.control, name: 'interventionTypeId' });
+  const checklistItemIds = useWatch({ control: methods.control, name: 'checklistItemIds' });
 
-  const [showTitle, setShowTitle] = useState(false);
   const [showParts, setShowParts] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showDeadline, setShowDeadline] = useState(false);
@@ -98,6 +99,9 @@ export function InterventionForm({
     } else {
       methods.setValue('createDeadline.enabled', false, { shouldValidate: false });
     }
+    // BR-300 — the checklist is per-type, so any prior selection is invalid
+    // once the type changes. Reset it alongside the deadline defaults.
+    methods.setValue('checklistItemIds', [], { shouldValidate: false });
   }, [selectedType, methods]);
 
   // Surface every Zod validation error in a top-level Alert. Without this, an
@@ -169,6 +173,45 @@ export function InterventionForm({
             )}
           </div>
 
+          {/* BR-300 — checklist selection is mandatory once a type is chosen,
+              so this block is always visible (not collapsed) unlike the
+              optional sections below. */}
+          {selectedType && (
+            <div>
+              <Label>Voci eseguite (almeno una) *</Label>
+              <div className="space-y-2 mt-1">
+                {[...selectedType.checklistItems]
+                  .sort((a, b) => a.sortOrder - b.sortOrder)
+                  .map((item) => {
+                    const checked = (checklistItemIds ?? []).includes(item.id);
+                    return (
+                      <div key={item.id} className="flex items-center gap-2">
+                        <input
+                          id={`checklist-${item.id}`}
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const current = checklistItemIds ?? [];
+                            const next = checked
+                              ? current.filter((id) => id !== item.id)
+                              : [...current, item.id];
+                            methods.setValue('checklistItemIds', next, { shouldValidate: true });
+                          }}
+                          className="h-4 w-4 rounded border-input"
+                        />
+                        <Label htmlFor={`checklist-${item.id}`}>{item.nameIt}</Label>
+                      </div>
+                    );
+                  })}
+              </div>
+              {methods.formState.errors.checklistItemIds && (
+                <p className="text-sm text-red-600 dark:text-red-300 mt-1">
+                  {methods.formState.errors.checklistItemIds.message}
+                </p>
+              )}
+            </div>
+          )}
+
           <div>
             <Label htmlFor="km">Km al momento *</Label>
             <Input
@@ -198,21 +241,6 @@ export function InterventionForm({
         {/* Optional collapsible sections */}
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">Opzionali</div>
-
-          {!showTitle ? (
-            <button
-              type="button"
-              className="text-sm text-muted-foreground hover:text-foreground block"
-              onClick={() => setShowTitle(true)}
-            >
-              ▸ Aggiungi titolo
-            </button>
-          ) : (
-            <div>
-              <Label htmlFor="title">Titolo (opz)</Label>
-              <Input id="title" {...methods.register('title')} />
-            </div>
-          )}
 
           {!showParts ? (
             <button

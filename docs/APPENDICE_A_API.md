@@ -342,8 +342,8 @@ Authorization: Bearer <officine_user_jwt>
     "wikiLockedAt": null,
     "createdAt": "2026-04-21T14:32:05Z",
     "checklistItems": [
-      { "label": "Sostituzione olio motore" },
-      { "label": "Controllo filtri" }
+      { "id": "01HITM...", "label": "Sostituzione olio motore" },
+      { "id": "01HITM...", "label": "Controllo filtri" }
     ]
   },
   "deadline": {
@@ -357,7 +357,7 @@ Authorization: Bearer <officine_user_jwt>
 }
 ```
 
-`checklistItems` è derivato dallo snapshot congelato al salvataggio (`label_snapshot`/`sort_order_snapshot`, BR-303), ordinato per `sortOrderSnapshot asc` (null in coda) poi `label asc` — non da un join live sul catalogo corrente.
+`checklistItems` è derivato dallo snapshot congelato al salvataggio (`label_snapshot`/`sort_order_snapshot`, BR-303), ordinato per `sortOrderSnapshot asc` (null in coda) poi `label asc` — non da un join live sul catalogo corrente. `id` è il `checklistItemId` (non-null in questa response: il create valida che ogni id esista nel catalogo prima di scrivere la selezione).
 
 #### Errori specifici
 
@@ -1524,8 +1524,8 @@ Authorization: Bearer <officina_user_jwt>
     { "name": "Olio motore Selenia 5W30", "code": "SEL-5W30-4L", "quantity": 4, "notes": "Litri" }
   ],
   "checklist_items": [                     // BR-303/BR-308: dallo snapshot congelato, mai da un join sul catalogo — visibile cross-tenant come parts_replaced (non redatto da BR-153)
-    { "label": "Sostituzione olio motore" },
-    { "label": "Controllo filtri" }
+    { "id": "01HITM...", "label": "Sostituzione olio motore" },
+    { "id": null, "label": "Controllo filtri" }               // id null se la voce catalogo è stata eliminata (FK onDelete: SetNull) — il label snapshot sopravvive comunque
   ],
   "type": {
     "id": "01HSYS...",
@@ -1568,7 +1568,7 @@ Authorization: Bearer <officina_user_jwt>
 | `internal_notes` | string | sì | `null` se il viewer non è il tenant proprietario (BR-153 — note riservate nascoste cross-tenant) |
 | `viewer_is_owner` | boolean | no | `true` se il tenant chiamante è proprietario dell'intervento. `false` = vista cross-tenant in sola lettura (edit/dispute non disponibili) |
 | `parts_replaced` | array | no | Array vuoto se nessun ricambio |
-| `checklist_items` | array di `{ label }` | no | Array vuoto se nessuna voce (non dovrebbe accadere in pratica — BR-300 impone ≥1 voce in creazione). Letto dallo snapshot congelato (`label_snapshot`/`sort_order_snapshot`, BR-303), **non** da un join live sul catalogo — sopravvive a rinomina/eliminazione della voce (BR-303/D8). Visibile cross-tenant come `parts_replaced`, **non** soggetto alla redazione BR-153. Ordinato per `sort_order_snapshot asc` (null in coda), poi `label asc`. |
+| `checklist_items` | array di `{ id, label }` | no | Array vuoto se nessuna voce (non dovrebbe accadere in pratica — BR-300 impone ≥1 voce in creazione). Letto dallo snapshot congelato (`label_snapshot`/`sort_order_snapshot`, BR-303), **non** da un join live sul catalogo — sopravvive a rinomina/eliminazione della voce (BR-303/D8). `id` (`checklist_item_id`) è `null` quando la voce catalogo è stata eliminata nel frattempo (FK `onDelete: SetNull`); `label` resta sempre valorizzato. Visibile cross-tenant come `parts_replaced`, **non** soggetto alla redazione BR-153. Ordinato per `sort_order_snapshot asc` (null in coda), poi `label asc`. |
 | `type` | object | no | Tipo intervento (`id`, `code`, `name_it`) |
 | `tenant` | object | no | Tenant owner (`id`, `business_name`) |
 | `vehicle` | object | no | Veicolo target |
@@ -1643,8 +1643,8 @@ Authorization: Bearer <officina_user_jwt>
     "createdAt": "2026-04-21T14:32:05Z",
     "updatedAt": "2026-05-06T09:10:00Z",
     "checklistItems": [
-      { "label": "Sostituzione olio motore" },
-      { "label": "Filtro aria" }
+      { "id": "01HITM...", "label": "Sostituzione olio motore" },
+      { "id": "01HITM...", "label": "Filtro aria" }
     ]
     // niente campo `title` — rimosso (BR-308)
   },
@@ -1652,7 +1652,7 @@ Authorization: Bearer <officina_user_jwt>
 }
 ```
 
-`checklistItems` è ricostruito dal reload post-scrittura con lo stesso `serializeChecklistItems` del POST create (§2.2) — riflette sempre lo stato committato (voci ritenute con lo snapshot preservato + voci nuove), non il body della richiesta.
+`checklistItems` è ricostruito dal reload post-scrittura con lo stesso `serializeChecklistItems` del POST create (§2.2) — riflette sempre lo stato committato (voci ritenute con lo snapshot preservato + voci nuove), non il body della richiesta. `id` (`checklistItemId`) è `null` se la voce catalogo è stata eliminata dopo la selezione (BR-303/D8) — il `label` snapshot resta comunque valorizzato.
 
 #### Errori specifici
 

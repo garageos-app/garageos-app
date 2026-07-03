@@ -951,13 +951,21 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       });
 
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { intervention: { checklistItems: { label: string }[] } };
+      const body = res.json() as {
+        intervention: { checklistItems: { id: string | null; label: string }[] };
+      };
       // B (retained) keeps its pre-PATCH snapshot; C (new) gets the
-      // catalog's current name.
+      // catalog's current name. Both ids resolve to the live catalog rows.
       expect(body.intervention.checklistItems).toEqual(
-        expect.arrayContaining([{ label: 'Voce B originale' }, { label: 'Voce C' }]),
+        expect.arrayContaining([
+          { id: itemB.id, label: 'Voce B originale' },
+          { id: itemC.id, label: 'Voce C' },
+        ]),
       );
-      expect(body.intervention.checklistItems).not.toContainEqual({ label: 'Voce B rinominata' });
+      expect(body.intervention.checklistItems).not.toContainEqual({
+        id: itemB.id,
+        label: 'Voce B rinominata',
+      });
 
       const rows = await selectionRows(interventionId);
       expect(rows).toHaveLength(2);
@@ -1192,8 +1200,12 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       });
 
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { intervention: { checklistItems: { label: string }[] } };
-      expect(body.intervention.checklistItems).toEqual([{ label: 'Voce nuovo tipo' }]);
+      const body = res.json() as {
+        intervention: { checklistItems: { id: string | null; label: string }[] };
+      };
+      expect(body.intervention.checklistItems).toEqual([
+        { id: newItem.id, label: 'Voce nuovo tipo' },
+      ]);
       const rows = await selectionRows(interventionId);
       expect(rows).toHaveLength(1);
       expect(rows[0]!.checklist_item_id).toBe(newItem.id);
@@ -1239,8 +1251,10 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
       });
 
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { intervention: { checklistItems: { label: string }[] } };
-      expect(body.intervention.checklistItems).toEqual([{ label: 'Voce A' }]);
+      const body = res.json() as {
+        intervention: { checklistItems: { id: string | null; label: string }[] };
+      };
+      expect(body.intervention.checklistItems).toEqual([{ id: itemA.id, label: 'Voce A' }]);
       const rows = await selectionRows(interventionId);
       expect(rows).toHaveLength(1);
       expect(rows[0]!.checklist_item_id).toBe(itemA.id);
@@ -1285,10 +1299,10 @@ describe('PATCH /v1/interventions/:id (F-OFF-304)', () => {
 
       expect(res.statusCode).toBe(200);
       const body = res.json() as {
-        intervention: { title?: string; checklistItems: { label: string }[] };
+        intervention: { title?: string; checklistItems: { id: string | null; label: string }[] };
       };
       expect(body.intervention.title).toBeUndefined();
-      expect(body.intervention.checklistItems).toEqual([{ label: 'Voce A' }]);
+      expect(body.intervention.checklistItems).toEqual([{ id: itemA.id, label: 'Voce A' }]);
     });
 
     // (h) post-lock: a checklist-only edit without `reason` is still

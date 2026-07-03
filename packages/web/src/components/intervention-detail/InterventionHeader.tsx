@@ -16,8 +16,8 @@ interface Props {
 
 /**
  * Top section of the intervention detail page. Shows back link to the
- * vehicle, garage_code + plate crumb, title (or type fallback), type
- * subtitle, date + km, status badges (cancelled / disputed), and action
+ * vehicle, garage_code + plate crumb, heading (intervention type name),
+ * date + km, status badges (cancelled / disputed), and action
  * buttons (Modifica + Annulla) gated to status === 'active'.
  *
  * Backend gates action permissions (BR-066 super_admin, BR-128
@@ -33,7 +33,7 @@ export function InterventionHeader({ intervention: i, onEditClick, onCancelClick
   // edit/cancel are owner-only mutations, hidden cross-tenant.
   const isOwner = i.viewer_is_owner;
   const canCancel = useHasRole('super_admin'); // BR-066
-  const title = i.title ?? i.type.name_it;
+  const heading = i.type.name_it;
   const vehicleHref = `/vehicles/${i.vehicle.id}`;
 
   return (
@@ -51,7 +51,7 @@ export function InterventionHeader({ intervention: i, onEditClick, onCancelClick
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">{title}</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">{heading}</h1>
           <div className="text-sm text-muted-foreground mt-1">
             {i.type.name_it} · {formatDate(i.intervention_date)} · {formatKm(i.odometer_km)}
           </div>

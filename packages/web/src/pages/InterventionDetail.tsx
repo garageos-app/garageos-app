@@ -40,7 +40,6 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
     intervention_date: d.intervention_date,
     odometer_km: d.odometer_km,
     type: d.type,
-    title: d.title,
     description: d.description,
     parts_replaced_count: d.parts_replaced.length,
     status: d.status,
@@ -76,7 +75,7 @@ function Tile({ label, value }: { label: string; value: string }) {
  *
  * Mounts three React Queries (detail, disputes, revisions) and composes
  * InterventionHeader, a 4-tile stats grid, a wiki banner (BR-062), and
- * five Card sections (Descrizione, Ricambi, Contestazione,
+ * six Card sections (Descrizione, Voci eseguite, Ricambi, Contestazione,
  * Cronologia modifiche, Annullamento). Hosts CancelInterventionDialog
  * (BR-066) and EditInterventionDialog (BR-062/BR-064). The edit dialog
  * is reused from PR #83 unchanged via the `toTimelineItemSlice` adapter.
@@ -162,9 +161,9 @@ export function InterventionDetail() {
         </Alert>
       )}
 
-      {/* Header: back link, title, type subtitle, date/km, badges, action
-          buttons (Modifica + Annulla are gated to status==='active' inside
-          InterventionHeader — BR-066/BR-128). */}
+      {/* Header: back link, heading (intervention type name), date/km,
+          badges, action buttons (Modifica + Annulla are gated to
+          status==='active' inside InterventionHeader — BR-066/BR-128). */}
       <InterventionHeader
         intervention={i}
         onEditClick={() => setEditOpen(true)}
@@ -229,6 +228,27 @@ export function InterventionDetail() {
         </CardContent>
       </Card>
 
+      {/* Voci eseguite card — hidden when empty (defensive; BR-300 requires
+          at least one checklist item at creation, but historical rows or
+          global types without checklist items should not render an empty
+          card). */}
+      {i.checklist_items.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Voci eseguite
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2 text-sm">
+              {i.checklist_items.map((item, idx) => (
+                <li key={idx}>{item.label}</li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Ricambi card — hidden when empty */}
       {i.parts_replaced.length > 0 && (
         <Card>
@@ -262,7 +282,7 @@ export function InterventionDetail() {
           <DisputeThreadSection
             interventionId={i.id}
             vehicleId={i.vehicle.id}
-            interventionTitle={i.title ?? i.type.name_it}
+            interventionTitle={i.type.name_it}
             disputes={disputeList}
           />
           <RevisionHistorySection revisions={revisionList} />

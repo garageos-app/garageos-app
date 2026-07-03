@@ -29,16 +29,27 @@ vi.mock('sonner', () => ({
   toast: { success: mockToastSuccess, error: mockToastError },
 }));
 
+// interventionTypeId and checklist item ids go through Zod's z.uuid(),
+// which (zod v4) validates the version/variant nibbles — use well-formed
+// v4-shaped literals (mirrors InterventionForm.test.tsx convention).
+const TYPE_ID_TAGLIANDO = '11111111-1111-4111-8111-111111111111';
+const TYPE_ID_GOMME = '22222222-2222-4222-8222-222222222222';
+const ITEM_ID_OLIO = 'aaaaaaaa-0000-4000-8000-000000000001';
+const ITEM_ID_FILTRO = 'aaaaaaaa-0000-4000-8000-000000000002';
+const ITEM_ID_CANDELE = 'aaaaaaaa-0000-4000-8000-000000000003';
+const ITEM_ID_GOMME_CHK = 'dddddddd-0000-4000-8000-000000000001';
+
 // Module-level mock of the intervention-types query so the dialog can
-// render the <Select> without a network round trip. JSDOM does not
-// open Radix Select portals reliably; we test the Select's value
-// indirectly via the submitted PATCH body.
+// render the <Select> and the per-type checklist without a network round
+// trip. jsdom's Radix Select limitations are worked around globally by the
+// pointer-capture/scrollIntoView polyfills in tests/setup.ts, so the type
+// change (Tier-2 case 3) drives the real <Select> via userEvent.
 vi.mock('@/queries/interventionTypes', () => ({
   useInterventionTypes: () => ({
     data: {
       data: [
         {
-          id: '11111111-1111-4111-8111-111111111111',
+          id: TYPE_ID_TAGLIANDO,
           code: 'tagliando',
           nameIt: 'Tagliando',
           description: '',
@@ -46,9 +57,15 @@ vi.mock('@/queries/interventionTypes', () => ({
           suggestsDeadline: true,
           defaultDeadlineMonths: 12,
           defaultDeadlineKm: 15000,
+          custom: false,
+          checklistItems: [
+            { id: ITEM_ID_OLIO, code: 'OLIO', nameIt: 'Cambio olio', sortOrder: 1 },
+            { id: ITEM_ID_FILTRO, code: 'FILTRO', nameIt: 'Cambio filtro', sortOrder: 2 },
+            { id: ITEM_ID_CANDELE, code: 'CANDELE', nameIt: 'Cambio candele', sortOrder: 3 },
+          ],
         },
         {
-          id: '22222222-2222-4222-8222-222222222222',
+          id: TYPE_ID_GOMME,
           code: 'gomme',
           nameIt: 'Cambio gomme',
           description: '',
@@ -56,6 +73,15 @@ vi.mock('@/queries/interventionTypes', () => ({
           suggestsDeadline: false,
           defaultDeadlineMonths: null,
           defaultDeadlineKm: null,
+          custom: false,
+          checklistItems: [
+            {
+              id: ITEM_ID_GOMME_CHK,
+              code: 'GOMME_CHK',
+              nameIt: 'Sostituzione gomme',
+              sortOrder: 1,
+            },
+          ],
         },
       ],
     },
@@ -87,8 +113,7 @@ function makeShopItem(overrides: Partial<ShopTimelineItem> = {}): ShopTimelineIt
     id: 'i-1',
     intervention_date: '2026-05-10',
     odometer_km: 50000,
-    type: { id: '11111111-1111-4111-8111-111111111111', code: 'tagliando', name_it: 'Tagliando' },
-    title: 'Tagliando 50k',
+    type: { id: TYPE_ID_TAGLIANDO, code: 'tagliando', name_it: 'Tagliando' },
     description: 'Olio motore + filtri',
     parts_replaced_count: 2,
     status: 'active',
@@ -111,12 +136,18 @@ function makeDetail(overrides: Partial<InterventionDetail> = {}): InterventionDe
     created_at: '2026-05-10T10:00:00Z',
     cancelled_at: null,
     cancelled_reason: null,
-    title: 'Tagliando 50k',
     description: 'Olio motore + filtri',
     internal_notes: null,
+    // BR-303 — pre-check matches the type's first two catalog items
+    // (ITEM_ID_OLIO, ITEM_ID_FILTRO); ITEM_ID_CANDELE is left unchecked by
+    // default so Tier-2 case 2 (replace-set) has an item to select.
+    checklist_items: [
+      { id: ITEM_ID_OLIO, label: 'Cambio olio' },
+      { id: ITEM_ID_FILTRO, label: 'Cambio filtro' },
+    ],
     viewer_is_owner: true,
     parts_replaced: [],
-    type: { id: '11111111-1111-4111-8111-111111111111', code: 'tagliando', name_it: 'Tagliando' },
+    type: { id: TYPE_ID_TAGLIANDO, code: 'tagliando', name_it: 'Tagliando' },
     tenant: { id: 't-1', business_name: 'Garage Acme' },
     vehicle: { id: 'v-1', garage_code: 'ACM-0001', plate: 'AB123CD', make: 'Fiat', model: 'Panda' },
     created_by: null,
@@ -153,8 +184,6 @@ describe('EditInterventionDialog', () => {
       { wrapper: wrap },
     );
     expect(screen.getByLabelText(/descrizione/i)).toHaveValue('Olio motore + filtri');
-    // Title section is auto-expanded because intervention.title is non-null.
-    expect(screen.getByLabelText(/titolo/i)).toHaveValue('Tagliando 50k');
   });
 
   it('renders "Modifiche libere" banner when wiki_window_open is true', () => {
@@ -519,27 +548,6 @@ describe('EditInterventionDialog', () => {
     expect(body).not.toHaveProperty('internalNotes');
   });
 
-  it('auto-expands title section when detail.title is non-null', () => {
-    mockUseInterventionDetail.mockReturnValue({
-      data: makeDetail({ title: 'Tagliando 50k' }),
-      isPending: false,
-      isError: false,
-      refetch: mockRefetch,
-    });
-    render(
-      <EditInterventionDialog
-        intervention={makeShopItem({ title: null })}
-        vehicleId="v-1"
-        open={true}
-        onOpenChange={() => {}}
-      />,
-      { wrapper: wrap },
-    );
-    // Even though the timeline item has title=null, the detail has it. The
-    // dialog auto-expands the title section from detail, not from timeline.
-    expect(screen.getByLabelText(/titolo/i)).toHaveValue('Tagliando 50k');
-  });
-
   it('auto-expands notes section when detail.internal_notes is non-null', () => {
     // Mirror of the existing showTitle auto-expand behavior. The expander
     // toggle should NOT need to be clicked to reveal the textarea.
@@ -656,6 +664,76 @@ describe('EditInterventionDialog', () => {
     const [, secondCallOptions] = mockApiFetch.mock.calls[1];
     const body = JSON.parse(secondCallOptions.body) as Record<string, unknown>;
     expect(body).toHaveProperty('reason', 'Audit attivato durante modifica');
+  });
+
+  describe('checklist replace-set (Task 4)', () => {
+    it('pre-checks the checklist items already on the intervention, no Titolo field', () => {
+      render(
+        <EditInterventionDialog
+          intervention={makeShopItem()}
+          vehicleId="v-1"
+          open={true}
+          onOpenChange={() => {}}
+        />,
+        { wrapper: wrap },
+      );
+      expect(screen.getByLabelText('Cambio olio')).toBeChecked();
+      expect(screen.getByLabelText('Cambio filtro')).toBeChecked();
+      // Third catalog item for the type is rendered but not pre-checked.
+      expect(screen.getByLabelText('Cambio candele')).not.toBeChecked();
+      expect(screen.queryByLabelText(/titolo/i)).not.toBeInTheDocument();
+    });
+
+    it('sends the new checklistItemIds set on the PATCH when items are toggled', async () => {
+      const user = userEvent.setup();
+      mockApiFetch.mockResolvedValueOnce({ intervention: { id: 'i-1' }, revision: null });
+      render(
+        <EditInterventionDialog
+          intervention={makeShopItem()}
+          vehicleId="v-1"
+          open={true}
+          onOpenChange={() => {}}
+        />,
+        { wrapper: wrap },
+      );
+      // Deselect "Cambio olio" (pre-checked) and select "Cambio candele"
+      // (pre-unchecked) — a replace-set, not a partial diff.
+      await user.click(screen.getByLabelText('Cambio olio'));
+      await user.click(screen.getByLabelText('Cambio candele'));
+      await user.click(screen.getByRole('button', { name: /salva/i }));
+
+      await waitFor(() => {
+        expect(mockApiFetch).toHaveBeenCalled();
+      });
+      const [, callOptions] = mockApiFetch.mock.calls[0];
+      const body = JSON.parse(callOptions.body) as Record<string, unknown>;
+      const ids = (body.checklistItemIds as string[]).slice().sort();
+      expect(ids).toEqual([ITEM_ID_CANDELE, ITEM_ID_FILTRO].sort());
+    });
+
+    it('resets checklistItemIds and shows the new type checklist when the type changes', async () => {
+      const user = userEvent.setup();
+      render(
+        <EditInterventionDialog
+          intervention={makeShopItem()}
+          vehicleId="v-1"
+          open={true}
+          onOpenChange={() => {}}
+        />,
+        { wrapper: wrap },
+      );
+      // Sanity: Tagliando's checklist is pre-checked before the type change.
+      expect(screen.getByLabelText('Cambio olio')).toBeChecked();
+
+      await user.click(screen.getByLabelText(/tipo intervento/i));
+      await user.click(await screen.findByRole('option', { name: /cambio gomme/i }));
+
+      // The new type's checklist item is rendered, unchecked (reset).
+      expect(screen.getByLabelText('Sostituzione gomme')).not.toBeChecked();
+      // The old type's items are no longer rendered.
+      expect(screen.queryByLabelText('Cambio olio')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Cambio filtro')).not.toBeInTheDocument();
+    });
   });
 
   describe('partsEqual structural compare', () => {

@@ -13,6 +13,7 @@ function makeType(overrides: Partial<InterventionType>): InterventionType {
     defaultDeadlineMonths: 12,
     defaultDeadlineKm: 15000,
     custom: false,
+    checklistItems: [],
     ...overrides,
   };
 }

@@ -353,7 +353,7 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
               select: { id: true, code: true, nameIt: true },
             },
             checklistSelections: {
-              select: { labelSnapshot: true, sortOrderSnapshot: true },
+              select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
               orderBy: [{ sortOrderSnapshot: 'asc' }, { labelSnapshot: 'asc' }],
             },
           },

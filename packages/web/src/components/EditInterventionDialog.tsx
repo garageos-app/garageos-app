@@ -15,7 +15,6 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -86,6 +85,17 @@ export function partsEqual(
   });
 }
 
+// Order-insensitive comparison helpers for the checklist replace-set diff.
+// `sorted` copies before sorting so callers never mutate form/original
+// arrays in place; `undefined` (unset optional field) normalizes to [].
+function sorted(ids: string[] | undefined): string[] {
+  return [...(ids ?? [])].sort();
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 function buildPatchBody(
   values: EditInterventionFormValues,
   original: EditInterventionFormValues,
@@ -94,9 +104,12 @@ function buildPatchBody(
   if (values.interventionTypeId !== original.interventionTypeId) {
     patch.interventionTypeId = values.interventionTypeId;
   }
-  if (values.title !== original.title) {
-    // Empty string -> null (clear); non-empty -> set.
-    patch.title = values.title && values.title.length > 0 ? values.title : null;
+  if (!arraysEqual(sorted(values.checklistItemIds), sorted(original.checklistItemIds))) {
+    // Replace-set semantics (BR-303/BR-308): the whole selection is sent
+    // whenever it differs from the pre-fill, never a partial diff. A type
+    // change always lands here too, since checklistItemIds is reset to []
+    // in the dialog the moment the type changes (see selectedType effect).
+    patch.checklistItemIds = values.checklistItemIds ?? [];
   }
   if (values.description !== original.description) {
     patch.description = values.description;
@@ -169,7 +182,14 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
   // adapts at the boundary.
   const defaults: EditInterventionFormValues = {
     interventionTypeId: detail.type.id,
-    title: detail.title,
+    // Pre-check only items still in the catalog (id !== null). Items with
+    // id === null are catalog-deleted: the detail view still shows their
+    // label (BR-303 snapshot), but they cannot be re-selected here because
+    // they are no longer part of the type's checklistItems (see Deviation
+    // #3 in the plan).
+    checklistItemIds: detail.checklist_items
+      .filter((i) => i.id !== null)
+      .map((i) => i.id as string),
     description: detail.description,
     internalNotes: detail.internal_notes,
     partsReplaced: detail.parts_replaced.map((p) => ({
@@ -186,12 +206,16 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
     defaultValues: defaults,
   });
 
-  const [showTitle, setShowTitle] = useState(!!detail.title);
   const [showParts, setShowParts] = useState(false);
-  // Mirror showTitle's auto-expand behavior: if the intervention already
-  // has internal notes, expand the section so the user sees them on open.
+  // Mirror the pre-existing showTitle auto-expand behavior (removed with
+  // the title field): if the intervention already has internal notes,
+  // expand the section so the user sees them on open.
   const [showNotes, setShowNotes] = useState(!!detail.internal_notes);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const interventionTypeId = methods.watch('interventionTypeId');
+  const checklistItemIds = methods.watch('checklistItemIds') ?? [];
+  const selectedType = types.data?.data.find((t) => t.id === interventionTypeId) ?? null;
 
   const allErrorMessages = collectErrorMessages(
     Object.fromEntries(Object.entries(methods.formState.errors).filter(([k]) => k !== 'reason')),
@@ -306,10 +330,16 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
         <div>
           <Label htmlFor="type">Tipo intervento</Label>
           <Select
-            value={methods.watch('interventionTypeId') ?? ''}
-            onValueChange={(v) =>
-              methods.setValue('interventionTypeId', v, { shouldValidate: true })
-            }
+            value={interventionTypeId ?? ''}
+            onValueChange={(v) => {
+              methods.setValue('interventionTypeId', v, { shouldValidate: true });
+              // BR-300/Deviation #6 — the checklist is per-type; changing the
+              // type invalidates any prior selection, so it must be
+              // reselected from the new type's catalog. Reset (not
+              // re-derived) so a type change always produces a differing
+              // checklistItemIds and is included in the PATCH replace-set.
+              methods.setValue('checklistItemIds', [], { shouldValidate: false });
+            }}
           >
             <SelectTrigger id="type">
               <SelectValue placeholder="Seleziona…" />
@@ -324,18 +354,38 @@ function EditInterventionDialogBody({ intervention, detail, vehicleId, onOpenCha
           </Select>
         </div>
 
-        {!showTitle ? (
-          <button
-            type="button"
-            className="text-sm text-muted-foreground hover:text-foreground block"
-            onClick={() => setShowTitle(true)}
-          >
-            ▸ Aggiungi titolo personalizzato
-          </button>
-        ) : (
+        {selectedType && (
           <div>
-            <Label htmlFor="title">Titolo</Label>
-            <Input id="title" {...methods.register('title')} />
+            <Label>Voci eseguite</Label>
+            <div className="space-y-2 mt-1">
+              {[...selectedType.checklistItems]
+                .sort((a, b) => a.sortOrder - b.sortOrder)
+                .map((item) => {
+                  const checked = checklistItemIds.includes(item.id);
+                  return (
+                    <div key={item.id} className="flex items-center gap-2">
+                      <input
+                        id={`checklist-${item.id}`}
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          const next = checked
+                            ? checklistItemIds.filter((id) => id !== item.id)
+                            : [...checklistItemIds, item.id];
+                          methods.setValue('checklistItemIds', next, { shouldValidate: true });
+                        }}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      <Label htmlFor={`checklist-${item.id}`}>{item.nameIt}</Label>
+                    </div>
+                  );
+                })}
+            </div>
+            {methods.formState.errors.checklistItemIds && (
+              <p className="text-sm text-red-600 mt-1">
+                {methods.formState.errors.checklistItemIds.message}
+              </p>
+            )}
           </div>
         )}
 
