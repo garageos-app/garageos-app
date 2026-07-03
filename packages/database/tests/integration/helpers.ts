@@ -34,18 +34,17 @@ async function reseedInterventionTypes(): Promise<void> {
   for (const t of SYSTEM_INTERVENTION_TYPES) {
     await pgAdmin.query(
       `INSERT INTO intervention_types
-         (id, tenant_id, code, name_it, description, icon, category,
+         (id, tenant_id, code, name_it, description, icon,
           suggests_deadline, default_deadline_months, default_deadline_km,
           active, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), NULL, $1, $2, $3, $4, $5::"InterventionTypeCategory",
-          $6, $7, $8, true, NOW(), NOW())`,
+         (gen_random_uuid(), NULL, $1, $2, $3, $4,
+          $5, $6, $7, true, NOW(), NOW())`,
       [
         t.code,
         t.nameIt,
         t.description,
         t.icon,
-        t.category,
         t.suggestsDeadline,
         t.defaultDeadlineMonths,
         t.defaultDeadlineKm,

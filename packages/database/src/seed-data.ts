@@ -1,5 +1,3 @@
-import { InterventionTypeCategory } from '../prisma/generated/prisma/client/client.js';
-
 // System-wide intervention types (tenant_id NULL). Visible to every
 // tenant thanks to the intervention_types_isolation RLS policy. The
 // shape stays in sync with InterventionType in schema.prisma.
@@ -9,7 +7,6 @@ export type SystemInterventionType = {
   nameIt: string;
   description: string;
   icon: string;
-  category: InterventionTypeCategory;
   suggestsDeadline: boolean;
   defaultDeadlineMonths: number | null;
   defaultDeadlineKm: number | null;
@@ -21,7 +18,6 @@ export const SYSTEM_INTERVENTION_TYPES: SystemInterventionType[] = [
     nameIt: 'Intervento Meccanico',
     description: 'Interventi di manutenzione e riparazione meccanica',
     icon: 'wrench',
-    category: InterventionTypeCategory.maintenance,
     suggestsDeadline: true,
     defaultDeadlineMonths: 12,
     defaultDeadlineKm: 15000,
@@ -31,7 +27,6 @@ export const SYSTEM_INTERVENTION_TYPES: SystemInterventionType[] = [
     nameIt: 'Cambio Gomme',
     description: 'Pneumatici e servizi correlati',
     icon: 'circle',
-    category: InterventionTypeCategory.tires,
     suggestsDeadline: true,
     defaultDeadlineMonths: 6,
     defaultDeadlineKm: null,
@@ -41,7 +36,6 @@ export const SYSTEM_INTERVENTION_TYPES: SystemInterventionType[] = [
     nameIt: 'Revisione',
     description: 'Revisione periodica e controlli',
     icon: 'clipboard-check',
-    category: InterventionTypeCategory.inspection,
     suggestsDeadline: true,
     defaultDeadlineMonths: 24,
     defaultDeadlineKm: null,
