@@ -9,7 +9,6 @@ function makeType(overrides: Partial<InterventionType>): InterventionType {
     nameIt: 'Tagliando',
     description: '',
     icon: 'wrench',
-    category: 'maintenance',
     suggestsDeadline: true,
     defaultDeadlineMonths: 12,
     defaultDeadlineKm: 15000,

@@ -139,21 +139,12 @@ export interface TimelineResponse {
   };
 }
 
-export type InterventionTypeCategory =
-  | 'maintenance'
-  | 'tires'
-  | 'repair'
-  | 'inspection'
-  | 'body'
-  | 'other';
-
 export interface InterventionType {
   id: string;
   code: string;
   nameIt: string;
   description: string;
   icon: string;
-  category: InterventionTypeCategory;
   suggestsDeadline: boolean;
   defaultDeadlineMonths: number | null;
   defaultDeadlineKm: number | null;
