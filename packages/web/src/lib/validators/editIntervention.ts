@@ -23,15 +23,20 @@ export { PartReplacedSchema };
 //     on `defaultValues` context which Zod has no access to. The dialog
 //     handles it via a diff helper before calling the mutation.
 //
-// The two fields nullable+optional (title, internalNotes) mirror the
-// backend: `null` clears the field, `undefined` leaves it unchanged.
+// The nullable+optional field (internalNotes) mirrors the backend: `null`
+// clears the field, `undefined` leaves it unchanged.
+//
+// checklistItemIds (BR-303/BR-308) diverges from that pattern: `undefined`
+// leaves the checklist unchanged, an array replaces the whole selection
+// set, but `null` is NOT accepted — BR-300 forbids an empty checklist, so
+// there is no "clear" semantics to mirror here.
 export const EditInterventionFormSchema = z.object({
   interventionTypeId: z.uuid().optional(),
-  title: z.string().max(200).nullable().optional(),
   description: z.string().min(1).max(5000).optional(),
   partsReplaced: z.array(PartReplacedSchema).optional(),
   internalNotes: z.string().max(5000).nullable().optional(),
   reason: z.string().max(2000).optional(),
+  checklistItemIds: z.array(z.uuid()).optional(),
 });
 
 export type EditInterventionFormValues = z.infer<typeof EditInterventionFormSchema>;

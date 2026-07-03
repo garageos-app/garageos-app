@@ -78,7 +78,6 @@ export interface ShopTimelineItem {
   intervention_date: string;
   odometer_km: number;
   type: { id: string; code: string; name_it: string };
-  title: string | null;
   description: string;
   parts_replaced_count: number;
   status: string;
@@ -149,6 +148,10 @@ export interface InterventionType {
   defaultDeadlineMonths: number | null;
   defaultDeadlineKm: number | null;
   custom: boolean;
+  // BR-305 — only checklist items visible to the calling tenant (post
+  // BR-304 exclusions); a type is omitted entirely upstream if this
+  // would be empty (see packages/api/src/routes/v1/intervention-types.ts).
+  checklistItems: { id: string; code: string; nameIt: string; sortOrder: number }[];
 }
 
 export interface InterventionTypesResponse {
@@ -162,11 +165,13 @@ export interface CreateInterventionResponse {
     interventionTypeId: string;
     interventionDate: string;
     odometerKm: number;
-    title: string | null;
     description: string;
     status: string;
     kmAnomaly: boolean;
     interventionType: { id: string; code: string; nameIt: string };
+    // BR-303 — checklist selections snapshot at creation time (see
+    // packages/api/src/lib/intervention-shared.ts serializeChecklistItems).
+    checklistItems: { id: string | null; label: string }[];
   };
   deadline: {
     id: string;
@@ -407,9 +412,11 @@ export interface InterventionDetail {
   created_at: string;
   cancelled_at: string | null;
   cancelled_reason: string | null;
-  title: string | null;
   description: string;
   internal_notes: string | null;
+  // BR-303 — checklist selections snapshot (label survives catalog-item
+  // deletion; `id` is null when the underlying catalog row was deleted).
+  checklist_items: { id: string | null; label: string }[];
   /**
    * false when the caller's tenant did not create this intervention: the
    * detail is a cross-tenant read-only view (shared logbook, BR-150/BR-153).
