@@ -50,6 +50,7 @@ describe('CreateInterventionSchema', () => {
       interventionDate: '2026-04-24',
       odometerKm: 50_000,
       description: 'Sostituzione olio motore e filtro.',
+      checklistItemIds: [] as string[],
     };
   }
 
@@ -57,6 +58,33 @@ describe('CreateInterventionSchema', () => {
     const parsed = CreateInterventionSchema.parse(validInput());
     expect(parsed.partsReplaced).toEqual([]);
     expect(parsed.forceKmDecrease).toBe(false);
+    expect(parsed.checklistItemIds).toEqual([]);
+  });
+
+  it('accepts checklistItemIds as an empty array (BR-300 "at least 1" is handler-side)', () => {
+    const parsed = CreateInterventionSchema.parse({ ...validInput(), checklistItemIds: [] });
+    expect(parsed.checklistItemIds).toEqual([]);
+  });
+
+  it('accepts checklistItemIds with a valid uuid', () => {
+    const itemId = randomUUID();
+    const parsed = CreateInterventionSchema.parse({
+      ...validInput(),
+      checklistItemIds: [itemId],
+    });
+    expect(parsed.checklistItemIds).toEqual([itemId]);
+  });
+
+  it('rejects a missing checklistItemIds (required field)', () => {
+    const input: Partial<ReturnType<typeof validInput>> = validInput();
+    delete input.checklistItemIds;
+    expect(() => CreateInterventionSchema.parse(input)).toThrow();
+  });
+
+  it('rejects checklistItemIds containing a non-uuid entry', () => {
+    expect(() =>
+      CreateInterventionSchema.parse({ ...validInput(), checklistItemIds: ['not-a-uuid'] }),
+    ).toThrow();
   });
 
   it('accepts partsReplaced with valid shape', () => {
@@ -149,17 +177,32 @@ describe('UpdateInterventionSchema (BR-061, BR-064, BR-065)', () => {
     expect(parsed.description).toBe('Aggiornata');
   });
 
-  it('accepts all 5 editable fields plus reason', () => {
+  it('accepts all editable fields plus reason', () => {
     expect(() =>
       UpdateInterventionSchema.parse({
         interventionTypeId: randomUUID(),
-        title: 'Titolo nuovo',
         description: 'Descrizione',
         partsReplaced: [{ name: 'Olio', quantity: 4 }],
         internalNotes: 'Nota officina',
+        checklistItemIds: [randomUUID()],
         reason: 'Motivazione modifica >= 10 chars',
       }),
     ).not.toThrow();
+  });
+
+  it('accepts a body with only checklistItemIds (refine satisfied)', () => {
+    const parsed = UpdateInterventionSchema.parse({ checklistItemIds: [randomUUID()] });
+    expect(parsed.checklistItemIds).toHaveLength(1);
+  });
+
+  it('rejects checklistItemIds containing a non-uuid entry', () => {
+    expect(() => UpdateInterventionSchema.parse({ checklistItemIds: ['not-a-uuid'] })).toThrow();
+  });
+
+  it('rejects title in body (removed field, .strict())', () => {
+    expect(() =>
+      UpdateInterventionSchema.parse({ description: 'X', title: 'Titolo nuovo' }),
+    ).toThrow();
   });
 
   it('rejects an empty body (refine)', () => {
@@ -218,10 +261,6 @@ describe('UpdateInterventionSchema (BR-061, BR-064, BR-065)', () => {
         reason: 'a'.repeat(2001),
       }),
     ).toThrow();
-  });
-
-  it('accepts title=null (BR-065 clear field)', () => {
-    expect(() => UpdateInterventionSchema.parse({ title: null })).not.toThrow();
   });
 
   it('accepts internalNotes=null (BR-065 clear field)', () => {
