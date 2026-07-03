@@ -154,4 +154,30 @@ describe('CatalogoInterventi page', () => {
       }),
     );
   });
+
+  // Regression: DELETE must carry a non-empty '{}' body. api-client sets
+  // Content-Type: application/json unconditionally; Fastify rejects a body-less
+  // DELETE with FST_ERR_CTP_EMPTY_JSON_BODY (400). Caught only by smoke, not
+  // by app.inject integration tests. See feedback_fastify_empty_body...
+  it('delete: sends DELETE with a non-empty {} body', async () => {
+    mockApiFetch.mockImplementation((_path: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return Promise.resolve(undefined);
+      return Promise.resolve({ data: [TYPE_TAGLIANDO] });
+    });
+
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+
+    render(<CatalogoInterventi />, { wrapper: makeWrapper() });
+    await screen.findByText('TAGLIANDO');
+
+    await user.click(screen.getByRole('button', { name: /^elimina$/i }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: /^elimina$/i }));
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      `/v1/admin/intervention-types/${TYPE_TAGLIANDO.id}`,
+      expect.objectContaining({ method: 'DELETE', body: JSON.stringify({}) }),
+    );
+  });
 });

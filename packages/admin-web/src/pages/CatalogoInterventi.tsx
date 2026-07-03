@@ -166,7 +166,14 @@ export function CatalogoInterventi() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
-      apiFetch<void>(`/v1/admin/intervention-types/${id}`, { method: 'DELETE' }),
+      // api-client unconditionally sets Content-Type: application/json; Fastify
+      // rejects an empty body with FST_ERR_CTP_EMPTY_JSON_BODY. Send '{}' to
+      // satisfy the parser (same pattern as TenantList suspend/reactivate).
+      // See [[feedback_fastify_empty_body_under_json_content_type]].
+      apiFetch<void>(`/v1/admin/intervention-types/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({}),
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin-catalog-types'] });
       toast.success('Tipo eliminato.');
