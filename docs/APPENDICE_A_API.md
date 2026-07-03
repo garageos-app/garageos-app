@@ -221,10 +221,15 @@ Altri campi nel root:
 
 **Feature:** F-OFF-302
 **Auth:** Officine pool (mechanic / super_admin)
+**Shipped:** PR-4 (BR-304, BR-305) — riscrive la versione PR-demo-3a
 
 #### Descrizione
 
-Ritorna l'unione di tipi system-wide (12 righe predefinite, `tenant_id IS NULL`) e tipi custom dell'officina autenticata. Usato dal form crea intervento per popolare il dropdown "Tipo intervento".
+Ritorna i tipi di intervento del catalogo globale (`intervention_types` con `tenant_id IS NULL`) **visibili per il tenant chiamante** dopo l'applicazione delle esclusioni per-tenant gestite dal platform admin (`GET/PUT /v1/admin/tenants/:tenantId/catalog-visibility`, BR-304), ciascuno con le sue voci checklist visibili. Usato dal form crea intervento per popolare il dropdown "Tipo intervento" e le checkbox della checklist.
+
+Il catalogo non prevede più tipi custom per-tenant: l'unica scrittura possibile sul catalogo globale è quella del platform admin (`/v1/admin/intervention-types*`, BR-306); le officine possono solo leggerlo.
+
+Per BR-305 (selezionabilità tipo), un tipo compare in risposta solo se, dopo le esclusioni, ha **almeno una voce checklist attiva e non esclusa**: se l'esclusione svuota le voci residue, il tipo è omesso interamente dalla risposta (non compare "vuoto").
 
 #### Request
 
@@ -249,15 +254,20 @@ Nessun body, nessun query param.
       "suggestsDeadline": true,
       "defaultDeadlineMonths": 12,
       "defaultDeadlineKm": 15000,
-      "custom": false
+      "custom": false,
+      "checklistItems": [
+        { "id": "01HITM...", "code": "OLIO", "nameIt": "Cambio olio", "sortOrder": 0 },
+        { "id": "01HITM...", "code": "FILTRO", "nameIt": "Cambio filtro olio", "sortOrder": 1 }
+      ]
     }
-    // … altri tipi system + tenant custom
+    // … altri tipi visibili per il tenant
   ]
 }
 ```
 
-- `custom: true` per righe del tenant, `custom: false` per system rows
-- Ordinamento server-side: `nameIt ASC`
+- `custom`: campo mantenuto per retro-compatibilità di forma — sempre `false` (non esistono più tipi tenant-owned).
+- Ordinamento server-side: tipi `nameIt ASC`; `checklistItems` per `sortOrder ASC, nameIt ASC`.
+- `checklistItems` contiene solo le voci attive e non escluse per il tenant chiamante (BR-304/BR-305).
 
 #### Errori
 

@@ -1225,7 +1225,17 @@ Un tipo di intervento globale o una voce checklist globale sono **visibili a tut
 Ogni scrittura genera una riga `audit_logs` (`catalog_visibility_updated`, `entityType:'tenant'`, `actorType:'system'`, `metadata: { actorCognitoSub, excludedTypes, excludedItems }`) nella stessa transazione del replace, per rollback atomico in caso di errore successivo.
 
 ### BR-305 — Selezionabilità tipo (≥1 voce visibile)
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Un tipo di intervento è offerto all'officina in `GET /v1/intervention-types` solo se, dopo l'applicazione delle esclusioni per-tenant (BR-304), ha **almeno una voce checklist attiva e non esclusa**. Se l'esclusione (a livello di tipo, o di tutte le sue voci) azzera le voci visibili residue, il tipo viene omesso interamente dalla risposta — non compare come "disabilitato" o "vuoto".
+
+Questa regola garantisce che il vincolo BR-300 (checklist obbligatoria, ≥1 voce) sia sempre soddisfacibile lato client: il form di creazione intervento non può mai proporre un tipo per cui è impossibile selezionare almeno una voce.
+
+**Enforcement:** `GET /v1/intervention-types` (`packages/api/src/routes/v1/intervention-types.ts`) carica i tipi globali attivi con le rispettive voci attive, poi filtra applicativamente:
+1. scarta i tipi presenti in `tenant_intervention_type_exclusions` per il tenant chiamante;
+2. per i tipi rimanenti, rimuove dalle `checklistItems` le voci presenti in `tenant_checklist_item_exclusions` per il tenant chiamante;
+3. scarta ogni tipo la cui lista voci risulta vuota dopo il passo 2.
+
+Storage esclusioni: `tenant_intervention_type_exclusions` / `tenant_checklist_item_exclusions` (vedi BR-304).
 
 ### BR-306 — Governance catalogo (admin-only write)
 
