@@ -22,7 +22,6 @@ export const InterventionTypeFactory = Factory.define<Prisma.InterventionTypeUnc
       tenantId: null,
       code: `TEST_TYPE_${sequence}`,
       nameIt: `Tipo Intervento ${sequence}`,
-      category: 'maintenance',
       suggestsDeadline: false,
       active: true,
     };

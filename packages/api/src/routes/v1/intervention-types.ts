@@ -21,14 +21,13 @@ const interventionTypesRoutes: FastifyPluginAsync = async (app) => {
           where: {
             OR: [{ tenantId: null }, { tenantId }],
           },
-          orderBy: [{ category: 'asc' }, { nameIt: 'asc' }],
+          orderBy: [{ nameIt: 'asc' }],
           select: {
             id: true,
             code: true,
             nameIt: true,
             description: true,
             icon: true,
-            category: true,
             suggestsDeadline: true,
             defaultDeadlineMonths: true,
             defaultDeadlineKm: true,

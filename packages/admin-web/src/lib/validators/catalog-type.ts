@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { CATEGORY_VALUES } from '@/lib/catalog-types';
 
 // Schemas mirror the POST/PATCH /v1/admin/intervention-types request bodies
 // (packages/api/src/routes/v1/admin-intervention-types.ts CreateTypeBody /
@@ -54,7 +53,7 @@ function nullableText(maxLength: number, message: string) {
     .transform((s) => (s === '' ? null : s));
 }
 
-// Create form — includes code + category (both immutable after creation).
+// Create form — includes code (immutable after creation).
 export const catalogTypeSchema = z.object({
   code: z
     .string()
@@ -63,7 +62,6 @@ export const catalogTypeSchema = z.object({
   nameIt: z.string().trim().min(1, 'Nome obbligatorio').max(150, 'Nome troppo lungo'),
   description: optionalText(1000, 'Descrizione troppo lunga'),
   icon: optionalText(50, 'Icona troppo lunga'),
-  category: z.enum(CATEGORY_VALUES),
   suggestsDeadline: z.boolean(),
   defaultDeadlineMonths: optionalPositiveInt('Mesi: intero positivo', 600, 'Massimo 600 mesi'),
   defaultDeadlineKm: optionalPositiveInt('Km: intero positivo', 2_000_000, 'Massimo 2.000.000 km'),
@@ -73,8 +71,8 @@ export const catalogTypeSchema = z.object({
 export type CatalogTypeValues = z.input<typeof catalogTypeSchema>;
 export type CatalogTypeParsed = z.output<typeof catalogTypeSchema>;
 
-// Edit form — code and category are immutable after creation, so PATCH omits
-// them entirely (mirrors UpdateTypeBody server-side).
+// Edit form — code is immutable after creation, so PATCH omits it entirely
+// (mirrors UpdateTypeBody server-side).
 export const editCatalogTypeSchema = z.object({
   nameIt: z.string().trim().min(1, 'Nome obbligatorio').max(150, 'Nome troppo lungo'),
   description: nullableText(1000, 'Descrizione troppo lunga'),

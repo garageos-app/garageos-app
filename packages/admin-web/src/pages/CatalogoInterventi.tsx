@@ -8,8 +8,6 @@ import { toast } from 'sonner';
 import { ClipboardList, Plus } from 'lucide-react';
 import { useApiFetch, ApiError } from '@/lib/api-client';
 import {
-  CATEGORY_LABELS,
-  CATEGORY_VALUES,
   CATALOG_ERROR_MESSAGES,
   GENERIC_CATALOG_ERROR,
   type InterventionTypeAdmin,
@@ -56,18 +54,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-// Shared select-styling for native <select> elements — avoids the shadcn Select
-// install and the literal @/ dir risk. See [[feedback_shadcn_cli_literal_alias_path]]
-// and the identical pattern in TenantDetail.tsx's role <select>.
-const SELECT_CLASS =
-  'w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
-
 const CREATE_DEFAULTS: CatalogTypeValues = {
   code: '',
   nameIt: '',
   description: '',
   icon: '',
-  category: 'maintenance',
   suggestsDeadline: false,
   defaultDeadlineMonths: '',
   defaultDeadlineKm: '',
@@ -194,7 +185,7 @@ export function CatalogoInterventi() {
   // undefined even though isLoading is false.
   // See [[feedback_react_query_data_bang_offline_paused]].
   if (isLoading || !data) {
-    return <TableSkeleton columns={6} />;
+    return <TableSkeleton columns={5} />;
   }
 
   function onCreateSubmit(vals: CatalogTypeParsed) {
@@ -229,7 +220,6 @@ export function CatalogoInterventi() {
             <TableRow>
               <TableHead>Codice</TableHead>
               <TableHead>Nome</TableHead>
-              <TableHead>Categoria</TableHead>
               <TableHead>Voci</TableHead>
               <TableHead>Stato</TableHead>
               <TableHead>Azioni</TableHead>
@@ -244,9 +234,6 @@ export function CatalogoInterventi() {
               >
                 <TableCell className="font-medium">{type.code}</TableCell>
                 <TableCell>{type.nameIt}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{CATEGORY_LABELS[type.category]}</Badge>
-                </TableCell>
                 <TableCell>{type.checklistItemCount}</TableCell>
                 <TableCell>
                   <Badge variant={type.active ? 'default' : 'destructive'}>
@@ -317,16 +304,6 @@ export function CatalogoInterventi() {
                 <p className="text-sm text-red-600">{createForm.formState.errors.icon.message}</p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="category">Categoria</Label>
-              <select id="category" {...createForm.register('category')} className={SELECT_CLASS}>
-                {CATEGORY_VALUES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {CATEGORY_LABELS[cat]}
-                  </option>
-                ))}
-              </select>
-            </div>
             <div className="flex items-center gap-2">
               <input
                 id="suggestsDeadline"
@@ -393,7 +370,7 @@ export function CatalogoInterventi() {
           <DialogHeader>
             <DialogTitle>Modifica tipo di intervento</DialogTitle>
             <DialogDescription>
-              {editTarget?.code} — codice e categoria non sono modificabili.
+              {editTarget?.code} — il codice non è modificabile.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4" noValidate>

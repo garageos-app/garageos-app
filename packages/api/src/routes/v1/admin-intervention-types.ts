@@ -38,8 +38,6 @@ import {
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requirePlatformAdminsPool } from '../../middleware/require-platform-admins-pool.js';
 
-const CATEGORY_VALUES = ['maintenance', 'repair', 'tires', 'body', 'inspection', 'other'] as const;
-
 const ParamsSchema = z.object({ id: z.string().uuid() });
 
 const CreateTypeBody = z
@@ -48,7 +46,6 @@ const CreateTypeBody = z
     nameIt: z.string().trim().min(1).max(150),
     description: z.string().trim().max(1000).optional(),
     icon: z.string().trim().max(50).optional(),
-    category: z.enum(CATEGORY_VALUES),
     suggestsDeadline: z.boolean().optional().default(false),
     defaultDeadlineMonths: z.number().int().positive().max(600).nullable().optional(),
     defaultDeadlineKm: z.number().int().positive().max(2_000_000).nullable().optional(),
@@ -56,7 +53,7 @@ const CreateTypeBody = z
   })
   .strict();
 
-// code/category are immutable after creation (not part of this schema).
+// code is immutable after creation (not part of this schema).
 // Field definitions otherwise mirror CreateTypeBody exactly (brief: "come
 // sopra"), just made optional so a partial PATCH body validates.
 const UpdateTypeBody = z
@@ -94,7 +91,7 @@ export const adminInterventionTypesRoutes: FastifyPluginAsync = async (app) => {
       const rows = await app.withContext({ role: 'admin' as const }, (tx) =>
         tx.interventionType.findMany({
           where: { tenantId: null },
-          orderBy: [{ category: 'asc' }, { nameIt: 'asc' }],
+          orderBy: [{ nameIt: 'asc' }],
           select: INTERVENTION_TYPE_ADMIN_SELECT,
         }),
       );
@@ -133,7 +130,6 @@ export const adminInterventionTypesRoutes: FastifyPluginAsync = async (app) => {
             nameIt: body.nameIt,
             description: body.description ?? null,
             icon: body.icon ?? null,
-            category: body.category,
             suggestsDeadline: body.suggestsDeadline,
             defaultDeadlineMonths: body.defaultDeadlineMonths ?? null,
             defaultDeadlineKm: body.defaultDeadlineKm ?? null,

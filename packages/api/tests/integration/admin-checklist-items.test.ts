@@ -55,20 +55,15 @@ function uniqueCode(prefix: string): string {
 async function seedGlobalType(params: {
   code?: string;
   nameIt?: string;
-  category?: 'maintenance' | 'repair' | 'tires' | 'body' | 'inspection' | 'other';
 }): Promise<{ id: string; code: string }> {
-  const {
-    code = uniqueCode('ZTYPE'),
-    nameIt = `Test type ${code}`,
-    category = 'maintenance',
-  } = params;
+  const { code = uniqueCode('ZTYPE'), nameIt = `Test type ${code}` } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO intervention_types
-       (id, tenant_id, code, name_it, category, suggests_deadline,
+       (id, tenant_id, code, name_it, suggests_deadline,
         default_deadline_months, default_deadline_km, active, created_at, updated_at)
-     VALUES (gen_random_uuid(), NULL, $1, $2, $3::"InterventionTypeCategory", false, NULL, NULL, true, NOW(), NOW())
+     VALUES (gen_random_uuid(), NULL, $1, $2, false, NULL, NULL, true, NOW(), NOW())
      RETURNING id`,
-    [code, nameIt, category],
+    [code, nameIt],
   );
   return { id: rows[0]!.id, code };
 }

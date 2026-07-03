@@ -79,10 +79,10 @@ describe('GET /v1/intervention-types (integration)', () => {
     const { tenantId } = await createTenantWithLocation('itypes-custom');
     await pgAdmin.query(
       `INSERT INTO intervention_types
-        (id, tenant_id, code, name_it, description, icon, category, suggests_deadline,
+        (id, tenant_id, code, name_it, description, icon, suggests_deadline,
          created_at, updated_at)
        VALUES (gen_random_uuid(), $1, 'CUSTOM_FOO', 'Custom Foo', 'Test', 'wrench',
-        'other'::"InterventionTypeCategory", false, NOW(), NOW())`,
+        false, NOW(), NOW())`,
       [tenantId],
     );
     const res = await authedRequest(tenantId);
@@ -98,10 +98,10 @@ describe('GET /v1/intervention-types (integration)', () => {
     const { tenantId: tenantB } = await createTenantWithLocation('itypes-b');
     await pgAdmin.query(
       `INSERT INTO intervention_types
-        (id, tenant_id, code, name_it, description, icon, category, suggests_deadline,
+        (id, tenant_id, code, name_it, description, icon, suggests_deadline,
          created_at, updated_at)
        VALUES (gen_random_uuid(), $1, 'TENANT_A_ONLY', 'A only', 'X', 'wrench',
-        'other'::"InterventionTypeCategory", false, NOW(), NOW())`,
+        false, NOW(), NOW())`,
       [tenantA],
     );
     const res = await authedRequest(tenantB);
@@ -109,25 +109,28 @@ describe('GET /v1/intervention-types (integration)', () => {
     expect(json.data.find((r) => r.code === 'TENANT_A_ONLY')).toBeUndefined();
   });
 
-  it('orders by category enum-order ASC then nameIt ASC', async () => {
+  it('orders by nameIt ASC', async () => {
     const { tenantId } = await createTenantWithLocation('itypes-order');
+    // Seed two global types whose names are alphabetically out of insertion
+    // order, so a passing assertion actually exercises server-side ordering
+    // rather than incidentally reflecting insertion order.
+    await pgAdmin.query(
+      `INSERT INTO intervention_types
+        (id, tenant_id, code, name_it, description, icon, suggests_deadline,
+         created_at, updated_at)
+       VALUES
+        (gen_random_uuid(), NULL, 'ORDER_ZETA', 'Zeta Tipo Ordinamento', 'Test', 'wrench', false, NOW(), NOW()),
+        (gen_random_uuid(), NULL, 'ORDER_ALFA', 'Alfa Tipo Ordinamento', 'Test', 'wrench', false, NOW(), NOW())`,
+    );
     const res = await authedRequest(tenantId);
-    const json = res.json() as { data: Array<{ category: string; nameIt: string }> };
-    // Prisma `orderBy: { category: 'asc' }` on a Postgres enum column orders by
-    // enum *definition* order, not alphabetical. Mirror the InterventionTypeCategory
-    // enum order here so the assertion matches the implementation reality.
-    const ENUM_ORDER = ['maintenance', 'tires', 'repair', 'inspection', 'body', 'other'];
+    const json = res.json() as { data: Array<{ nameIt: string }> };
     for (let i = 1; i < json.data.length; i++) {
-      const prev = json.data[i - 1]!;
-      const curr = json.data[i]!;
-      const prevIdx = ENUM_ORDER.indexOf(prev.category);
-      const currIdx = ENUM_ORDER.indexOf(curr.category);
-      expect(prevIdx).toBeGreaterThanOrEqual(0);
-      expect(prevIdx).toBeLessThanOrEqual(currIdx);
-      if (prevIdx === currIdx) {
-        expect(prev.nameIt.localeCompare(curr.nameIt)).toBeLessThanOrEqual(0);
-      }
+      expect(json.data[i - 1]!.nameIt.localeCompare(json.data[i]!.nameIt)).toBeLessThanOrEqual(0);
     }
+    const alfaIdx = json.data.findIndex((r) => r.nameIt === 'Alfa Tipo Ordinamento');
+    const zetaIdx = json.data.findIndex((r) => r.nameIt === 'Zeta Tipo Ordinamento');
+    expect(alfaIdx).toBeGreaterThanOrEqual(0);
+    expect(zetaIdx).toBeGreaterThan(alfaIdx);
   });
 
   it('returns 401 without token', async () => {

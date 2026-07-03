@@ -104,15 +104,6 @@ enum OwnershipTransferReason {
   other
 }
 
-enum InterventionTypeCategory {
-  maintenance
-  repair
-  tires
-  body
-  inspection
-  other
-}
-
 enum InterventionStatus {
   active
   disputed
@@ -455,7 +446,6 @@ model InterventionType {
   nameIt                String                   @map("name_it") @db.VarChar(150)
   description           String?                  @db.Text
   icon                  String?                  @db.VarChar(50)
-  category              InterventionTypeCategory
   suggestsDeadline      Boolean                  @default(false) @map("suggests_deadline")
   defaultDeadlineMonths Int?                     @map("default_deadline_months") @db.SmallInt
   defaultDeadlineKm     Int?                     @map("default_deadline_km")

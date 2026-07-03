@@ -62,7 +62,6 @@ const TYPE_TAGLIANDO: InterventionTypeAdmin = {
   nameIt: 'Tagliando',
   description: 'Tagliando periodico',
   icon: 'wrench',
-  category: 'maintenance',
   suggestsDeadline: true,
   defaultDeadlineMonths: 12,
   defaultDeadlineKm: 15000,

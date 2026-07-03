@@ -138,7 +138,6 @@ describe('InterventionTypeFactory.build', () => {
     const t = InterventionTypeFactory.build();
     expect(t.tenantId).toBeNull();
     expect(t.active).toBe(true);
-    expect(t.category).toBe('maintenance');
   });
 
   it('generates unique codes across builds', () => {

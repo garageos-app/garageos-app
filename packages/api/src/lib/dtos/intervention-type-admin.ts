@@ -28,7 +28,6 @@ export const INTERVENTION_TYPE_ADMIN_SELECT = {
   nameIt: true,
   description: true,
   icon: true,
-  category: true,
   suggestsDeadline: true,
   defaultDeadlineMonths: true,
   defaultDeadlineKm: true,
@@ -48,7 +47,6 @@ export type InterventionTypeAdminDto = {
   nameIt: string;
   description: string | null;
   icon: string | null;
-  category: InterventionTypeAdminRow['category'];
   suggestsDeadline: boolean;
   defaultDeadlineMonths: number | null;
   defaultDeadlineKm: number | null;
