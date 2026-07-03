@@ -508,9 +508,12 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
       expect(input.Destination?.ToAddresses).toEqual(['owner@test.it']);
       expect(input.Content?.Simple?.Subject?.Data).toMatch(/nuovo intervento/i);
       // Proves route→event threading of vehicle and intervention-type fields.
+      // BR-308: the intervention no longer has a title, so the email heading
+      // is the intervention type name (`interventionType.nameIt`), not a
+      // free-text title — assert on the MECCANICO system type name.
       const html = input.Content?.Simple?.Body?.Html?.Data ?? '';
       expect(html).toContain(plate);
-      expect(html).toContain('Tagliando');
+      expect(html).toContain('Intervento Meccanico');
     });
 
     it('BR-157/BR-226 — intervention_updates off blocks email but create succeeds', async () => {

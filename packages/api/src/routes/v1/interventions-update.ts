@@ -171,9 +171,28 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
         // correctly in one pass.
         const effectiveTypeId = body.interventionTypeId ?? existing.interventionTypeId;
 
+        // FK validation on type change. Cross-tenant + system NULL types
+        // are visible via RLS; an unknown id surfaces as P2025 → 404
+        // NOT_FOUND via the global handler. Mirrors POST /interventions.
+        // MUST run BEFORE the Deviation #6 guard below: a non-existent type
+        // id is a 404 (type not found), not the 400 "re-pick checklist" —
+        // this preserves the pre-existing PATCH contract and keeps parity
+        // with POST create's bogus-type behavior.
+        if (
+          body.interventionTypeId !== undefined &&
+          body.interventionTypeId !== existing.interventionTypeId
+        ) {
+          await tx.interventionType.findUniqueOrThrow({
+            where: { id: body.interventionTypeId },
+            select: { id: true },
+          });
+        }
+
         // BR-303/Deviation #6: silently keeping the OLD selection set after
         // a type change would leave selections scoped to a checklist the
-        // new type may not even expose. Force the caller to re-pick.
+        // new type may not even expose. Force the caller to re-pick. Runs
+        // after the FK check above, so a bogus type id is 404, and only a
+        // valid-but-different type without checklistItemIds hits this 400.
         if (
           body.interventionTypeId !== undefined &&
           body.interventionTypeId !== existing.interventionTypeId &&
@@ -184,19 +203,6 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
             400,
             'Cambiando il tipo di intervento devi riselezionare le voci checklist.',
           );
-        }
-
-        // FK validation on type change. Cross-tenant + system NULL types
-        // are visible via RLS; an unknown id surfaces as P2025 → 404
-        // NOT_FOUND via the global handler. Mirrors POST /interventions.
-        if (
-          body.interventionTypeId !== undefined &&
-          body.interventionTypeId !== existing.interventionTypeId
-        ) {
-          await tx.interventionType.findUniqueOrThrow({
-            where: { id: body.interventionTypeId },
-            select: { id: true },
-          });
         }
 
         // Build the partial update payload. Override flags / reason /
