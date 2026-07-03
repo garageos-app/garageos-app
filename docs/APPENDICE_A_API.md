@@ -317,6 +317,8 @@ Authorization: Bearer <officine_user_jwt>
 
 > **Nota (PR-4, checklist redesign):** `title` è stato rimosso dal body e dalla risposta (BR-308). `checklistItemIds` (array non vuoto di UUID di `intervention_checklist_items` appartenenti a `interventionTypeId`) lo sostituisce — vedi BR-300/301/302/303.
 
+> **Nota (descrizione opzionale):** `description` è **facoltativo** (max 5000 char). Se omesso o vuoto viene persistito come stringa vuota `""` (la colonna DB è NOT NULL). In PATCH, `description: ""` azzera la descrizione; ometterlo la lascia invariata.
+
 #### Response `201 Created`
 
 ```jsonc

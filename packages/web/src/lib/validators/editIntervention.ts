@@ -32,7 +32,7 @@ export { PartReplacedSchema };
 // there is no "clear" semantics to mirror here.
 export const EditInterventionFormSchema = z.object({
   interventionTypeId: z.uuid().optional(),
-  description: z.string().min(1).max(5000).optional(),
+  description: z.string().max(5000).optional(),
   partsReplaced: z.array(PartReplacedSchema).optional(),
   internalNotes: z.string().max(5000).nullable().optional(),
   reason: z.string().max(2000).optional(),

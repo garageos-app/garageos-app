@@ -20,11 +20,11 @@ describe('EditInterventionFormSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects description with zero characters when provided', () => {
+  it('accepts empty description (clears to empty)', () => {
     const result = EditInterventionFormSchema.safeParse({
       description: '',
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it('accepts null for the nullable optional internalNotes field', () => {
