@@ -1,7 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 
 import { businessError } from '../../lib/business-error.js';
-import { isWikiWindowOpen, normalizePartsReplaced } from '../../lib/intervention-shared.js';
+import {
+  isWikiWindowOpen,
+  normalizePartsReplaced,
+  serializeChecklistItems,
+} from '../../lib/intervention-shared.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
@@ -25,14 +29,23 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 //
 // wiki_window_open is server-computed (BR-062 composite predicate with
 // time component — see feedback_compute_composite_br_predicates_server_side.md).
-
+//
+// BR-308: interventions no longer carry a free-text `title` — the read DTO
+// drops it entirely (no input, no persistence beyond the legacy column, no
+// exposure here). The heading shown to the user is the intervention type's
+// name (see `type.name_it` below); `PrivateIntervention.customType` is an
+// unrelated, still-intact concept (D9). Checklist items replace it as the
+// itemized body of the record and are read straight from
+// `checklistSelections` (label_snapshot/sort_order_snapshot) — a frozen
+// snapshot, never a join on the global catalog — so a later rename or
+// deletion of the catalog item (BR-303/D8) never changes what a past
+// intervention displays.
 const interventionDetailSelect = {
   id: true,
   tenantId: true,
   status: true,
   interventionDate: true,
   odometerKm: true,
-  title: true,
   description: true,
   internalNotes: true,
   partsReplaced: true,
@@ -47,7 +60,11 @@ const interventionDetailSelect = {
     select: { id: true, garageCode: true, plate: true, make: true, model: true },
   },
   user: { select: { id: true, firstName: true, lastName: true } },
-} as const;
+  checklistSelections: {
+    select: { labelSnapshot: true, sortOrderSnapshot: true },
+    orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
+  },
+};
 
 const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
   app.get(
@@ -89,12 +106,16 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
           created_at: row.createdAt.toISOString(),
           cancelled_at: row.cancelledAt?.toISOString() ?? null,
           cancelled_reason: row.cancelledReason,
-          title: row.title,
           description: row.description,
           // BR-153: reserved notes are hidden from non-owning tenants.
           internal_notes: isOwner ? row.internalNotes : null,
           viewer_is_owner: isOwner,
           parts_replaced: normalizePartsReplaced(row.partsReplaced),
+          // BR-308 / BR-303: checklist items are part of the shared
+          // maintenance logbook (like parts_replaced) — visible cross-tenant,
+          // NOT gated by isOwner. Read from the frozen snapshot, not the
+          // live catalog (see comment on interventionDetailSelect above).
+          checklist_items: serializeChecklistItems(row.checklistSelections),
           type: {
             id: row.interventionType.id,
             code: row.interventionType.code,

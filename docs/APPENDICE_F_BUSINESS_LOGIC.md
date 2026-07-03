@@ -1285,7 +1285,20 @@ Il `code` di una voce checklist (`intervention_checklist_items.code`) deve esser
 Ogni scrittura genera una riga `audit_logs` (`checklist_item_created|updated|deleted`, `entityType:'intervention_checklist_item'`, `actorType:'system'`, `metadata.actorCognitoSub`) nella stessa transazione, per rollback atomico in caso di errore successivo.
 
 ### BR-308 — Titolo rimosso
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+L'intervento **non ha più un titolo libero**: `title` non è più un campo di input, non è più esposto in nessun DTO di scrittura (`POST`/`PATCH`, Task 3/4) né nel dettaglio officina in lettura (`GET /v1/interventions/:id`, Task 5). L'intestazione mostrata all'utente è il **nome del tipo di intervento** (`type.name_it`, es. "Intervento Meccanico"), non più un testo libero inserito al momento della creazione. Le voci checklist (BR-300/303) sostituiscono il titolo come corpo puntuale del record.
+
+`PrivateIntervention.customType` (interventi B2C fuori officina) è un concetto **diverso e non toccato** da questa regola (Deviation #9): resta un campo libero perché lì non esiste un catalogo tipizzato a cui ancorare l'intestazione.
+
+**Enforcement:**
+- `interventions-post.ts` / `interventions-update.ts` (Task 3/4): gli schemi Zod di richiesta non accettano più `title`; le risposte non lo restituiscono.
+- `interventions-detail.ts` (Task 5): `interventionDetailSelect` non seleziona più `title`; la risposta non ha la chiave `title`.
+- La colonna `title` **resta a DB** (`intervention.title String?`) finché tutti i lettori residui non l'hanno abbandonata: il PDF (PR-6) e le letture lato mobile/B2C (PR-7) leggono ancora `title` al momento di questo PR. Il `DROP COLUMN` è uno **step di contratto successivo**, non contestuale a questo PR — rimuovere la colonna ora romperebbe quei lettori (pattern expand → migrate → contract, vedi `APPENDICE_B_DATABASE.md` §9.7).
+
+**Endpoint coperti:**
+- `POST /v1/vehicles/:id/interventions` — nessun `title` in input né in risposta
+- `PATCH /v1/interventions/:id` — nessun `title` in input né in risposta
+- `GET /v1/interventions/:id` — nessun `title` in risposta; `checklist_items: [{ label }]` letto dallo snapshot (BR-303)
 
 ---
 

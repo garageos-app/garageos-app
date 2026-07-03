@@ -1,4 +1,6 @@
-﻿import type { FastifyInstance } from 'fastify';
+﻿import { randomUUID } from 'node:crypto';
+
+import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
@@ -16,6 +18,59 @@ import { signTestToken } from '../helpers/jwt.js';
 // Unique IP per rate-limit bucket isolation
 // (lesson feedback_integration_test_rate_limit_isolation.md).
 const TEST_IP = '10.30.40.1';
+
+function uniqueCode(prefix: string): string {
+  return `${prefix}_${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
+// Direct pgAdmin insert for a checklist item fixture — bypasses RLS
+// (fixture setup only). Mirrors interventions-post.test.ts /
+// interventions-patch.test.ts.
+async function seedChecklistItem(params: {
+  interventionTypeId: string;
+  nameIt?: string;
+  sortOrder?: number;
+}): Promise<{ id: string; nameIt: string }> {
+  const { interventionTypeId, nameIt = `Test item ${uniqueCode('IITM')}`, sortOrder = 0 } = params;
+  const code = uniqueCode('IITM');
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_checklist_items
+       (id, intervention_type_id, code, name_it, sort_order, active, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, true, NOW(), NOW())
+     RETURNING id`,
+    [interventionTypeId, code, nameIt, sortOrder],
+  );
+  return { id: rows[0]!.id, nameIt };
+}
+
+// Direct pgAdmin insert of an intervention_checklist_selections row —
+// bypasses the create/patch routes entirely so the detail test can seed a
+// selection with a controlled label_snapshot/sort_order_snapshot regardless
+// of the checklist item's own current catalog values (BR-303 snapshot
+// semantics — mirrors interventions-patch.test.ts `seedSelection`).
+async function seedSelection(params: {
+  interventionId: string;
+  tenantId: string;
+  checklistItemId: string;
+  labelSnapshot: string;
+  sortOrderSnapshot?: number | null;
+}): Promise<{ id: string }> {
+  const {
+    interventionId,
+    tenantId,
+    checklistItemId,
+    labelSnapshot,
+    sortOrderSnapshot = 0,
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_checklist_selections
+       (id, intervention_id, tenant_id, checklist_item_id, label_snapshot, sort_order_snapshot, created_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())
+     RETURNING id`,
+    [interventionId, tenantId, checklistItemId, labelSnapshot, sortOrderSnapshot],
+  );
+  return { id: rows[0]!.id };
+}
 
 describe('GET /v1/interventions/:id (officina)', () => {
   let app: FastifyInstance;
@@ -69,7 +124,6 @@ describe('GET /v1/interventions/:id (officina)', () => {
       interventionTypeId: type.id,
       interventionDate: '2026-04-15',
       odometerKm: 50000,
-      title: 'Tagliando completo',
       description: 'Cambio olio e filtri completi',
       internalNotes: 'Note interne di test',
       partsReplaced: [
@@ -109,7 +163,8 @@ describe('GET /v1/interventions/:id (officina)', () => {
     expect(typeof body.created_at).toBe('string');
     expect(body.cancelled_at).toBeNull();
     expect(body.cancelled_reason).toBeNull();
-    expect(body.title).toBe('Tagliando completo');
+    // BR-308: title is gone from the read DTO entirely.
+    expect(body).not.toHaveProperty('title');
     expect(body.description).toBe('Cambio olio e filtri completi');
     expect(body.internal_notes).toBe('Note interne di test');
 
@@ -122,6 +177,9 @@ describe('GET /v1/interventions/:id (officina)', () => {
       quantity: 5,
       notes: null,
     });
+
+    // BR-308: no checklist selections were seeded for this intervention.
+    expect(body.checklist_items).toEqual([]);
 
     // Nested relation: type
     const type = body.type as Record<string, unknown>;
@@ -162,14 +220,24 @@ describe('GET /v1/interventions/:id (officina)', () => {
   //   - internal_notes → null  (BR-153 "note riservate di altri tenant")
   //   - created_by     → null  (mechanic identity gated by BR-151)
   //   - viewer_is_owner → false (drives read-only UI on the client)
-  // Public shop-record fields (title, description, parts, type, tenant,
-  // vehicle) stay visible.
+  // Public shop-record fields (description, parts, checklist_items, type,
+  // tenant, vehicle) stay visible — checklist items are part of the shared
+  // logbook, like parts_replaced, so BR-153 redaction does NOT apply to them.
   // -----------------------------------------------------------------------
-  it('allows cross-tenant read but redacts internal_notes and created_by (BR-153)', async () => {
+  it('allows cross-tenant read but redacts internal_notes and created_by (BR-153); checklist_items stay visible', async () => {
     const { tenantId: tenantA, userId: userA } = await setupCaller('det-xA');
-    const { interventionId } = await setupIntervention({
+    const { interventionId, typeId } = await setupIntervention({
       tenantId: tenantA,
       userId: userA,
+    });
+
+    const item = await seedChecklistItem({ interventionTypeId: typeId, sortOrder: 0 });
+    await seedSelection({
+      interventionId,
+      tenantId: tenantA,
+      checklistItemId: item.id,
+      labelSnapshot: item.nameIt,
+      sortOrderSnapshot: 0,
     });
 
     // Caller is tenantB
@@ -191,11 +259,101 @@ describe('GET /v1/interventions/:id (officina)', () => {
 
     // Public shop-record fields remain visible
     expect(body.id).toBe(interventionId);
-    expect(body.title).toBe('Tagliando completo');
+    expect(body).not.toHaveProperty('title');
     expect(body.description).toBe('Cambio olio e filtri completi');
     expect(body.parts_replaced).toHaveLength(1);
+    expect(body.checklist_items).toEqual([{ label: item.nameIt }]);
     expect((body.tenant as Record<string, unknown>).id).toBe(tenantA);
     expect(typeof (body.vehicle as Record<string, unknown>).plate).toBe('string');
+  });
+
+  // -----------------------------------------------------------------------
+  // Scenario 2b: BR-308 — checklist_items exposed, ordered by
+  // sortOrderSnapshot asc, and `title` is absent from the response.
+  // Selections are inserted out of sortOrderSnapshot order to prove the
+  // response ordering comes from serializeChecklistItems / the select's
+  // orderBy, not insertion order.
+  // -----------------------------------------------------------------------
+  it('exposes checklist_items ordered by sortOrderSnapshot asc, no title key (BR-308)', async () => {
+    const { tenantId, userId, token } = await setupCaller('det-checklist-order');
+    const { interventionId, typeId } = await setupIntervention({ tenantId, userId });
+
+    const itemA = await seedChecklistItem({ interventionTypeId: typeId, sortOrder: 5 });
+    const itemB = await seedChecklistItem({ interventionTypeId: typeId, sortOrder: 9 });
+
+    // Insert the higher sortOrderSnapshot (1) first, the lower (0) second —
+    // response order must still be [0, 1], not insertion order.
+    await seedSelection({
+      interventionId,
+      tenantId,
+      checklistItemId: itemB.id,
+      labelSnapshot: itemB.nameIt,
+      sortOrderSnapshot: 1,
+    });
+    await seedSelection({
+      interventionId,
+      tenantId,
+      checklistItemId: itemA.id,
+      labelSnapshot: itemA.nameIt,
+      sortOrderSnapshot: 0,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Record<string, unknown>;
+
+    expect(body).not.toHaveProperty('title');
+    expect(body.checklist_items).toEqual([{ label: itemA.nameIt }, { label: itemB.nameIt }]);
+  });
+
+  // -----------------------------------------------------------------------
+  // Scenario 2c: BR-303/D8 — checklist item survives catalog deletion.
+  // The catalog row is deleted AFTER the intervention/selection was saved
+  // (not before — a pre-save delete would trivially pass because the
+  // selection would never reference a live catalog row in the first
+  // place). ON DELETE SET NULL fires on
+  // intervention_checklist_selections.checklist_item_id, but the detail
+  // response is read from label_snapshot, never a join on the catalog, so
+  // the item must still be visible verbatim.
+  // -----------------------------------------------------------------------
+  it('still exposes the checklist item from label_snapshot after the catalog item is deleted (BR-303/D8)', async () => {
+    const { tenantId, userId, token } = await setupCaller('det-checklist-snapshot');
+    const { interventionId, typeId } = await setupIntervention({ tenantId, userId });
+
+    const item = await seedChecklistItem({ interventionTypeId: typeId, sortOrder: 0 });
+    await seedSelection({
+      interventionId,
+      tenantId,
+      checklistItemId: item.id,
+      labelSnapshot: item.nameIt,
+      sortOrderSnapshot: 0,
+    });
+
+    // Delete the catalog row AFTER the selection exists — triggers
+    // ON DELETE SET NULL on checklist_item_id, the snapshot columns are
+    // untouched.
+    await pgAdmin.query(`DELETE FROM intervention_checklist_items WHERE id = $1`, [item.id]);
+
+    const { rows: selectionRows } = await pgAdmin.query<{ checklist_item_id: string | null }>(
+      `SELECT checklist_item_id FROM intervention_checklist_selections WHERE intervention_id = $1`,
+      [interventionId],
+    );
+    expect(selectionRows[0]!.checklist_item_id).toBeNull();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Record<string, unknown>;
+    expect(body.checklist_items).toEqual([{ label: item.nameIt }]);
   });
 
   // -----------------------------------------------------------------------

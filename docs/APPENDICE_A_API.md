@@ -1483,7 +1483,7 @@ Authorization: Bearer <tenant_user_jwt>
 **Feature:** F-OFF-301
 **Auth:** Tenant User (officina pool — tutti i ruoli: `super_admin`, `admin`, `mechanic`, `receptionist`)
 **Rate limit:** standard utente
-**Business rules:** BR-062, BR-064, BR-065, BR-066, BR-128, BR-130, BR-150, BR-151, BR-153
+**Business rules:** BR-062, BR-064, BR-065, BR-066, BR-128, BR-130, BR-150, BR-151, BR-153, BR-303, BR-308
 
 #### Descrizione
 
@@ -1517,12 +1517,15 @@ Authorization: Bearer <officina_user_jwt>
   "created_at": "2026-04-21T14:32:05.000Z",
   "cancelled_at": null,                    // ISO 8601 UTC | null
   "cancelled_reason": null,                // string | null (BR-130)
-  "title": "Tagliando completo",
   "description": "Sostituzione olio motore...",
   "internal_notes": "Cliente segnala rumore...",  // string | null — null se il viewer non è il tenant proprietario (BR-153)
   "viewer_is_owner": true,                 // true se il tenant chiamante ha creato l'intervento; false = vista cross-tenant sola lettura
   "parts_replaced": [                      // array; empty array if none
     { "name": "Olio motore Selenia 5W30", "code": "SEL-5W30-4L", "quantity": 4, "notes": "Litri" }
+  ],
+  "checklist_items": [                     // BR-303/BR-308: dallo snapshot congelato, mai da un join sul catalogo — visibile cross-tenant come parts_replaced (non redatto da BR-153)
+    { "label": "Sostituzione olio motore" },
+    { "label": "Controllo filtri" }
   ],
   "type": {
     "id": "01HSYS...",
@@ -1561,11 +1564,11 @@ Authorization: Bearer <officina_user_jwt>
 | `created_at` | string (ISO 8601) | no | |
 | `cancelled_at` | string (ISO 8601) | sì | Non null solo se `status='cancelled'` |
 | `cancelled_reason` | string | sì | Motivazione annullamento (BR-130) |
-| `title` | string | no | |
 | `description` | string | sì | |
 | `internal_notes` | string | sì | `null` se il viewer non è il tenant proprietario (BR-153 — note riservate nascoste cross-tenant) |
 | `viewer_is_owner` | boolean | no | `true` se il tenant chiamante è proprietario dell'intervento. `false` = vista cross-tenant in sola lettura (edit/dispute non disponibili) |
 | `parts_replaced` | array | no | Array vuoto se nessun ricambio |
+| `checklist_items` | array di `{ label }` | no | Array vuoto se nessuna voce (non dovrebbe accadere in pratica — BR-300 impone ≥1 voce in creazione). Letto dallo snapshot congelato (`label_snapshot`/`sort_order_snapshot`, BR-303), **non** da un join live sul catalogo — sopravvive a rinomina/eliminazione della voce (BR-303/D8). Visibile cross-tenant come `parts_replaced`, **non** soggetto alla redazione BR-153. Ordinato per `sort_order_snapshot asc` (null in coda), poi `label asc`. |
 | `type` | object | no | Tipo intervento (`id`, `code`, `name_it`) |
 | `tenant` | object | no | Tenant owner (`id`, `business_name`) |
 | `vehicle` | object | no | Veicolo target |
@@ -1586,6 +1589,8 @@ Authorization: Bearer <officina_user_jwt>
 - **Redazione per non proprietari**: quando il viewer non è il tenant proprietario, `internal_notes` e `created_by` sono restituiti `null` (BR-153 note riservate; BR-151 identità meccanico). Tutti gli altri campi restano visibili. `viewer_is_owner=false` segnala al client la modalità sola lettura: PATCH/cancel/dispute restano comunque bloccati lato server al solo tenant proprietario.
 - **`internal_notes` visibility**: esposto al solo Tenant User proprietario (BR-153). Il pool clienti non ha accesso a questo endpoint (403).
 - **`created_by` null**: quando l'utente che ha creato l'intervento è stato rimosso (soft-delete con `SetNull` sulla FK `userId`) **oppure** quando il viewer è un tenant non proprietario (BR-151). Il client deve gestire il caso null nella UI.
+- **BR-308 — `title` rimosso**: l'intervento non ha più un titolo libero; questa response non lo espone (correzione di una precedente inconsistenza di questa sezione, che documentava ancora `title`). L'intestazione mostrata all'utente è `type.name_it`. La colonna DB `title` resta (lettori residui: PDF PR-6, mobile PR-7) ma non è più letta da questo endpoint.
+- **BR-303 — snapshot checklist**: `checklist_items` è popolato dalla tabella `intervention_checklist_selections`, scritta al momento della creazione/modifica (BR-300..303) e mai ri-derivata dal catalogo `intervention_checklist_items` a lettura.
 
 ---
 
