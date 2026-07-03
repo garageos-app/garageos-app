@@ -78,7 +78,7 @@ describe('useUpdateIntervention', () => {
     const { result } = renderHook(() => useUpdateIntervention('v-1'), { wrapper });
 
     await expect(
-      result.current.mutateAsync({ id: 'i-1', body: { title: 'x' } }),
+      result.current.mutateAsync({ id: 'i-1', body: { description: 'x' } }),
     ).rejects.toMatchObject({ status: 422, code: 'intervention.modification.disputed' });
   });
 
@@ -91,7 +91,7 @@ describe('useUpdateIntervention', () => {
     const { result } = renderHook(() => useUpdateIntervention('v-1'), { wrapper });
 
     await expect(
-      result.current.mutateAsync({ id: 'i-1', body: { title: 'x' } }),
+      result.current.mutateAsync({ id: 'i-1', body: { description: 'x' } }),
     ).rejects.toMatchObject({ status: 422, code: 'intervention.modification.cancelled' });
   });
 
