@@ -1208,14 +1208,28 @@ Numerazione riservata per l'arco di redesign checklist interventi/tipi, per evit
 **RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
 
 ### BR-304 — Opt-out visibilità
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Un tipo di intervento globale o una voce checklist globale sono **visibili a tutti i tenant per default**. Non esiste un concetto di opt-in per-tenant: la visibilità si "spegne" solo tramite una riga esplicita nelle tabelle di esclusione `tenant_intervention_type_exclusions` (`tenantId`, `interventionTypeId`) / `tenant_checklist_item_exclusions` (`tenantId`, `checklistItemId`). Il flag `visible` esposto al platform admin è quindi sempre `!escluso` (negazione della presenza dell'id nel set di esclusione del tenant), mai un valore materializzato in una colonna propria.
+
+**Enforcement:**
+- **Storage:** le due tabelle join sono la sola fonte di verità per le esclusioni — nessuna colonna `visible`/`hidden` su `intervention_types` o `intervention_checklist_items` (quelle colonne restano globali: `active` governa l'intero catalogo, non la visibilità per-tenant).
+- **Auth layer:** gestione **admin-only** tramite `GET`/`PUT /v1/admin/tenants/:tenantId/catalog-visibility` — `requireAuth → requirePlatformAdminsPool`, nessun endpoint officina scrive su queste tabelle (le officine restano sola-lettura, vedi BR-306).
+- **RLS layer:** le policy `type_excl_write` / `item_excl_write` sono `FOR ALL USING(is_admin_role())` — le scritture passano solo con `withContext({ role: 'admin' })`; la lettura (`type_excl_read`/`item_excl_read`) è invece permissiva per il tenant proprietario (`is_admin_role() OR tenant_id = current_tenant_id()`), a supporto del futuro endpoint officina di sola lettura.
+- **Replace atomico:** `PUT /v1/admin/tenants/:tenantId/catalog-visibility` sostituisce l'intero set di esclusioni del tenant in un'unica transazione (`deleteMany` + `createMany` per entrambe le tabelle), non un merge incrementale — il body invia sempre l'elenco completo desiderato.
+- **invalid_ref:** ogni id in `excludedTypeIds`/`excludedItemIds` deve referenziare un tipo/voce **globale** esistente (`tenantId: null` per i tipi, `interventionType.tenantId: null` per le voci); altrimenti `422 admin.catalog_visibility.invalid_ref` e nessuna scrittura (rollback dell'intera transazione, incluse le esclusioni pre-esistenti).
+
+**Endpoint coperti:**
+- `GET /v1/admin/tenants/:tenantId/catalog-visibility` — catalogo attivo (tipi `active:true` con voci `active:true`, ordinati `nameIt ASC` / `sortOrder ASC, nameIt ASC`) annotato con `visible` per il tenant indicato
+- `PUT /v1/admin/tenants/:tenantId/catalog-visibility` — replace atomico del set di esclusioni (`{ excludedTypeIds, excludedItemIds }`), risposta echo dei due array deduplicati
+
+Ogni scrittura genera una riga `audit_logs` (`catalog_visibility_updated`, `entityType:'tenant'`, `actorType:'system'`, `metadata: { actorCognitoSub, excludedTypes, excludedItems }`) nella stessa transazione del replace, per rollback atomico in caso di errore successivo.
 
 ### BR-305 — Selezionabilità tipo (≥1 voce visibile)
 **RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
 
 ### BR-306 — Governance catalogo (admin-only write)
 
-Il catalogo globale (`intervention_types` con `tenant_id IS NULL` e `intervention_checklist_items` collegati) è scrivibile **esclusivamente** dal platform admin. Nessun endpoint officina espone create/update/delete su questo catalogo — le officine possono solo leggerlo (`GET /v1/intervention-types`) ed escluderne singole voci per il proprio tenant (`tenant_intervention_type_exclusions` / `tenant_checklist_item_exclusions`, arco futuro).
+Il catalogo globale (`intervention_types` con `tenant_id IS NULL` e `intervention_checklist_items` collegati) è scrivibile **esclusivamente** dal platform admin. Nessun endpoint officina espone create/update/delete su questo catalogo — le officine possono solo leggerlo (`GET /v1/intervention-types`); la governance della visibilità per-tenant (`tenant_intervention_type_exclusions` / `tenant_checklist_item_exclusions`, BR-304) è anch'essa admin-only.
 
 **Enforcement:**
 - **Auth layer:** `requireAuth → requirePlatformAdminsPool` su tutte le route `/v1/admin/intervention-types*` — nessun claim tenant è richiesto o accettato.
@@ -1227,6 +1241,8 @@ Il catalogo globale (`intervention_types` con `tenant_id IS NULL` e `interventio
 - `POST /v1/admin/intervention-types` — crea tipo globale
 - `PATCH /v1/admin/intervention-types/:id` — modifica tipo globale (mai `code`/`category`)
 - `DELETE /v1/admin/intervention-types/:id` — hard delete (409 `admin.intervention_type.in_use` se referenziato da un `intervention` o da una `deadline` (`Deadline.interventionType`), entrambe FK `onDelete: Restrict`)
+- `GET /v1/admin/tenants/:tenantId/catalog-visibility` — visibilità per-tenant del catalogo (BR-304)
+- `PUT /v1/admin/tenants/:tenantId/catalog-visibility` — replace atomico delle esclusioni per-tenant (BR-304)
 
 Ogni scrittura genera una riga `audit_logs` (`intervention_type_created|updated|deleted`, `actorType:'system'`, `metadata.actorCognitoSub`) nella stessa transazione, per rollback atomico in caso di errore successivo.
 

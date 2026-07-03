@@ -2423,6 +2423,8 @@ uploads and S3" — vedi §2.7 e
 | POST | `/v1/admin/intervention-types/:id/checklist-items` | PR-2 (BR-307) | Platform Admin | **[DETTAGLIATO §3.12.19]** Crea voce checklist sotto il tipo |
 | PATCH | `/v1/admin/checklist-items/:id` | PR-2 (BR-307) | Platform Admin | **[DETTAGLIATO §3.12.20]** Modifica voce checklist (mai `code`/tipo) |
 | DELETE | `/v1/admin/checklist-items/:id` | PR-2 (BR-307) | Platform Admin | **[DETTAGLIATO §3.12.21]** Elimina voce checklist (hard delete, selezioni storiche preservate) |
+| GET | `/v1/admin/tenants/:tenantId/catalog-visibility` | PR-3 (BR-304) | Platform Admin | **[DETTAGLIATO §3.12.22]** Visibilità catalogo (tipi + voci) per un tenant |
+| PUT | `/v1/admin/tenants/:tenantId/catalog-visibility` | PR-3 (BR-304) | Platform Admin | **[DETTAGLIATO §3.12.23]** Replace atomico delle esclusioni per-tenant |
 | GET | `/admin/tenants` | F-ADM-001 | Admin | Lista tutti i tenant |
 | POST | `/admin/tenants/:id/suspend` | F-ADM-002 | Admin | Sospendi tenant |
 | POST | `/admin/tenants/:id/activate` | F-ADM-002 | Admin | Riattiva tenant |
@@ -3407,6 +3409,103 @@ Anti-enumerazione: UUID non valido nel formato e ID sconosciuto restituiscono en
 - `401` — token mancante o non valido (`requireAuth`)
 - `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
 - `404 admin.checklist_item.not_found` — UUID non valido o voce inesistente (anti-enum)
+
+#### 3.12.22 `GET /v1/admin/tenants/:tenantId/catalog-visibility` — Visibilità catalogo per tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno (solo lettura)
+**Shipped:** PR-3 (BR-304)
+
+Restituisce il catalogo globale **attivo** (tipi `active:true` con voci `active:true`) annotato con la visibilità effettiva per il tenant indicato. BR-304 (opt-out): `visible` è la negazione della presenza dell'id nelle tabelle di esclusione del tenant (`tenant_intervention_type_exclusions` / `tenant_checklist_item_exclusions`) — per default tutto è `visible: true`. Ordinamento: tipi `nameIt ASC`, voci `sortOrder ASC, nameIt ASC`.
+
+Anti-enumerazione: UUID non valido nel formato e tenant inesistente restituiscono entrambi `404 admin.catalog_visibility.tenant_not_found`.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`. Nessun contesto tenant (`withContext({ role: 'admin' })` diretto).
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `tenantId` | `string` (UUID) | ID del tenant |
+
+**Response `200 OK`:**
+
+```json
+{
+  "data": {
+    "types": [
+      {
+        "id": "uuid",
+        "code": "MECCANICO",
+        "nameIt": "Intervento Meccanico",
+        "visible": true,
+        "checklistItems": [
+          { "id": "uuid", "code": "OLIO", "nameIt": "Cambio olio", "sortOrder": 0, "visible": false }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Errori:**
+
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 admin.catalog_visibility.tenant_not_found` — UUID non valido o tenant inesistente (anti-enum)
+
+#### 3.12.23 `PUT /v1/admin/tenants/:tenantId/catalog-visibility` — Replace esclusioni per tenant
+
+**Auth:** Platform Admin (pool Cognito `platform-admins`)
+**Rate limit:** nessuno
+**Shipped:** PR-3 (BR-304)
+
+Sostituisce **atomicamente** l'intero set di esclusioni del tenant (`deleteMany` + `createMany` per entrambe le tabelle, nella stessa transazione dell'existence-check, del pre-check `invalid_ref` e della riga di audit). Il body invia sempre l'elenco completo desiderato — non è un merge incrementale.
+
+Ogni id in `excludedTypeIds`/`excludedItemIds` deve referenziare un tipo/voce **globale** esistente; in caso contrario nessuna scrittura avviene (rollback dell'intera transazione, incluse le esclusioni pre-esistenti) e la risposta è `422 admin.catalog_visibility.invalid_ref`.
+
+Anti-enumerazione: UUID non valido nel formato e tenant inesistente restituiscono entrambi `404 admin.catalog_visibility.tenant_not_found`.
+
+**Chain preHandler:** `requireAuth` → `requirePlatformAdminsPool`.
+
+**Parametri path:**
+
+| Param | Tipo | Note |
+|---|---|---|
+| `tenantId` | `string` (UUID) | ID del tenant |
+
+**Request body** (`.strict()`, entrambi gli array obbligatori — possono essere vuoti):
+
+```json
+{
+  "excludedTypeIds": ["uuid-tipo-1"],
+  "excludedItemIds": ["uuid-voce-1", "uuid-voce-2"]
+}
+```
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `excludedTypeIds` | `string[]` (UUID) | **Obbligatorio** (può essere `[]`). Deduplicato prima del replace |
+| `excludedItemIds` | `string[]` (UUID) | **Obbligatorio** (può essere `[]`). Deduplicato prima del replace |
+
+**Response `200 OK`:** echo degli array deduplicati effettivamente applicati:
+
+```json
+{
+  "excludedTypeIds": ["uuid-tipo-1"],
+  "excludedItemIds": ["uuid-voce-1", "uuid-voce-2"]
+}
+```
+
+**Errori:**
+
+- `400 VALIDATION_ERROR` — validazione fallita (campo sconosciuto, UUID malformato negli array, campo mancante)
+- `401` — token mancante o non valido (`requireAuth`)
+- `403 FORBIDDEN` — JWT da pool non autorizzato (`requirePlatformAdminsPool`)
+- `404 admin.catalog_visibility.tenant_not_found` — UUID non valido o tenant inesistente (anti-enum)
+- `422 admin.catalog_visibility.invalid_ref` — un id in `excludedTypeIds`/`excludedItemIds` non referenzia un tipo/voce globale esistente
+
+Ogni scrittura genera una riga `audit_logs` (`catalog_visibility_updated`, `entityType:'tenant'`, `actorType:'system'`, `metadata: { actorCognitoSub, excludedTypes, excludedItems }`) nella stessa transazione del replace.
 
 ### 3.13 Public
 
