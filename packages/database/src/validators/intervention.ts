@@ -16,8 +16,11 @@ export const CreateInterventionSchema = z.object({
   interventionTypeId: z.uuid(),
   interventionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   odometerKm: z.number().int().min(0),
-  title: z.string().max(200).optional(),
   description: z.string().min(1).max(5000),
+  // BR-300 — at least one checklist item is required, but that cardinality
+  // check is handler-side (depends on the catalog snapshot at request time);
+  // this layer only validates shape, so an empty array parses successfully.
+  checklistItemIds: z.array(z.uuid()),
   partsReplaced: z.array(PartReplacedSchema).default([]),
   internalNotes: z.string().max(5000).optional(),
   createDeadline: z
@@ -46,23 +49,26 @@ export const CreateDisputeSchema = z.object({
 // BR-064 — reason is request-level metadata for the revision row created
 //          when the wiki window is closed; required iff isLocked, validated
 //          handler-side (not in Zod, depends on runtime state).
+// BR-308 — checklistItemIds is editable post-creation (replaces the full
+//          set); the "at least 1 remains" cardinality check is handler-side,
+//          same rationale as CreateInterventionSchema above.
 export const UpdateInterventionSchema = z
   .object({
     interventionTypeId: z.uuid().optional(),
-    title: z.string().max(200).nullable().optional(),
     description: z.string().min(1).max(5000).optional(),
     partsReplaced: z.array(PartReplacedSchema).optional(),
     internalNotes: z.string().max(5000).nullable().optional(),
+    checklistItemIds: z.array(z.uuid()).optional(),
     reason: z.string().min(10).max(2000).optional(),
   })
   .strict()
   .refine(
     (v) =>
       v.interventionTypeId !== undefined ||
-      v.title !== undefined ||
       v.description !== undefined ||
       v.partsReplaced !== undefined ||
-      v.internalNotes !== undefined,
+      v.internalNotes !== undefined ||
+      v.checklistItemIds !== undefined,
     { message: 'Almeno un campo modificabile deve essere presente', path: [] },
   );
 

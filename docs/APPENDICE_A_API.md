@@ -221,10 +221,15 @@ Altri campi nel root:
 
 **Feature:** F-OFF-302
 **Auth:** Officine pool (mechanic / super_admin)
+**Shipped:** PR-4 (BR-304, BR-305) — riscrive la versione PR-demo-3a
 
 #### Descrizione
 
-Ritorna l'unione di tipi system-wide (12 righe predefinite, `tenant_id IS NULL`) e tipi custom dell'officina autenticata. Usato dal form crea intervento per popolare il dropdown "Tipo intervento".
+Ritorna i tipi di intervento del catalogo globale (`intervention_types` con `tenant_id IS NULL`) **visibili per il tenant chiamante** dopo l'applicazione delle esclusioni per-tenant gestite dal platform admin (`GET/PUT /v1/admin/tenants/:tenantId/catalog-visibility`, BR-304), ciascuno con le sue voci checklist visibili. Usato dal form crea intervento per popolare il dropdown "Tipo intervento" e le checkbox della checklist.
+
+Il catalogo non prevede più tipi custom per-tenant: l'unica scrittura possibile sul catalogo globale è quella del platform admin (`/v1/admin/intervention-types*`, BR-306); le officine possono solo leggerlo.
+
+Per BR-305 (selezionabilità tipo), un tipo compare in risposta solo se, dopo le esclusioni, ha **almeno una voce checklist attiva e non esclusa**: se l'esclusione svuota le voci residue, il tipo è omesso interamente dalla risposta (non compare "vuoto").
 
 #### Request
 
@@ -249,15 +254,20 @@ Nessun body, nessun query param.
       "suggestsDeadline": true,
       "defaultDeadlineMonths": 12,
       "defaultDeadlineKm": 15000,
-      "custom": false
+      "custom": false,
+      "checklistItems": [
+        { "id": "01HITM...", "code": "OLIO", "nameIt": "Cambio olio", "sortOrder": 0 },
+        { "id": "01HITM...", "code": "FILTRO", "nameIt": "Cambio filtro olio", "sortOrder": 1 }
+      ]
     }
-    // … altri tipi system + tenant custom
+    // … altri tipi visibili per il tenant
   ]
 }
 ```
 
-- `custom: true` per righe del tenant, `custom: false` per system rows
-- Ordinamento server-side: `nameIt ASC`
+- `custom`: campo mantenuto per retro-compatibilità di forma — sempre `false` (non esistono più tipi tenant-owned).
+- Ordinamento server-side: tipi `nameIt ASC`; `checklistItems` per `sortOrder ASC, nameIt ASC`.
+- `checklistItems` contiene solo le voci attive e non escluse per il tenant chiamante (BR-304/BR-305).
 
 #### Errori
 
@@ -289,7 +299,7 @@ Authorization: Bearer <officine_user_jwt>
   "interventionTypeId": "01HSYS...",
   "interventionDate": "2026-04-21",
   "odometerKm": 45000,
-  "title": "Tagliando completo",
+  "checklistItemIds": ["01HITM...", "01HITM..."],
   "description": "Sostituzione olio motore 5W30, filtro olio, filtro aria, filtro abitacolo. Controllo livelli e usura pastiglie freni.",
   "partsReplaced": [
     { "name": "Olio motore Selenia 5W30", "code": "SEL-5W30-4L", "quantity": 4, "notes": "Litri" },
@@ -304,6 +314,8 @@ Authorization: Bearer <officine_user_jwt>
   "forceKmDecrease": false
 }
 ```
+
+> **Nota (PR-4, checklist redesign):** `title` è stato rimosso dal body e dalla risposta (BR-308). `checklistItemIds` (array non vuoto di UUID di `intervention_checklist_items` appartenenti a `interventionTypeId`) lo sostituisce — vedi BR-300/301/302/303.
 
 #### Response `201 Created`
 
@@ -322,14 +334,17 @@ Authorization: Bearer <officine_user_jwt>
     },
     "interventionDate": "2026-04-21",
     "odometerKm": 45000,
-    "title": "Tagliando completo",
     "description": "...",
     "partsReplaced": [...],
     "internalNotes": "...",
     "status": "active",
     "kmAnomaly": false,
     "wikiLockedAt": null,
-    "createdAt": "2026-04-21T14:32:05Z"
+    "createdAt": "2026-04-21T14:32:05Z",
+    "checklistItems": [
+      { "label": "Sostituzione olio motore" },
+      { "label": "Controllo filtri" }
+    ]
   },
   "deadline": {
     "id": "01HKXR...",
@@ -342,6 +357,8 @@ Authorization: Bearer <officine_user_jwt>
 }
 ```
 
+`checklistItems` è derivato dallo snapshot congelato al salvataggio (`label_snapshot`/`sort_order_snapshot`, BR-303), ordinato per `sortOrderSnapshot asc` (null in coda) poi `label asc` — non da un join live sul catalogo corrente.
+
 #### Errori specifici
 
 | Status | Codice | Scenario |
@@ -349,11 +366,13 @@ Authorization: Bearer <officine_user_jwt>
 | 400 | `VALIDATION_ERROR` | Body Zod validation fail (errors[] dettagliato) |
 | 400 | `intervention.creation.date_future` | Data futura non consentita (BR-069) |
 | 400 | `intervention.creation.date_before_registration` | Data precedente all'immatricolazione del veicolo (BR-070) |
+| 400 | `intervention.creation.checklist_required` | `checklistItemIds` vuoto (BR-300) |
 | 401 | `UNAUTHORIZED` | Token assente o invalido |
 | 403 | `FORBIDDEN` | Token clienti pool su route officine |
 | 404 | `NOT_FOUND` | Veicolo o tipo intervento non trovato/non accessibile |
 | 409 | `intervention.creation.odometer_decrease_warning` | Km inferiori al massimo storico (BR-068) — recoverable: re-POST con `forceKmDecrease=true` |
 | 422 | `vehicle.modification.archived` | Veicolo in stato `archived` (BR-061) |
+| 422 | `intervention.creation.checklist_item_invalid` | Voce checklist non appartenente al tipo, inattiva, o esclusa per il tenant (BR-301/BR-302) |
 
 ---
 
@@ -1464,7 +1483,7 @@ Authorization: Bearer <tenant_user_jwt>
 **Feature:** F-OFF-301
 **Auth:** Tenant User (officina pool — tutti i ruoli: `super_admin`, `admin`, `mechanic`, `receptionist`)
 **Rate limit:** standard utente
-**Business rules:** BR-062, BR-064, BR-065, BR-066, BR-128, BR-130, BR-150, BR-151, BR-153
+**Business rules:** BR-062, BR-064, BR-065, BR-066, BR-128, BR-130, BR-150, BR-151, BR-153, BR-303, BR-308
 
 #### Descrizione
 
@@ -1498,12 +1517,15 @@ Authorization: Bearer <officina_user_jwt>
   "created_at": "2026-04-21T14:32:05.000Z",
   "cancelled_at": null,                    // ISO 8601 UTC | null
   "cancelled_reason": null,                // string | null (BR-130)
-  "title": "Tagliando completo",
   "description": "Sostituzione olio motore...",
   "internal_notes": "Cliente segnala rumore...",  // string | null — null se il viewer non è il tenant proprietario (BR-153)
   "viewer_is_owner": true,                 // true se il tenant chiamante ha creato l'intervento; false = vista cross-tenant sola lettura
   "parts_replaced": [                      // array; empty array if none
     { "name": "Olio motore Selenia 5W30", "code": "SEL-5W30-4L", "quantity": 4, "notes": "Litri" }
+  ],
+  "checklist_items": [                     // BR-303/BR-308: dallo snapshot congelato, mai da un join sul catalogo — visibile cross-tenant come parts_replaced (non redatto da BR-153)
+    { "label": "Sostituzione olio motore" },
+    { "label": "Controllo filtri" }
   ],
   "type": {
     "id": "01HSYS...",
@@ -1542,11 +1564,11 @@ Authorization: Bearer <officina_user_jwt>
 | `created_at` | string (ISO 8601) | no | |
 | `cancelled_at` | string (ISO 8601) | sì | Non null solo se `status='cancelled'` |
 | `cancelled_reason` | string | sì | Motivazione annullamento (BR-130) |
-| `title` | string | no | |
 | `description` | string | sì | |
 | `internal_notes` | string | sì | `null` se il viewer non è il tenant proprietario (BR-153 — note riservate nascoste cross-tenant) |
 | `viewer_is_owner` | boolean | no | `true` se il tenant chiamante è proprietario dell'intervento. `false` = vista cross-tenant in sola lettura (edit/dispute non disponibili) |
 | `parts_replaced` | array | no | Array vuoto se nessun ricambio |
+| `checklist_items` | array di `{ label }` | no | Array vuoto se nessuna voce (non dovrebbe accadere in pratica — BR-300 impone ≥1 voce in creazione). Letto dallo snapshot congelato (`label_snapshot`/`sort_order_snapshot`, BR-303), **non** da un join live sul catalogo — sopravvive a rinomina/eliminazione della voce (BR-303/D8). Visibile cross-tenant come `parts_replaced`, **non** soggetto alla redazione BR-153. Ordinato per `sort_order_snapshot asc` (null in coda), poi `label asc`. |
 | `type` | object | no | Tipo intervento (`id`, `code`, `name_it`) |
 | `tenant` | object | no | Tenant owner (`id`, `business_name`) |
 | `vehicle` | object | no | Veicolo target |
@@ -1567,6 +1589,82 @@ Authorization: Bearer <officina_user_jwt>
 - **Redazione per non proprietari**: quando il viewer non è il tenant proprietario, `internal_notes` e `created_by` sono restituiti `null` (BR-153 note riservate; BR-151 identità meccanico). Tutti gli altri campi restano visibili. `viewer_is_owner=false` segnala al client la modalità sola lettura: PATCH/cancel/dispute restano comunque bloccati lato server al solo tenant proprietario.
 - **`internal_notes` visibility**: esposto al solo Tenant User proprietario (BR-153). Il pool clienti non ha accesso a questo endpoint (403).
 - **`created_by` null**: quando l'utente che ha creato l'intervento è stato rimosso (soft-delete con `SetNull` sulla FK `userId`) **oppure** quando il viewer è un tenant non proprietario (BR-151). Il client deve gestire il caso null nella UI.
+- **BR-308 — `title` rimosso**: l'intervento non ha più un titolo libero; questa response non lo espone (correzione di una precedente inconsistenza di questa sezione, che documentava ancora `title`). L'intestazione mostrata all'utente è `type.name_it`. La colonna DB `title` resta (lettori residui: PDF PR-6, mobile PR-7) ma non è più letta da questo endpoint.
+- **BR-303 — snapshot checklist**: `checklist_items` è popolato dalla tabella `intervention_checklist_selections`, scritta al momento della creazione/modifica (BR-300..303) e mai ri-derivata dal catalogo `intervention_checklist_items` a lettura.
+
+---
+
+### 2.12a `PATCH /v1/interventions/:id` — Modifica intervento (F-OFF-304)
+
+**Feature:** F-OFF-304
+**Auth:** Tenant User (solo il tenant proprietario — cross-tenant → `404` RLS-as-404, come §2.12)
+**Business rules:** BR-062, BR-064, BR-065, BR-128, BR-130, BR-300, BR-301, BR-302, BR-303, BR-308 (testo completo in APPENDICE_F)
+
+#### Descrizione
+
+Modifica parziale di un intervento esistente. Body con campi tutti opzionali, almeno uno presente: `interventionTypeId`, `description`, `partsReplaced`, `internalNotes`, `checklistItemIds`. `reason` (10..2000 char) è richiesto solo quando `wiki_window_open === false` (BR-062/BR-064 — predicato in §2.12).
+
+> **Nota (PR-4, checklist redesign):** `title` non esiste più né nel body né nella risposta (BR-308, come §2.2). `checklistItemIds` lo sostituisce come 5° campo modificabile, ma con semantica diversa dagli altri 4 (scalari): non è una colonna, e non compare nel diff `revision.changes`.
+
+`checklistItemIds`, se presente, **sostituisce l'intero set di selezioni** (non è un delta) — stesse regole di validazione BR-300/301/302 del POST create (§2.2), applicate al tipo *effettivo* (`interventionTypeId` del body se presente, altrimenti quello corrente). Se il campo è assente dal body, le selezioni esistenti restano invariate.
+
+**BR-303 — retain vs. add:** le voci **ritenute** (già selezionate e riproposte in `checklistItemIds`) mantengono il `label_snapshot`/`sort_order_snapshot` **originale**, mai ri-derivato dal catalogo corrente anche se la voce è stata rinominata nel frattempo. Solo le voci **nuove** ricevono uno snapshot fresco dal catalogo. Le voci non riproposte vengono cancellate (incluse eventuali selezioni orfane con `checklist_item_id = NULL` da un hard-delete del catalogo).
+
+**Cambio tipo senza checklist:** se `interventionTypeId` cambia rispetto al valore attuale e `checklistItemIds` è assente dallo stesso body → `400 intervention.creation.checklist_required` (le vecchie selezioni potrebbero non appartenere al catalogo del nuovo tipo).
+
+#### Request (esempio)
+
+```http
+PATCH /v1/interventions/01HKXQ.../
+Content-Type: application/json
+Authorization: Bearer <officina_user_jwt>
+
+{
+  "description": "Aggiornata: sostituito anche il filtro aria",
+  "checklistItemIds": ["01HITM...", "01HITM..."],
+  "reason": "Aggiunta voce dimenticata in origine"
+}
+```
+
+#### Response `200 OK`
+
+```jsonc
+{
+  "intervention": {
+    "id": "01HKXQ...",
+    "interventionTypeId": "01HSYS...",
+    "interventionType": { "id": "01HSYS...", "code": "TAGLIANDO", "nameIt": "Tagliando" },
+    "description": "Aggiornata: sostituito anche il filtro aria",
+    "partsReplaced": [ /* ... */ ],
+    "internalNotes": "...",
+    "status": "active",
+    "kmAnomaly": false,
+    "wikiLockedAt": null,
+    "createdAt": "2026-04-21T14:32:05Z",
+    "updatedAt": "2026-05-06T09:10:00Z",
+    "checklistItems": [
+      { "label": "Sostituzione olio motore" },
+      { "label": "Filtro aria" }
+    ]
+    // niente campo `title` — rimosso (BR-308)
+  },
+  "revision": null // oppure { id, revisedAt, changes, reason } se wiki window chiusa (BR-064)
+}
+```
+
+`checklistItems` è ricostruito dal reload post-scrittura con lo stesso `serializeChecklistItems` del POST create (§2.2) — riflette sempre lo stato committato (voci ritenute con lo snapshot preservato + voci nuove), non il body della richiesta.
+
+#### Errori specifici
+
+| Status | Codice | Scenario |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Body vuoto, o campo non ammesso (`.strict()`, es. `title`) |
+| 400 | `intervention.modification.revision_reason_required` | Wiki window chiusa e `reason` assente/troppo corto (BR-064) |
+| 400 | `intervention.creation.checklist_required` | `checklistItemIds` vuoto (BR-300), oppure `interventionTypeId` cambiato senza `checklistItemIds` |
+| 404 | `NOT_FOUND` | Intervento inesistente o cross-tenant (RLS-as-404); oppure nuovo `interventionTypeId` inesistente |
+| 422 | `intervention.modification.cancelled` | Intervento annullato (BR-130) |
+| 422 | `intervention.modification.disputed` | Intervento contestato (BR-128) |
+| 422 | `intervention.creation.checklist_item_invalid` | Voce non appartenente al tipo effettivo, inattiva, o esclusa per il tenant (BR-301/BR-302) |
 
 ---
 
@@ -2327,7 +2425,7 @@ Nessun codice 4xx domain-specific nuovo.
 |---|---|---|---|---|
 | POST | `/vehicles/:id/interventions` | F-OFF-301, F-OFF-308 | Tenant User | **[DETTAGLIATO §2.2]** Crea intervento |
 | GET | `/interventions/:id` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.12]** Dettaglio intervento officina (BR-062 wiki_window_open) |
-| PATCH | `/interventions/:id` | F-OFF-304 | Tenant User | Modifica intervento (wiki rules). Vedi §2.12 per read-after-write. |
+| PATCH | `/interventions/:id` | F-OFF-304 | Tenant User | **[DETTAGLIATO §2.12a]** Modifica intervento (wiki rules, checklist replace BR-303). |
 | POST | `/interventions/:id/cancel` | F-OFF-307 | Super Admin | Annulla intervento con motivazione |
 | GET | `/interventions/:id/revisions` | F-OFF-304 | Any User | Storico modifiche. Vedi §2.12 per il DTO completo dell'intervento. |
 | POST | `/interventions/:id/dispute` | F-CLI-206 | Customer | **[DETTAGLIATO §2.6]** Contesta intervento |

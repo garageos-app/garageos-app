@@ -3,7 +3,11 @@ import type { FastifyError, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
-import { todayUtcMidnight } from '../../lib/intervention-shared.js';
+import {
+  serializeChecklistItems,
+  todayUtcMidnight,
+  validateChecklistSelection,
+} from '../../lib/intervention-shared.js';
 import { dispatchNotification } from '../../lib/notifications/dispatcher.js';
 import { resolveCurrentOwner } from '../../lib/notifications/recipient-resolver.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -15,10 +19,13 @@ const idParamSchema = z.object({
 });
 
 // Reuses CreateInterventionSchema verbatim from @garageos/database
-// (interventionTypeId, interventionDate YYYY-MM-DD, odometerKm, title,
-// description, partsReplaced, internalNotes, createDeadline, forceKmDecrease).
-// No API-only extension is required: forceKmDecrease already lives in the
-// shared schema because BR-068 is a service-layer rule.
+// (interventionTypeId, interventionDate YYYY-MM-DD, odometerKm,
+// checklistItemIds, description, partsReplaced, internalNotes,
+// createDeadline, forceKmDecrease). BR-308: `title` no longer exists on
+// this schema (or on the Intervention row's write path) — the checklist
+// selection is now the structured replacement. No API-only extension is
+// required: forceKmDecrease already lives in the shared schema because
+// BR-068 is a service-layer rule.
 const CreateInterventionBodySchema = CreateInterventionSchema;
 
 // Problem+JSON factory mirroring vehicles.ts. The shared error handler
@@ -158,6 +165,17 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
+        // BR-300: at least one checklist item is required; BR-301 each id
+        // must belong to `interventionType`; BR-302 each id must be active
+        // and not excluded for this tenant. `foundItems` carries the DB
+        // snapshot (nameIt/sortOrder) used below both for the frozen
+        // label_snapshot (BR-303) and for the response DTO.
+        const foundItems = await validateChecklistSelection(tx, {
+          tenantId,
+          interventionTypeId: body.interventionTypeId,
+          checklistItemIds: body.checklistItemIds,
+        });
+
         // BR-068: km must not decrease vs. previous officina interventions on this
         // vehicle (BR-083 excludes customer-side records). A decrease is a
         // *warning*, not a hard failure: the workshop can confirm with
@@ -184,7 +202,6 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
             interventionTypeId: interventionType.id,
             interventionDate: interventionDateUtc,
             odometerKm: body.odometerKm,
-            ...(body.title ? { title: body.title } : {}),
             description: body.description,
             partsReplaced: body.partsReplaced as Prisma.InputJsonValue,
             ...(body.internalNotes ? { internalNotes: body.internalNotes } : {}),
@@ -198,7 +215,6 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
             interventionTypeId: true,
             interventionDate: true,
             odometerKm: true,
-            title: true,
             description: true,
             partsReplaced: true,
             internalNotes: true,
@@ -207,6 +223,22 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
             wikiLockedAt: true,
             createdAt: true,
           },
+        });
+
+        // BR-303: label_snapshot/sort_order_snapshot freeze the catalog
+        // text at save time — later renames or reordering of the catalog
+        // item must NOT retroactively change what this intervention shows.
+        // tenantId is set explicitly (RLS `selections_insert` requires
+        // tenant_id = current_tenant_id()); checklistItemId keeps the FK
+        // for as long as the item exists (SetNull on delete).
+        await tx.interventionChecklistSelection.createMany({
+          data: foundItems.map((it) => ({
+            interventionId: intervention.id,
+            tenantId,
+            checklistItemId: it.id,
+            labelSnapshot: it.nameIt,
+            sortOrderSnapshot: it.sortOrder,
+          })),
         });
 
         // BR-152: ensure customer_tenant_relation exists for (tenant, current
@@ -307,6 +339,12 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
                 code: interventionType.code,
                 nameIt: interventionType.nameIt,
               },
+              checklistItems: serializeChecklistItems(
+                foundItems.map((it) => ({
+                  labelSnapshot: it.nameIt,
+                  sortOrderSnapshot: it.sortOrder,
+                })),
+              ),
             },
             deadline: deadlineResponse,
           },
@@ -335,7 +373,11 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
             intervention: {
               id: created.id,
               vehicleId: created.vehicleId,
-              title: created.title,
+              // BR-308/Deviation #3: title no longer exists on the row. The
+              // push template keys off vehicle.model/interventionTypeName
+              // and the email titleBlock is conditional on a truthy value,
+              // so passing null here requires zero template changes.
+              title: null,
               description: created.description,
               cancelledReason: null,
             },

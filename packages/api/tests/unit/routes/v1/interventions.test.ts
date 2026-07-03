@@ -20,6 +20,8 @@ const CUSTOMER_ID = '55555555-5555-4555-8555-555555555555';
 const INTERVENTION_TYPE_ID = '77777777-7777-4777-8777-777777777777';
 const INTERVENTION_ID = '88888888-8888-4888-8888-888888888888';
 const DEADLINE_ID = '99999999-9999-4999-8999-999999999999';
+const CHECKLIST_ITEM_ID_1 = '66666666-6666-4666-8666-666666666601';
+const CHECKLIST_ITEM_ID_2 = '66666666-6666-4666-8666-666666666602';
 
 interface FakePrisma {
   user: { findFirstOrThrow: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
@@ -27,11 +29,19 @@ interface FakePrisma {
   vehicleOwnership: { findFirst: ReturnType<typeof vi.fn> };
   tenant: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
   interventionType: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
+  interventionChecklistItem: { findMany: ReturnType<typeof vi.fn> };
+  tenantInterventionTypeExclusion: { findFirst: ReturnType<typeof vi.fn> };
+  tenantChecklistItemExclusion: { findMany: ReturnType<typeof vi.fn> };
   intervention: {
     aggregate: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     findUniqueOrThrow: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
+  };
+  interventionChecklistSelection: {
+    findMany: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
+    createMany: ReturnType<typeof vi.fn>;
   };
   interventionRevision: { create: ReturnType<typeof vi.fn> };
   customerTenantRelation: { upsert: ReturnType<typeof vi.fn> };
@@ -88,7 +98,6 @@ function buildInterventionRow() {
     interventionTypeId: INTERVENTION_TYPE_ID,
     interventionDate: new Date('2026-04-21T00:00:00.000Z'),
     odometerKm: 45000,
-    title: 'Tagliando completo',
     description: 'Sostituzione olio motore 5W30',
     partsReplaced: [],
     internalNotes: null,
@@ -97,6 +106,18 @@ function buildInterventionRow() {
     wikiLockedAt: null,
     createdAt: new Date('2026-04-21T12:00:00.000Z'),
   };
+}
+
+// Default checklist item catalog rows backing
+// `interventionChecklistItem.findMany` — deliberately out of sortOrder
+// order (item 2 has the lower sortOrder) so tests can prove
+// serializeChecklistItems actually reorders rather than passing through
+// whatever order Prisma returned.
+function buildChecklistItemRows(): { id: string; nameIt: string; sortOrder: number }[] {
+  return [
+    { id: CHECKLIST_ITEM_ID_1, nameIt: 'Controllo livelli', sortOrder: 1 },
+    { id: CHECKLIST_ITEM_ID_2, nameIt: 'Sostituzione olio', sortOrder: 0 },
+  ];
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
@@ -120,6 +141,15 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     },
     interventionType: {
       findUniqueOrThrow: vi.fn().mockResolvedValue(buildInterventionTypeRow()),
+    },
+    interventionChecklistItem: {
+      findMany: vi.fn().mockResolvedValue(buildChecklistItemRows()),
+    },
+    tenantInterventionTypeExclusion: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    tenantChecklistItemExclusion: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
     intervention: {
       aggregate: vi.fn().mockResolvedValue({ _max: { odometerKm: null } }),
@@ -148,8 +178,17 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
             code: 'MECCANICO',
             nameIt: 'Tagliando',
           },
+          // PATCH's reload select (Task 4) always fetches checklistSelections
+          // so the response can build `checklistItems`; empty here since the
+          // default PATCH tests in this file never send checklistItemIds.
+          checklistSelections: [] as { labelSnapshot: string; sortOrderSnapshot: number | null }[],
         }),
       update: vi.fn().mockResolvedValue({}),
+    },
+    interventionChecklistSelection: {
+      findMany: vi.fn().mockResolvedValue([]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      createMany: vi.fn().mockResolvedValue({ count: 2 }),
     },
     interventionRevision: {
       create: vi.fn().mockResolvedValue({
@@ -215,7 +254,7 @@ const validBody = {
   interventionTypeId: INTERVENTION_TYPE_ID,
   interventionDate: '2026-04-21',
   odometerKm: 45000,
-  title: 'Tagliando completo',
+  checklistItemIds: [CHECKLIST_ITEM_ID_1, CHECKLIST_ITEM_ID_2],
   description: 'Sostituzione olio motore 5W30 + filtro olio + filtro aria',
   partsReplaced: [
     { name: 'Olio motore Selenia 5W30', code: 'SEL-5W30', quantity: 4, notes: 'Litri' },
@@ -658,7 +697,7 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
     expect(prisma.deadline.create).not.toHaveBeenCalled();
   });
 
-  it('returns 201 with intervention + interventionType + deadline:null', async () => {
+  it('returns 201 with intervention + interventionType + checklistItems + deadline:null, no title field', async () => {
     app = await buildApp({ prisma });
     const res = await app.inject({
       method: 'POST',
@@ -672,6 +711,8 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
         id: string;
         vehicleId: string;
         interventionType: { id: string; code: string; nameIt: string };
+        checklistItems: { label: string }[];
+        title?: string;
       };
       deadline: unknown;
     };
@@ -682,7 +723,132 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
       code: 'MECCANICO',
       nameIt: 'Tagliando',
     });
+    // BR-303/serializeChecklistItems: sorted by sortOrderSnapshot asc — the
+    // catalog rows are deliberately seeded out of order (item 2 has
+    // sortOrder 0, item 1 has sortOrder 1) so this proves real reordering.
+    expect(body.intervention.checklistItems).toEqual([
+      { label: 'Sostituzione olio' },
+      { label: 'Controllo livelli' },
+    ]);
+    expect(body.intervention.title).toBeUndefined();
     expect(body.deadline).toBeNull();
+  });
+
+  it('BR-300/BR-303: derives selection createMany label_snapshot/sort_order_snapshot from the catalog lookup, not a hardcoded fixture', async () => {
+    // Thread a distinct, dynamically-generated catalog response through
+    // interventionChecklistItem.findMany so the assertion below cannot
+    // pass against a hardcoded expectation baked into the route
+    // (feedback_integration_test_mock_dynamic_input.md).
+    const dynamicItemId = '66666666-6666-4666-8666-666666666699';
+    const dynamicName = `Voce dinamica ${Math.random().toString(36).slice(2, 8)}`;
+    prisma.interventionChecklistItem.findMany.mockImplementation(
+      async (args: { where: { id: { in: string[] } } }) => {
+        return args.where.id.in.map((id) => ({ id, nameIt: dynamicName, sortOrder: 3 }));
+      },
+    );
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: { ...validBody, checklistItemIds: [dynamicItemId] },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prisma.interventionChecklistSelection.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          interventionId: INTERVENTION_ID,
+          tenantId: TENANT_ID,
+          checklistItemId: dynamicItemId,
+          labelSnapshot: dynamicName,
+          sortOrderSnapshot: 3,
+        },
+      ],
+    });
+  });
+
+  it('BR-300: returns 400 checklist_required when checklistItemIds is empty, without creating the intervention', async () => {
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: { ...validBody, checklistItemIds: [] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_required' });
+    expect(prisma.intervention.create).not.toHaveBeenCalled();
+  });
+
+  it('BR-301/302: returns 422 checklist_item_invalid when the catalog lookup does not return all requested ids', async () => {
+    prisma.interventionChecklistItem.findMany.mockResolvedValue([
+      { id: CHECKLIST_ITEM_ID_1, nameIt: 'Controllo livelli', sortOrder: 1 },
+    ]);
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_item_invalid' });
+    expect(prisma.intervention.create).not.toHaveBeenCalled();
+  });
+
+  it('BR-302: returns 422 checklist_item_invalid when a selected item is excluded for the tenant', async () => {
+    prisma.tenantChecklistItemExclusion.findMany.mockResolvedValue([
+      { checklistItemId: CHECKLIST_ITEM_ID_1 },
+    ]);
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_item_invalid' });
+    expect(prisma.intervention.create).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 checklist_item_invalid when the intervention type itself is excluded for the tenant', async () => {
+    prisma.tenantInterventionTypeExclusion.findFirst.mockResolvedValue({ tenantId: TENANT_ID });
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: validBody,
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_item_invalid' });
+    expect(prisma.intervention.create).not.toHaveBeenCalled();
+  });
+
+  it('dedups a repeated checklistItemId into a single selection row', async () => {
+    prisma.interventionChecklistItem.findMany.mockResolvedValue([
+      { id: CHECKLIST_ITEM_ID_1, nameIt: 'Controllo livelli', sortOrder: 1 },
+    ]);
+    app = await buildApp({ prisma });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: { ...validBody, checklistItemIds: [CHECKLIST_ITEM_ID_1, CHECKLIST_ITEM_ID_1] },
+    });
+    expect(res.statusCode).toBe(201);
+    // Dedup happens before the catalog lookup, so findMany (and thus
+    // createMany) only ever sees the single deduped id — proof the
+    // handler didn't just pass the raw (duplicated) array through.
+    expect(prisma.interventionChecklistItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: [CHECKLIST_ITEM_ID_1] } }),
+      }),
+    );
+    expect(prisma.interventionChecklistSelection.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ checklistItemId: CHECKLIST_ITEM_ID_1 })],
+    });
   });
 });
 
@@ -853,6 +1019,7 @@ describe('PATCH /v1/interventions/:id (unit)', () => {
           code: 'MECCANICO',
           nameIt: 'Tagliando',
         },
+        checklistSelections: [] as { labelSnapshot: string; sortOrderSnapshot: number | null }[],
       });
     app = await buildApp({ prisma });
     const res = await app.inject({
@@ -864,6 +1031,19 @@ describe('PATCH /v1/interventions/:id (unit)', () => {
     expect(res.statusCode).toBe(200);
     expect(prisma.interventionRevision.create).toHaveBeenCalledOnce();
     expect((res.json() as { revision: { reason: string } | null }).revision).not.toBeNull();
+  });
+
+  it('returns 400 checklist_required when changing interventionTypeId without checklistItemIds (Deviation #6)', async () => {
+    app = await buildApp();
+    const differentTypeId = '77777777-7777-4777-8777-777777777778';
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+      payload: { interventionTypeId: differentTypeId },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { code: string }).code).toBe('intervention.creation.checklist_required');
   });
 });
 

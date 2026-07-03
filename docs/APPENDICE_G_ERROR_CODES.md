@@ -282,6 +282,8 @@ Per fornire dati utili al client per gestire l'errore:
 | Code | HTTP | Severity | Titolo | Quando | BR |
 |---|---|---|---|---|---|
 | `intervention.not_found` | 404 | info | Intervento non trovato | | |
+| `intervention.creation.checklist_required` | 400 | info | Checklist obbligatoria | `checklistItemIds` vuoto | BR-300 |
+| `intervention.creation.checklist_item_invalid` | 422 | info | Voce checklist non valida | Voce non appartenente al tipo, inattiva, o esclusa per il tenant | BR-301, BR-302 |
 | `intervention.creation.immutable_field` | 422 | error | Campo non modificabile | Tentativo modifica campo immutabile | BR-061 |
 | `intervention.creation.date_future` | 400 | info | Data intervento futura | | BR-069 |
 | `intervention.creation.date_before_registration` | 400 | warning | Data precedente immatricolazione | | BR-070 |
@@ -911,6 +913,8 @@ generic.service_unavailable
 intervention.cancellation.already_cancelled
 intervention.cancellation.permission_denied
 intervention.cancellation.reason_too_short
+intervention.creation.checklist_item_invalid
+intervention.creation.checklist_required
 intervention.creation.date_before_registration
 intervention.creation.date_future
 intervention.creation.immutable_field

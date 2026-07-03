@@ -1196,16 +1196,28 @@ Lo sweep giornaliero porta a `overdue` ogni `PersonalDeadline` in stato `open` c
 Numerazione riservata per l'arco di redesign checklist interventi/tipi, per evitare collisioni tra i PR paralleli dell'arco (vedi `docs/superpowers/specs/2026-07-02-intervention-types-checklist-redesign-design.md`). Definizione completa nei PR di validazione dell'arco checklist.
 
 ### BR-300 — Checklist obbligatoria (≥1 voce)
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Ogni intervento deve avere **almeno una voce checklist selezionata**: `checklistItemIds` non può essere vuoto, né in creazione né in modifica (Task 4 sostituisce l'intero set — vedi BR-308 su `UpdateInterventionSchema`). La cardinalità non è verificabile a livello Zod (dipende dallo snapshot del catalogo al momento della richiesta, non dalla sola forma del body), quindi il controllo è handler-side nel validatore condiviso `validateChecklistSelection` (`packages/api/src/lib/intervention-shared.ts`), chiamato da `POST /v1/vehicles/:id/interventions` prima della `intervention.create`.
+
+**Enforcement:** dedup degli id in input, poi `if (ids.length === 0) throw 'intervention.creation.checklist_required' (400)`. Messaggio: "Seleziona almeno una voce checklist."
 
 ### BR-301 — Appartenenza voce↔tipo
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Ogni voce checklist selezionata deve appartenere al tipo di intervento scelto (`interventionTypeId`) — non è ammesso selezionare una voce di un tipo diverso, anche se entrambe le voci sono globali/attive.
+
+**Enforcement:** `validateChecklistSelection` carica `interventionChecklistItem.findMany({ where: { id: { in: ids }, interventionTypeId, active: true } })`; se `found.length !== ids.length` (BR-301 appartenenza sbagliata, oppure BR-302 sotto) → `422 intervention.creation.checklist_item_invalid`. Lo stesso codice/messaggio copre entrambe le regole perché, lato client, la distinzione (appartenenza vs. attività) non cambia l'azione correttiva (ricaricare il catalogo del tipo scelto).
 
 ### BR-302 — Visibilità/attività voce
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Una voce checklist selezionabile deve essere **attiva** (`active: true`) e **non esclusa per il tenant chiamante** (`tenant_checklist_item_exclusions`, BR-304). Una voce inattiva o esclusa non è validamente selezionabile anche se appartiene al tipo corretto.
+
+**Enforcement:** oltre al filtro `active: true` nella query BR-301, `validateChecklistSelection` verifica anche che il tipo stesso non sia escluso per il tenant (`tenantInterventionTypeExclusion.findFirst`) e che nessuno degli id selezionati compaia in `tenantChecklistItemExclusion` per quel tenant — in entrambi i casi `422 intervention.creation.checklist_item_invalid`, stesso messaggio: "Una o più voci checklist non sono valide per questo tipo di intervento o non sono disponibili."
 
 ### BR-303 — Snapshot etichetta
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Il nome della voce checklist selezionata viene **congelato** (`label_snapshot`, `sort_order_snapshot`) al momento del salvataggio dell'intervento (`intervention_checklist_selections`), non ricalcolato a lettura. Una rinomina o riordinamento successivo del catalogo (`intervention_checklist_items.name_it`/`sort_order`) **non modifica retroattivamente** ciò che l'intervento storico mostra — il record storico è immutabile rispetto a modifiche future del catalogo globale.
+
+**Enforcement:** `POST /v1/vehicles/:id/interventions` scrive `interventionChecklistSelection.createMany({ data: foundItems.map(it => ({ interventionId, tenantId, checklistItemId: it.id, labelSnapshot: it.nameIt, sortOrderSnapshot: it.sortOrder })) })` nella stessa transazione della `intervention.create`. La risposta serializza le selezioni con `serializeChecklistItems` (helper puro, `packages/api/src/lib/intervention-shared.ts`), che ordina per `sortOrderSnapshot asc` (null in coda) poi `labelSnapshot asc` e ritorna `{ label }` — sempre dallo snapshot, mai da un join live sul catalogo. Se la voce viene poi cancellata (`DELETE /v1/admin/checklist-items/:id`), `checklistItemId` diventa `NULL` (`onDelete: SetNull`) ma `labelSnapshot` resta intatto (vedi anche BR-307).
 
 ### BR-304 — Opt-out visibilità
 
@@ -1225,7 +1237,17 @@ Un tipo di intervento globale o una voce checklist globale sono **visibili a tut
 Ogni scrittura genera una riga `audit_logs` (`catalog_visibility_updated`, `entityType:'tenant'`, `actorType:'system'`, `metadata: { actorCognitoSub, excludedTypes, excludedItems }`) nella stessa transazione del replace, per rollback atomico in caso di errore successivo.
 
 ### BR-305 — Selezionabilità tipo (≥1 voce visibile)
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+Un tipo di intervento è offerto all'officina in `GET /v1/intervention-types` solo se, dopo l'applicazione delle esclusioni per-tenant (BR-304), ha **almeno una voce checklist attiva e non esclusa**. Se l'esclusione (a livello di tipo, o di tutte le sue voci) azzera le voci visibili residue, il tipo viene omesso interamente dalla risposta — non compare come "disabilitato" o "vuoto".
+
+Questa regola garantisce che il vincolo BR-300 (checklist obbligatoria, ≥1 voce) sia sempre soddisfacibile lato client: il form di creazione intervento non può mai proporre un tipo per cui è impossibile selezionare almeno una voce.
+
+**Enforcement:** `GET /v1/intervention-types` (`packages/api/src/routes/v1/intervention-types.ts`) carica i tipi globali attivi con le rispettive voci attive, poi filtra applicativamente:
+1. scarta i tipi presenti in `tenant_intervention_type_exclusions` per il tenant chiamante;
+2. per i tipi rimanenti, rimuove dalle `checklistItems` le voci presenti in `tenant_checklist_item_exclusions` per il tenant chiamante;
+3. scarta ogni tipo la cui lista voci risulta vuota dopo il passo 2.
+
+Storage esclusioni: `tenant_intervention_type_exclusions` / `tenant_checklist_item_exclusions` (vedi BR-304).
 
 ### BR-306 — Governance catalogo (admin-only write)
 
@@ -1263,7 +1285,20 @@ Il `code` di una voce checklist (`intervention_checklist_items.code`) deve esser
 Ogni scrittura genera una riga `audit_logs` (`checklist_item_created|updated|deleted`, `entityType:'intervention_checklist_item'`, `actorType:'system'`, `metadata.actorCognitoSub`) nella stessa transazione, per rollback atomico in caso di errore successivo.
 
 ### BR-308 — Titolo rimosso
-**RISERVATA** — definizione completa nei PR di validazione dell'arco checklist — vedi spec `2026-07-02-intervention-types-checklist-redesign-design.md`.
+
+L'intervento **non ha più un titolo libero**: `title` non è più un campo di input, non è più esposto in nessun DTO di scrittura (`POST`/`PATCH`, Task 3/4) né nel dettaglio officina in lettura (`GET /v1/interventions/:id`, Task 5). L'intestazione mostrata all'utente è il **nome del tipo di intervento** (`type.name_it`, es. "Intervento Meccanico"), non più un testo libero inserito al momento della creazione. Le voci checklist (BR-300/303) sostituiscono il titolo come corpo puntuale del record.
+
+`PrivateIntervention.customType` (interventi B2C fuori officina) è un concetto **diverso e non toccato** da questa regola (Deviation #9): resta un campo libero perché lì non esiste un catalogo tipizzato a cui ancorare l'intestazione.
+
+**Enforcement:**
+- `interventions-post.ts` / `interventions-update.ts` (Task 3/4): gli schemi Zod di richiesta non accettano più `title`; le risposte non lo restituiscono.
+- `interventions-detail.ts` (Task 5): `interventionDetailSelect` non seleziona più `title`; la risposta non ha la chiave `title`.
+- La colonna `title` **resta a DB** (`intervention.title String?`) finché tutti i lettori residui non l'hanno abbandonata: il PDF (PR-6) e le letture lato mobile/B2C (PR-7) leggono ancora `title` al momento di questo PR. Il `DROP COLUMN` è uno **step di contratto successivo**, non contestuale a questo PR — rimuovere la colonna ora romperebbe quei lettori (pattern expand → migrate → contract, vedi `APPENDICE_B_DATABASE.md` §9.7).
+
+**Endpoint coperti:**
+- `POST /v1/vehicles/:id/interventions` — nessun `title` in input né in risposta
+- `PATCH /v1/interventions/:id` — nessun `title` in input né in risposta
+- `GET /v1/interventions/:id` — nessun `title` in risposta; `checklist_items: [{ label }]` letto dallo snapshot (BR-303)
 
 ---
 
