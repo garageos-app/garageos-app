@@ -3,7 +3,11 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
-import { WIKI_WINDOW_MS } from '../../lib/intervention-shared.js';
+import {
+  serializeChecklistItems,
+  validateChecklistSelection,
+  WIKI_WINDOW_MS,
+} from '../../lib/intervention-shared.js';
 import { dispatchNotification } from '../../lib/notifications/dispatcher.js';
 import { resolveCurrentOwner } from '../../lib/notifications/recipient-resolver.js';
 import type { CustomerForNotification } from '../../lib/notifications/types.js';
@@ -17,12 +21,19 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 // 404 via the shared error handler (RLS-as-404). BR-062 wiki-window
 // vs post-lock behavior is computed from
 // (now - createdAt, firstSeenByCustomerAt, wikiLockedAt).
-// BR-064 — post-lock revision row + reason; BR-065 — 5 editable
-// fields; BR-128/BR-130 — disputed/cancelled blocked.
+// BR-064 — post-lock revision row + reason; BR-065 — 4 editable scalar
+// fields (title dropped, see below); BR-128/BR-130 — disputed/cancelled
+// blocked.
+// BR-303/BR-308 — checklistItemIds is a 5th, non-scalar editable field:
+// when present it REPLACES the full selection set for this intervention.
+// Retained items (present both before and after) keep their original
+// label_snapshot untouched — never re-derived from the current catalog;
+// only newly-added items get a fresh snapshot. Changing interventionTypeId
+// without resending checklistItemIds is rejected (Deviation #6): the old
+// selections may not even belong to the new type's checklist.
 
 const EDITABLE_KEYS = [
   'interventionTypeId',
-  'title',
   'description',
   'partsReplaced',
   'internalNotes',
@@ -73,7 +84,7 @@ function buildChangesJson(
   existing: Record<string, unknown>,
   body: Record<string, unknown>,
 ): Record<string, { from: unknown; to: unknown }> {
-  const fields = ['interventionTypeId', 'title', 'description', 'partsReplaced', 'internalNotes'];
+  const fields = ['interventionTypeId', 'description', 'partsReplaced', 'internalNotes'];
   const changes: Record<string, { from: unknown; to: unknown }> = {};
   for (const k of fields) {
     if (body[k] === undefined) continue;
@@ -112,7 +123,6 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
             wikiLockedAt: true,
             firstSeenByCustomerAt: true,
             interventionTypeId: true,
-            title: true,
             description: true,
             partsReplaced: true,
             internalNotes: true,
@@ -153,6 +163,29 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
+        // BR-303/Deviation #6: the effective type this PATCH resolves to —
+        // the new one if interventionTypeId is part of the body, otherwise
+        // the intervention's current type. The checklist replace block
+        // below validates candidate items against THIS id, not the raw
+        // body value, so a type-change + checklistItemIds combo is scoped
+        // correctly in one pass.
+        const effectiveTypeId = body.interventionTypeId ?? existing.interventionTypeId;
+
+        // BR-303/Deviation #6: silently keeping the OLD selection set after
+        // a type change would leave selections scoped to a checklist the
+        // new type may not even expose. Force the caller to re-pick.
+        if (
+          body.interventionTypeId !== undefined &&
+          body.interventionTypeId !== existing.interventionTypeId &&
+          body.checklistItemIds === undefined
+        ) {
+          throw businessError(
+            'intervention.creation.checklist_required',
+            400,
+            'Cambiando il tipo di intervento devi riselezionare le voci checklist.',
+          );
+        }
+
         // FK validation on type change. Cross-tenant + system NULL types
         // are visible via RLS; an unknown id surfaces as P2025 → 404
         // NOT_FOUND via the global handler. Mirrors POST /interventions.
@@ -166,9 +199,10 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
-        // Build the partial update payload. Override flags / reason are
-        // never persisted — only the 5 BR-065 editable fields land on
-        // the row.
+        // Build the partial update payload. Override flags / reason /
+        // checklistItemIds are never persisted here — only the 4 scalar
+        // BR-065 editable fields land on the row (checklistItemIds is
+        // handled separately below; it is not an intervention column).
         const data: Record<string, unknown> = {};
         for (const k of EDITABLE_KEYS) {
           const value = (body as Record<string, unknown>)[k];
@@ -186,6 +220,61 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
         }
 
         await tx.intervention.update({ where: { id }, data });
+
+        // BR-303 — replace-set edit. Only runs when checklistItemIds is
+        // present in the body; absent means "leave selections untouched"
+        // (distinct from an empty array, which is BR-300's "at least one
+        // item required" rejection inside validateChecklistSelection).
+        if (body.checklistItemIds !== undefined) {
+          const foundItems = await validateChecklistSelection(tx, {
+            tenantId,
+            interventionTypeId: effectiveTypeId,
+            checklistItemIds: body.checklistItemIds,
+          });
+
+          const existingSelections = await tx.interventionChecklistSelection.findMany({
+            where: { interventionId: id },
+            select: { id: true, checklistItemId: true },
+          });
+
+          // `new Set(...)` on the raw body array already dedups repeated
+          // ids — no separate dedup step needed.
+          const desired = new Set(body.checklistItemIds);
+
+          // Deviation #7: also sweep any orphaned selection whose
+          // checklist_item_id has gone NULL (catalog item hard-deleted
+          // elsewhere, onDelete: SetNull) — it can never be "desired"
+          // again since its id no longer exists.
+          const toDeleteIds = existingSelections
+            .filter((s) => s.checklistItemId === null || !desired.has(s.checklistItemId))
+            .map((s) => s.id);
+          if (toDeleteIds.length > 0) {
+            await tx.interventionChecklistSelection.deleteMany({
+              where: { id: { in: toDeleteIds } },
+            });
+          }
+
+          // Retained selections (present before and after) are left alone
+          // here — their label_snapshot/sort_order_snapshot stay exactly
+          // as originally written, which is the BR-303 guarantee under
+          // test. Only genuinely new items get a snapshot, taken from the
+          // catalog rows validateChecklistSelection just resolved.
+          const existingItemIds = new Set(
+            existingSelections.map((s) => s.checklistItemId).filter((v): v is string => v !== null),
+          );
+          const toAdd = foundItems.filter((it) => !existingItemIds.has(it.id));
+          if (toAdd.length > 0) {
+            await tx.interventionChecklistSelection.createMany({
+              data: toAdd.map((it) => ({
+                interventionId: id,
+                tenantId,
+                checklistItemId: it.id,
+                labelSnapshot: it.nameIt,
+                sortOrderSnapshot: it.sortOrder,
+              })),
+            });
+          }
+        }
 
         let revision: {
           id: string;
@@ -245,7 +334,6 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
             interventionTypeId: true,
             interventionDate: true,
             odometerKm: true,
-            title: true,
             description: true,
             partsReplaced: true,
             internalNotes: true,
@@ -258,10 +346,24 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
             interventionType: {
               select: { id: true, code: true, nameIt: true },
             },
+            checklistSelections: {
+              select: { labelSnapshot: true, sortOrderSnapshot: true },
+              orderBy: [{ sortOrderSnapshot: 'asc' }, { labelSnapshot: 'asc' }],
+            },
           },
         });
 
-        return { intervention: reloaded, revision, recipient, tenantRow };
+        // BR-303: build the wire-shape `checklistItems` from whatever is
+        // actually persisted post-replace (retained + newly-added rows
+        // alike) rather than re-deriving from `body` — the response
+        // always reflects committed state, not the request payload.
+        const { checklistSelections, ...reloadedRest } = reloaded;
+        const intervention = {
+          ...reloadedRest,
+          checklistItems: serializeChecklistItems(checklistSelections),
+        };
+
+        return { intervention, revision, recipient, tenantRow };
       });
 
       // BR-064 dispatch runs AFTER the transaction commits. It is
@@ -277,7 +379,9 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
             intervention: {
               id: result.intervention.id,
               vehicleId: result.intervention.vehicleId,
-              title: result.intervention.title,
+              // BR-308/Deviation #3: title no longer exists on the row or
+              // in the response DTO (mirrors interventions.ts create route).
+              title: null,
               description: result.intervention.description,
               cancelledReason: null,
             },

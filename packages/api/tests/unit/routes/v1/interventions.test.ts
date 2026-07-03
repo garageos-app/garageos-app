@@ -38,7 +38,11 @@ interface FakePrisma {
     findUniqueOrThrow: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
-  interventionChecklistSelection: { createMany: ReturnType<typeof vi.fn> };
+  interventionChecklistSelection: {
+    findMany: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
+    createMany: ReturnType<typeof vi.fn>;
+  };
   interventionRevision: { create: ReturnType<typeof vi.fn> };
   customerTenantRelation: { upsert: ReturnType<typeof vi.fn> };
   deadline: { create: ReturnType<typeof vi.fn> };
@@ -174,10 +178,16 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
             code: 'MECCANICO',
             nameIt: 'Tagliando',
           },
+          // PATCH's reload select (Task 4) always fetches checklistSelections
+          // so the response can build `checklistItems`; empty here since the
+          // default PATCH tests in this file never send checklistItemIds.
+          checklistSelections: [] as { labelSnapshot: string; sortOrderSnapshot: number | null }[],
         }),
       update: vi.fn().mockResolvedValue({}),
     },
     interventionChecklistSelection: {
+      findMany: vi.fn().mockResolvedValue([]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       createMany: vi.fn().mockResolvedValue({ count: 2 }),
     },
     interventionRevision: {
@@ -1009,6 +1019,7 @@ describe('PATCH /v1/interventions/:id (unit)', () => {
           code: 'MECCANICO',
           nameIt: 'Tagliando',
         },
+        checklistSelections: [] as { labelSnapshot: string; sortOrderSnapshot: number | null }[],
       });
     app = await buildApp({ prisma });
     const res = await app.inject({
@@ -1020,6 +1031,19 @@ describe('PATCH /v1/interventions/:id (unit)', () => {
     expect(res.statusCode).toBe(200);
     expect(prisma.interventionRevision.create).toHaveBeenCalledOnce();
     expect((res.json() as { revision: { reason: string } | null }).revision).not.toBeNull();
+  });
+
+  it('returns 400 checklist_required when changing interventionTypeId without checklistItemIds (Deviation #6)', async () => {
+    app = await buildApp();
+    const differentTypeId = '77777777-7777-4777-8777-777777777778';
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/interventions/${INTERVENTION_ID}`,
+      headers: { authorization: 'Bearer x' },
+      payload: { interventionTypeId: differentTypeId },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { code: string }).code).toBe('intervention.creation.checklist_required');
   });
 });
 

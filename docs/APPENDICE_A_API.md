@@ -1589,6 +1589,80 @@ Authorization: Bearer <officina_user_jwt>
 
 ---
 
+### 2.12a `PATCH /v1/interventions/:id` — Modifica intervento (F-OFF-304)
+
+**Feature:** F-OFF-304
+**Auth:** Tenant User (solo il tenant proprietario — cross-tenant → `404` RLS-as-404, come §2.12)
+**Business rules:** BR-062, BR-064, BR-065, BR-128, BR-130, BR-300, BR-301, BR-302, BR-303, BR-308 (testo completo in APPENDICE_F)
+
+#### Descrizione
+
+Modifica parziale di un intervento esistente. Body con campi tutti opzionali, almeno uno presente: `interventionTypeId`, `description`, `partsReplaced`, `internalNotes`, `checklistItemIds`. `reason` (10..2000 char) è richiesto solo quando `wiki_window_open === false` (BR-062/BR-064 — predicato in §2.12).
+
+> **Nota (PR-4, checklist redesign):** `title` non esiste più né nel body né nella risposta (BR-308, come §2.2). `checklistItemIds` lo sostituisce come 5° campo modificabile, ma con semantica diversa dagli altri 4 (scalari): non è una colonna, e non compare nel diff `revision.changes`.
+
+`checklistItemIds`, se presente, **sostituisce l'intero set di selezioni** (non è un delta) — stesse regole di validazione BR-300/301/302 del POST create (§2.2), applicate al tipo *effettivo* (`interventionTypeId` del body se presente, altrimenti quello corrente). Se il campo è assente dal body, le selezioni esistenti restano invariate.
+
+**BR-303 — retain vs. add:** le voci **ritenute** (già selezionate e riproposte in `checklistItemIds`) mantengono il `label_snapshot`/`sort_order_snapshot` **originale**, mai ri-derivato dal catalogo corrente anche se la voce è stata rinominata nel frattempo. Solo le voci **nuove** ricevono uno snapshot fresco dal catalogo. Le voci non riproposte vengono cancellate (incluse eventuali selezioni orfane con `checklist_item_id = NULL` da un hard-delete del catalogo).
+
+**Cambio tipo senza checklist:** se `interventionTypeId` cambia rispetto al valore attuale e `checklistItemIds` è assente dallo stesso body → `400 intervention.creation.checklist_required` (le vecchie selezioni potrebbero non appartenere al catalogo del nuovo tipo).
+
+#### Request (esempio)
+
+```http
+PATCH /v1/interventions/01HKXQ.../
+Content-Type: application/json
+Authorization: Bearer <officina_user_jwt>
+
+{
+  "description": "Aggiornata: sostituito anche il filtro aria",
+  "checklistItemIds": ["01HITM...", "01HITM..."],
+  "reason": "Aggiunta voce dimenticata in origine"
+}
+```
+
+#### Response `200 OK`
+
+```jsonc
+{
+  "intervention": {
+    "id": "01HKXQ...",
+    "interventionTypeId": "01HSYS...",
+    "interventionType": { "id": "01HSYS...", "code": "TAGLIANDO", "nameIt": "Tagliando" },
+    "description": "Aggiornata: sostituito anche il filtro aria",
+    "partsReplaced": [ /* ... */ ],
+    "internalNotes": "...",
+    "status": "active",
+    "kmAnomaly": false,
+    "wikiLockedAt": null,
+    "createdAt": "2026-04-21T14:32:05Z",
+    "updatedAt": "2026-05-06T09:10:00Z",
+    "checklistItems": [
+      { "label": "Sostituzione olio motore" },
+      { "label": "Filtro aria" }
+    ]
+    // niente campo `title` — rimosso (BR-308)
+  },
+  "revision": null // oppure { id, revisedAt, changes, reason } se wiki window chiusa (BR-064)
+}
+```
+
+`checklistItems` è ricostruito dal reload post-scrittura con lo stesso `serializeChecklistItems` del POST create (§2.2) — riflette sempre lo stato committato (voci ritenute con lo snapshot preservato + voci nuove), non il body della richiesta.
+
+#### Errori specifici
+
+| Status | Codice | Scenario |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Body vuoto, o campo non ammesso (`.strict()`, es. `title`) |
+| 400 | `intervention.modification.revision_reason_required` | Wiki window chiusa e `reason` assente/troppo corto (BR-064) |
+| 400 | `intervention.creation.checklist_required` | `checklistItemIds` vuoto (BR-300), oppure `interventionTypeId` cambiato senza `checklistItemIds` |
+| 404 | `NOT_FOUND` | Intervento inesistente o cross-tenant (RLS-as-404); oppure nuovo `interventionTypeId` inesistente |
+| 422 | `intervention.modification.cancelled` | Intervento annullato (BR-130) |
+| 422 | `intervention.modification.disputed` | Intervento contestato (BR-128) |
+| 422 | `intervention.creation.checklist_item_invalid` | Voce non appartenente al tipo effettivo, inattiva, o esclusa per il tenant (BR-301/BR-302) |
+
+---
+
 ### 2.13 `GET /v1/interventions/:id/pdf` — Export PDF intervento (F-OFF-309)
 
 **Feature:** F-OFF-309
@@ -2346,7 +2420,7 @@ Nessun codice 4xx domain-specific nuovo.
 |---|---|---|---|---|
 | POST | `/vehicles/:id/interventions` | F-OFF-301, F-OFF-308 | Tenant User | **[DETTAGLIATO §2.2]** Crea intervento |
 | GET | `/interventions/:id` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.12]** Dettaglio intervento officina (BR-062 wiki_window_open) |
-| PATCH | `/interventions/:id` | F-OFF-304 | Tenant User | Modifica intervento (wiki rules). Vedi §2.12 per read-after-write. |
+| PATCH | `/interventions/:id` | F-OFF-304 | Tenant User | **[DETTAGLIATO §2.12a]** Modifica intervento (wiki rules, checklist replace BR-303). |
 | POST | `/interventions/:id/cancel` | F-OFF-307 | Super Admin | Annulla intervento con motivazione |
 | GET | `/interventions/:id/revisions` | F-OFF-304 | Any User | Storico modifiche. Vedi §2.12 per il DTO completo dell'intervento. |
 | POST | `/interventions/:id/dispute` | F-CLI-206 | Customer | **[DETTAGLIATO §2.6]** Contesta intervento |
