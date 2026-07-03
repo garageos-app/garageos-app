@@ -262,7 +262,7 @@ describe('GET /v1/interventions/:id (officina)', () => {
     expect(body).not.toHaveProperty('title');
     expect(body.description).toBe('Cambio olio e filtri completi');
     expect(body.parts_replaced).toHaveLength(1);
-    expect(body.checklist_items).toEqual([{ label: item.nameIt }]);
+    expect(body.checklist_items).toEqual([{ id: item.id, label: item.nameIt }]);
     expect((body.tenant as Record<string, unknown>).id).toBe(tenantA);
     expect(typeof (body.vehicle as Record<string, unknown>).plate).toBe('string');
   });
@@ -308,7 +308,10 @@ describe('GET /v1/interventions/:id (officina)', () => {
     const body = res.json() as Record<string, unknown>;
 
     expect(body).not.toHaveProperty('title');
-    expect(body.checklist_items).toEqual([{ label: itemA.nameIt }, { label: itemB.nameIt }]);
+    expect(body.checklist_items).toEqual([
+      { id: itemA.id, label: itemA.nameIt },
+      { id: itemB.id, label: itemB.nameIt },
+    ]);
   });
 
   // -----------------------------------------------------------------------
@@ -353,7 +356,9 @@ describe('GET /v1/interventions/:id (officina)', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json() as Record<string, unknown>;
-    expect(body.checklist_items).toEqual([{ label: item.nameIt }]);
+    // id is null — the FK went SetNull on catalog delete — but the label
+    // snapshot survives verbatim (BR-303/D8).
+    expect(body.checklist_items).toEqual([{ id: null, label: item.nameIt }]);
   });
 
   // -----------------------------------------------------------------------

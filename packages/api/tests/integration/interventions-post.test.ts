@@ -192,7 +192,7 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
         kmAnomaly: boolean;
         status: string;
         interventionType: { code: string };
-        checklistItems: { label: string }[];
+        checklistItems: { id: string | null; label: string }[];
         title?: string;
       };
       deadline: { id: string } | null;
@@ -205,10 +205,12 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
     expect(json.deadline).toBeNull();
     // BR-300/303: 2 selections, ordered by sortOrderSnapshot asc
     // (itemB has sortOrder 0, itemA has sortOrder 1) — this is the
-    // catalog's own name, snapshotted at create time.
+    // catalog's own name, snapshotted at create time. `id` is the
+    // checklist_item_id — non-null since create validates against
+    // live catalog items (validateChecklistSelection).
     expect(json.intervention.checklistItems).toEqual([
-      { label: 'Controllo filtri' },
-      { label: 'Sostituzione olio motore' },
+      { id: itemBId, label: 'Controllo filtri' },
+      { id: itemAId, label: 'Sostituzione olio motore' },
     ]);
     // Task 3 removes `title` from the response entirely.
     expect(json.intervention.title).toBeUndefined();
@@ -715,9 +717,11 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
 
       expect(res.statusCode).toBe(201);
       const { intervention } = res.json() as {
-        intervention: { id: string; checklistItems: { label: string }[] };
+        intervention: { id: string; checklistItems: { id: string | null; label: string }[] };
       };
-      expect(intervention.checklistItems).toEqual([{ label: 'Sostituzione olio motore' }]);
+      expect(intervention.checklistItems).toEqual([
+        { id: itemAId, label: 'Sostituzione olio motore' },
+      ]);
 
       const { rows } = await pgAdmin.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM intervention_checklist_selections

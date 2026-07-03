@@ -181,7 +181,11 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
           // PATCH's reload select (Task 4) always fetches checklistSelections
           // so the response can build `checklistItems`; empty here since the
           // default PATCH tests in this file never send checklistItemIds.
-          checklistSelections: [] as { labelSnapshot: string; sortOrderSnapshot: number | null }[],
+          checklistSelections: [] as {
+            checklistItemId: string | null;
+            labelSnapshot: string;
+            sortOrderSnapshot: number | null;
+          }[],
         }),
       update: vi.fn().mockResolvedValue({}),
     },
@@ -711,7 +715,7 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
         id: string;
         vehicleId: string;
         interventionType: { id: string; code: string; nameIt: string };
-        checklistItems: { label: string }[];
+        checklistItems: { id: string | null; label: string }[];
         title?: string;
       };
       deadline: unknown;
@@ -727,8 +731,8 @@ describe('POST /v1/vehicles/:id/interventions — data path', () => {
     // catalog rows are deliberately seeded out of order (item 2 has
     // sortOrder 0, item 1 has sortOrder 1) so this proves real reordering.
     expect(body.intervention.checklistItems).toEqual([
-      { label: 'Sostituzione olio' },
-      { label: 'Controllo livelli' },
+      { id: CHECKLIST_ITEM_ID_2, label: 'Sostituzione olio' },
+      { id: CHECKLIST_ITEM_ID_1, label: 'Controllo livelli' },
     ]);
     expect(body.intervention.title).toBeUndefined();
     expect(body.deadline).toBeNull();
@@ -1019,7 +1023,11 @@ describe('PATCH /v1/interventions/:id (unit)', () => {
           code: 'MECCANICO',
           nameIt: 'Tagliando',
         },
-        checklistSelections: [] as { labelSnapshot: string; sortOrderSnapshot: number | null }[],
+        checklistSelections: [] as {
+          checklistItemId: string | null;
+          labelSnapshot: string;
+          sortOrderSnapshot: number | null;
+        }[],
       });
     app = await buildApp({ prisma });
     const res = await app.inject({

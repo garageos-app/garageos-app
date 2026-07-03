@@ -61,7 +61,7 @@ const interventionDetailSelect = {
   },
   user: { select: { id: true, firstName: true, lastName: true } },
   checklistSelections: {
-    select: { labelSnapshot: true, sortOrderSnapshot: true },
+    select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
     orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
   },
 };

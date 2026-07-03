@@ -341,6 +341,7 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
               },
               checklistItems: serializeChecklistItems(
                 foundItems.map((it) => ({
+                  checklistItemId: it.id,
                   labelSnapshot: it.nameIt,
                   sortOrderSnapshot: it.sortOrder,
                 })),
