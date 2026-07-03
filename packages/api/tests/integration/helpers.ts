@@ -552,7 +552,6 @@ export async function createPrivateIntervention(params: {
 type SystemInterventionTypeSeed = {
   code: string;
   nameIt: string;
-  category: 'maintenance' | 'repair' | 'tires' | 'body' | 'inspection' | 'other';
   suggestsDeadline: boolean;
   defaultDeadlineMonths: number | null;
   defaultDeadlineKm: number | null;
@@ -562,7 +561,6 @@ const SYSTEM_TYPE_FALLBACKS: Record<string, SystemInterventionTypeSeed> = {
   MECCANICO: {
     code: 'MECCANICO',
     nameIt: 'Intervento Meccanico',
-    category: 'maintenance',
     suggestsDeadline: true,
     defaultDeadlineMonths: 12,
     defaultDeadlineKm: 15000,
@@ -570,7 +568,6 @@ const SYSTEM_TYPE_FALLBACKS: Record<string, SystemInterventionTypeSeed> = {
   GOMME: {
     code: 'GOMME',
     nameIt: 'Cambio Gomme',
-    category: 'tires',
     suggestsDeadline: true,
     defaultDeadlineMonths: 6,
     defaultDeadlineKm: null,
@@ -578,7 +575,6 @@ const SYSTEM_TYPE_FALLBACKS: Record<string, SystemInterventionTypeSeed> = {
   REVISIONE: {
     code: 'REVISIONE',
     nameIt: 'Revisione',
-    category: 'inspection',
     suggestsDeadline: true,
     defaultDeadlineMonths: 24,
     defaultDeadlineKm: null,
@@ -624,15 +620,13 @@ export async function ensureSystemInterventionType(code: string): Promise<{
   }
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO intervention_types
-       (id, tenant_id, code, name_it, category, suggests_deadline,
+       (id, tenant_id, code, name_it, suggests_deadline,
         default_deadline_months, default_deadline_km, active, created_at, updated_at)
-     VALUES (gen_random_uuid(), NULL, $1, $2,
-        $3::"InterventionTypeCategory", $4, $5, $6, true, NOW(), NOW())
+     VALUES (gen_random_uuid(), NULL, $1, $2, $3, $4, $5, true, NOW(), NOW())
      RETURNING id`,
     [
       seed.code,
       seed.nameIt,
-      seed.category,
       seed.suggestsDeadline,
       seed.defaultDeadlineMonths,
       seed.defaultDeadlineKm,

@@ -289,11 +289,11 @@ describe('POST /v1/vehicles/:vehicleId/deadlines (F-OFF-401)', () => {
     const b = await createTenantWithLocation('it-b');
     const { rows: typeRows } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO intervention_types
-         (id, tenant_id, code, name_it, category, suggests_deadline,
+         (id, tenant_id, code, name_it, suggests_deadline,
           default_deadline_months, default_deadline_km, active,
           created_at, updated_at)
        VALUES (gen_random_uuid(), $1, 'CUSTOM_B', 'Custom B',
-          'maintenance'::"InterventionTypeCategory", false, NULL, NULL, true,
+          false, NULL, NULL, true,
           NOW(), NOW())
        RETURNING id`,
       [b.tenantId],

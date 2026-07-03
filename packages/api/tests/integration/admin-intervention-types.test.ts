@@ -11,17 +11,16 @@
 // Test groups:
 //   1. Pool isolation: 403 officine, 403 clienti on GET and POST.
 //   2. GET happy path: includes an inactive seeded type + checklistItemCount +
-//      category→nameIt ordering.
+//      nameIt ordering.
 //   3. POST happy path: 201, row persisted with tenant_id IS NULL, audit row.
 //   4. POST duplicate global code → 409 admin.intervention_type.code_conflict
 //      (app-layer pre-check, NOT a P2002 catch).
-//   5. POST invalid body (category out of enum) → 400 VALIDATION_ERROR.
-//   6. PATCH happy path → 200, field updated.
-//   7. PATCH unknown id → 404 admin.intervention_type.not_found.
-//   8. PATCH unknown field (.strict()) → 400 VALIDATION_ERROR.
-//   9. DELETE unused type → 204, row gone, checklist items cascade-deleted.
-//  10. DELETE type referenced by an intervention → 409 admin.intervention_type.in_use.
-//  11. DELETE unknown id → 404 admin.intervention_type.not_found.
+//   5. PATCH happy path → 200, field updated.
+//   6. PATCH unknown id → 404 admin.intervention_type.not_found.
+//   7. PATCH unknown field (.strict()) → 400 VALIDATION_ERROR.
+//   8. DELETE unused type → 204, row gone, checklist items cascade-deleted.
+//   9. DELETE type referenced by an intervention → 409 admin.intervention_type.in_use.
+//  10. DELETE unknown id → 404 admin.intervention_type.not_found.
 //
 // CI-only (Docker / Testcontainers). Do NOT run locally on Windows.
 // NOTE: resetDb() does NOT truncate intervention_types (see helpers.ts) —
@@ -53,7 +52,6 @@ async function seedGlobalType(params: {
   code?: string;
   nameIt?: string;
   description?: string | null;
-  category?: 'maintenance' | 'repair' | 'tires' | 'body' | 'inspection' | 'other';
   active?: boolean;
   suggestsDeadline?: boolean;
   defaultDeadlineMonths?: number | null;
@@ -63,7 +61,6 @@ async function seedGlobalType(params: {
     code = uniqueCode('ZTEST'),
     nameIt = `Test type ${code}`,
     description = null,
-    category = 'maintenance',
     active = true,
     suggestsDeadline = false,
     defaultDeadlineMonths = null,
@@ -71,20 +68,11 @@ async function seedGlobalType(params: {
   } = params;
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO intervention_types
-       (id, tenant_id, code, name_it, description, category, suggests_deadline,
+       (id, tenant_id, code, name_it, description, suggests_deadline,
         default_deadline_months, default_deadline_km, active, created_at, updated_at)
-     VALUES (gen_random_uuid(), NULL, $1, $2, $3, $4::"InterventionTypeCategory", $5, $6, $7, $8, NOW(), NOW())
+     VALUES (gen_random_uuid(), NULL, $1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
      RETURNING id`,
-    [
-      code,
-      nameIt,
-      description,
-      category,
-      suggestsDeadline,
-      defaultDeadlineMonths,
-      defaultDeadlineKm,
-      active,
-    ],
+    [code, nameIt, description, suggestsDeadline, defaultDeadlineMonths, defaultDeadlineKm, active],
   );
   return { id: rows[0]!.id, code };
 }
@@ -119,7 +107,6 @@ type InterventionTypeAdminDto = {
   nameIt: string;
   description: string | null;
   icon: string | null;
-  category: string;
   suggestsDeadline: boolean;
   defaultDeadlineMonths: number | null;
   defaultDeadlineKm: number | null;
@@ -179,7 +166,6 @@ describe('Admin intervention-types — pool isolation (integration)', () => {
       payload: JSON.stringify({
         code: uniqueCode('POOL'),
         nameIt: 'Test',
-        category: 'maintenance',
       }),
     });
     expect(res.statusCode).toBe(403);
@@ -195,7 +181,6 @@ describe('Admin intervention-types — pool isolation (integration)', () => {
       payload: JSON.stringify({
         code: uniqueCode('POOL'),
         nameIt: 'Test',
-        category: 'maintenance',
       }),
     });
     expect(res.statusCode).toBe(403);
@@ -219,16 +204,13 @@ describe('Admin intervention-types — business cases (integration)', () => {
   });
 
   // ── 2. GET happy path ────────────────────────────────────────────────────────
-  it('GET includes an inactive type + correct checklistItemCount + category→nameIt order', async () => {
-    // Two types in DIFFERENT categories so relative ordering is checkable
-    // regardless of pre-existing rows in the table (resetDb does not
-    // truncate intervention_types — see helpers.ts).
-    const bodyTypeA = await seedGlobalType({ category: 'body', nameIt: 'ZZZ Body type' });
-    const maintenanceTypeB = await seedGlobalType({
-      category: 'maintenance',
-      nameIt: 'AAA Maint type',
-    });
-    const inactiveType = await seedGlobalType({ category: 'other', active: false });
+  it('GET includes an inactive type + correct checklistItemCount + nameIt order', async () => {
+    // Two types with names alphabetically out of insertion order so relative
+    // ordering is checkable regardless of pre-existing rows in the table
+    // (resetDb does not truncate intervention_types — see helpers.ts).
+    const typeZ = await seedGlobalType({ nameIt: 'ZZZ Body type' });
+    const typeA = await seedGlobalType({ nameIt: 'AAA Maint type' });
+    const inactiveType = await seedGlobalType({ active: false });
     await seedChecklistItem({ interventionTypeId: inactiveType.id });
     await seedChecklistItem({ interventionTypeId: inactiveType.id });
 
@@ -249,13 +231,11 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect(inactiveDto!.active).toBe(false);
     expect(inactiveDto!.checklistItemCount).toBe(2);
 
-    // category asc → nameIt asc. Prisma/Postgres orders the enum by its
-    // DEFINITION order (maintenance, repair, tires, body, inspection, other —
-    // schema.prisma), NOT alphabetically. So 'maintenance' precedes 'body';
-    // maintenanceTypeB must appear before bodyTypeA regardless of other rows.
-    expect(codes.indexOf(maintenanceTypeB.code)).toBeLessThan(codes.indexOf(bodyTypeA.code));
+    // nameIt asc — typeA ('AAA...') must appear before typeZ ('ZZZ...')
+    // regardless of other rows in the table.
+    expect(codes.indexOf(typeA.code)).toBeLessThan(codes.indexOf(typeZ.code));
 
-    const activeDto = body.data.find((t) => t.code === maintenanceTypeB.code);
+    const activeDto = body.data.find((t) => t.code === typeA.code);
     expect(activeDto!.checklistItemCount).toBe(0);
   });
 
@@ -272,7 +252,6 @@ describe('Admin intervention-types — business cases (integration)', () => {
       payload: JSON.stringify({
         code,
         nameIt: 'Tagliando test',
-        category: 'maintenance',
         suggestsDeadline: true,
         defaultDeadlineMonths: 12,
         defaultDeadlineKm: 15000,
@@ -323,7 +302,6 @@ describe('Admin intervention-types — business cases (integration)', () => {
       payload: JSON.stringify({
         code: existing.code,
         nameIt: 'Duplicato',
-        category: 'maintenance',
       }),
     });
 
@@ -332,30 +310,7 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect((res.json() as { code: string }).code).toBe('admin.intervention_type.code_conflict');
   });
 
-  // ── 5. POST invalid body → 400 VALIDATION_ERROR ──────────────────────────────
-  it('POST returns 400 VALIDATION_ERROR when category is out of enum', async () => {
-    const token = await signTestToken({ pool: 'platform-admins' });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/admin/intervention-types',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      payload: JSON.stringify({
-        code: uniqueCode('BADCAT'),
-        nameIt: 'Test',
-        category: 'not-a-real-category',
-      }),
-    });
-
-    expect(res.statusCode).toBe(400);
-    expect(res.headers['content-type']).toContain(PROBLEM_JSON_CONTENT_TYPE);
-    const json = res.json() as { code: string; errors?: unknown[] };
-    expect(json.code).toBe('VALIDATION_ERROR');
-    expect(Array.isArray(json.errors)).toBe(true);
-    expect(json.errors!.length).toBeGreaterThan(0);
-  });
-
-  // ── 6. PATCH happy path ──────────────────────────────────────────────────────
+  // ── 5. PATCH happy path ──────────────────────────────────────────────────────
   it('PATCH updates an editable field and returns 200', async () => {
     const seeded = await seedGlobalType({ nameIt: 'Nome originale' });
     const token = await signTestToken({ pool: 'platform-admins' });
@@ -384,7 +339,7 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect(auditRows).toHaveLength(1);
   });
 
-  // ── 6b. PATCH description: null → clears a previously set value ─────────────
+  // ── 5b. PATCH description: null → clears a previously set value ─────────────
   it('PATCH with description: null clears a previously set description (SQL NULL)', async () => {
     const seeded = await seedGlobalType({ description: 'Descrizione originale' });
     const token = await signTestToken({ pool: 'platform-admins' });
@@ -407,7 +362,7 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect(rows[0]!.description).toBeNull();
   });
 
-  // ── 7. PATCH unknown id → 404 ────────────────────────────────────────────────
+  // ── 6. PATCH unknown id → 404 ────────────────────────────────────────────────
   it('PATCH returns 404 admin.intervention_type.not_found for an unknown id', async () => {
     const token = await signTestToken({ pool: 'platform-admins' });
     const unknownId = 'deadbeef-dead-4ead-beef-deadbeefcafe';
@@ -423,7 +378,7 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect((res.json() as { code: string }).code).toBe('admin.intervention_type.not_found');
   });
 
-  // ── 7b. PATCH malformed UUID → 404 (anti-enum) ───────────────────────────────
+  // ── 6b. PATCH malformed UUID → 404 (anti-enum) ───────────────────────────────
   it('PATCH returns 404 admin.intervention_type.not_found for a non-UUID :id (anti-enum)', async () => {
     const token = await signTestToken({ pool: 'platform-admins' });
 
@@ -438,7 +393,7 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect((res.json() as { code: string }).code).toBe('admin.intervention_type.not_found');
   });
 
-  // ── 8. PATCH unknown field → 400 VALIDATION_ERROR ────────────────────────────
+  // ── 7. PATCH unknown field → 400 VALIDATION_ERROR ────────────────────────────
   it('PATCH returns 400 VALIDATION_ERROR for an unrecognized field (.strict())', async () => {
     const seeded = await seedGlobalType({});
     const token = await signTestToken({ pool: 'platform-admins' });
@@ -454,7 +409,7 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect((res.json() as { code: string }).code).toBe('VALIDATION_ERROR');
   });
 
-  // ── 9. DELETE unused type → 204 + cascade ────────────────────────────────────
+  // ── 8. DELETE unused type → 204 + cascade ────────────────────────────────────
   it('DELETE removes an unused type and cascades its checklist items', async () => {
     const seeded = await seedGlobalType({});
     const item = await seedChecklistItem({ interventionTypeId: seeded.id });
@@ -488,7 +443,7 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect(auditRows).toHaveLength(1);
   });
 
-  // ── 10. DELETE referenced type → 409 in_use ──────────────────────────────────
+  // ── 9. DELETE referenced type → 409 in_use ──────────────────────────────────
   it('DELETE returns 409 admin.intervention_type.in_use when referenced by an intervention', async () => {
     const seeded = await seedGlobalType({});
     const { tenantId } = await createTenant();
@@ -520,7 +475,7 @@ describe('Admin intervention-types — business cases (integration)', () => {
     expect(rows).toHaveLength(1);
   });
 
-  // ── 11. DELETE unknown id → 404 ───────────────────────────────────────────────
+  // ── 10. DELETE unknown id → 404 ───────────────────────────────────────────────
   it('DELETE returns 404 admin.intervention_type.not_found for an unknown id', async () => {
     const token = await signTestToken({ pool: 'platform-admins' });
     const unknownId = 'deadbeef-dead-4ead-beef-deadbeefcafe';
