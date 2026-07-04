@@ -53,7 +53,7 @@ function intervention(i: number) {
     odometerKm: 50000 + i * 1000,
     typeName: 'Tagliando',
     tenantName: 'Officina Bianchi Srl',
-    title: `Tagliando ${i}`,
+    checklistItems: ['Cambio olio', 'Controllo freni'],
     description: 'Sostituzione olio motore e filtri.\nControllo freni: àèìòù ok.',
     partsReplaced: [
       { name: 'Filtro olio', code: 'FO-12', quantity: 1, notes: null },
@@ -107,5 +107,23 @@ describe('renderVehicleHistoryPdf', () => {
       vehicle: { ...VEHICLE, version: null, year: null, fuelType: null, garageCode: null },
     });
     expect(extractPdfText(buf)).not.toMatch(/null/);
+  });
+
+  it('renders checklist labels under "Voci eseguite" and no "Titolo"', async () => {
+    const text = extractPdfText(await renderVehicleHistoryPdf(BASE));
+    expect(text).toMatch(/Voci eseguite/);
+    expect(text).toMatch(/Cambio olio/);
+    expect(text).not.toMatch(/Titolo/);
+  });
+
+  it('renders an intervention with an empty description without error', async () => {
+    const buf = await renderVehicleHistoryPdf({
+      ...BASE,
+      interventions: [{ ...intervention(0), description: '' }],
+    });
+    const pdf = await PDFDocument.load(buf);
+    expect(pdf.getPageCount()).toBe(1);
+    // checklist still present even when the description is empty
+    expect(extractPdfText(buf)).toMatch(/Voci eseguite/);
   });
 });

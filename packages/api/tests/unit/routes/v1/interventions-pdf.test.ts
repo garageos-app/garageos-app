@@ -32,9 +32,15 @@ function interventionRow(overrides: Record<string, unknown> = {}) {
     status: 'active',
     interventionDate: new Date('2026-05-23T00:00:00.000Z'),
     odometerKm: 60000,
-    title: 'Tagliando',
     description: 'desc',
     partsReplaced: [],
+    checklistSelections: [
+      {
+        checklistItemId: 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1',
+        labelSnapshot: 'Cambio olio',
+        sortOrderSnapshot: 0,
+      },
+    ],
     cancelledReason: null,
     interventionType: { nameIt: 'Tagliando' },
     tenant: {
@@ -159,6 +165,8 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     expect(dataArg.customerName).toBe('Mario Rossi');
     expect(dataArg.operatorName).toBe('Giuseppe Rossi');
     expect(dataArg.interventionDate).toBe('2026-05-23');
+    expect(dataArg.checklistItems).toEqual(['Cambio olio']);
+    expect(dataArg).not.toHaveProperty('title');
   });
 
   it('404 — intervention.not_found when findFirst returns null; renderer not called', async () => {

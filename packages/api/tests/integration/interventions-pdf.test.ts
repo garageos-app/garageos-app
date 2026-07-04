@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,12 +15,65 @@ import {
   ensureSystemInterventionType,
   resetDb,
 } from './helpers.js';
+import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
 // Unique IP per rate-limit bucket isolation
 // (lesson feedback_integration_test_rate_limit_isolation.md).
 // 10.20.42.x is free across all existing integration test files.
 const TEST_IP = '10.20.42.1';
+
+function uniqueCode(prefix: string): string {
+  return `${prefix}_${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
+// Direct pgAdmin insert for a checklist item fixture — bypasses RLS
+// (fixture setup only). Mirrors interventions-detail.test.ts.
+async function seedChecklistItem(params: {
+  interventionTypeId: string;
+  nameIt?: string;
+  sortOrder?: number;
+}): Promise<{ id: string; nameIt: string }> {
+  const { interventionTypeId, nameIt = `Test item ${uniqueCode('IITM')}`, sortOrder = 0 } = params;
+  const code = uniqueCode('IITM');
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_checklist_items
+       (id, intervention_type_id, code, name_it, sort_order, active, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, true, NOW(), NOW())
+     RETURNING id`,
+    [interventionTypeId, code, nameIt, sortOrder],
+  );
+  return { id: rows[0]!.id, nameIt };
+}
+
+// Direct pgAdmin insert of an intervention_checklist_selections row —
+// bypasses the create/patch routes entirely so this test can seed a
+// selection with a controlled label_snapshot/sort_order_snapshot regardless
+// of the checklist item's own current catalog values (BR-303 snapshot
+// semantics — mirrors interventions-detail.test.ts `seedSelection`).
+async function seedChecklistSelection(params: {
+  interventionId: string;
+  tenantId: string;
+  checklistItemId: string;
+  labelSnapshot: string;
+  sortOrderSnapshot?: number | null;
+}): Promise<{ id: string }> {
+  const {
+    interventionId,
+    tenantId,
+    checklistItemId,
+    labelSnapshot,
+    sortOrderSnapshot = 0,
+  } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_checklist_selections
+       (id, intervention_id, tenant_id, checklist_item_id, label_snapshot, sort_order_snapshot, created_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())
+     RETURNING id`,
+    [interventionId, tenantId, checklistItemId, labelSnapshot, sortOrderSnapshot],
+  );
+  return { id: rows[0]!.id };
+}
 
 describe('GET /v1/interventions/:id/pdf (integration)', () => {
   let app: FastifyInstance;
@@ -106,6 +161,15 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
       description: 'Cambio olio',
       partsReplaced: [],
       status: 'active',
+    });
+
+    const item = await seedChecklistItem({ interventionTypeId: type.id, sortOrder: 0 });
+    await seedChecklistSelection({
+      interventionId,
+      tenantId,
+      checklistItemId: item.id,
+      labelSnapshot: item.nameIt,
+      sortOrderSnapshot: 0,
     });
 
     const res = await app.inject({

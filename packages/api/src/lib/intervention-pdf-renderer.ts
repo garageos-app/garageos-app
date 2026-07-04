@@ -25,8 +25,11 @@ export interface InterventionPdfData {
   interventionDate: string; // ISO yyyy-MM-dd
   odometerKm: number;
   typeName: string;
-  title: string | null;
-  description: string;
+  // BR-300/303/308: frozen checklist labels (already sorted by the caller via
+  // serializeChecklistItems). Replaces the removed free-text title as the
+  // itemized body of the record. Empty only for legacy/global-type rows.
+  checklistItems: string[];
+  description: string; // may be '' since #251 (optional); '' → section skipped
   partsReplaced: { name: string; code: string | null; quantity: number; notes: string | null }[];
   operatorName: string;
   status: 'active' | 'disputed' | 'cancelled';
@@ -146,15 +149,28 @@ export async function renderInterventionPdf(
     );
   }
 
-  // --- Title / description ---
-  // TODO(F-OFF-309): v1 single-page only — no overflow guard; long descriptions/parts can exceed
-  // page bottom. Multi-page deferred.
-  y -= 4;
-  if (data.title) draw(`Titolo: ${data.title}`, 11, bold);
-  draw('Descrizione:', 11, bold);
-  for (const line of wrapText(data.description, font, 10, contentWidth - 12)) {
-    page.drawText(line, { x: MARGIN + 12, y, size: 10, font });
-    y -= LINE - 2;
+  // --- Voci eseguite (checklist) / Descrizione ---
+  // TODO(F-OFF-309): v1 single-page only — no overflow guard; long content can
+  // exceed the page bottom. Multi-page deferred.
+  // BR-308: no free-text title. BR-300/303: the checklist snapshot is the body.
+  if (data.checklistItems.length > 0) {
+    y -= 4;
+    draw('Voci eseguite:', 11, bold);
+    for (const label of data.checklistItems) {
+      page.drawText(`${DOT} ${label}`, { x: MARGIN + 12, y, size: 10, font });
+      y -= LINE - 2;
+    }
+  }
+
+  // Description is optional (#251): skip the label entirely when empty so no
+  // blank line dangles under a "Descrizione:" heading.
+  if (data.description.trim() !== '') {
+    y -= 4;
+    draw('Descrizione:', 11, bold);
+    for (const line of wrapText(data.description, font, 10, contentWidth - 12)) {
+      page.drawText(line, { x: MARGIN + 12, y, size: 10, font });
+      y -= LINE - 2;
+    }
   }
 
   // --- Parts ---

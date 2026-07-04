@@ -5,7 +5,7 @@ import {
   renderInterventionPdf,
   type InterventionPdfData,
 } from '../../lib/intervention-pdf-renderer.js';
-import { normalizePartsReplaced } from '../../lib/intervention-shared.js';
+import { normalizePartsReplaced, serializeChecklistItems } from '../../lib/intervention-shared.js';
 import { resolvePiiVisibility } from '../../lib/pii-filter.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -31,10 +31,13 @@ const interventionPdfSelect = {
   status: true,
   interventionDate: true,
   odometerKm: true,
-  title: true,
   description: true,
   partsReplaced: true,
   cancelledReason: true,
+  checklistSelections: {
+    select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
+    orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
+  },
   interventionType: { select: { nameIt: true } },
   tenant: {
     select: {
@@ -47,7 +50,7 @@ const interventionPdfSelect = {
   },
   vehicle: { select: { id: true, plate: true, make: true, model: true, garageCode: true } },
   user: { select: { firstName: true, lastName: true } },
-} as const;
+};
 
 const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
   app.get(
@@ -129,7 +132,8 @@ const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
           interventionDate: row.interventionDate.toISOString().slice(0, 10),
           odometerKm: row.odometerKm,
           typeName: row.interventionType.nameIt,
-          title: row.title,
+          // BR-303/308: frozen snapshot labels, sorted by the shared serializer.
+          checklistItems: serializeChecklistItems(row.checklistSelections).map((c) => c.label),
           description: row.description,
           partsReplaced: normalizePartsReplaced(row.partsReplaced),
           operatorName,
