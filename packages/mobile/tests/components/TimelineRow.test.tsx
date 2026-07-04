@@ -8,7 +8,6 @@ const shopItem: TimelineItem = {
   intervention_date: '2026-05-10',
   odometer_km: 125000,
   type: { id: 't1', code: 'oil_change', name_it: 'Cambio olio' },
-  title: 'Cambio olio motore',
   description: 'Olio sintetico 5W30',
   parts_replaced_count: 2,
   status: 'completed',
@@ -41,6 +40,11 @@ describe('TimelineRow', () => {
   it('renders tenant business name for shop', () => {
     render(<TimelineRow item={shopItem} />);
     expect(screen.getByText('Autofficina Rossi')).toBeOnTheScreen();
+  });
+
+  it('renders the type name as the shop heading', () => {
+    render(<TimelineRow item={shopItem} />);
+    expect(screen.getByText('Cambio olio')).toBeOnTheScreen();
   });
 
   it('renders custom_type for private', () => {
@@ -76,7 +80,6 @@ describe('TimelineRow dispute affordances', () => {
     intervention_date: '2026-05-01',
     odometer_km: 84210,
     type: { id: 't', code: 'TAGLIANDO', name_it: 'Tagliando' },
-    title: 'Tagliando',
     description: null,
     parts_replaced_count: 0,
     status: 'disputed',

@@ -1,4 +1,6 @@
 // Mirror of GET /v1/me/interventions/:id (api/mobile share no package).
+// title removed / checklistItems added (BR-308/BR-303): the free-text title
+// column is gone, replaced by a snapshot of the checklist items performed.
 export type DisputeReasonCategory = 'not_performed' | 'wrong_data' | 'not_authorized' | 'other';
 export type DisputeStatus =
   | 'open'
@@ -41,7 +43,7 @@ export type ShopInterventionDetail = {
     interventionDate: string;
     odometerKm: number;
     type: { code: string; name_it: string };
-    title: string | null;
+    checklistItems: { id: string | null; label: string }[];
     description: string;
     partsReplaced: PartReplaced[];
     partsReplacedCount: number;
