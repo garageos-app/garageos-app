@@ -16,6 +16,7 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 // sees shop + own private, customer non-owner 403, private of past
 // owners always hidden. Cursor merges both sources by
 // (interventionDate DESC, id DESC).
+// BR-308: shop rows expose type.name_it as heading; free-text title removed.
 
 const timelineQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -82,7 +83,6 @@ const shopRowSelect = {
   tenantId: true,
   interventionDate: true,
   odometerKm: true,
-  title: true,
   description: true,
   partsReplaced: true,
   status: true,
@@ -268,7 +268,6 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
                 code: r.interventionType.code,
                 name_it: r.interventionType.nameIt,
               },
-              title: r.title,
               description: r.description,
               parts_replaced_count: partsReplacedCount(r.partsReplaced),
               status: r.status,
