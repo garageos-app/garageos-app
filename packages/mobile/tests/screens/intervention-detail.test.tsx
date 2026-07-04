@@ -37,7 +37,7 @@ function baseData(overrides: Record<string, unknown> = {}) {
       interventionDate: '2026-05-01',
       odometerKm: 84210,
       type: { code: 'TAGLIANDO', name_it: 'Tagliando' },
-      title: 'Tagliando completo',
+      checklistItems: [],
       description: 'desc',
       partsReplaced: [],
       partsReplacedCount: 0,
@@ -131,11 +131,35 @@ describe('InterventionDetailScreen', () => {
     const stale = baseData();
     delete (stale.intervention as Record<string, unknown>).partsReplaced;
     delete (stale.intervention as Record<string, unknown>).generatedDeadlines;
+    delete (stale.intervention as Record<string, unknown>).checklistItems;
     mockDetail.data = stale;
     render(<InterventionDetailScreen />);
     expect(screen.getByText('Contesta intervento')).toBeTruthy();
     expect(screen.queryByText(/Ricambi sostituiti/)).toBeNull();
     expect(screen.queryByText('Prossime scadenze')).toBeNull();
+    expect(screen.queryByText('Voci eseguite')).toBeNull();
+  });
+
+  it('renders the type name as the heading', () => {
+    mockDetail.data = baseData();
+    render(<InterventionDetailScreen />);
+    expect(screen.getByText('Tagliando')).toBeTruthy();
+  });
+
+  it('renders the "Voci eseguite" section when checklist items are present', () => {
+    mockDetail.data = baseData({
+      intervention: {
+        ...baseData().intervention,
+        checklistItems: [
+          { id: 'c1', label: 'Cambio olio' },
+          { id: 'c2', label: 'Cambio filtro' },
+        ],
+      },
+    });
+    render(<InterventionDetailScreen />);
+    expect(screen.getByText('Voci eseguite')).toBeTruthy();
+    expect(screen.getByText('Cambio olio')).toBeTruthy();
+    expect(screen.getByText('Cambio filtro')).toBeTruthy();
   });
 
   it('renders without crashing while pending without data (offline-paused safe)', () => {

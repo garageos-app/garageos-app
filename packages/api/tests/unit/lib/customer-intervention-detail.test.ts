@@ -11,13 +11,13 @@ const baseRow: RawInterventionRow = {
   vehicleId: 'veh-1',
   interventionDate: new Date('2026-05-01T00:00:00.000Z'),
   odometerKm: 84210,
-  title: 'Tagliando completo',
   description: 'Sostituzione olio e filtri',
   partsReplaced: [{ name: 'Olio' }, { name: 'Filtro' }, { name: 'Candele' }],
   status: 'disputed',
   interventionType: { code: 'MECCANICO', nameIt: 'Tagliando' },
   tenant: { businessName: 'Officina Rossi' },
   sourceDeadlines: [],
+  checklistSelections: [],
 };
 
 describe('projectShopInterventionDetail', () => {
@@ -29,7 +29,7 @@ describe('projectShopInterventionDetail', () => {
       interventionDate: '2026-05-01',
       odometerKm: 84210,
       type: { code: 'MECCANICO', name_it: 'Tagliando' },
-      title: 'Tagliando completo',
+      checklistItems: [],
       description: 'Sostituzione olio e filtri',
       partsReplaced: [
         { name: 'Olio', code: null, quantity: 1, notes: null },
@@ -130,13 +130,31 @@ describe('projectShopInterventionDetail', () => {
     ]);
   });
 
-  it('handles null title and non-array partsReplaced defensively', () => {
+  it('handles empty/absent partsReplaced defensively', () => {
     const out = projectShopInterventionDetail(
-      { ...baseRow, title: null, partsReplaced: null as unknown as unknown[], status: 'active' },
+      { ...baseRow, partsReplaced: null as unknown as unknown[], status: 'active' },
       [],
     );
-    expect(out.intervention.title).toBeNull();
     expect(out.intervention.partsReplacedCount).toBe(0);
     expect(out.intervention.isDisputed).toBe(false);
+  });
+
+  it('serializes checklist items from the frozen snapshot, sorted', () => {
+    const out = projectShopInterventionDetail(
+      {
+        ...baseRow,
+        checklistSelections: [
+          { checklistItemId: 'c2', labelSnapshot: 'Cambio filtro', sortOrderSnapshot: 2 },
+          { checklistItemId: 'c1', labelSnapshot: 'Cambio olio', sortOrderSnapshot: 1 },
+          { checklistItemId: null, labelSnapshot: 'Voce orfana', sortOrderSnapshot: null },
+        ],
+      },
+      [],
+    );
+    expect(out.intervention.checklistItems).toEqual([
+      { id: 'c1', label: 'Cambio olio' },
+      { id: 'c2', label: 'Cambio filtro' },
+      { id: null, label: 'Voce orfana' },
+    ]);
   });
 });

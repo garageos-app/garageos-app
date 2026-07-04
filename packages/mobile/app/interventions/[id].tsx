@@ -39,6 +39,7 @@ export default function InterventionDetailScreen() {
   // stale-while-revalidate renders it before the refetch lands.
   const partsReplaced = intervention.partsReplaced ?? [];
   const generatedDeadlines = intervention.generatedDeadlines ?? [];
+  const checklistItems = intervention.checklistItems ?? [];
 
   return (
     <>
@@ -53,7 +54,7 @@ export default function InterventionDetailScreen() {
               {intervention.tenant.locationCity ? ` · ${intervention.tenant.locationCity}` : ''}
             </Text>
           </View>
-          <Text style={styles.title}>{intervention.title ?? intervention.type.name_it}</Text>
+          <Text style={styles.title}>{intervention.type.name_it}</Text>
           <Text style={styles.meta}>
             {formatDate(intervention.interventionDate)} · {formatKm(intervention.odometerKm)}
           </Text>
@@ -61,6 +62,17 @@ export default function InterventionDetailScreen() {
             <Text style={styles.description}>{intervention.description}</Text>
           ) : null}
         </View>
+
+        {checklistItems.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Voci eseguite</Text>
+            {checklistItems.map((item, idx) => (
+              <Text key={item.id ?? idx} style={styles.checklistItem}>
+                {item.label}
+              </Text>
+            ))}
+          </View>
+        ) : null}
 
         {partsReplaced.length > 0 ? (
           <View style={styles.section}>
@@ -144,6 +156,7 @@ const styles = StyleSheet.create({
   description: { fontSize: 15, color: colors.fg, marginTop: spacing.xs },
   section: { gap: spacing.sm },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.fg },
+  checklistItem: { fontSize: 14, color: colors.fg },
   part: {
     gap: 2,
     paddingVertical: spacing.xs,

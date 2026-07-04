@@ -9,8 +9,9 @@ type Props = { item: TimelineItem; onPress?: () => void };
 
 export function TimelineRow({ item, onPress }: Props) {
   const isShop = item.kind === 'shop_intervention';
-  // Narrow via discriminant: shop has `title`, private has `custom_type` (nullable).
-  const title = isShop ? item.title : (item.custom_type ?? '—');
+  // Narrow via discriminant: shop heading is the type name (BR-308, free-text
+  // title removed); private uses its free-text custom_type (nullable).
+  const title = isShop ? item.type.name_it : (item.custom_type ?? '—');
   const description = item.description;
   const content = (
     <View style={styles.row}>

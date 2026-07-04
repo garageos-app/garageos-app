@@ -5,7 +5,11 @@
 // date-only (YYYY-MM-DD), never a full ISO timestamp (see feedback
 // db_date_serialized_as_iso, PR #156).
 
-import { normalizePartsReplaced, type PartReplaced } from './intervention-shared.js';
+import {
+  normalizePartsReplaced,
+  serializeChecklistItems,
+  type PartReplaced,
+} from './intervention-shared.js';
 
 // A deadline this intervention generated (Deadline.sourceInterventionId).
 // dueDate is @db.Date → emitted date-only; cancelled deadlines are filtered
@@ -24,13 +28,17 @@ export interface RawInterventionRow {
   vehicleId: string;
   interventionDate: Date;
   odometerKm: number;
-  title: string | null;
   description: string;
   partsReplaced: unknown;
   status: string;
   interventionType: { code: string; nameIt: string };
   tenant: { businessName: string };
   sourceDeadlines: RawSourceDeadlineRow[];
+  checklistSelections: {
+    checklistItemId: string | null;
+    labelSnapshot: string;
+    sortOrderSnapshot: number | null;
+  }[];
 }
 
 export interface RawDisputeRow {
@@ -51,7 +59,7 @@ export interface ShopInterventionDetailDto {
     interventionDate: string;
     odometerKm: number;
     type: { code: string; name_it: string };
-    title: string | null;
+    checklistItems: { id: string | null; label: string }[];
     description: string;
     partsReplaced: PartReplaced[];
     partsReplacedCount: number;
@@ -91,7 +99,10 @@ export function projectShopInterventionDetail(
       interventionDate: row.interventionDate.toISOString().slice(0, 10),
       odometerKm: row.odometerKm,
       type: { code: row.interventionType.code, name_it: row.interventionType.nameIt },
-      title: row.title,
+      // BR-308 / BR-303: checklist items are part of the shared maintenance
+      // logbook (like partsReplaced), read from the frozen snapshot rather
+      // than the live catalog — mirrors interventions-detail.ts:114-118.
+      checklistItems: serializeChecklistItems(row.checklistSelections),
       description: row.description,
       partsReplaced: parts,
       partsReplacedCount: parts.length,

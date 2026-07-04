@@ -19,7 +19,6 @@ const SHOP_ROW_1 = {
   id: SHOP_INT_1,
   interventionDate: new Date('2026-04-20T00:00:00Z'),
   odometerKm: 45000,
-  title: 'Tagliando completo',
   description: 'Olio + filtri',
   partsReplaced: [{ name: 'olio' }, { name: 'filtro' }, { name: 'aria' }],
   status: 'active' as const,

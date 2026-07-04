@@ -670,7 +670,7 @@ Restituisce un singolo intervento officina e il **thread delle contestazioni del
     "interventionDate": "2026-05-01",
     "odometerKm": 84210,
     "type": { "code": "TAGLIANDO", "name_it": "Tagliando" },
-    "title": "Tagliando completo",
+    "checklistItems": [{ "id": "uuid", "label": "Cambio olio" }],
     "description": "...",
     "partsReplacedCount": 3,
     "status": "disputed",
@@ -691,6 +691,8 @@ Restituisce un singolo intervento officina e il **thread delle contestazioni del
   ]
 }
 ```
+
+> **Nota (PR-7, checklist parity):** `title` è stato rimosso (BR-308); l'intestazione mostrata al cliente è `type.name_it`. `checklistItems` è popolato dallo snapshot congelato `intervention_checklist_selections` (BR-303), non da un join sul catalogo — stesso pattern di `checklist_items` in §2.2/§2.4, ma in camelCase per convenzione `/me`.
 
 **Errori:** `404 me.intervention.not_found` (intervento inesistente o veicolo non più di proprietà del cliente).
 
@@ -938,7 +940,6 @@ Authorization: Bearer <any_user_jwt>
       "intervention_date": "2026-04-21",
       "odometer_km": 45000,
       "type": { "id": "uuid...", "code": "TAGLIANDO", "name_it": "Tagliando" },
-      "title": "Tagliando completo",
       "description": "...",
       "parts_replaced_count": 4,
       "status": "active",
@@ -976,6 +977,7 @@ Authorization: Bearer <any_user_jwt>
 | `type.id` | string (uuid) | Intervention type UUID. Used by clients that need to populate edit forms with the current type. |
 | `type.code` | string | Codice mnemonico (es. `TAGLIANDO`). |
 | `type.name_it` | string | Nome localizzato italiano. |
+| ~~`title`~~ | - | Rimosso (BR-308): l'intestazione della card è `type.name_it`, non più un titolo libero. |
 | `wiki_window_open` | boolean | Server-computed BR-062 predicate. `true` = free edits, no revision row created. `false` = audit active; subsequent PATCH requires `reason` ≥10 chars per BR-064. Computed from `wikiLockedAt IS NULL AND firstSeenByCustomerAt IS NULL AND now() - createdAt < 48h`. |
 | `tenant.id` | string (uuid) | UUID dell'officina autrice. Chiave per il colore per-officina e il filtro `tenant_ids` lato client. |
 | `viewer_is_owner` | boolean | `true` se l'officina chiamante ha creato l'intervento. `false` cross-tenant (BR-150/BR-153) e sempre `false` per il pool clienti. Il client lo usa per la sola-lettura (niente Modifica/risposta-dispute) sulle righe di altre officine. |

@@ -64,7 +64,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       interventionTypeId: tagliando.id,
       interventionDate: '2026-04-15',
       odometerKm: 45000,
-      title: 'Tagliando A',
     });
     await createIntervention({
       tenantId: tenantB,
@@ -73,7 +72,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       interventionTypeId: tagliando.id,
       interventionDate: '2026-03-10',
       odometerKm: 42000,
-      title: 'Tagliando B',
     });
 
     // Tenant A token reads timeline → must see BOTH tenant A and B
@@ -94,7 +92,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const body = res.json() as {
       data: Array<{
         kind: string;
-        title?: string;
+        odometer_km: number;
         tenant?: { business_name: string };
         wiki_window_open?: boolean;
         viewer_is_owner?: boolean;
@@ -105,12 +103,12 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     expect(body.meta.shop_count).toBe(2);
     expect(body.meta.private_count).toBe(0);
     expect(body.data.every((d) => d.kind === 'shop_intervention')).toBe(true);
-    const titles = body.data.map((d) => d.title ?? '');
-    expect(titles).toContain('Tagliando A');
-    expect(titles).toContain('Tagliando B');
+    const oks = body.data.map((d) => d.odometer_km);
+    expect(oks).toContain(45000);
+    expect(oks).toContain(42000);
+    const rowA = body.data.find((d) => d.odometer_km === 45000)!; // tenant A
+    const rowB = body.data.find((d) => d.odometer_km === 42000)!; // tenant B
     // BR-150/BR-153: caller is tenant A → own row owner, tenant B row read-only.
-    const rowA = body.data.find((d) => d.title === 'Tagliando A')!;
-    const rowB = body.data.find((d) => d.title === 'Tagliando B')!;
     expect(rowA.viewer_is_owner).toBe(true);
     expect(rowB.viewer_is_owner).toBe(false);
     const row = body.data[0]!;
@@ -204,7 +202,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       interventionTypeId: tagliando.id,
       interventionDate: '2026-04-15',
       odometerKm: 45000,
-      title: 'Solo A',
     });
     await createIntervention({
       tenantId: tenantB,
@@ -213,7 +210,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       interventionTypeId: tagliando.id,
       interventionDate: '2026-03-10',
       odometerKm: 42000,
-      title: 'Solo B',
     });
 
     const token = await signTestToken({
@@ -228,9 +224,12 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { data: Array<{ title?: string }>; meta: { shop_count: number } };
+    const body = res.json() as {
+      data: Array<{ odometer_km: number }>;
+      meta: { shop_count: number };
+    };
     expect(body.meta.shop_count).toBe(1);
-    expect(body.data.map((d) => d.title)).toEqual(['Solo B']);
+    expect(body.data.map((d) => d.odometer_km)).toEqual([42000]);
   });
 
   it('returns 400 for a malformed tenant_ids value', async () => {
@@ -572,7 +571,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       interventionTypeId: tagliando.id,
       interventionDate: '2026-01-15',
       odometerKm: 30000,
-      title: 'Old',
     });
     await createIntervention({
       tenantId,
@@ -581,7 +579,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       interventionTypeId: tagliando.id,
       interventionDate: '2026-04-15',
       odometerKm: 45000,
-      title: 'Recent',
     });
 
     const token = await signTestToken({
@@ -597,9 +594,9 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { data: Array<{ title?: string }> };
+    const body = res.json() as { data: Array<{ odometer_km: number }> };
     expect(body.data).toHaveLength(1);
-    expect(body.data[0]!.title).toBe('Recent');
+    expect(body.data[0]!.odometer_km).toBe(45000);
   });
 
   it('paginates with cursor across the merged set', async () => {

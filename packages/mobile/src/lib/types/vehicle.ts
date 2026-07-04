@@ -49,7 +49,6 @@ export type TimelineItem =
       intervention_date: string;
       odometer_km: number;
       type: { id: string; code: string; name_it: string };
-      title: string;
       description: string | null;
       parts_replaced_count: number;
       status: string;
