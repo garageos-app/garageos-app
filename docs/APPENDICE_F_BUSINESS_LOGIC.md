@@ -1299,6 +1299,7 @@ L'intervento **non ha più un titolo libero**: `title` non è più un campo di i
 - `POST /v1/vehicles/:id/interventions` — nessun `title` in input né in risposta
 - `PATCH /v1/interventions/:id` — nessun `title` in input né in risposta
 - `GET /v1/interventions/:id` — nessun `title` in risposta; `checklist_items: [{ label }]` letto dallo snapshot (BR-303)
+- `GET /v1/me/interventions/:id` — nessun `title` in risposta; `checklistItems: [{ id, label }]` dallo snapshot (BR-303), camelCase per convenzione /me
 
 ---
 

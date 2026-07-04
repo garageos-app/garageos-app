@@ -670,7 +670,7 @@ Restituisce un singolo intervento officina e il **thread delle contestazioni del
     "interventionDate": "2026-05-01",
     "odometerKm": 84210,
     "type": { "code": "TAGLIANDO", "name_it": "Tagliando" },
-    "title": "Tagliando completo",
+    "checklistItems": [{ "id": "uuid", "label": "Cambio olio" }],
     "description": "...",
     "partsReplacedCount": 3,
     "status": "disputed",
@@ -691,6 +691,8 @@ Restituisce un singolo intervento officina e il **thread delle contestazioni del
   ]
 }
 ```
+
+> **Nota (PR-7, checklist parity):** `title` è stato rimosso (BR-308); l'intestazione mostrata al cliente è `type.name_it`. `checklistItems` è popolato dallo snapshot congelato `intervention_checklist_selections` (BR-303), non da un join sul catalogo — stesso pattern di `checklist_items` in §2.2/§2.4, ma in camelCase per convenzione `/me`.
 
 **Errori:** `404 me.intervention.not_found` (intervento inesistente o veicolo non più di proprietà del cliente).
 

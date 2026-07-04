@@ -40,11 +40,18 @@ const meInterventionsRoutes: FastifyPluginAsync = async (app) => {
             vehicleId: true,
             interventionDate: true,
             odometerKm: true,
-            title: true,
             description: true,
             partsReplaced: true,
             status: true,
             interventionType: { select: { code: true, nameIt: true } },
+            // BR-308/BR-303: checklist snapshot replaces the removed free-text title.
+            // Frozen label/sort snapshot (never a live catalog join) — mirrors
+            // interventions-detail.ts. Visible to the owning customer as part of the
+            // shared logbook, like parts_replaced.
+            checklistSelections: {
+              select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
+              orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
+            },
             tenant: { select: { businessName: true } },
             // Deadlines this intervention generated (BR-067 source link).
             // Cancelled ones are noise; the customer already sees these shop

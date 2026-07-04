@@ -25,7 +25,6 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
         vehicleId: 'veh-1',
         interventionDate: new Date('2026-05-01T00:00:00.000Z'),
         odometerKm: 84210,
-        title: 'Tagliando',
         description: 'desc',
         partsReplaced: [],
         status: 'active',
@@ -33,6 +32,9 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
         tenant: { businessName: 'Officina Rossi' },
         location: { city: 'Milano' },
         sourceDeadlines: [],
+        checklistSelections: [
+          { checklistItemId: 'c1', labelSnapshot: 'Cambio olio', sortOrderSnapshot: 1 },
+        ],
       }),
     },
     vehicleOwnership: { findFirst: vi.fn().mockResolvedValue({ id: 'own-1' }) },
@@ -70,9 +72,14 @@ describe('GET /v1/me/interventions/:id (unit)', () => {
       headers: { authorization: 'Bearer x' },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { intervention: { id: string }; disputes: unknown[] };
+    const body = res.json() as {
+      intervention: { id: string; checklistItems: { label: string }[] };
+      disputes: unknown[];
+    };
     expect(body.intervention.id).toBe(INTERVENTION_ID);
     expect(body.disputes).toEqual([]);
+    expect(body.intervention.checklistItems).toEqual([{ id: 'c1', label: 'Cambio olio' }]);
+    expect('title' in body.intervention).toBe(false);
     await app.close();
   });
 
@@ -84,13 +91,15 @@ describe('GET /v1/me/interventions/:id (unit)', () => {
           vehicleId: 'veh-1',
           interventionDate: new Date('2026-05-01T00:00:00.000Z'),
           odometerKm: 84210,
-          title: 'Tagliando',
           description: 'desc',
           partsReplaced: [{ name: 'Olio', code: 'OIL-1', quantity: 1, notes: null }],
           status: 'active',
           interventionType: { code: 'MECCANICO', nameIt: 'Tagliando' },
           tenant: { businessName: 'Officina Rossi' },
           location: { city: 'Milano' },
+          checklistSelections: [
+            { checklistItemId: 'c1', labelSnapshot: 'Cambio olio', sortOrderSnapshot: 1 },
+          ],
           sourceDeadlines: [
             {
               id: 'dl-1',
