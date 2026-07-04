@@ -42,9 +42,15 @@ function interventionRow(overrides: Record<string, unknown> = {}) {
   return {
     interventionDate: new Date('2026-05-23T00:00:00.000Z'),
     odometerKm: 60000,
-    title: 'Tagliando',
     description: 'desc',
     partsReplaced: [],
+    checklistSelections: [
+      {
+        checklistItemId: 'c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2',
+        labelSnapshot: 'Cambio olio',
+        sortOrderSnapshot: 0,
+      },
+    ],
     interventionType: { nameIt: 'Tagliando' },
     tenant: { businessName: 'Officina X' },
     location: { city: 'Roma' },
@@ -126,6 +132,8 @@ describe('GET /v1/me/vehicles/:id/export.pdf (unit)', () => {
     expect(whereArg.vehicleId).toBe(VEHICLE_ID);
     expect(dataArg.interventions[0]!.interventionDate).toBe('2026-05-23');
     expect(dataArg.interventions[0]!.tenantName).toBe('Officina X');
+    expect(dataArg.interventions[0]!.checklistItems).toEqual(['Cambio olio']);
+    expect(dataArg.interventions[0]).not.toHaveProperty('title');
   });
 
   it('404 — me.vehicle.not_found when ownership is null; renderer not called', async () => {

@@ -20,8 +20,9 @@ export interface VehicleHistoryInterventionData {
   typeName: string;
   tenantName: string;
 
-  title: string | null;
-  description: string;
+  // BR-300/303/308: frozen checklist labels, already sorted by the caller.
+  checklistItems: string[];
+  description: string; // may be '' since #251
   partsReplaced: { name: string; code: string | null; quantity: number; notes: string | null }[];
 }
 
@@ -117,11 +118,13 @@ export async function renderVehicleHistoryPdf(data: VehicleHistoryPdfData): Prom
 
     // --- Interventions ---
     for (const it of data.interventions) {
-      const descLines = wrapText(it.description, font, 10, contentWidth - 12);
+      const hasDesc = it.description.trim() !== '';
+      const descLines = hasDesc ? wrapText(it.description, font, 10, contentWidth - 12) : [];
+      const checkLines = it.checklistItems.length;
       const partLines = it.partsReplaced.length;
       const blockLines =
         2 + // date+km row, type+officina row
-        (it.title ? 1 : 0) +
+        (checkLines > 0 ? 1 + checkLines : 0) + // "Voci eseguite:" + one line each
         descLines.length +
         (partLines > 0 ? 1 + partLines : 0);
       const blockHeight = blockLines * (LINE - 2) + 16;
@@ -151,9 +154,13 @@ export async function renderVehicleHistoryPdf(data: VehicleHistoryPdfData): Prom
       });
       y -= LINE;
 
-      if (it.title) {
-        page.drawText(`Titolo: ${it.title}`, { x: MARGIN, y, size: 10, font: bold });
+      if (checkLines > 0) {
+        page.drawText('Voci eseguite:', { x: MARGIN, y, size: 10, font: bold });
         y -= LINE - 2;
+        for (const label of it.checklistItems) {
+          page.drawText(`${DOT} ${label}`, { x: MARGIN + 12, y, size: 10, font });
+          y -= LINE - 2;
+        }
       }
       for (const dl of descLines) {
         page.drawText(dl, { x: MARGIN + 12, y, size: 10, font });

@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import { normalizePartsReplaced } from '../../lib/intervention-shared.js';
+import { normalizePartsReplaced, serializeChecklistItems } from '../../lib/intervention-shared.js';
 import {
   renderVehicleHistoryPdf,
   type VehicleHistoryPdfData,
@@ -69,9 +69,12 @@ const meVehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
           select: {
             interventionDate: true,
             odometerKm: true,
-            title: true,
             description: true,
             partsReplaced: true,
+            checklistSelections: {
+              select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
+              orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
+            },
             interventionType: { select: { nameIt: true } },
             tenant: { select: { businessName: true } },
           },
@@ -95,7 +98,8 @@ const meVehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
             odometerKm: it.odometerKm,
             typeName: it.interventionType.nameIt,
             tenantName: it.tenant.businessName,
-            title: it.title,
+            // BR-303/308: frozen snapshot labels, sorted by the shared serializer.
+            checklistItems: serializeChecklistItems(it.checklistSelections).map((c) => c.label),
             description: it.description,
             partsReplaced: normalizePartsReplaced(it.partsReplaced),
           })),
