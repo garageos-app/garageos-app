@@ -60,7 +60,7 @@ const BASE: InterventionPdfData = {
   interventionDate: '2026-05-23',
   odometerKm: 60000,
   typeName: 'Tagliando',
-  title: 'Tagliando completo 60.000 km',
+  checklistItems: ['Cambio olio', 'Controllo freni'],
   description: 'Sostituzione olio motore e filtri.\nControllo freni: àèìòù ok.',
   partsReplaced: [
     { name: 'Filtro olio', code: 'FO-12', quantity: 1, notes: null },
@@ -107,10 +107,9 @@ describe('renderInterventionPdf', () => {
     expect(text).toMatch(/Richiesta cliente/);
   });
 
-  it('renders without throwing with no title, no parts, no customer, no logo', async () => {
+  it('renders without throwing with no parts, no customer, no logo', async () => {
     const buf = await renderInterventionPdf({
       ...BASE,
-      title: null,
       partsReplaced: [],
       customerName: null,
     });
@@ -118,6 +117,21 @@ describe('renderInterventionPdf', () => {
     const text = extractPdfText(buf);
     expect(text).not.toMatch(/Mario Rossi/);
     expect(text).not.toMatch(/Intestatario/);
+  });
+
+  it('renders checklist labels under "Voci eseguite" and no "Titolo"', async () => {
+    const text = extractPdfText(await renderInterventionPdf(BASE));
+    expect(text).toMatch(/Voci eseguite/);
+    expect(text).toMatch(/Cambio olio/);
+    expect(text).toMatch(/Controllo freni/);
+    expect(text).not.toMatch(/Titolo/);
+  });
+
+  it('omits the "Descrizione" label when description is empty', async () => {
+    const text = extractPdfText(await renderInterventionPdf({ ...BASE, description: '' }));
+    expect(text).not.toMatch(/Descrizione/);
+    // checklist still renders — it is the mandatory body
+    expect(text).toMatch(/Voci eseguite/);
   });
 
   it('embeds a PNG logo when provided', async () => {
