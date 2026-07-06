@@ -538,6 +538,8 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
     });
     await createOwnership({ vehicleId, customerId });
     const interventionType = await ensureSystemInterventionType('MECCANICO');
+    // BR-300: a catalog intervention_type_id now requires >=1 checklist item.
+    const checklistItem = await seedChecklistItem({ interventionTypeId: interventionType.id });
 
     const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
 
@@ -555,6 +557,7 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
         intervention_type_id: interventionType.id,
         custom_type: null,
         description: 'Cambio olio',
+        checklist_item_ids: [checklistItem.id],
       },
     });
 
@@ -562,6 +565,7 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
     expect(res.json()).toMatchObject({
       type: { id: interventionType.id, name_it: 'Intervento Meccanico' },
       custom_type: null,
+      checklist_items: [{ id: checklistItem.id }],
     });
   });
 
@@ -1081,7 +1085,7 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
     const { tenantId } = await createTenantWithLocation('me-pip-chk-301');
     const { vehicleId } = await createVehicle({
       createdByTenantId: tenantId,
-      vin: 'PIPOSTCHK301000001',
+      vin: 'PIPOSTCHK30100001',
       plate: 'PC003AA',
       make: 'Fiat',
       model: 'Panda',
