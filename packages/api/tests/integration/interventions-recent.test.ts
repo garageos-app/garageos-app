@@ -53,7 +53,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-20',
       odometerKm: 50000,
-      title: 'Tenant A intervention',
+      description: 'Tenant A intervention',
     });
     await createIntervention({
       tenantId: tB,
@@ -62,7 +62,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-20',
       odometerKm: 60000,
-      title: 'Tenant B intervention',
+      description: 'Tenant B intervention',
     });
 
     const token = await signTestToken({
@@ -96,7 +96,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-20',
       odometerKm: 50000,
-      title: 'Active one',
+      description: 'Active one',
       status: 'active',
     });
     await createIntervention({
@@ -106,7 +106,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-21',
       odometerKm: 51000,
-      title: 'Disputed one',
+      description: 'Disputed one',
       status: 'disputed',
     });
     await createIntervention({
@@ -116,7 +116,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-22',
       odometerKm: 52000,
-      title: 'Cancelled one',
+      description: 'Cancelled one',
       status: 'cancelled',
     });
 
@@ -154,7 +154,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-23',
       odometerKm: 50000,
-      title: 'A',
+      description: 'A',
       createdAt: sharedCreatedAt,
     });
     const { interventionId: i2 } = await createIntervention({
@@ -164,7 +164,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-23',
       odometerKm: 51000,
-      title: 'B',
+      description: 'B',
       createdAt: sharedCreatedAt,
     });
     // Newer createdAt — must appear first regardless of id.
@@ -175,7 +175,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-23',
       odometerKm: 52000,
-      title: 'C',
+      description: 'C',
       createdAt: new Date('2026-05-23T11:00:00.000Z'),
     });
 
@@ -214,7 +214,7 @@ describe('GET /v1/interventions/recent (integration)', () => {
         interventionTypeId: typeId,
         interventionDate: '2026-05-23',
         odometerKm: 50000 + i,
-        title: `Row ${i}`,
+        description: `Row ${i}`,
       });
     }
 
@@ -291,7 +291,7 @@ describe('GET /v1/interventions/recent — BR-205 relaxed (sede unica)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-20',
       odometerKm: 50000,
-      title: 'First intervention',
+      description: 'First intervention',
     });
     await createIntervention({
       tenantId,
@@ -300,7 +300,7 @@ describe('GET /v1/interventions/recent — BR-205 relaxed (sede unica)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-21',
       odometerKm: 51000,
-      title: 'Second intervention',
+      description: 'Second intervention',
     });
 
     const token = await signTestToken({

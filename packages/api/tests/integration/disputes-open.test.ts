@@ -61,7 +61,6 @@ describe('GET /v1/disputes/open (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-20',
       odometerKm: 50000,
-      title: 'A',
     });
     const { interventionId: iB } = await createIntervention({
       tenantId: tB,
@@ -70,7 +69,6 @@ describe('GET /v1/disputes/open (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-20',
       odometerKm: 60000,
-      title: 'B',
     });
     await createDispute({ interventionId: iA, customerId: cA, status: 'open' });
     await createDispute({ interventionId: iB, customerId: cB, status: 'open' });
@@ -111,7 +109,6 @@ describe('GET /v1/disputes/open (integration)', () => {
         interventionTypeId: typeId,
         interventionDate: '2026-05-20',
         odometerKm: km,
-        title: `int-${km}`,
       });
       return interventionId;
     }
@@ -179,7 +176,6 @@ describe('GET /v1/disputes/open (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-20',
       odometerKm: 50000,
-      title: 'pii-test',
     });
     await createDispute({ interventionId, customerId, status: 'open' });
 
@@ -223,7 +219,6 @@ describe('GET /v1/disputes/open (integration)', () => {
       interventionTypeId: typeId,
       interventionDate: '2026-05-20',
       odometerKm: 50000,
-      title: 'biz-test',
     });
     await createDispute({ interventionId, customerId, status: 'open' });
 
@@ -265,7 +260,6 @@ describe('GET /v1/disputes/open (integration)', () => {
         interventionTypeId: typeId,
         interventionDate: '2026-05-20',
         odometerKm: 50000 + i,
-        title: `int-${i}`,
       });
       await createDispute({ interventionId, customerId, status: 'open' });
     }
@@ -332,7 +326,6 @@ describe('GET /v1/disputes/open — BR-205 relaxed (sede unica)', () => {
         interventionTypeId: typeId,
         interventionDate: '2026-05-20',
         odometerKm: km,
-        title: `int-${km}`,
       });
       await createDispute({ interventionId, customerId, status: 'open' });
     };

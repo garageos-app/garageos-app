@@ -85,7 +85,6 @@ const createdEvent: NotificationEvent = {
   intervention: {
     id: 'int-reg',
     vehicleId: 'veh-reg',
-    title: 'Tagliando',
     description: null,
     cancelledReason: null,
   },

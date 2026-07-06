@@ -374,11 +374,6 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
             intervention: {
               id: created.id,
               vehicleId: created.vehicleId,
-              // BR-308/Deviation #3: title no longer exists on the row. The
-              // push template keys off vehicle.model/interventionTypeName
-              // and the email titleBlock is conditional on a truthy value,
-              // so passing null here requires zero template changes.
-              title: null,
               description: created.description,
               cancelledReason: null,
             },

@@ -11,7 +11,6 @@ it('renders intervention.created per BR-157 format with ids in data', () => {
     intervention: {
       id: 'int-0',
       vehicleId: 'veh-0',
-      title: 'Tagliando completo',
       description: null,
       cancelledReason: null,
     },
@@ -37,7 +36,6 @@ it('renders intervention.revised with ids in data', () => {
     intervention: {
       id: 'int-1',
       vehicleId: 'veh-1',
-      title: 'Tagliando',
       description: null,
       cancelledReason: null,
     },
@@ -60,7 +58,6 @@ it('renders intervention.cancelled', () => {
     intervention: {
       id: 'int-2',
       vehicleId: 'veh-2',
-      title: null,
       description: null,
       cancelledReason: 'x',
     },

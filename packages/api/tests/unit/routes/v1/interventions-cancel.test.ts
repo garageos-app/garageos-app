@@ -65,7 +65,6 @@ function buildReloadedRow(): Record<string, unknown> {
     interventionTypeId: '88888888-8888-4888-8888-888888888888',
     interventionDate: new Date('2026-04-25'),
     odometerKm: 50000,
-    title: null,
     description: 'Test',
     partsReplaced: [],
     internalNotes: null,

@@ -44,7 +44,6 @@ const createdEvent: NotificationEvent = {
   intervention: {
     id: 'int-1',
     vehicleId: 'veh-1',
-    title: 'Tagliando',
     description: 'olio',
     cancelledReason: null,
   },
@@ -58,7 +57,6 @@ const revisedEvent: NotificationEvent = {
   intervention: {
     id: 'int-1',
     vehicleId: 'veh-1',
-    title: 'Tagliando',
     description: 'olio',
     cancelledReason: null,
   },
@@ -76,7 +74,6 @@ const cancelledEvent: NotificationEvent = {
   intervention: {
     id: 'int-1',
     vehicleId: 'veh-1',
-    title: 'Tagliando',
     description: 'olio',
     cancelledReason: 'errore VIN',
   },

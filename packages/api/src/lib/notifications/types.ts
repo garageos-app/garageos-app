@@ -7,7 +7,6 @@ import type { PersonalDeadlineCategory, Prisma } from '@garageos/database';
 export interface InterventionForEmail {
   id: string;
   vehicleId: string;
-  title: string | null;
   description: string | null;
   cancelledReason: string | null;
 }

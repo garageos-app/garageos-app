@@ -419,7 +419,6 @@ export async function createIntervention(params: {
   interventionTypeId: string;
   interventionDate: string; // YYYY-MM-DD
   odometerKm: number;
-  title?: string | null;
   description?: string;
   partsReplaced?: unknown[];
   status?: 'active' | 'disputed' | 'cancelled';
@@ -440,7 +439,6 @@ export async function createIntervention(params: {
     interventionTypeId,
     interventionDate,
     odometerKm,
-    title = null,
     description = 'Test intervention',
     partsReplaced = [{ name: 'Olio' }, { name: 'Filtro' }],
     status = 'active',
@@ -449,10 +447,10 @@ export async function createIntervention(params: {
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO interventions
        (id, tenant_id, user_id, vehicle_id, intervention_type_id,
-        intervention_date, odometer_km, title, description, parts_replaced,
+        intervention_date, odometer_km, description, parts_replaced,
         internal_notes, status, km_anomaly, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, $7, $8,
-        $9::jsonb, $10, $11::"InterventionStatus", false, NOW(), NOW())
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, $6, $7,
+        $8::jsonb, $9, $10::"InterventionStatus", false, NOW(), NOW())
      RETURNING id`,
     [
       tenantId,
@@ -461,7 +459,6 @@ export async function createIntervention(params: {
       interventionTypeId,
       interventionDate,
       odometerKm,
-      title,
       description,
       JSON.stringify(partsReplaced),
       internalNotes,

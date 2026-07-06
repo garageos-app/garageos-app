@@ -25,7 +25,6 @@ const recipient: CustomerForNotification = {
 const intervention: InterventionForEmail = {
   id: 'int-1',
   vehicleId: 'veh-1',
-  title: 'Tagliando completo',
   description: 'Sostituzione olio motore',
   cancelledReason: null,
 };
@@ -57,15 +56,13 @@ describe('intervention-created template (BR-157)', () => {
     expect(html).toContain('https://app.garageos.aifollyadvisor.com/v/veh-1');
   });
 
-  it('html escapes markup in title and tenant name', () => {
+  it('html escapes markup in tenant name', () => {
     const html = renderCreatedEmailHtml({
       ...baseInput,
-      intervention: { ...intervention, title: '<script>alert(1)</script>' },
       tenant: { id: 'ten-1', businessName: 'Officina <b>X</b>' },
     });
-    expect(html).not.toContain('<script>');
     expect(html).not.toContain('<b>X</b>');
-    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('&lt;b&gt;X&lt;/b&gt;');
   });
 
   it('text mirrors html content', () => {
@@ -75,14 +72,6 @@ describe('intervention-created template (BR-157)', () => {
     expect(text).toContain('Fiat Panda');
     expect(text).toContain('GG123ZZ');
     expect(text).toContain('Tagliando');
-  });
-
-  it('omits the title block when title is null without leaking null/undefined', () => {
-    const html = renderCreatedEmailHtml({
-      ...baseInput,
-      intervention: { ...intervention, title: null },
-    });
-    expect(html).not.toMatch(/\bnull\b|\bundefined\b/i);
   });
 
   it('uses businessName for business recipients and Cliente fallback', () => {

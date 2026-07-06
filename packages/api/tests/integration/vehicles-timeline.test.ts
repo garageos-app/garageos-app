@@ -268,7 +268,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       interventionTypeId: tagliando.id,
       interventionDate: '2026-04-20',
       odometerKm: 48000,
-      title: 'Tagliando bloccato',
       wikiLockedAt: lockedAt,
     });
 
@@ -320,7 +319,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       interventionTypeId: tagliando.id,
       interventionDate: '2026-04-20',
       odometerKm: 48000,
-      title: 'Tagliando vecchio',
     });
 
     // Force createdAt to 49h ago without touching wikiLockedAt (which
@@ -420,7 +418,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       interventionTypeId: tagliando.id,
       interventionDate: '2026-04-15',
       odometerKm: 50000,
-      title: 'Tagliando ufficiale',
     });
     await createPrivateIntervention({
       customerId,

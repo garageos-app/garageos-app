@@ -24,7 +24,6 @@ const recipient: CustomerForNotification = {
 const intervention: InterventionForEmail = {
   id: 'int-1',
   vehicleId: 'veh-1',
-  title: 'Tagliando',
   description: 'Sostituzione olio motore',
   cancelledReason: 'Errore di trascrizione VIN — la riga è stata reinserita corretta.',
 };
