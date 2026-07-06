@@ -12,7 +12,7 @@ import {
   vehicleDetailSelect,
   vehicleOwnershipSelect,
 } from '../../lib/vehicle-shared.js';
-import { validateVinIso3779 } from '../../lib/vin-checksum.js';
+import { INVALID_VIN_CHECKSUM_DETAIL, validateVinIso3779 } from '../../lib/vin-checksum.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -384,7 +384,7 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
         throw businessError(
           'vehicle.creation.invalid_vin_checksum',
           400,
-          'La cifra di controllo del VIN non corrisponde allo standard ISO 3779 (comune sui veicoli europei). Verifica il numero di telaio sul libretto; se è corretto, conferma per procedere.',
+          INVALID_VIN_CHECKSUM_DETAIL,
         );
       }
 

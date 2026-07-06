@@ -14,6 +14,10 @@ import { z } from 'zod';
 import { ApiError } from '@/lib/api-client';
 import { translateError } from '@/lib/error-messages';
 import {
+  VIN_CHECKSUM_DIALOG_DESCRIPTION,
+  VIN_CHECKSUM_DIALOG_TITLE,
+} from '@/lib/vin-checksum-copy';
+import {
   VehicleTypeEnum,
   FuelTypeEnum,
   type VehicleType,
@@ -368,12 +372,8 @@ export function CertifyVehicleDialog({ open, onOpenChange, vehicle }: CertifyVeh
       <Dialog open={confirm?.kind === 'vin'} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Controlla il numero di telaio</DialogTitle>
-            <DialogDescription>
-              La cifra di controllo del VIN non corrisponde allo standard ISO 3779 — comune sui
-              veicoli europei. Verifica il telaio sul libretto: se è corretto, conferma per
-              procedere.
-            </DialogDescription>
+            <DialogTitle>{VIN_CHECKSUM_DIALOG_TITLE}</DialogTitle>
+            <DialogDescription>{VIN_CHECKSUM_DIALOG_DESCRIPTION}</DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
             <Button type="button" variant="ghost" onClick={() => setConfirm(null)}>

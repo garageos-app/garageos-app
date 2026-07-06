@@ -17,10 +17,13 @@ import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
 // fail it (the 9th-position check digit is a North-American / NHTSA
 // requirement, not populated by EU manufacturers), so blocking here would
 // dead-end genuine pre-registrations. The customer VIN is non-authoritative
-// anyway — a workshop verifies it against the libretto at certification
-// (BR-003/BR-004) — so a typo is caught there, not here. A workshop later
-// certifies the vehicle (PR2, out of scope here): no garageCode /
-// certifiedBy* fields are written, satisfying the DB CHECK
+// anyway — at certification a mechanic must physically check it against the
+// libretto (BR-004, the librettoVisioned gate; a human check, NOT the
+// checksum) and can correct it before it becomes immutable (BR-005) — so a
+// typo is caught by the same human gate as every other field, not here. A
+// checksum re-gate at certify would instead fire on nearly every EU VIN.
+// A workshop later certifies the vehicle (PR2, out of scope here): no
+// garageCode / certifiedBy* fields are written, satisfying the DB CHECK
 // chk_pending_consistency (pending ⇒ garage_code NULL).
 //
 // RLS: the INSERT passes policy vehicles_insert via its
