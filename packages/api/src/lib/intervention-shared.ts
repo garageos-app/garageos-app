@@ -128,9 +128,17 @@ export function serializeChecklistItems(
 // BR-308 comment on UpdateInterventionSchema) call this before writing any
 // intervention_checklist_selections row, so the cardinality/ownership/
 // visibility rules stay centralized instead of duplicated per route.
+//
+// `tenantId` is optional: the customer/private-intervention path (Tasks
+// 5-6) has no tenant and calls this validator without one, skipping the
+// two BR-302/304 tenant-exclusion queries below — customers see the full
+// global catalog since there is no tenant to opt a row out on their
+// behalf. BR-300 (min 1 item) and BR-301/302 active-membership still apply
+// to both paths. The officina path continues to pass `tenantId` and its
+// behavior is unchanged.
 export async function validateChecklistSelection(
   tx: PrismaClient,
-  args: { tenantId: string; interventionTypeId: string; checklistItemIds: string[] },
+  args: { tenantId?: string | null; interventionTypeId: string; checklistItemIds: string[] },
 ): Promise<{ id: string; nameIt: string; sortOrder: number }[]> {
   const { tenantId, interventionTypeId, checklistItemIds } = args;
 
@@ -154,17 +162,20 @@ export async function validateChecklistSelection(
   // BR-302: a tenant that opted out of the whole intervention type
   // (tenant_intervention_type_exclusions) cannot register checklist items
   // scoped to it either — checked up front so the failure is uniform
-  // regardless of which item ids were submitted.
-  const typeExcluded = await tx.tenantInterventionTypeExclusion.findFirst({
-    where: { tenantId, interventionTypeId },
-    select: { tenantId: true },
-  });
-  if (typeExcluded) {
-    throw businessError(
-      'intervention.creation.checklist_item_invalid',
-      422,
-      INVALID_SELECTION_DETAIL,
-    );
+  // regardless of which item ids were submitted. Customer path (no
+  // tenantId) has no tenant to exclude on, so this check is skipped.
+  if (tenantId != null) {
+    const typeExcluded = await tx.tenantInterventionTypeExclusion.findFirst({
+      where: { tenantId, interventionTypeId },
+      select: { tenantId: true },
+    });
+    if (typeExcluded) {
+      throw businessError(
+        'intervention.creation.checklist_item_invalid',
+        422,
+        INVALID_SELECTION_DETAIL,
+      );
+    }
   }
 
   // BR-301: every selected id must belong to the chosen intervention type.
@@ -184,17 +195,20 @@ export async function validateChecklistSelection(
 
   // BR-302: an item can be globally active yet excluded for this specific
   // tenant (tenant_checklist_item_exclusions) — reject the whole batch if
-  // any selected id is on that list.
-  const exclusions = await tx.tenantChecklistItemExclusion.findMany({
-    where: { tenantId, checklistItemId: { in: ids } },
-    select: { checklistItemId: true },
-  });
-  if (exclusions.length > 0) {
-    throw businessError(
-      'intervention.creation.checklist_item_invalid',
-      422,
-      INVALID_SELECTION_DETAIL,
-    );
+  // any selected id is on that list. Customer path (no tenantId) has no
+  // tenant to exclude on, so this check is skipped.
+  if (tenantId != null) {
+    const exclusions = await tx.tenantChecklistItemExclusion.findMany({
+      where: { tenantId, checklistItemId: { in: ids } },
+      select: { checklistItemId: true },
+    });
+    if (exclusions.length > 0) {
+      throw businessError(
+        'intervention.creation.checklist_item_invalid',
+        422,
+        INVALID_SELECTION_DETAIL,
+      );
+    }
   }
 
   return found;
