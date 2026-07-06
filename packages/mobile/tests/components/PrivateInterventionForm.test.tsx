@@ -179,9 +179,78 @@ describe('PrivateInterventionForm', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
+  it('does not render Elimina without onDelete', () => {
+    render(<PrivateInterventionForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Elimina' })).toBeNull();
+  });
+
   it('shows a loading indicator while the catalog loads', () => {
     stubCatalog({ data: undefined, isLoading: true });
     render(<PrivateInterventionForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
     expect(screen.getByTestId('type-loading')).toBeOnTheScreen();
+  });
+
+  it('keeps the Altro path available when the catalog fails to load', async () => {
+    stubCatalog({ data: undefined, isLoading: false, isError: true });
+    const onSubmit = jest.fn().mockResolvedValue({ ok: true });
+    render(<PrivateInterventionForm onSubmit={onSubmit} onCancel={jest.fn()} />);
+    // No catalog chip renders, but Altro must still be selectable.
+    expect(screen.queryByTestId('type-chip-GOMME')).toBeNull();
+    expect(screen.getByTestId('type-chip-altro')).toBeOnTheScreen();
+    fireEvent.press(screen.getByTestId('type-chip-altro'));
+    fireEvent.changeText(screen.getByPlaceholderText('Es. Lavaggio, Cambio gomme'), 'Lavaggio');
+    fillDateAndDescription();
+    fireEvent.press(screen.getByRole('button', { name: 'Salva' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].custom_type).toBe('Lavaggio');
+  });
+
+  it('edit: omits checklist_item_ids when type and checklist are unchanged', async () => {
+    const onSubmit = jest.fn().mockResolvedValue({ ok: true });
+    render(
+      <PrivateInterventionForm
+        onSubmit={onSubmit}
+        onCancel={jest.fn()}
+        submitLabel="Salva modifiche"
+        initial={{
+          selectedKey: 'type-gomme',
+          customType: '',
+          checklistItemIds: ['i-pneu'],
+          interventionDate: '2021-03-03',
+          odometerKm: '90000',
+          description: 'Cambio gomme invernali',
+        }}
+      />,
+    );
+    // Change only an unrelated field, leave the checklist untouched.
+    fireEvent.changeText(screen.getByPlaceholderText('Chilometri (opzionale)'), '91000');
+    fireEvent.press(screen.getByRole('button', { name: 'Salva modifiche' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const body = onSubmit.mock.calls[0][0];
+    expect(body).not.toHaveProperty('checklist_item_ids');
+    expect(body.intervention_type_id).toBe('type-gomme');
+  });
+
+  it('edit: sends checklist_item_ids when the checklist changed', async () => {
+    const onSubmit = jest.fn().mockResolvedValue({ ok: true });
+    render(
+      <PrivateInterventionForm
+        onSubmit={onSubmit}
+        onCancel={jest.fn()}
+        submitLabel="Salva modifiche"
+        initial={{
+          selectedKey: 'type-gomme',
+          customType: '',
+          checklistItemIds: ['i-pneu'],
+          interventionDate: '2021-03-03',
+          odometerKm: '90000',
+          description: 'Cambio gomme invernali',
+        }}
+      />,
+    );
+    fireEvent.press(screen.getByTestId('checklist-item-CONV'));
+    fireEvent.press(screen.getByRole('button', { name: 'Salva modifiche' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].checklist_item_ids).toEqual(['i-pneu', 'i-conv']);
   });
 });

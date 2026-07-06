@@ -131,11 +131,22 @@ export function PrivateInterventionForm({
     if (isAltro) {
       body = { ...base, intervention_type_id: null, custom_type: customType.trim() };
     } else if (selectedKey !== null) {
+      // On edit, only replace the checklist when the type or the selected set
+      // actually changed. Omitting checklist_item_ids leaves the persisted
+      // snapshot untouched server-side — this avoids resubmitting a now-inactive
+      // item id (unfixable 422) or silently dropping a snapshot item whose
+      // catalog row was deleted (BR-303 SetNull). On create (no initial) it is
+      // always sent (BR-300 requires >= 1).
+      const checklistChanged =
+        initial === undefined ||
+        selectedKey !== initial.selectedKey ||
+        checklistItemIds.length !== initial.checklistItemIds.length ||
+        checklistItemIds.some((id) => !initial.checklistItemIds.includes(id));
       body = {
         ...base,
         intervention_type_id: selectedKey,
         custom_type: null,
-        checklist_item_ids: checklistItemIds,
+        ...(checklistChanged ? { checklist_item_ids: checklistItemIds } : {}),
       };
     } else {
       return; // unreachable: the validator requires a selection
@@ -167,13 +178,11 @@ export function PrivateInterventionForm({
 
       <View style={styles.field}>
         <Text style={styles.label}>Tipo</Text>
-        {typesQuery.isLoading ? (
-          <ActivityIndicator testID="type-loading" color={colors.primary} />
-        ) : typesQuery.isError ? (
-          <Text style={styles.fieldError}>Impossibile caricare i tipi. Riprova.</Text>
-        ) : (
-          <View style={styles.chipRow}>
-            {types.map((t) => {
+        <View style={styles.chipRow}>
+          {typesQuery.isLoading ? (
+            <ActivityIndicator testID="type-loading" color={colors.primary} />
+          ) : (
+            types.map((t) => {
               const selected = t.id === selectedKey;
               return (
                 <Pressable
@@ -190,19 +199,27 @@ export function PrivateInterventionForm({
                   </Text>
                 </Pressable>
               );
-            })}
-            <Pressable
-              testID="type-chip-altro"
-              accessibilityRole="button"
-              accessibilityState={{ selected: isAltro }}
-              disabled={submitting}
-              onPress={() => selectType(ALTRO_TYPE_KEY)}
-              style={[styles.chip, isAltro && styles.chipSelected]}
-            >
-              <Text style={[styles.chipText, isAltro && styles.chipTextSelected]}>Altro</Text>
-            </Pressable>
-          </View>
-        )}
+            })
+          )}
+          {/* "Altro" never depends on the catalog — keep it selectable even while
+              the catalog is loading or after a fetch error, so the free-text
+              create path (which needs no network) is never blocked. */}
+          <Pressable
+            testID="type-chip-altro"
+            accessibilityRole="button"
+            accessibilityState={{ selected: isAltro }}
+            disabled={submitting}
+            onPress={() => selectType(ALTRO_TYPE_KEY)}
+            style={[styles.chip, isAltro && styles.chipSelected]}
+          >
+            <Text style={[styles.chipText, isAltro && styles.chipTextSelected]}>Altro</Text>
+          </Pressable>
+        </View>
+        {!typesQuery.isLoading && (typesQuery.isError || types.length === 0) ? (
+          <Text style={styles.fieldError}>
+            Impossibile caricare i tipi dal catalogo. Puoi registrare un tipo libero con Altro.
+          </Text>
+        ) : null}
         {errors.type ? <Text style={styles.fieldError}>{errors.type}</Text> : null}
       </View>
 
@@ -223,29 +240,29 @@ export function PrivateInterventionForm({
       {selectedType ? (
         <View style={styles.field}>
           <Text style={styles.label}>Voci eseguite (almeno una) *</Text>
-          {[...selectedType.checklist_items]
-            .sort((a, b) => a.sort_order - b.sort_order)
-            .map((item) => {
-              const checked = checklistItemIds.includes(item.id);
-              return (
-                <Pressable
-                  key={item.id}
-                  testID={`checklist-item-${item.code}`}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked }}
-                  disabled={submitting}
-                  onPress={() => toggleItem(item.id)}
-                  style={styles.checklistRow}
-                >
-                  <Ionicons
-                    name={checked ? 'checkbox' : 'square-outline'}
-                    size={22}
-                    color={checked ? colors.primary : colors.muted}
-                  />
-                  <Text style={styles.checklistLabel}>{item.name_it}</Text>
-                </Pressable>
-              );
-            })}
+          {/* The catalog endpoint already returns items sorted by sort_order asc
+              (me-intervention-types.ts). `?? []` guards a malformed payload. */}
+          {(selectedType.checklist_items ?? []).map((item) => {
+            const checked = checklistItemIds.includes(item.id);
+            return (
+              <Pressable
+                key={item.id}
+                testID={`checklist-item-${item.code}`}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked }}
+                disabled={submitting}
+                onPress={() => toggleItem(item.id)}
+                style={styles.checklistRow}
+              >
+                <Ionicons
+                  name={checked ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={checked ? colors.primary : colors.muted}
+                />
+                <Text style={styles.checklistLabel}>{item.name_it}</Text>
+              </Pressable>
+            );
+          })}
           {errors.checklistItemIds ? (
             <Text style={styles.fieldError}>{errors.checklistItemIds}</Text>
           ) : null}
