@@ -15,7 +15,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'vehicle.creation.duplicate_vin': 'Esiste già un veicolo con questo VIN.',
   'vehicle.creation.duplicate_plate_warning': 'Esiste già un veicolo con questa targa.',
   'vehicle.creation.invalid_vin_checksum':
-    'Il VIN non rispetta il checksum standard. Conferma se è un veicolo storico o agricolo.',
+    'La cifra di controllo del VIN non corrisponde. Verifica il telaio sul libretto e conferma per procedere.',
   'vehicle.certification.not_pending': 'Il veicolo non è più in attesa di certificazione.',
   'vehicle.certification.libretto_required':
     'Conferma di aver visionato il libretto di circolazione.',

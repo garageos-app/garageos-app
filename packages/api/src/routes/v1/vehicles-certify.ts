@@ -99,15 +99,17 @@ const vehicleCertifyRoutes: FastifyPluginAsync = async (app) => {
 
         const corrections = body.corrections ?? {};
 
-        // BR-001: corrected VIN must pass the ISO 3779 checksum unless the
-        // mechanic explicitly flags a non-standard VIN; BR-005 does not
-        // apply yet (the vehicle is not certified).
+        // BR-001: the ISO 3779 checksum on a corrected VIN is advisory
+        // (a mismatch is common on EU VINs — see routes/v1/vehicles.ts),
+        // surfaced as a confirmable warning the mechanic acknowledges via
+        // forceNonstandardVin; BR-005 does not apply yet (the vehicle is
+        // not certified).
         if (corrections.vin !== undefined && corrections.vin !== existing.vin) {
           if (!body.forceNonstandardVin && !validateVinIso3779(corrections.vin)) {
             throw businessError(
               'vehicle.creation.invalid_vin_checksum',
               400,
-              'Il VIN non rispetta il checksum ISO 3779. Usa forceNonstandardVin=true per veicoli storici o agricoli.',
+              'La cifra di controllo del VIN non corrisponde allo standard ISO 3779 (comune sui veicoli europei). Verifica il numero di telaio sul libretto; se è corretto, conferma per procedere.',
             );
           }
           await checkDuplicateVin(tx, corrections.vin);

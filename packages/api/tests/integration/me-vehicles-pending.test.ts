@@ -9,9 +9,10 @@ import { signTestToken } from '../helpers/jwt.js';
 // POST /v1/me/vehicles/pending (F-CLI-104 PR1).
 //
 // End-to-end coverage of customer pre-registration: clienti-pool JWT →
-// VIN checksum (BR-001) → duplicate detection → pending Vehicle +
-// active VehicleOwnership in one tx (BR-003 / BR-040), plus the
-// vehicles_insert RLS negative.
+// duplicate detection (BR-001) → pending Vehicle + active VehicleOwnership
+// in one tx (BR-003 / BR-040), plus the vehicles_insert RLS negative. The
+// ISO 3779 checksum is advisory and NOT enforced on this surface (BR-001);
+// a checksum-failing VIN is accepted (see the dedicated test below).
 //
 // No claim-on-pending (BR-042) integration test here: a pending vehicle
 // has garage_code NULL (chk_pending_consistency), so it can never be
@@ -30,6 +31,9 @@ const VIN_DUP_CERTIFIED = 'ZFA22300405556777'; // check digit 4
 const VIN_DUP_PENDING = 'ZFA22300205556888'; // check digit 2
 const VIN_ISOLATION = 'ZFA22300005556999'; // check digit 0
 const VIN_RLS = 'WVWZZZ1J9W3865551'; // check digit 9
+// Shape-valid but ISO 3779 checksum-INVALID (VIN_HAPPY with X→1 at pos 9),
+// representative of a normal EU VIN. Accepted on the customer surface.
+const VIN_NONSTANDARD = '1M8GDM9A1KP042788';
 
 // Valid request body minus VIN/plate (callers override those per test).
 const BASE_BODY = {
@@ -226,6 +230,29 @@ describe('POST /v1/me/vehicles/pending (integration)', () => {
       power_kw: null,
       color: null,
     });
+  });
+
+  it('accepts a checksum-failing (non-standard) VIN and creates the pending vehicle', async () => {
+    const { customerId, token } = await customer('pend-nonstd');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/me/vehicles/pending',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...BASE_BODY, vin: VIN_NONSTANDARD, plate: 'PD009II' },
+    });
+
+    // BR-001: no checksum gate on the customer surface — the VIN persists.
+    expect(res.statusCode).toBe(201);
+    expect((res.json() as { vehicle: { vin: string } }).vehicle.vin).toBe(VIN_NONSTANDARD);
+
+    const { rows } = await pgAdmin.query<{ status: string; created_by_customer_id: string | null }>(
+      `SELECT status, created_by_customer_id FROM vehicles WHERE vin = $1`,
+      [VIN_NONSTANDARD],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe('pending');
+    expect(rows[0]!.created_by_customer_id).toBe(customerId);
   });
 
   it('returns 400 for an invalid optional technical field (negative displacement)', async () => {

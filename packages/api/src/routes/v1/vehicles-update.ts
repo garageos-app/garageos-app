@@ -82,7 +82,7 @@ const vehicleUpdateRoutes: FastifyPluginAsync = async (app) => {
             throw businessError(
               'vehicle.creation.invalid_vin_checksum',
               400,
-              'Il VIN non rispetta il checksum ISO 3779. Usa forceNonstandardVin=true per veicoli storici o agricoli.',
+              'La cifra di controllo del VIN non corrisponde allo standard ISO 3779 (comune sui veicoli europei). Verifica il numero di telaio sul libretto; se è corretto, conferma per procedere.',
             );
           }
           await checkDuplicateVin(tx, body.vin);

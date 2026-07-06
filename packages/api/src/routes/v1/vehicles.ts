@@ -374,13 +374,17 @@ const vehicleRoutes: FastifyPluginAsync = async (app) => {
       const body = CreateVehicleBodySchema.parse(request.body);
 
       // BR-001: VIN is validated for 17-char alphanumeric shape by the
-      // base schema. ISO 3779 checksum is separate and can be bypassed
-      // for pre-1981 / agricultural vehicles via forceNonstandardVin.
+      // base schema. The ISO 3779 checksum is advisory ("checksum quando
+      // possibile"): the 9th-position check digit is a North-American /
+      // NHTSA requirement that most EU manufacturers do not populate, so a
+      // mismatch is common and does NOT hard-fail. It is surfaced as a
+      // confirmable warning — the mechanic (who reads the libretto) either
+      // fixes a genuine typo or acknowledges it via forceNonstandardVin.
       if (!body.forceNonstandardVin && !validateVinIso3779(body.vehicle.vin)) {
         throw businessError(
           'vehicle.creation.invalid_vin_checksum',
           400,
-          'Il VIN non rispetta il checksum ISO 3779. Usa forceNonstandardVin=true per veicoli storici o agricoli.',
+          'La cifra di controllo del VIN non corrisponde allo standard ISO 3779 (comune sui veicoli europei). Verifica il numero di telaio sul libretto; se è corretto, conferma per procedere.',
         );
       }
 

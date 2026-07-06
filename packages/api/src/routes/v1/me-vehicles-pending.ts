@@ -2,7 +2,6 @@ import { CreatePendingVehicleSchema, Prisma } from '@garageos/database';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { businessError } from '../../lib/business-error.js';
-import { validateVinIso3779 } from '../../lib/vin-checksum.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
@@ -12,12 +11,17 @@ import { requireClientiPool } from '../../middleware/require-clienti-pool.js';
 // vehicle is created with status 'pending' (BR-003: customer-created
 // vehicles start pending) and immediately owned by the caller via a
 // single active ownership row (BR-040). Mandatory fields per BR-006 are
-// enforced by CreatePendingVehicleSchema; the VIN must pass the ISO 3779
-// checksum (BR-001) with NO forceNonstandardVin bypass — that exception
-// is mechanic-only (workshop flow). A workshop later certifies the
-// vehicle (PR2, out of scope here): no garageCode / certifiedBy* fields
-// are written, satisfying the DB CHECK chk_pending_consistency
-// (pending ⇒ garage_code NULL).
+// enforced by CreatePendingVehicleSchema. The ISO 3779 checksum is NOT
+// enforced on the customer surface: it is advisory (BR-001 "checksum
+// quando possibile") and the vast majority of European VINs legitimately
+// fail it (the 9th-position check digit is a North-American / NHTSA
+// requirement, not populated by EU manufacturers), so blocking here would
+// dead-end genuine pre-registrations. The customer VIN is non-authoritative
+// anyway — a workshop verifies it against the libretto at certification
+// (BR-003/BR-004) — so a typo is caught there, not here. A workshop later
+// certifies the vehicle (PR2, out of scope here): no garageCode /
+// certifiedBy* fields are written, satisfying the DB CHECK
+// chk_pending_consistency (pending ⇒ garage_code NULL).
 //
 // RLS: the INSERT passes policy vehicles_insert via its
 // created_by_customer_id IS NOT NULL arm. The security boundary is the
@@ -60,15 +64,10 @@ const meVehiclesPendingRoutes: FastifyPluginAsync = async (app) => {
       const body = CreatePendingVehicleSchema.parse(request.body);
       const customerId = request.customerId!;
 
-      // BR-001 ISO 3779 checksum — no bypass on the customer surface.
-      if (!validateVinIso3779(body.vin)) {
-        throw businessError(
-          'vehicle.creation.invalid_vin_checksum',
-          400,
-          "Il VIN non risulta valido. Controlla il libretto di circolazione; per veicoli storici o speciali rivolgiti a un'officina.",
-        );
-      }
-
+      // BR-001: no ISO 3779 checksum gate here — see the header note. The
+      // checksum is advisory and the customer VIN is re-verified at
+      // certification, so we accept any shape-valid VIN and let the
+      // duplicate guard below do the only hard check.
       const result = await app.withContext({ customerId, role: 'user' }, async (tx) => {
         // Duplicate VIN pre-check (BR-001 global unique). The friendly
         // 409 here covers the common case; the P2002 catch below covers

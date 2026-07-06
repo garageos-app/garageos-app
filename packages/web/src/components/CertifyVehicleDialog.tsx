@@ -368,10 +368,11 @@ export function CertifyVehicleDialog({ open, onOpenChange, vehicle }: CertifyVeh
       <Dialog open={confirm?.kind === 'vin'} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>VIN non standard</DialogTitle>
+            <DialogTitle>Controlla il numero di telaio</DialogTitle>
             <DialogDescription>
-              Il VIN non rispetta il checksum standard. Confermi solo se è un veicolo storico o
-              agricolo.
+              La cifra di controllo del VIN non corrisponde allo standard ISO 3779 — comune sui
+              veicoli europei. Verifica il telaio sul libretto: se è corretto, conferma per
+              procedere.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
