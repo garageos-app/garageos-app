@@ -1019,9 +1019,10 @@ Authorization: Bearer <customer_jwt>
 |---|---|---|
 | 400 | `intervention.creation.checklist_required` | `checklist_item_ids` vuoto con `intervention_type_id` valorizzato (BR-300) |
 | 422 | `intervention.creation.checklist_item_invalid` | Voce non appartenente al tipo scelto o non attiva (BR-301) |
-| 422 | `VALIDATION_ERROR` | Zod: non esattamente uno tra `intervention_type_id`/`custom_type`; `checklist_item_ids` non vuoto con `custom_type`; oppure `intervention_type_id` inesistente |
+| 400 | `VALIDATION_ERROR` | Zod: non esattamente uno tra `intervention_type_id`/`custom_type`; `checklist_item_ids` non vuoto con `custom_type` |
+| 422 | `VALIDATION_ERROR` | `intervention_type_id` inesistente |
 | 422 | `private_intervention.vehicle_not_owned` | Veicolo non posseduto attualmente dal caller (BR-080) |
-| 400 | `private_intervention.date_future` | `intervention_date` futura (BR-069 mirror) |
+| 422 | `private_intervention.date_future` | `intervention_date` futura (BR-069 mirror) |
 | 429 | `private_intervention.rate_limit` | Limite di 50 interventi privati/giorno raggiunto (BR-085) |
 
 ---
@@ -1075,7 +1076,7 @@ Authorization: Bearer <customer_jwt>
 }
 ```
 
-Campi modificabili (tutti opzionali): `intervention_date`, `odometer_km`, `intervention_type_id`, `custom_type`, `description`, `checklist_item_ids`. Body con chiavi sconosciute → `422` (schema `.strict()`).
+Campi modificabili (tutti opzionali): `intervention_date`, `odometer_km`, `intervention_type_id`, `custom_type`, `description`, `checklist_item_ids`. Body con chiavi sconosciute → `400` (schema `.strict()`).
 
 **Response `200 OK`:** stesso shape del POST 201/GET dettaglio, con lo stato post-edit (le selezioni checklist mantenute conservano `label`/`sort_order` originali; solo le nuove voci ricevono uno snapshot fresco).
 
@@ -1084,8 +1085,9 @@ Campi modificabili (tutti opzionali): `intervention_date`, `odometer_km`, `inter
 | Status | Codice | Scenario |
 |---|---|---|
 | 404 | `private_intervention.not_found` | Inesistente o di un altro cliente |
-| 422 | `VALIDATION_ERROR` | Stato post-merge non ha esattamente uno tra `intervention_type_id`/`custom_type`; chiavi sconosciute nel body; `intervention_type_id` fornito ma inesistente |
-| 400 | `private_intervention.date_future` | Nuova `intervention_date` futura |
+| 400 | `VALIDATION_ERROR` | Stato post-merge non ha esattamente uno tra `intervention_type_id`/`custom_type`; chiavi sconosciute nel body (`.strict()`) |
+| 422 | `VALIDATION_ERROR` | `intervention_type_id` fornito ma inesistente |
+| 422 | `private_intervention.date_future` | Nuova `intervention_date` futura |
 | 400 | `intervention.creation.checklist_required` | Cambio di `intervention_type_id` senza fornire `checklist_item_ids` (il cliente deve riselezionare la checklist per il nuovo tipo — mirror del comportamento officina) |
 | 422 | `intervention.creation.checklist_item_invalid` | Voce non appartenente al tipo (eventualmente aggiornato) o non attiva (BR-301) |
 
