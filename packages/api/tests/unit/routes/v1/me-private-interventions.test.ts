@@ -21,6 +21,9 @@ const CUSTOMER_ID = '11111111-1111-4111-8111-111111111111';
 const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 const VEHICLE_ID = '33333333-3333-4333-8333-333333333333';
 const PRIVATE_ID = '44444444-4444-4444-8444-444444444444';
+const TYPE_ID = '00000000-0000-4000-8000-000000000099';
+const CHECKLIST_ITEM_ID_1 = '55555555-5555-4555-8555-555555555501';
+const CHECKLIST_ITEM_ID_2 = '55555555-5555-4555-8555-555555555502';
 
 const PRIVATE_ROW = {
   id: PRIVATE_ID,
@@ -32,6 +35,13 @@ const PRIVATE_ROW = {
   createdAt: new Date('2026-03-10T12:34:56.000Z'),
   updatedAt: new Date('2026-03-10T12:34:56.000Z'),
   interventionType: null as { id: string; nameIt: string } | null,
+  // Task 3: fake rows carry no checklist selections (Tasks 5-6 populate
+  // them); serializeChecklistItems requires an array, not undefined.
+  checklistSelections: [] as {
+    checklistItemId: string | null;
+    labelSnapshot: string;
+    sortOrderSnapshot: number | null;
+  }[],
 };
 
 const OWNERSHIP_ROW = { id: 'own-1' };
@@ -51,6 +61,29 @@ interface FakePrisma {
   interventionType: {
     findFirst: ReturnType<typeof vi.fn>;
   };
+  // Task 5: validateChecklistSelection (called with no tenantId on this
+  // customer path) only ever touches interventionChecklistItem.findMany —
+  // the two tenant-exclusion tables are skipped when tenantId is absent.
+  interventionChecklistItem: {
+    findMany: ReturnType<typeof vi.fn>;
+  };
+  // Task 6: PATCH replace-set reads existing selections and deletes/creates
+  // as needed — see me-private-interventions.ts PATCH handler step 6.
+  privateInterventionChecklistSelection: {
+    createMany: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
+  };
+}
+
+// Default catalog rows backing interventionChecklistItem.findMany — proof
+// that a fresh id in a test payload can be threaded through
+// mockImplementation rather than hardcoding a fixed response shape
+// (feedback_integration_test_mock_dynamic_input.md).
+function buildChecklistItemRows(
+  ids: string[],
+): { id: string; nameIt: string; sortOrder: number }[] {
+  return ids.map((id, idx) => ({ id, nameIt: `Voce ${idx}`, sortOrder: idx }));
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
@@ -68,6 +101,18 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     },
     interventionType: {
       findFirst: vi.fn().mockResolvedValue({ id: 'type-1' }),
+    },
+    interventionChecklistItem: {
+      findMany: vi
+        .fn()
+        .mockImplementation(async (args: { where: { id: { in: string[] } } }) =>
+          buildChecklistItemRows(args.where.id.in),
+        ),
+    },
+    privateInterventionChecklistSelection: {
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findMany: vi.fn().mockResolvedValue([]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     ...overrides,
   };
@@ -273,17 +318,153 @@ describe('mePrivateInterventionRoutes (unit)', () => {
     );
   });
 
+  it('POST catalog type + checklist_item_ids: 201, snapshots via createMany, response echoes checklist_items', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/private-interventions`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: TYPE_ID,
+        custom_type: null,
+        description: 'd',
+        checklist_item_ids: [CHECKLIST_ITEM_ID_1, CHECKLIST_ITEM_ID_2],
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    // interventionChecklistItem.findMany's mockImplementation threads the
+    // requested ids back with dynamically-derived nameIt/sortOrder — proves
+    // the response is built from that lookup, not a hardcoded fixture.
+    expect(prisma.interventionChecklistItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: [CHECKLIST_ITEM_ID_1, CHECKLIST_ITEM_ID_2] },
+          interventionTypeId: TYPE_ID,
+          active: true,
+        }),
+      }),
+    );
+    expect(prisma.privateInterventionChecklistSelection.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          privateInterventionId: PRIVATE_ID,
+          customerId: CUSTOMER_ID,
+          checklistItemId: CHECKLIST_ITEM_ID_1,
+          labelSnapshot: 'Voce 0',
+          sortOrderSnapshot: 0,
+        },
+        {
+          privateInterventionId: PRIVATE_ID,
+          customerId: CUSTOMER_ID,
+          checklistItemId: CHECKLIST_ITEM_ID_2,
+          labelSnapshot: 'Voce 1',
+          sortOrderSnapshot: 1,
+        },
+      ],
+    });
+    const body = res.json() as { checklist_items: { id: string | null; label: string }[] };
+    expect(body.checklist_items).toEqual([
+      { id: CHECKLIST_ITEM_ID_1, label: 'Voce 0' },
+      { id: CHECKLIST_ITEM_ID_2, label: 'Voce 1' },
+    ]);
+  });
+
+  it('POST catalog type + empty checklist_item_ids → 400 intervention.creation.checklist_required (BR-300)', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/private-interventions`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: TYPE_ID,
+        custom_type: null,
+        description: 'd',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_required' });
+    expect(prisma.privateIntervention.create).not.toHaveBeenCalled();
+  });
+
+  it('POST catalog type + checklist item from a different type → 422 checklist_item_invalid (BR-301)', async () => {
+    const prisma = buildFakePrisma({
+      // Catalog lookup returns fewer rows than requested ids — proves the
+      // route surfaces validateChecklistSelection's BR-301 membership check.
+      interventionChecklistItem: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/private-interventions`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: TYPE_ID,
+        custom_type: null,
+        description: 'd',
+        checklist_item_ids: [CHECKLIST_ITEM_ID_1],
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_item_invalid' });
+    expect(prisma.privateIntervention.create).not.toHaveBeenCalled();
+  });
+
+  it('POST custom_type + non-empty checklist_item_ids → 400 (Zod refine)', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/private-interventions`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'fai-da-te',
+        description: 'd',
+        checklist_item_ids: [CHECKLIST_ITEM_ID_1],
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(prisma.privateIntervention.create).not.toHaveBeenCalled();
+  });
+
   it('PATCH 200 calls update with merged data', async () => {
-    // The PATCH handler's findFirst uses `select: { id, interventionTypeId,
-    // customType }` for the merged-XOR check. The default PRIVATE_ROW omits
-    // `interventionTypeId` (undefined), which would collide with the
-    // customType-set state and trip the XOR guard → 422. Override the mock
-    // findFirst to return a row shaped exactly like the handler's select.
+    // The PATCH handler's step-1 findFirst uses `select: { id,
+    // interventionTypeId, customType }` for the merged-XOR check; its
+    // step-7 findFirst (post-mutation re-read) uses `detailSelect` for the
+    // response. The default PRIVATE_ROW omits `interventionTypeId`
+    // (undefined), which would collide with the customType-set state and
+    // trip the XOR guard → 422 on the first call. mockImplementation
+    // distinguishes the two calls by the shape of `select` passed in,
+    // rather than hardcoding call-order via mockResolvedValueOnce chains.
     const prisma = buildFakePrisma({
       privateIntervention: {
         findFirst: vi
           .fn()
-          .mockResolvedValue({ id: PRIVATE_ID, interventionTypeId: null, customType: 'X' }),
+          .mockImplementation(async (args: { select?: Record<string, unknown> }) =>
+            args.select && 'checklistSelections' in args.select
+              ? { ...PRIVATE_ROW, customType: 'X' }
+              : { id: PRIVATE_ID, interventionTypeId: null, customType: 'X' },
+          ),
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
         create: vi.fn().mockResolvedValue(PRIVATE_ROW),
@@ -301,13 +482,19 @@ describe('mePrivateInterventionRoutes (unit)', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(prisma.privateIntervention.findFirst).toHaveBeenCalled();
+    expect(prisma.privateIntervention.findFirst).toHaveBeenCalledTimes(2);
     expect(prisma.privateIntervention.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: PRIVATE_ID },
         data: { description: 'updated' },
       }),
     );
+    // Confirm update was NOT called with a `select` — the response comes
+    // from the step-7 re-read, not from update()'s return value.
+    expect(prisma.privateIntervention.update).toHaveBeenCalledWith({
+      where: { id: PRIVATE_ID },
+      data: { description: 'updated' },
+    });
   });
 
   it('PATCH 404 when findFirst returns null (cross-customer / soft-deleted)', async () => {
@@ -333,6 +520,148 @@ describe('mePrivateInterventionRoutes (unit)', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json()).toMatchObject({ code: 'private_intervention.not_found' });
     expect(prisma.privateIntervention.update).not.toHaveBeenCalled();
+  });
+
+  // Task 6 — BR-303 replace-set checklist edit wiring on the PATCH path.
+  const OTHER_TYPE_ID = '00000000-0000-4000-8000-000000000088';
+
+  function findFirstBySelectShape(
+    currentRow: { id: string; interventionTypeId: string | null; customType: string | null },
+    reloadedRow: typeof PRIVATE_ROW,
+  ): ReturnType<typeof vi.fn> {
+    // The PATCH handler calls privateIntervention.findFirst twice with
+    // different `select` shapes: step 1 (merged-XOR check) selects the
+    // 3 scalar fields; step 7 (post-mutation reload) selects detailSelect
+    // (which includes checklistSelections). Branching on that shape lets
+    // one mock stand in for both calls without a brittle call-order chain.
+    return vi
+      .fn()
+      .mockImplementation(async (args: { select?: Record<string, unknown> }) =>
+        args.select && 'checklistSelections' in args.select ? reloadedRow : currentRow,
+      );
+  }
+
+  it('PATCH type change without checklist_item_ids -> 400 checklist_required (BR-303)', async () => {
+    const prisma = buildFakePrisma({
+      privateIntervention: {
+        findFirst: findFirstBySelectShape(
+          { id: PRIVATE_ID, interventionTypeId: TYPE_ID, customType: null },
+          PRIVATE_ROW,
+        ),
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        create: vi.fn().mockResolvedValue(PRIVATE_ROW),
+        update: vi.fn().mockResolvedValue(PRIVATE_ROW),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/me/private-interventions/${PRIVATE_ID}`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: { intervention_type_id: OTHER_TYPE_ID },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_required' });
+    expect(prisma.privateIntervention.update).not.toHaveBeenCalled();
+  });
+
+  it('PATCH replace-set: deletes stale selections, retains + adds new ones (BR-303)', async () => {
+    const RETAINED_ID = CHECKLIST_ITEM_ID_1;
+    const NEW_ID = CHECKLIST_ITEM_ID_2;
+    const STALE_SELECTION_ROW_ID = 'sel-stale-1';
+
+    const prisma = buildFakePrisma({
+      privateIntervention: {
+        findFirst: findFirstBySelectShape(
+          { id: PRIVATE_ID, interventionTypeId: TYPE_ID, customType: null },
+          { ...PRIVATE_ROW, interventionType: { id: TYPE_ID, nameIt: 'Tipo' } },
+        ),
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        create: vi.fn().mockResolvedValue(PRIVATE_ROW),
+        update: vi.fn().mockResolvedValue(PRIVATE_ROW),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      privateInterventionChecklistSelection: {
+        createMany: vi.fn().mockResolvedValue({ count: 0 }),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        // One retained selection (RETAINED_ID) + one stale selection whose
+        // checklistItemId is not in the new desired set.
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'sel-retained-1', checklistItemId: RETAINED_ID },
+          { id: STALE_SELECTION_ROW_ID, checklistItemId: 'stale-item-not-desired' },
+        ]),
+      },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/me/private-interventions/${PRIVATE_ID}`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: { checklist_item_ids: [RETAINED_ID, NEW_ID] },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // Only the stale row is deleted — the retained row is left untouched
+    // (no re-snapshot), proving the BR-303 retain-preserve guarantee at
+    // the wiring level.
+    expect(prisma.privateInterventionChecklistSelection.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: [STALE_SELECTION_ROW_ID] } },
+    });
+    // Only the genuinely new item is inserted, with a fresh snapshot
+    // derived from the catalog lookup (mockImplementation threads NEW_ID
+    // through interventionChecklistItem.findMany, not a hardcoded fixture).
+    expect(prisma.privateInterventionChecklistSelection.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          privateInterventionId: PRIVATE_ID,
+          customerId: CUSTOMER_ID,
+          checklistItemId: NEW_ID,
+          labelSnapshot: 'Voce 1',
+          sortOrderSnapshot: 1,
+        },
+      ],
+    });
+  });
+
+  it('PATCH switch to custom_type ("Altro") clears all selections and skips replace-set (BR-303)', async () => {
+    const prisma = buildFakePrisma({
+      privateIntervention: {
+        findFirst: findFirstBySelectShape(
+          { id: PRIVATE_ID, interventionTypeId: TYPE_ID, customType: null },
+          { ...PRIVATE_ROW, interventionType: null, customType: 'Altro', checklistSelections: [] },
+        ),
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        create: vi.fn().mockResolvedValue(PRIVATE_ROW),
+        update: vi.fn().mockResolvedValue(PRIVATE_ROW),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/me/private-interventions/${PRIVATE_ID}`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: { intervention_type_id: null, custom_type: 'Altro' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prisma.privateInterventionChecklistSelection.deleteMany).toHaveBeenCalledWith({
+      where: { privateInterventionId: PRIVATE_ID },
+    });
+    // The replace-set branch must be skipped entirely on the Altro path —
+    // findMany (existing-selections lookup) is only called by that branch.
+    expect(prisma.privateInterventionChecklistSelection.findMany).not.toHaveBeenCalled();
+    expect(prisma.privateInterventionChecklistSelection.createMany).not.toHaveBeenCalled();
+    const body = res.json() as { checklist_items: unknown[] };
+    expect(body.checklist_items).toEqual([]);
   });
 
   it('DELETE 204 calls updateMany with scoped where + count=1', async () => {

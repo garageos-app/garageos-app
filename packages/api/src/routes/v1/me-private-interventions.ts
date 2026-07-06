@@ -6,6 +6,8 @@ import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor
 import {
   assertInterventionTypeExists,
   assertNotFutureInterventionDate,
+  serializeChecklistItems,
+  validateChecklistSelection,
 } from '../../lib/intervention-shared.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -40,6 +42,9 @@ const createBodySchema = z
     intervention_type_id: z.uuid().nullable(),
     custom_type: z.string().min(1).max(150).nullable(),
     description: z.string().min(1).max(5000),
+    // BR-300/301: only meaningful with a catalog intervention_type_id — the
+    // second .refine below forbids it on the free-text ("Altro") path.
+    checklist_item_ids: z.array(z.uuid()).optional(),
   })
   .refine(
     (b) =>
@@ -49,7 +54,11 @@ const createBodySchema = z
       message: 'Specifica esattamente uno tra intervention_type_id e custom_type',
       path: ['intervention_type_id'],
     },
-  );
+  )
+  .refine((b) => b.custom_type === null || (b.checklist_item_ids ?? []).length === 0, {
+    message: 'Le voci checklist non sono ammesse con un tipo libero (Altro)',
+    path: ['checklist_item_ids'],
+  });
 
 const patchBodySchema = z
   .object({
@@ -61,6 +70,10 @@ const patchBodySchema = z
     intervention_type_id: z.uuid().nullable().optional(),
     custom_type: z.string().min(1).max(150).nullable().optional(),
     description: z.string().min(1).max(5000).optional(),
+    // BR-303: replace-set edit, mirroring interventions-update.ts's
+    // checklistItemIds. Optional — absent means "leave selections
+    // untouched"; present REPLACES the full selection set.
+    checklist_item_ids: z.array(z.uuid()).optional(),
   })
   .strict(); // reject unknown keys to fail fast on client typos
 
@@ -75,6 +88,9 @@ const detailSelect = {
   createdAt: true,
   updatedAt: true,
   interventionType: { select: { id: true, nameIt: true } },
+  checklistSelections: {
+    select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
+  },
 } as const;
 
 type DetailRow = {
@@ -87,6 +103,11 @@ type DetailRow = {
   createdAt: Date;
   updatedAt: Date;
   interventionType: { id: string; nameIt: string } | null;
+  checklistSelections: {
+    checklistItemId: string | null;
+    labelSnapshot: string;
+    sortOrderSnapshot: number | null;
+  }[];
 };
 
 function projectDetail(r: DetailRow) {
@@ -102,6 +123,7 @@ function projectDetail(r: DetailRow) {
     description: r.description,
     created_at: r.createdAt.toISOString(),
     updated_at: r.updatedAt.toISOString(),
+    checklist_items: serializeChecklistItems(r.checklistSelections),
   };
 }
 
@@ -258,6 +280,19 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           await assertInterventionTypeExists(tx, body.intervention_type_id);
         }
 
+        // BR-300/301: catalog-type path validates + resolves the checklist
+        // selection (no tenantId — the customer path sees the full global
+        // catalog, see validateChecklistSelection's comment). Free-text
+        // ("Altro") path never reaches here with a non-empty array — the
+        // second Zod .refine on createBodySchema forbids it.
+        let foundItems: { id: string; nameIt: string; sortOrder: number }[] = [];
+        if (body.intervention_type_id !== null) {
+          foundItems = await validateChecklistSelection(tx, {
+            interventionTypeId: body.intervention_type_id,
+            checklistItemIds: body.checklist_item_ids ?? [],
+          });
+        }
+
         // BR-085: anti-spam 50 / rolling 24h. Counts both alive and soft-
         // deleted rows — the limit is on CREATE rate, not on row count,
         // so soft-delete after the fact does not refresh the budget.
@@ -291,8 +326,31 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           select: detailSelect,
         });
 
+        // BR-300/303: snapshot the resolved selection rows. Insert follows
+        // the create (private_intervention_id FK needs `row.id`), so
+        // `row.checklistSelections` from the select above is always `[]`
+        // here — the response below overrides `checklist_items` from
+        // `foundItems` directly instead of re-fetching.
+        if (foundItems.length > 0) {
+          await tx.privateInterventionChecklistSelection.createMany({
+            data: foundItems.map((it) => ({
+              privateInterventionId: row.id,
+              customerId,
+              checklistItemId: it.id,
+              labelSnapshot: it.nameIt,
+              sortOrderSnapshot: it.sortOrder,
+            })),
+          });
+        }
+
+        const selections = foundItems.map((it) => ({
+          checklistItemId: it.id,
+          labelSnapshot: it.nameIt,
+          sortOrderSnapshot: it.sortOrder,
+        }));
+
         reply.code(201);
-        return projectDetail(row);
+        return { ...projectDetail(row), checklist_items: serializeChecklistItems(selections) };
       });
     },
   );
@@ -357,6 +415,26 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           await assertInterventionTypeExists(tx, body.intervention_type_id);
         }
 
+        // 4b. BR-303 parity guard (mirrors interventions-update.ts's
+        // Deviation #6): silently keeping the OLD checklist selection
+        // after a type change would leave selections scoped to a
+        // checklist the new type may not even expose. Force the caller to
+        // re-pick. Runs after the FK check above, so a bogus type id is
+        // 422 (VALIDATION_ERROR), and only a valid-but-different type
+        // without checklist_item_ids hits this 400. Guarded by
+        // `mergedTypeId !== null` — a change that lands on custom_type
+        // (Altro) has no checklist to re-pick, so it's exempt.
+        const typeChanged =
+          'intervention_type_id' in body &&
+          body.intervention_type_id !== current.interventionTypeId;
+        if (mergedTypeId !== null && typeChanged && body.checklist_item_ids === undefined) {
+          throw businessError(
+            'intervention.creation.checklist_required',
+            400,
+            'Cambiando il tipo di intervento devi riselezionare le voci checklist.',
+          );
+        }
+
         // 5. Build update data — only fields explicitly in body.
         //    Empty body → data = {} → Prisma still touches updatedAt.
         const data: {
@@ -374,11 +452,83 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
         if ('custom_type' in body) data.customType = body.custom_type!;
         if (body.description !== undefined) data.description = body.description;
 
-        const row = await tx.privateIntervention.update({
-          where: { id },
-          data,
+        await tx.privateIntervention.update({ where: { id }, data });
+
+        // 6. BR-303 — replace-set checklist edit. Mirrors
+        // interventions-update.ts:234-283, scoped to
+        // privateInterventionId/customerId instead of interventionId/tenantId.
+        if (mergedCustomType !== null) {
+          // Switched to (or staying on) the free-text "Altro" path — no
+          // checklist applies, clear any pre-existing selection.
+          await tx.privateInterventionChecklistSelection.deleteMany({
+            where: { privateInterventionId: id },
+          });
+        } else if (body.checklist_item_ids !== undefined) {
+          const foundItems = await validateChecklistSelection(tx, {
+            interventionTypeId: mergedTypeId!,
+            checklistItemIds: body.checklist_item_ids,
+          });
+
+          const existingSelections = await tx.privateInterventionChecklistSelection.findMany({
+            where: { privateInterventionId: id },
+            select: { id: true, checklistItemId: true },
+          });
+
+          // `new Set(...)` on the raw body array already dedups repeated
+          // ids — no separate dedup step needed.
+          const desired = new Set(body.checklist_item_ids);
+
+          // Also sweep any orphaned selection whose checklist_item_id has
+          // gone NULL (catalog item hard-deleted elsewhere, onDelete:
+          // SetNull) — it can never be "desired" again since its id no
+          // longer exists.
+          const toDeleteIds = existingSelections
+            .filter((s) => s.checklistItemId === null || !desired.has(s.checklistItemId))
+            .map((s) => s.id);
+          if (toDeleteIds.length > 0) {
+            await tx.privateInterventionChecklistSelection.deleteMany({
+              where: { id: { in: toDeleteIds } },
+            });
+          }
+
+          // Retained selections (present before and after) are left alone
+          // here — their labelSnapshot/sortOrderSnapshot stay exactly as
+          // originally written, which is the BR-303 guarantee under test.
+          // Only genuinely new items get a snapshot, taken from the
+          // catalog rows validateChecklistSelection just resolved.
+          const existingItemIds = new Set(
+            existingSelections.map((s) => s.checklistItemId).filter((v): v is string => v !== null),
+          );
+          const toAdd = foundItems.filter((it) => !existingItemIds.has(it.id));
+          if (toAdd.length > 0) {
+            await tx.privateInterventionChecklistSelection.createMany({
+              data: toAdd.map((it) => ({
+                privateInterventionId: id,
+                customerId,
+                checklistItemId: it.id,
+                labelSnapshot: it.nameIt,
+                sortOrderSnapshot: it.sortOrder,
+              })),
+            });
+          }
+        }
+
+        // 7. Re-read so the response reflects the post-edit state
+        // (retained selections keep their original snapshot; newly-added
+        // ones show up too) instead of re-deriving it from `body`.
+        const row = await tx.privateIntervention.findFirst({
+          where: { id, customerId, deletedAt: null },
           select: detailSelect,
         });
+        if (!row) {
+          // Should be unreachable: `current` was just loaded and updated
+          // in the same transaction under the same RLS context.
+          throw businessError(
+            'private_intervention.not_found',
+            404,
+            'Intervento privato non trovato.',
+          );
+        }
 
         return projectDetail(row);
       });

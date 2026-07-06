@@ -903,6 +903,211 @@ Nessun body.
 
 ---
 
+### 2.4e Interventi privati e catalogo tipi (cliente) — `/v1/me/intervention-types`, `/v1/me/private-interventions*`
+
+**Feature:** F-CLI-201, F-CLI-202, F-CLI-203, F-CLI-204 · **Auth:** Customer (pool `clienti`) · **BR:** BR-080, BR-082, BR-085, BR-300, BR-301, BR-303, BR-305, BR-086
+
+Endpoint per la registrazione da parte del cliente di interventi privati (manutenzione fai-da-te o non certificata da un'officina) sui veicoli posseduti, più il catalogo tipi che alimenta il form. A differenza del catalogo officina (§2.1bis), qui **non si applicano le esclusioni per-tenant** (BR-304): il cliente non è tenant-scoped e vede sempre l'intero catalogo globale attivo. Le regole checklist (BR-300/301/303 lato cliente) sono raccolte in BR-086 (`APPENDICE_F_BUSINESS_LOGIC.md`).
+
+Nota sui campi: a differenza di altri endpoint `/me/*` (es. §2.4d), qui request e response usano `snake_case` (`intervention_date`, `checklist_item_ids`, `checklist_items`, …), coerente con l'implementazione corrente.
+
+---
+
+#### `GET /v1/me/intervention-types` — Catalogo tipi (cliente)
+
+Ritorna i tipi del catalogo globale (`intervention_types` con `tenant_id IS NULL`, `active`) con le rispettive voci checklist attive. Usato dal form "Nuovo intervento privato" per popolare il picker tipo e le checkbox della checklist.
+
+Per BR-305 (selezionabilità tipo), un tipo compare in risposta solo se ha **almeno una voce checklist attiva**; se non ne ha, è omesso interamente dalla risposta (non compare "vuoto").
+
+**Request:**
+
+```http
+GET /v1/me/intervention-types
+Authorization: Bearer <customer_jwt>
+```
+
+Nessun body, nessun query param.
+
+**Response `200 OK`:**
+
+```json
+{
+  "data": [
+    {
+      "id": "01HSYS...",
+      "code": "TAGLIANDO",
+      "name_it": "Tagliando",
+      "icon": "wrench",
+      "checklist_items": [
+        { "id": "01HITM...", "code": "OLIO", "name_it": "Cambio olio", "sort_order": 0 },
+        { "id": "01HITM...", "code": "FILTRO", "name_it": "Cambio filtro olio", "sort_order": 1 }
+      ]
+    }
+    // … altri tipi del catalogo globale
+  ]
+}
+```
+
+Ordinamento server-side: tipi `name_it ASC`; `checklist_items` per `sort_order ASC, name_it ASC`.
+
+**Errori:**
+
+| Status | Codice | Scenario |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Token assente o invalido |
+| 403 | `FORBIDDEN` | Token da pool officine |
+
+---
+
+#### `POST /v1/me/vehicles/:id/private-interventions` — Crea intervento privato
+
+Registra un intervento privato sul veicolo `:id`. BR-080: il caller deve possedere attualmente il veicolo (422, non 404 — vedi tabella errori). Esattamente uno tra `intervention_type_id` (dal catalogo) e `custom_type` (testo libero, "Altro") deve essere valorizzato.
+
+**Request:**
+
+```http
+POST /v1/me/vehicles/01HKXN5.../private-interventions
+Content-Type: application/json
+Authorization: Bearer <customer_jwt>
+
+{
+  "intervention_date": "2026-06-20",
+  "odometer_km": 43500,
+  "intervention_type_id": "01HSYS...",
+  "custom_type": null,
+  "description": "Cambio olio e filtro",
+  "checklist_item_ids": ["01HITM...", "01HITM..."]
+}
+```
+
+| Campo | Tipo | Obbligatorio | Note |
+|---|---|---|---|
+| `intervention_date` | string (`YYYY-MM-DD`) | sì | Non futura (BR-069 mirror) |
+| `odometer_km` | int \| `null` | sì (accetta `null`) | 0–9.999.999 |
+| `intervention_type_id` | string (uuid) \| `null` | sì | Esattamente uno tra questo e `custom_type` |
+| `custom_type` | string \| `null` | sì | Testo libero "Altro", max 150 char |
+| `description` | string | sì | Max 5000 char |
+| `checklist_item_ids` | string[] (uuid) | condizionale | **BR-300/BR-086: obbligatorio (≥1 voce) se `intervention_type_id` è valorizzato.** **Non ammesso** (deve essere assente o vuoto) con `custom_type` — un array non vuoto con `custom_type` è rifiutato in validazione. |
+
+**Response `201 Created`:**
+
+```json
+{
+  "id": "uuid",
+  "vehicle_id": "uuid",
+  "intervention_date": "2026-06-20",
+  "odometer_km": 43500,
+  "type": { "id": "01HSYS...", "name_it": "Tagliando" },
+  "custom_type": null,
+  "description": "Cambio olio e filtro",
+  "created_at": "2026-06-20T10:00:00.000Z",
+  "updated_at": "2026-06-20T10:00:00.000Z",
+  "checklist_items": [
+    { "id": "01HITM...", "label": "Cambio olio" },
+    { "id": "01HITM...", "label": "Cambio filtro olio" }
+  ]
+}
+```
+
+- `type` è `null` quando l'intervento usa `custom_type` (testo libero); in quel caso `checklist_items` è sempre `[]`.
+- `checklist_items[].label` è uno **snapshot** congelato al salvataggio (BR-303, BR-086): non riflette rinomine successive della voce di catalogo.
+- `checklist_items[].id` diventa `null` se la voce di catalogo viene eliminata in seguito (`onDelete: SetNull`); l'etichetta (`label`) resta comunque leggibile.
+
+**Errori:**
+
+| Status | Codice | Scenario |
+|---|---|---|
+| 400 | `intervention.creation.checklist_required` | `checklist_item_ids` vuoto con `intervention_type_id` valorizzato (BR-300) |
+| 422 | `intervention.creation.checklist_item_invalid` | Voce non appartenente al tipo scelto o non attiva (BR-301) |
+| 400 | `VALIDATION_ERROR` | Zod: non esattamente uno tra `intervention_type_id`/`custom_type`; `checklist_item_ids` non vuoto con `custom_type` |
+| 422 | `VALIDATION_ERROR` | `intervention_type_id` inesistente |
+| 422 | `private_intervention.vehicle_not_owned` | Veicolo non posseduto attualmente dal caller (BR-080) |
+| 422 | `private_intervention.date_future` | `intervention_date` futura (BR-069 mirror) |
+| 429 | `private_intervention.rate_limit` | Limite di 50 interventi privati/giorno raggiunto (BR-085) |
+
+---
+
+#### `GET /v1/me/vehicles/:id/private-interventions` — Lista interventi privati
+
+Lista paginata (cursor) degli interventi privati del veicolo `:id`, solo se il caller lo possiede attualmente (BR-082 — a differenza del dettaglio per id, la lista richiede ownership corrente). Ogni riga include `checklist_items` con lo stesso shape del create.
+
+```http
+GET /v1/me/vehicles/01HKXN5.../private-interventions?limit=20
+Authorization: Bearer <customer_jwt>
+```
+
+**Response `200 OK`:**
+
+```json
+{
+  "data": [ /* stesso shape del POST 201, incluso checklist_items */ ],
+  "meta": { "has_more": false }
+}
+```
+
+**Errori:** `404 me.vehicle.not_found` — veicolo inesistente o non più di proprietà del caller.
+
+---
+
+#### `GET /v1/me/private-interventions/:id` — Dettaglio intervento privato
+
+Dettaglio per id, scoped a `customerId` (non a ownership veicolo corrente — BR-082: resta accessibile al cliente originale anche dopo un passaggio di proprietà). Stesso shape di risposta del POST 201, incluso `checklist_items`.
+
+```http
+GET /v1/me/private-interventions/01HKYP...
+Authorization: Bearer <customer_jwt>
+```
+
+**Errori:** `404 private_intervention.not_found` — inesistente o di un altro cliente (anti-enumerazione).
+
+---
+
+#### `PATCH /v1/me/private-interventions/:id` — Modifica intervento privato
+
+Aggiornamento parziale. `checklist_item_ids`, se presente, **sostituisce l'intero set** di selezioni (replace-set, mirror di `PATCH /interventions/:id` — BR-303); se assente, le selezioni esistenti restano intatte. Passare a `custom_type` (o restarci) cancella qualunque selezione checklist esistente, senza bisogno di inviare `checklist_item_ids`.
+
+```http
+PATCH /v1/me/private-interventions/01HKYP...
+Content-Type: application/json
+Authorization: Bearer <customer_jwt>
+
+{
+  "checklist_item_ids": ["01HITM...", "01HITM..."]
+}
+```
+
+Campi modificabili (tutti opzionali): `intervention_date`, `odometer_km`, `intervention_type_id`, `custom_type`, `description`, `checklist_item_ids`. Body con chiavi sconosciute → `400` (schema `.strict()`).
+
+**Response `200 OK`:** stesso shape del POST 201/GET dettaglio, con lo stato post-edit (le selezioni checklist mantenute conservano `label`/`sort_order` originali; solo le nuove voci ricevono uno snapshot fresco).
+
+**Errori:**
+
+| Status | Codice | Scenario |
+|---|---|---|
+| 404 | `private_intervention.not_found` | Inesistente o di un altro cliente |
+| 400 | `VALIDATION_ERROR` | Chiavi sconosciute nel body (`.strict()`) |
+| 422 | `VALIDATION_ERROR` | Stato post-merge non ha esattamente uno tra `intervention_type_id`/`custom_type` (controllo handler-side); `intervention_type_id` fornito ma inesistente |
+| 422 | `private_intervention.date_future` | Nuova `intervention_date` futura |
+| 400 | `intervention.creation.checklist_required` | Cambio di `intervention_type_id` senza fornire `checklist_item_ids` (il cliente deve riselezionare la checklist per il nuovo tipo — mirror del comportamento officina) |
+| 422 | `intervention.creation.checklist_item_invalid` | Voce non appartenente al tipo (eventualmente aggiornato) o non attiva (BR-301) |
+
+---
+
+#### `DELETE /v1/me/private-interventions/:id` — Elimina intervento privato
+
+Soft delete (BR-084), idempotente. Nessun impatto sulle voci checklist selezionate (restano come storico associato alla riga soft-deleted).
+
+```http
+DELETE /v1/me/private-interventions/01HKYP...
+Authorization: Bearer <customer_jwt>
+```
+
+**Response:** `204 No Content`
+
+**Errori:** `404 private_intervention.not_found` — inesistente, già eliminato, o di un altro cliente.
+
+---
+
 ### 2.5 `GET /vehicles/:id/timeline` — Storico interventi veicolo
 
 **Feature:** F-OFF-105, F-CLI-201, F-CLI-205
@@ -2443,11 +2648,12 @@ Nessun codice 4xx domain-specific nuovo.
 
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
-| GET | `/me/vehicles/:id/private-interventions` | F-CLI-201 | Customer | Lista interventi privati |
-| POST | `/me/vehicles/:id/private-interventions` | F-CLI-203 | Customer | Crea intervento privato |
-| GET | `/me/private-interventions/:id` | F-CLI-202 | Customer | Dettaglio |
-| PATCH | `/me/private-interventions/:id` | F-CLI-204 | Customer | Modifica |
-| DELETE | `/me/private-interventions/:id` | F-CLI-204 | Customer | Cancella |
+| GET | `/me/intervention-types` | F-CLI-203 | Customer | **[DETTAGLIATO §2.4e]** Catalogo tipi (no esclusioni per-tenant, BR-305) |
+| GET | `/me/vehicles/:id/private-interventions` | F-CLI-201 | Customer | **[DETTAGLIATO §2.4e]** Lista interventi privati (con `checklist_items`) |
+| POST | `/me/vehicles/:id/private-interventions` | F-CLI-203 | Customer | **[DETTAGLIATO §2.4e]** Crea intervento privato (`checklist_item_ids`, BR-300/BR-086) |
+| GET | `/me/private-interventions/:id` | F-CLI-202 | Customer | **[DETTAGLIATO §2.4e]** Dettaglio (con `checklist_items`) |
+| PATCH | `/me/private-interventions/:id` | F-CLI-204 | Customer | **[DETTAGLIATO §2.4e]** Modifica (`checklist_item_ids` replace-set, BR-303/BR-086) |
+| DELETE | `/me/private-interventions/:id` | F-CLI-204 | Customer | **[DETTAGLIATO §2.4e]** Cancella |
 
 ### 3.8 Deadlines
 
