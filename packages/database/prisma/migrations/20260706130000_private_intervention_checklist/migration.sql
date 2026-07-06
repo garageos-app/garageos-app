@@ -22,6 +22,11 @@ ALTER TABLE private_intervention_checklist_selections
     FOREIGN KEY (checklist_item_id)
     REFERENCES intervention_checklist_items(id) ON DELETE SET NULL ON UPDATE CASCADE;
 
+ALTER TABLE private_intervention_checklist_selections
+    ADD CONSTRAINT priv_selection_customer_fkey
+    FOREIGN KEY (customer_id)
+    REFERENCES customers(id) ON DELETE CASCADE ON UPDATE CASCADE;
+
 CREATE UNIQUE INDEX uq_priv_selection_intervention_item
     ON private_intervention_checklist_selections (private_intervention_id, checklist_item_id);
 CREATE INDEX idx_priv_selections_intervention
