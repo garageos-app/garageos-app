@@ -6,6 +6,7 @@ import { decodeDateCompoundCursor, encodeCompoundCursor } from '../../lib/cursor
 import {
   assertInterventionTypeExists,
   assertNotFutureInterventionDate,
+  serializeChecklistItems,
 } from '../../lib/intervention-shared.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -75,6 +76,9 @@ const detailSelect = {
   createdAt: true,
   updatedAt: true,
   interventionType: { select: { id: true, nameIt: true } },
+  checklistSelections: {
+    select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
+  },
 } as const;
 
 type DetailRow = {
@@ -87,6 +91,11 @@ type DetailRow = {
   createdAt: Date;
   updatedAt: Date;
   interventionType: { id: string; nameIt: string } | null;
+  checklistSelections: {
+    checklistItemId: string | null;
+    labelSnapshot: string;
+    sortOrderSnapshot: number | null;
+  }[];
 };
 
 function projectDetail(r: DetailRow) {
@@ -102,6 +111,7 @@ function projectDetail(r: DetailRow) {
     description: r.description,
     created_at: r.createdAt.toISOString(),
     updated_at: r.updatedAt.toISOString(),
+    checklist_items: serializeChecklistItems(r.checklistSelections),
   };
 }
 

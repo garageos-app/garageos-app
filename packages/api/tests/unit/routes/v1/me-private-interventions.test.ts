@@ -32,6 +32,13 @@ const PRIVATE_ROW = {
   createdAt: new Date('2026-03-10T12:34:56.000Z'),
   updatedAt: new Date('2026-03-10T12:34:56.000Z'),
   interventionType: null as { id: string; nameIt: string } | null,
+  // Task 3: fake rows carry no checklist selections (Tasks 5-6 populate
+  // them); serializeChecklistItems requires an array, not undefined.
+  checklistSelections: [] as {
+    checklistItemId: string | null;
+    labelSnapshot: string;
+    sortOrderSnapshot: number | null;
+  }[],
 };
 
 const OWNERSHIP_ROW = { id: 'own-1' };

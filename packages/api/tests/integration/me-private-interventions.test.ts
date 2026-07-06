@@ -92,6 +92,9 @@ describe('GET /v1/me/private-interventions/:id (integration)', () => {
       type: null,
       custom_type: 'Olio fai-da-te',
       description: 'Cambio olio garage personale',
+      // Task 3: free-text ("Altro") rows carry no checklist selections —
+      // Tasks 5-6 populate checklistSelections only for catalog-typed rows.
+      checklist_items: [],
     });
   });
 
