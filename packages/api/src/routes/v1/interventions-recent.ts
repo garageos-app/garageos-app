@@ -28,13 +28,12 @@ export const recentQuerySchema = z.object({
 const SUMMARY_MAX = 100;
 const OPERATOR_FALLBACK = 'Operatore';
 
-function deriveSummary(title: string | null, description: string, typeName: string): string {
-  if (title && title.length > 0) return title;
+function deriveSummary(description: string, typeName: string): string {
   const firstLine = (description.split('\n')[0] ?? '').trim();
   if (firstLine.length > 0) return firstLine.slice(0, SUMMARY_MAX);
-  // BR-308: title is always null on new rows, and description is now optional
-  // (may be ''). Fall back to the intervention type name so the dashboard
-  // never renders a blank summary row.
+  // BR-308: the free-text title is gone and description is now optional (may
+  // be ''). Fall back to the intervention type name so the dashboard never
+  // renders a blank summary row.
   return typeName;
 }
 
@@ -66,7 +65,6 @@ const interventionRecentRoutes: FastifyPluginAsync = async (app) => {
             id: true,
             createdAt: true,
             status: true,
-            title: true,
             description: true,
             userId: true,
             interventionType: {
@@ -86,7 +84,7 @@ const interventionRecentRoutes: FastifyPluginAsync = async (app) => {
             id: row.id,
             createdAt: row.createdAt.toISOString(),
             status: row.status,
-            summary: deriveSummary(row.title, row.description, row.interventionType.nameIt),
+            summary: deriveSummary(row.description, row.interventionType.nameIt),
             vehicle: {
               id: row.vehicle.id,
               plate: row.vehicle.plate,

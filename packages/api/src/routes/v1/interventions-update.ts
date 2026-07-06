@@ -385,9 +385,6 @@ const interventionUpdateRoutes: FastifyPluginAsync = async (app) => {
             intervention: {
               id: result.intervention.id,
               vehicleId: result.intervention.vehicleId,
-              // BR-308/Deviation #3: title no longer exists on the row or
-              // in the response DTO (mirrors interventions.ts create route).
-              title: null,
               description: result.intervention.description,
               cancelledReason: null,
             },

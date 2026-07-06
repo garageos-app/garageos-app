@@ -11,7 +11,6 @@ it('maps intervention.created to intervention_updates (BR-226 v1.3)', () => {
     intervention: {
       id: 'i',
       vehicleId: 'v',
-      title: null,
       description: null,
       cancelledReason: null,
     },
@@ -28,7 +27,6 @@ it('maps intervention.revised and cancelled to intervention_updates', () => {
     intervention: {
       id: 'i',
       vehicleId: 'v',
-      title: null,
       description: null,
       cancelledReason: null,
     },
@@ -40,7 +38,6 @@ it('maps intervention.revised and cancelled to intervention_updates', () => {
     intervention: {
       id: 'i',
       vehicleId: 'v',
-      title: null,
       description: null,
       cancelledReason: null,
     },

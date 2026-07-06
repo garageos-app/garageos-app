@@ -535,7 +535,6 @@ model Intervention {
   interventionTypeId      String              @map("intervention_type_id") @db.Uuid
   interventionDate        DateTime            @map("intervention_date") @db.Date
   odometerKm              Int                 @map("odometer_km")
-  title                   String?             @db.VarChar(200)
   description             String              @db.Text
   partsReplaced           Json                @default("[]") @map("parts_replaced")
   internalNotes           String?             @map("internal_notes") @db.Text

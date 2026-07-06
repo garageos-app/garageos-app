@@ -99,7 +99,6 @@ describe('GET /v1/me/vehicles/:id/export.pdf (integration)', () => {
       interventionTypeId: type.id,
       interventionDate: args.date ?? '2026-05-20',
       odometerKm: 55000,
-      title: 'Tagliando PDF',
       description: 'Cambio olio e filtri',
       partsReplaced: [],
       status: args.status ?? 'active',

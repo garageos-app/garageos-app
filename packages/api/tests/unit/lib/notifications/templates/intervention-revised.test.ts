@@ -25,7 +25,6 @@ const recipient: CustomerForNotification = {
 const intervention: InterventionForEmail = {
   id: 'int-1',
   vehicleId: 'veh-1',
-  title: 'Tagliando',
   description: 'Sostituzione olio motore',
   cancelledReason: null,
 };

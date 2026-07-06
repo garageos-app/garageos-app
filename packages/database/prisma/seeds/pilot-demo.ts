@@ -221,7 +221,6 @@ export async function runPilotDemoSeed(opts: RunOptions): Promise<void> {
           interventionTypeId: typeId,
           interventionDate: dateUtc,
           odometerKm: i.odometerKm,
-          title: i.title,
           description: i.description,
           partsReplaced: (i.partsReplaced ?? []) as unknown as object,
           status: 'active',

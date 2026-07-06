@@ -152,7 +152,6 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
             interventionTypeId: true,
             interventionDate: true,
             odometerKm: true,
-            title: true,
             description: true,
             partsReplaced: true,
             internalNotes: true,
@@ -187,7 +186,6 @@ const interventionCancelRoutes: FastifyPluginAsync = async (app) => {
             intervention: {
               id: result.intervention.id,
               vehicleId: result.intervention.vehicleId,
-              title: result.intervention.title,
               description: result.intervention.description,
               cancelledReason: result.intervention.cancelledReason,
             },

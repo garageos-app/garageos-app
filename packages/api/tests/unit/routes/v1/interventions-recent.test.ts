@@ -101,7 +101,6 @@ function makeRow(over: {
   id: string;
   createdAt?: Date;
   status?: 'active' | 'disputed' | 'cancelled';
-  title?: string | null;
   description?: string;
   typeName?: string;
   user?: { id: string; firstName: string | null; lastName: string | null } | null;
@@ -111,7 +110,6 @@ function makeRow(over: {
     id: over.id,
     createdAt: over.createdAt ?? new Date('2026-05-23T10:00:00.000Z'),
     status: over.status ?? 'active',
-    title: over.title ?? null,
     description: over.description ?? 'desc',
     interventionType: { nameIt: over.typeName ?? 'Intervento Meccanico' },
     userId: over.userId ?? 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -206,25 +204,10 @@ describe('GET /v1/interventions/recent (unit)', () => {
     expect(where).not.toHaveProperty('locationId');
   });
 
-  it('summary derives from title when present', async () => {
-    const prisma = buildFakePrisma([
-      makeRow({ id: 'i1', title: 'Tagliando 60.000 km', description: 'long...' }),
-    ]);
-    app = await buildApp(prisma);
-    const res = await app.inject({
-      method: 'GET',
-      url: '/v1/interventions/recent',
-      headers: { authorization: 'Bearer test' },
-    });
-    const body = res.json() as { items: Array<{ summary: string }> };
-    expect(body.items[0]!.summary).toBe('Tagliando 60.000 km');
-  });
-
-  it('summary derives from description first line (max 100) when title null', async () => {
+  it('summary derives from description first line (max 100)', async () => {
     const prisma = buildFakePrisma([
       makeRow({
         id: 'i1',
-        title: null,
         description: 'Sostituzione pastiglie freno anteriori\nDettagli aggiuntivi non visibili',
       }),
     ]);
@@ -238,9 +221,9 @@ describe('GET /v1/interventions/recent (unit)', () => {
     expect(body.items[0]!.summary).toBe('Sostituzione pastiglie freno anteriori');
   });
 
-  it('summary falls back to intervention type name when title null and description empty', async () => {
+  it('summary falls back to intervention type name when description empty', async () => {
     const prisma = buildFakePrisma([
-      makeRow({ id: 'i1', title: null, description: '', typeName: 'Cambio Gomme' }),
+      makeRow({ id: 'i1', description: '', typeName: 'Cambio Gomme' }),
     ]);
     app = await buildApp(prisma);
     const res = await app.inject({
@@ -254,7 +237,7 @@ describe('GET /v1/interventions/recent (unit)', () => {
 
   it('summary truncates description longer than 100 chars to 100 chars', async () => {
     const longText = 'A'.repeat(150);
-    const prisma = buildFakePrisma([makeRow({ id: 'i1', title: null, description: longText })]);
+    const prisma = buildFakePrisma([makeRow({ id: 'i1', description: longText })]);
     app = await buildApp(prisma);
     const res = await app.inject({
       method: 'GET',

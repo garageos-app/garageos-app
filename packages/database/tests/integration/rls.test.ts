@@ -168,11 +168,11 @@ describe('RLS — interventions split (post-migration 0003)', () => {
     const { rows: iv } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO interventions
          (id, tenant_id, user_id, vehicle_id, intervention_type_id,
-          intervention_date, odometer_km, title, description, parts_replaced,
+          intervention_date, odometer_km, description, parts_replaced,
           status, km_anomaly, created_at, updated_at)
        VALUES
          (gen_random_uuid(), $1, $2, $3, $4, '2026-04-15'::date, 45000,
-          'Tagliando A', 'Test', '[]'::jsonb, 'active'::"InterventionStatus",
+          'Test', '[]'::jsonb, 'active'::"InterventionStatus",
           false, NOW(), NOW())
        RETURNING id`,
       [tenantAId, userAId, vehicleId, interventionTypeId],
@@ -471,11 +471,11 @@ describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)'
     const { rows: iv } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO interventions
          (id, tenant_id, user_id, vehicle_id, intervention_type_id,
-          intervention_date, odometer_km, title, description, parts_replaced,
+          intervention_date, odometer_km, description, parts_replaced,
           status, km_anomaly, created_at, updated_at)
        VALUES
          (gen_random_uuid(), $1, $2, $3, $4, '2026-04-15'::date, 45000,
-          'Tagliando A', 'Test', '[]'::jsonb, 'active'::"InterventionStatus",
+          'Test', '[]'::jsonb, 'active'::"InterventionStatus",
           false, NOW(), NOW())
        RETURNING id`,
       [tenantAId, userAId, vehicleId, interventionTypeId],

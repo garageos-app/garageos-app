@@ -47,7 +47,6 @@ export interface DemoIntervention {
   vehicleVin: string;
   interventionDate: string;
   interventionTypeCode: string;
-  title: string;
   description: string;
   odometerKm: number;
   partsReplaced?: Array<{ name: string; code?: string; quantity: number; notes?: string }>;
@@ -146,7 +145,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000001',
     interventionDate: '2024-04-10',
     interventionTypeCode: 'MECCANICO',
-    title: 'Tagliando 30k',
     description: 'Tagliando programmato a 30.000 km. Sostituzione olio, filtri, controllo livelli.',
     odometerKm: 30000,
     partsReplaced: [
@@ -158,7 +156,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000001',
     interventionDate: '2024-11-05',
     interventionTypeCode: 'GOMME',
-    title: 'Gomme invernali',
     description: 'Inversione pneumatici stagionali.',
     odometerKm: 38000,
   },
@@ -166,7 +163,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000001',
     interventionDate: '2025-04-15',
     interventionTypeCode: 'MECCANICO',
-    title: 'Tagliando 45k',
     description: 'Tagliando programmato a 45.000 km.',
     odometerKm: 45000,
     partsReplaced: [
@@ -178,7 +174,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000001',
     interventionDate: '2025-11-08',
     interventionTypeCode: 'GOMME',
-    title: 'Gomme invernali',
     description: 'Inversione pneumatici stagionali.',
     odometerKm: 52000,
   },
@@ -186,7 +181,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000001',
     interventionDate: '2026-02-20',
     interventionTypeCode: 'MECCANICO',
-    title: 'Freni anteriori',
     description: 'Sostituzione pastiglie anteriori per usura.',
     odometerKm: 56000,
     partsReplaced: [{ name: 'Pastiglie freno anteriori', code: 'BREMBO-P12345', quantity: 1 }],
@@ -197,7 +191,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000002',
     interventionDate: '2024-06-15',
     interventionTypeCode: 'MECCANICO',
-    title: 'Tagliando 60k',
     description: 'Tagliando programmato a 60.000 km Golf TDI.',
     odometerKm: 60000,
     partsReplaced: [
@@ -211,7 +204,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000002',
     interventionDate: '2024-12-10',
     interventionTypeCode: 'REVISIONE',
-    title: 'Revisione',
     description: 'Revisione ministeriale superata.',
     odometerKm: 68000,
   },
@@ -219,7 +211,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000002',
     interventionDate: '2025-09-12',
     interventionTypeCode: 'MECCANICO',
-    title: 'Cinghia distribuzione',
     description:
       'Sostituzione cinghia distribuzione + pompa acqua + tendicinghia (preventivo a 80k).',
     odometerKm: 80000,
@@ -232,7 +223,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000002',
     interventionDate: '2026-01-08',
     interventionTypeCode: 'MECCANICO',
-    title: 'Cambio olio',
     description: 'Sostituzione olio + filtro a 88k.',
     odometerKm: 88000,
   },
@@ -242,7 +232,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000003',
     interventionDate: '2024-05-20',
     interventionTypeCode: 'MECCANICO',
-    title: 'Tagliando 12k',
     description: 'Tagliando programmato a 12.000 km Ducati.',
     odometerKm: 12000,
     partsReplaced: [
@@ -254,7 +243,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000003',
     interventionDate: '2025-07-18',
     interventionTypeCode: 'MECCANICO',
-    title: 'Tagliando 18k',
     description: 'Tagliando programmato a 18.000 km.',
     odometerKm: 18000,
   },
@@ -262,7 +250,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000003',
     interventionDate: '2025-11-30',
     interventionTypeCode: 'MECCANICO',
-    title: 'Batteria',
     description: 'Sostituzione batteria avviamento.',
     odometerKm: 19500,
   },
@@ -272,7 +259,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000004',
     interventionDate: '2024-09-22',
     interventionTypeCode: 'MECCANICO',
-    title: 'Cambio olio 15k',
     description: 'Sostituzione olio + filtro.',
     odometerKm: 15000,
   },
@@ -280,7 +266,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000004',
     interventionDate: '2025-05-10',
     interventionTypeCode: 'MECCANICO',
-    title: 'Tagliando 28k',
     description: 'Tagliando programmato.',
     odometerKm: 28000,
     partsReplaced: [{ name: 'Olio motore', quantity: 4 }],
@@ -289,7 +274,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000004',
     interventionDate: '2025-11-12',
     interventionTypeCode: 'GOMME',
-    title: 'Gomme invernali',
     description: 'Inversione pneumatici.',
     odometerKm: 35000,
   },
@@ -297,7 +281,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000004',
     interventionDate: '2026-03-20',
     interventionTypeCode: 'MECCANICO',
-    title: 'Freni posteriori',
     description: 'Sostituzione pastiglie posteriori.',
     odometerKm: 42000,
   },
@@ -307,7 +290,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000005',
     interventionDate: '2024-07-08',
     interventionTypeCode: 'MECCANICO',
-    title: 'Tagliando 110k',
     description: 'Tagliando per furgone uso commerciale.',
     odometerKm: 110000,
     partsReplaced: [
@@ -321,7 +303,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000005',
     interventionDate: '2024-10-15',
     interventionTypeCode: 'REVISIONE',
-    title: 'Revisione',
     description: 'Revisione ministeriale.',
     odometerKm: 120000,
   },
@@ -329,7 +310,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000005',
     interventionDate: '2025-06-22',
     interventionTypeCode: 'MECCANICO',
-    title: 'Tagliando 140k',
     description: 'Tagliando programmato.',
     odometerKm: 140000,
   },
@@ -337,7 +317,6 @@ export const INTERVENTIONS: DemoIntervention[] = [
     vehicleVin: 'VINDEMO0000000005',
     interventionDate: '2026-01-30',
     interventionTypeCode: 'MECCANICO',
-    title: 'Pinze freno',
     description: 'Revisione pinze freno anteriori, sostituzione tubi.',
     odometerKm: 158000,
   },
