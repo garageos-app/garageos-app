@@ -42,6 +42,7 @@ import meTransfersRoutes from './routes/v1/me-transfers.js';
 import mePersonalDeadlinesRoutes from './routes/v1/me-personal-deadlines.js';
 import meInterventionsRoutes from './routes/v1/me-interventions.js';
 import mePrivateInterventionRoutes from './routes/v1/me-private-interventions.js';
+import meInterventionTypesRoutes from './routes/v1/me-intervention-types.js';
 import meProfileRoutes from './routes/v1/me-profile.js';
 import meNotificationPreferencesRoutes from './routes/v1/me-notification-preferences.js';
 import mePushTokensRoutes from './routes/v1/me-push-tokens.js';
@@ -236,6 +237,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(mePersonalDeadlinesRoutes);
   await app.register(meInterventionsRoutes);
   await app.register(mePrivateInterventionRoutes);
+  await app.register(meInterventionTypesRoutes);
   await app.register(meProfileRoutes);
   await app.register(meNotificationPreferencesRoutes);
   await app.register(mePushTokensRoutes);
