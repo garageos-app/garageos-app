@@ -1315,6 +1315,11 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
     });
     await createOwnership({ vehicleId, customerId });
     const interventionType = await ensureSystemInterventionType('MECCANICO');
+    // BR-303: this PATCH moves from custom_type to a catalog type, which
+    // now requires checklist_item_ids (see the two new BR-303 PATCH tests
+    // below) — seed one item so this "patch everything" test keeps
+    // exercising the scalar-field update path without tripping the guard.
+    const item = await seedChecklistItem({ interventionTypeId: interventionType.id });
     const { privateInterventionId } = await createPrivateIntervention({
       customerId,
       vehicleId,
@@ -1340,6 +1345,7 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
         intervention_type_id: interventionType.id,
         custom_type: null,
         description: 'updated',
+        checklist_item_ids: [item.id],
       },
     });
 
@@ -1350,6 +1356,7 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
       type: { id: interventionType.id, name_it: 'Intervento Meccanico' },
       custom_type: null,
       description: 'updated',
+      checklist_items: [{ id: item.id, label: item.nameIt }],
     });
   });
 
@@ -1366,6 +1373,10 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
     });
     await createOwnership({ vehicleId, customerId });
     const interventionType = await ensureSystemInterventionType('MECCANICO');
+    // BR-303: a custom_type -> catalog-type swap is a type change, so it
+    // now requires checklist_item_ids in the same PATCH (see the guard
+    // tested explicitly below).
+    const item = await seedChecklistItem({ interventionTypeId: interventionType.id });
     const { privateInterventionId } = await createPrivateIntervention({
       customerId,
       vehicleId,
@@ -1386,6 +1397,7 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
       payload: {
         intervention_type_id: interventionType.id,
         custom_type: null,
+        checklist_item_ids: [item.id],
       },
     });
 
@@ -1393,6 +1405,7 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
     expect(res.json()).toMatchObject({
       type: { id: interventionType.id, name_it: 'Intervento Meccanico' },
       custom_type: null,
+      checklist_items: [{ id: item.id, label: item.nameIt }],
     });
   });
 
@@ -1822,6 +1835,233 @@ describe('PATCH /v1/me/private-interventions/:id (integration)', () => {
     });
 
     expect(res.statusCode).toBe(400);
+  });
+
+  // Task 6 — BR-303 replace-set checklist edit on the customer PATCH path.
+  it('replace-set + retain-preserve: retained item keeps its original label_snapshot (BR-303)', async () => {
+    const cognitoSub = 'me-pip-br303-rs-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-br303-rs');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPATCHBR303RS001',
+      plate: 'PB001AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
+    const itemA = await seedChecklistItem({
+      interventionTypeId: interventionType.id,
+      nameIt: 'Item A original',
+    });
+    const itemB = await seedChecklistItem({
+      interventionTypeId: interventionType.id,
+      nameIt: 'Item B',
+    });
+    const itemC = await seedChecklistItem({
+      interventionTypeId: interventionType.id,
+      nameIt: 'Item C',
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PATCH,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: interventionType.id,
+        custom_type: null,
+        description: 'Tagliando',
+        checklist_item_ids: [itemA.id, itemB.id],
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const { id: privateInterventionId } = createRes.json() as { id: string };
+
+    // Mutate the catalog row's name AFTER the snapshot was taken — the
+    // retained selection (itemA, resent below) must keep the ORIGINAL
+    // label, proving label_snapshot is never re-derived from the catalog
+    // on a replace-set PATCH (BR-303 retain-preserve guarantee).
+    await pgAdmin.query(`UPDATE intervention_checklist_items SET name_it = $1 WHERE id = $2`, [
+      'Item A MUTATED',
+      itemA.id,
+    ]);
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PATCH,
+      },
+      payload: { checklist_item_ids: [itemA.id, itemC.id] },
+    });
+
+    expect(patchRes.statusCode).toBe(200);
+    const body = patchRes.json() as { checklist_items: { id: string | null; label: string }[] };
+    // itemA retained with its ORIGINAL label (not "Item A MUTATED"); itemB
+    // gone; itemC newly added with its current label.
+    expect(body.checklist_items).toEqual(
+      expect.arrayContaining([
+        { id: itemA.id, label: 'Item A original' },
+        { id: itemC.id, label: 'Item C' },
+      ]),
+    );
+    expect(body.checklist_items).toHaveLength(2);
+    expect(body.checklist_items.some((c) => c.id === itemB.id)).toBe(false);
+
+    const { rows } = await pgAdmin.query<{
+      checklist_item_id: string;
+      label_snapshot: string;
+    }>(
+      `SELECT checklist_item_id, label_snapshot
+         FROM private_intervention_checklist_selections
+        WHERE private_intervention_id = $1
+        ORDER BY checklist_item_id`,
+      [privateInterventionId],
+    );
+    expect(rows).toHaveLength(2);
+    const byId = new Map(rows.map((r) => [r.checklist_item_id, r.label_snapshot]));
+    expect(byId.get(itemA.id)).toBe('Item A original');
+    expect(byId.get(itemC.id)).toBe('Item C');
+    expect(byId.has(itemB.id)).toBe(false);
+  });
+
+  it('type change without checklist_item_ids -> 400 intervention.creation.checklist_required (BR-303)', async () => {
+    const cognitoSub = 'me-pip-br303-tc-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-br303-tc');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPATCHBR303TC001',
+      plate: 'PB002AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const typeA = await ensureSystemInterventionType('MECCANICO');
+    const typeB = await seedGlobalType();
+    const itemA = await seedChecklistItem({ interventionTypeId: typeA.id });
+    await seedChecklistItem({ interventionTypeId: typeB.id });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PATCH,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: typeA.id,
+        custom_type: null,
+        description: 'Tagliando',
+        checklist_item_ids: [itemA.id],
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const { id: privateInterventionId } = createRes.json() as { id: string };
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PATCH,
+      },
+      // Type change to typeB, no checklist_item_ids -> BR-303 guard.
+      payload: { intervention_type_id: typeB.id },
+    });
+
+    expect(patchRes.statusCode).toBe(400);
+    expect(patchRes.json()).toMatchObject({ code: 'intervention.creation.checklist_required' });
+
+    // Original selection must be untouched — the rejected PATCH must not
+    // have mutated any row.
+    const { rows } = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM private_intervention_checklist_selections
+        WHERE private_intervention_id = $1`,
+      [privateInterventionId],
+    );
+    expect(Number(rows[0]!.count)).toBe(1);
+  });
+
+  it('switch to custom_type ("Altro") clears all checklist selections (BR-303)', async () => {
+    const cognitoSub = 'me-pip-br303-altro-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-br303-altro');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPATCHBR303AL001',
+      plate: 'PB003AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
+    const item1 = await seedChecklistItem({ interventionTypeId: interventionType.id });
+    const item2 = await seedChecklistItem({ interventionTypeId: interventionType.id });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PATCH,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: interventionType.id,
+        custom_type: null,
+        description: 'Tagliando',
+        checklist_item_ids: [item1.id, item2.id],
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const { id: privateInterventionId } = createRes.json() as { id: string };
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_PATCH,
+      },
+      payload: { intervention_type_id: null, custom_type: 'Altro' },
+    });
+
+    expect(patchRes.statusCode).toBe(200);
+    expect(patchRes.json()).toMatchObject({
+      type: null,
+      custom_type: 'Altro',
+      checklist_items: [],
+    });
+
+    const { rows } = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM private_intervention_checklist_selections
+        WHERE private_intervention_id = $1`,
+      [privateInterventionId],
+    );
+    expect(Number(rows[0]!.count)).toBe(0);
   });
 });
 
