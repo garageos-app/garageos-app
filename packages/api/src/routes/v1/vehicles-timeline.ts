@@ -102,6 +102,11 @@ const privateRowSelect = {
   interventionDate: true,
   odometerKm: true,
   customType: true,
+  // BR-086: a private intervention is either a catalog type (interventionType
+  // set, customType null) or free-text ("Altro": customType set, type null).
+  // The row exposes the catalog type name as its heading, mirroring the shop
+  // rows; the free-text path falls back to customType client-side.
+  interventionType: { select: { id: true, nameIt: true } },
   description: true,
 } as const;
 
@@ -291,6 +296,9 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
             id: r.id,
             intervention_date: r.interventionDate.toISOString().slice(0, 10),
             odometer_km: r.odometerKm,
+            type: r.interventionType
+              ? { id: r.interventionType.id, name_it: r.interventionType.nameIt }
+              : null,
             custom_type: r.customType,
             description: r.description,
           };

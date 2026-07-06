@@ -61,6 +61,9 @@ export type TimelineItem =
       id: string;
       intervention_date: string;
       odometer_km: number;
+      // BR-086: a catalog type sets `type` (custom_type null); the free-text
+      // "Altro" path sets `custom_type` (type null). Exactly one is non-null.
+      type: { id: string; name_it: string } | null;
       custom_type: string | null;
       description: string | null;
     };

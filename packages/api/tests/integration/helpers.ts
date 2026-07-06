@@ -503,6 +503,7 @@ export async function createPrivateIntervention(params: {
   vehicleId: string;
   interventionDate: string; // YYYY-MM-DD
   odometerKm?: number | null;
+  interventionTypeId?: string | null;
   customType?: string | null;
   description?: string;
   deletedAt?: Date | null;
@@ -513,7 +514,10 @@ export async function createPrivateIntervention(params: {
     vehicleId,
     interventionDate,
     odometerKm = null,
-    customType = 'Manutenzione fai-da-te',
+    interventionTypeId = null,
+    // XOR (BR-086): a catalog interventionTypeId clears the free-text label;
+    // otherwise default to the free-text ("Altro") label.
+    customType = interventionTypeId != null ? null : 'Manutenzione fai-da-te',
     description = 'Test private intervention',
     deletedAt = null,
     createdAt = null,
@@ -521,15 +525,16 @@ export async function createPrivateIntervention(params: {
   const { rows } = await pgAdmin.query<{ id: string }>(
     `INSERT INTO private_interventions
        (id, customer_id, vehicle_id, intervention_date, odometer_km,
-        custom_type, description, deleted_at, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3::date, $4, $5, $6, $7,
-             COALESCE($8::timestamptz, NOW()), NOW())
+        intervention_type_id, custom_type, description, deleted_at, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3::date, $4, $5, $6, $7, $8,
+             COALESCE($9::timestamptz, NOW()), NOW())
      RETURNING id`,
     [
       customerId,
       vehicleId,
       interventionDate,
       odometerKm,
+      interventionTypeId,
       customType,
       description,
       deletedAt,

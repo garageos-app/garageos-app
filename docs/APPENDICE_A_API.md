@@ -1161,6 +1161,7 @@ Authorization: Bearer <any_user_jwt>
       "id": "01HKYP...",
       "intervention_date": "2026-03-10",
       "odometer_km": 43500,
+      "type": null,
       "custom_type": "Rabbocco liquido tergicristalli",
       "description": "..."
     }
@@ -1186,6 +1187,13 @@ Authorization: Bearer <any_user_jwt>
 | `wiki_window_open` | boolean | Server-computed BR-062 predicate. `true` = free edits, no revision row created. `false` = audit active; subsequent PATCH requires `reason` ≥10 chars per BR-064. Computed from `wikiLockedAt IS NULL AND firstSeenByCustomerAt IS NULL AND now() - createdAt < 48h`. |
 | `tenant.id` | string (uuid) | UUID dell'officina autrice. Chiave per il colore per-officina e il filtro `tenant_ids` lato client. |
 | `viewer_is_owner` | boolean | `true` se l'officina chiamante ha creato l'intervento. `false` cross-tenant (BR-150/BR-153) e sempre `false` per il pool clienti. Il client lo usa per la sola-lettura (niente Modifica/risposta-dispute) sulle righe di altre officine. |
+
+#### Campi `private_intervention` (selezione)
+
+| Campo | Tipo | Note |
+|---|---|---|
+| `type` | `{ id, name_it }` \| `null` | BR-086: valorizzato quando l'intervento privato usa un tipo dal catalogo; l'intestazione della card è `type.name_it`. `null` per il testo libero ("Altro"). |
+| `custom_type` | string \| `null` | Testo libero ("Altro"). Valorizzato solo quando `type` è `null`; è l'intestazione in quel caso. |
 
 #### `GET /v1/vehicles/:id/timeline/officine` — Officine presenti nella timeline
 
