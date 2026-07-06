@@ -530,6 +530,17 @@ Gli interventi privati sono **cancellabili** dal customer proprietario senza res
 ### BR-085 — Limite di rate (anti-spam)
 Un customer può creare **max 50 interventi privati al giorno**. Oltre, error 429 — protezione contro script/abusi.
 
+### BR-086 — Checklist negli interventi privati
+
+Un intervento privato con `intervention_type_id` dal catalogo segue le stesse
+regole checklist degli interventi officina: **almeno una voce** (BR-300),
+appartenenza voce↔tipo e voce attiva (BR-301), **snapshot** etichetta/ordine
+congelato al salvataggio con `onDelete: SetNull` (BR-303). Non si applicano le
+esclusioni per-tenant (BR-304): il cliente non è tenant-scoped e vede l'intero
+catalogo globale. Con il tipo libero (`custom_type`, "Altro") la checklist non
+è ammessa. Enforcement: `validateChecklistSelection` (tenantId assente) + tabella
+`private_intervention_checklist_selections` (RLS `private_int_checklist_isolation`).
+
 ---
 
 ## 6. Regole sulle scadenze

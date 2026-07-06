@@ -316,6 +316,8 @@ Per fornire dati utili al client per gestire l'errore:
 | `private_intervention.rate_limit` | 429 | warning | Limite interventi privati superato | >50/giorno | BR-085 |
 | `private_intervention.vehicle_not_owned` | 422 | warning | Veicolo non nella tua lista | | |
 
+> **Nota (PR-1, BR-086):** i codici `intervention.creation.checklist_required` (400, BR-300) e `intervention.creation.checklist_item_invalid` (422, BR-301) — definiti in §3.6 per gli interventi officina — sono **riutilizzati anche** dai path create/PATCH degli interventi privati (`POST /v1/me/vehicles/:id/private-interventions`, `PATCH /v1/me/private-interventions/:id`) quando `intervention_type_id` proviene dal catalogo globale. Nessun codice nuovo è stato introdotto per il path cliente.
+
 ### 3.8 Trasferimenti di proprietà
 
 | Code | HTTP | Severity | Titolo | Quando | BR |
