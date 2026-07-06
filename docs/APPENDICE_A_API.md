@@ -1085,8 +1085,8 @@ Campi modificabili (tutti opzionali): `intervention_date`, `odometer_km`, `inter
 | Status | Codice | Scenario |
 |---|---|---|
 | 404 | `private_intervention.not_found` | Inesistente o di un altro cliente |
-| 400 | `VALIDATION_ERROR` | Stato post-merge non ha esattamente uno tra `intervention_type_id`/`custom_type`; chiavi sconosciute nel body (`.strict()`) |
-| 422 | `VALIDATION_ERROR` | `intervention_type_id` fornito ma inesistente |
+| 400 | `VALIDATION_ERROR` | Chiavi sconosciute nel body (`.strict()`) |
+| 422 | `VALIDATION_ERROR` | Stato post-merge non ha esattamente uno tra `intervention_type_id`/`custom_type` (controllo handler-side); `intervention_type_id` fornito ma inesistente |
 | 422 | `private_intervention.date_future` | Nuova `intervention_date` futura |
 | 400 | `intervention.creation.checklist_required` | Cambio di `intervention_type_id` senza fornire `checklist_item_ids` (il cliente deve riselezionare la checklist per il nuovo tipo — mirror del comportamento officina) |
 | 422 | `intervention.creation.checklist_item_invalid` | Voce non appartenente al tipo (eventualmente aggiornato) o non attiva (BR-301) |
