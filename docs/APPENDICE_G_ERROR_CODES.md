@@ -260,7 +260,7 @@ Per fornire dati utili al client per gestire l'errore:
 | `vehicle.creation.duplicate_vin` | 409 | warning | VIN già presente | VIN esistente certified | BR-001 |
 | `vehicle.creation.duplicate_plate_warning` | 409 | warning | Targa identica su altro veicolo | Conferma richiesta con force | BR-002 |
 | `vehicle.creation.vin_invalid_format` | 400 | info | VIN formato non valido | 17 caratteri mancanti | BR-001 |
-| `vehicle.creation.invalid_vin_checksum` | 400 | warning | VIN checksum non valido | Può essere forzato con force_nonstandard_vin (solo officina; la pre-registrazione cliente F-CLI-104 non ha bypass) | BR-001 |
+| `vehicle.creation.invalid_vin_checksum` | 400 | warning | VIN checksum ISO 3779 non conforme (advisory) | Solo superficie officina (create/patch/certify); warning confermabile con force_nonstandard_vin. La pre-registrazione cliente F-CLI-104 NON emette questo codice (checksum non controllato) | BR-001 |
 | `vehicle.creation.plate_invalid_format` | 400 | info | Formato targa non valido | | |
 | `vehicle.creation.year_out_of_range` | 400 | info | Anno fuori range | <1900 o >current+1 | BR-007 |
 | `vehicle.modification.vin_immutable` | 422 | error | VIN non modificabile | Tentativo di modifica su certified | BR-005 |

@@ -44,9 +44,11 @@ Questo documento raccoglie in modo **esplicito e inequivocabile** tutte le regol
 ### BR-001 — Unicità VIN
 Un veicolo è univocamente identificato dal VIN (Vehicle Identification Number, telaio). Il sistema rifiuta la creazione di due veicoli con lo stesso VIN.
 
-**Validazione:** VIN di 17 caratteri, alfanumerico escluso `I`, `O`, `Q` (standard ISO 3779), controllo del checksum quando possibile.
+**Validazione:** VIN di 17 caratteri, alfanumerico escluso `I`, `O`, `Q` (standard ISO 3779). Il controllo del checksum ISO 3779 è **advisory** ("quando possibile"), non un blocco: la cifra di controllo in 9ª posizione è un requisito nord-americano (NHTSA) che i costruttori europei in genere non popolano, quindi la maggior parte dei VIN italiani/UE **non** la rispetta e un mismatch è normale.
 
-**Eccezione:** veicoli storici pre-1981 o mezzi agricoli/speciali possono avere telai non standard. In questi casi il sistema accetta VIN di 11-17 caratteri senza checksum, ma richiede conferma esplicita del meccanico (`force_nonstandard_vin: true`).
+**Superficie officina** (`POST /v1/vehicles`, `PATCH /v1/vehicles/:id`, `POST /v1/vehicles/:id/certify`): un checksum non conforme è un **warning confermabile**. Il meccanico — che verifica il telaio sul libretto — corregge un eventuale errore di battitura oppure conferma tramite `forceNonstandardVin: true`. Serve anche per veicoli storici pre-1981 o mezzi agricoli/speciali con telai non standard.
+
+**Superficie cliente** (`POST /v1/me/vehicles/pending`): **nessun controllo checksum**. Il VIN del cliente è non-autoritativo e viene ri-verificato dall'officina alla certificazione (BR-003/BR-004), quindi il sistema accetta qualsiasi VIN di forma valida senza bypass — bloccare qui creerebbe un vicolo cieco sulla pre-registrazione.
 
 ### BR-002 — Targa non univoca
 La targa di un veicolo **non è chiave univoca**. Può esistere lo stesso numero di targa su veicoli diversi nel tempo (ritargatura, reimmatricolazione estera).

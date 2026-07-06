@@ -108,7 +108,7 @@ Idempotency-Key: 01HKXM9...
 **`vehicle` (oggetto)**:
 | Campo | Tipo | Obbligatorio | Validazione |
 |---|---|---|---|
-| `vin` | string | sì | 17 char alfanumerici, checksum VIN |
+| `vin` | string | sì | 17 char alfanumerici; checksum ISO 3779 advisory — un mismatch dà un warning confermabile con `force_nonstandard_vin` |
 | `plate` | string | sì | max 10 char |
 | `plate_country` | string | no (default `IT`) | ISO 3166-1 alpha-2 |
 | `make` | string | sì | max 50 char |
@@ -202,7 +202,7 @@ Altri campi nel root:
 
 | Status | Codice | Scenario |
 |---|---|---|
-| 400 | `invalid_vin_checksum` | VIN non rispetta checksum standard |
+| 400 | `invalid_vin_checksum` | Checksum ISO 3779 non conforme (advisory) — recoverable: re-POST con `force_nonstandard_vin=true` |
 | 400 | `invalid_plate_format` | Formato targa non valido per il paese |
 | 409 | `duplicate_vin` | Esiste già un veicolo con questo VIN |
 | 409 | `duplicate_plate_warning` | Esiste targa identica ma VIN diverso (richiede conferma esplicita con `force: true`) |

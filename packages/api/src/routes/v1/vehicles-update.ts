@@ -5,7 +5,7 @@ import { recordVehicleAccess } from '../../lib/access-log.js';
 import { businessError } from '../../lib/business-error.js';
 import { maskCustomer, resolvePiiVisibility } from '../../lib/pii-filter.js';
 import { idParamSchema, vehicleDetailSelect } from '../../lib/vehicle-shared.js';
-import { validateVinIso3779 } from '../../lib/vin-checksum.js';
+import { INVALID_VIN_CHECKSUM_DETAIL, validateVinIso3779 } from '../../lib/vin-checksum.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -82,7 +82,7 @@ const vehicleUpdateRoutes: FastifyPluginAsync = async (app) => {
             throw businessError(
               'vehicle.creation.invalid_vin_checksum',
               400,
-              'Il VIN non rispetta il checksum ISO 3779. Usa forceNonstandardVin=true per veicoli storici o agricoli.',
+              INVALID_VIN_CHECKSUM_DETAIL,
             );
           }
           await checkDuplicateVin(tx, body.vin);

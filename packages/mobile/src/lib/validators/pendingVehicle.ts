@@ -3,8 +3,9 @@
 // so this checks already-normalized strings; the server stays authoritative.
 
 // BR-001 VIN shape: 17 chars, no I/O/Q. The ISO 3779 checksum is NOT
-// replicated client-side — the server's vehicle.creation.invalid_vin_checksum
-// 400 is mapped into the form banner.
+// checked at all on the customer surface — it is advisory (BR-001) and the
+// server accepts any shape-valid VIN, re-verified by a workshop at
+// certification.
 export const VIN_RE = /^[A-HJ-NPR-Z0-9]{17}$/;
 
 // Mirror of the API's ItalianPlateSchema (AB123CD).

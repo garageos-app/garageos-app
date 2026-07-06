@@ -35,11 +35,11 @@ const MESSAGES: Record<string, string> = {
   'auth.signup.rate_limited': 'Troppi tentativi di registrazione. Riprova tra qualche minuto.',
   'auth.resend_verification.rate_limited': 'Troppi tentativi. Riprova tra qualche minuto.',
 
-  // Pending vehicle pre-registration (F-CLI-104)
+  // Pending vehicle pre-registration (F-CLI-104). The ISO 3779 checksum is
+  // no longer enforced on the customer surface (advisory per BR-001), so
+  // vehicle.creation.invalid_vin_checksum is not emitted here anymore.
   'vehicle.pending.duplicate_vin_certified':
     'Esiste già un veicolo registrato con questo telaio. Se è il tuo, chiedi il codice GarageOS alla tua officina.',
-  'vehicle.creation.invalid_vin_checksum':
-    'Il VIN non risulta valido. Controlla il libretto di circolazione.',
 
   // Dispute domain codes (F-CLI-206)
   'me.intervention.not_found': 'Intervento non trovato o non più di tua proprietà.',

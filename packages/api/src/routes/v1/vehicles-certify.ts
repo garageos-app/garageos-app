@@ -5,7 +5,7 @@ import { businessError } from '../../lib/business-error.js';
 import { certifyVehicleWithGarageCode, VehicleNotCertifiableError } from '../../lib/garage-code.js';
 import { maskCustomer, resolvePiiVisibility } from '../../lib/pii-filter.js';
 import { idParamSchema, vehicleDetailSelect } from '../../lib/vehicle-shared.js';
-import { validateVinIso3779 } from '../../lib/vin-checksum.js';
+import { INVALID_VIN_CHECKSUM_DETAIL, validateVinIso3779 } from '../../lib/vin-checksum.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
@@ -99,15 +99,17 @@ const vehicleCertifyRoutes: FastifyPluginAsync = async (app) => {
 
         const corrections = body.corrections ?? {};
 
-        // BR-001: corrected VIN must pass the ISO 3779 checksum unless the
-        // mechanic explicitly flags a non-standard VIN; BR-005 does not
-        // apply yet (the vehicle is not certified).
+        // BR-001: the ISO 3779 checksum on a corrected VIN is advisory
+        // (a mismatch is common on EU VINs — see routes/v1/vehicles.ts),
+        // surfaced as a confirmable warning the mechanic acknowledges via
+        // forceNonstandardVin; BR-005 does not apply yet (the vehicle is
+        // not certified).
         if (corrections.vin !== undefined && corrections.vin !== existing.vin) {
           if (!body.forceNonstandardVin && !validateVinIso3779(corrections.vin)) {
             throw businessError(
               'vehicle.creation.invalid_vin_checksum',
               400,
-              'Il VIN non rispetta il checksum ISO 3779. Usa forceNonstandardVin=true per veicoli storici o agricoli.',
+              INVALID_VIN_CHECKSUM_DETAIL,
             );
           }
           await checkDuplicateVin(tx, corrections.vin);

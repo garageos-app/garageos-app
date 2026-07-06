@@ -251,7 +251,11 @@ describe('POST /v1/me/vehicles/pending', () => {
     );
   });
 
-  it('returns 400 invalid_vin_checksum for a VIN failing ISO 3779, without creating anything', async () => {
+  // BR-001: the ISO 3779 checksum is advisory and NOT enforced on the
+  // customer surface (most EU VINs fail it and the VIN is re-verified at
+  // certification). A shape-valid VIN that fails the checksum must still
+  // create the pending vehicle.
+  it('accepts a VIN failing ISO 3779 and creates the pending vehicle', async () => {
     const prisma = buildFakePrisma();
     app = await buildApp({ prisma });
 
@@ -262,13 +266,13 @@ describe('POST /v1/me/vehicles/pending', () => {
       payload: { ...VALID_BODY, vin: INVALID_CHECKSUM_VIN },
     });
 
-    expect(res.statusCode).toBe(400);
-    expect(res.json()).toMatchObject({
-      type: 'https://api.garageos.it/errors/vehicle.creation.invalid_vin_checksum',
-      status: 400,
-    });
-    expect(prisma.vehicle.create).not.toHaveBeenCalled();
-    expect(prisma.vehicleOwnership.create).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(201);
+    expect(prisma.vehicle.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ vin: INVALID_CHECKSUM_VIN }),
+      }),
+    );
+    expect(prisma.vehicleOwnership.create).toHaveBeenCalled();
   });
 
   it('returns 409 duplicate_vin_certified when a vehicle with the same VIN already exists', async () => {

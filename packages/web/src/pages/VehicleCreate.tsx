@@ -11,6 +11,10 @@ import { toast } from 'sonner';
 import { ApiError } from '@/lib/api-client';
 import { translateError } from '@/lib/error-messages';
 import {
+  VIN_CHECKSUM_DIALOG_DESCRIPTION,
+  VIN_CHECKSUM_DIALOG_TITLE,
+} from '@/lib/vin-checksum-copy';
+import {
   VehicleFormSchema,
   transformToPayload,
   VehicleTypeEnum,
@@ -488,11 +492,8 @@ function VehicleCreateForm() {
       <Dialog open={confirm?.kind === 'vin'} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>VIN non standard</DialogTitle>
-            <DialogDescription>
-              Il VIN non rispetta il checksum standard. Confermi solo se è un veicolo storico o
-              agricolo.
-            </DialogDescription>
+            <DialogTitle>{VIN_CHECKSUM_DIALOG_TITLE}</DialogTitle>
+            <DialogDescription>{VIN_CHECKSUM_DIALOG_DESCRIPTION}</DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
             <Button type="button" variant="ghost" onClick={() => setConfirm(null)}>

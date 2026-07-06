@@ -46,6 +46,14 @@ const WEIGHTS = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
 
 const VIN_ALPHABET = /^[A-HJ-NPR-Z0-9]{17}$/;
 
+// Shared RFC 7807 `detail` for vehicle.creation.invalid_vin_checksum. The
+// checksum is advisory (BR-001): a mismatch is common on EU VINs, so the
+// copy frames it as a confirmable warning, never a hard "storico/agricolo"
+// rejection. Used verbatim by the three workshop surfaces that gate on it
+// (create / patch / certify) so the message can never drift between them.
+export const INVALID_VIN_CHECKSUM_DETAIL =
+  'La cifra di controllo del VIN non corrisponde allo standard ISO 3779 (comune sui veicoli europei). Verifica il numero di telaio sul libretto; se è corretto, conferma per procedere.';
+
 export function validateVinIso3779(vin: string): boolean {
   if (!VIN_ALPHABET.test(vin)) return false;
 

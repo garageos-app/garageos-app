@@ -158,7 +158,7 @@ describe('VehicleCreate', () => {
     await fillNewCustomer();
     await fillVehicle();
     await userEvent.click(screen.getByRole('button', { name: /censisci veicolo/i }));
-    expect(await screen.findByText(/veicolo storico o agricolo/i)).toBeInTheDocument();
+    expect(await screen.findByText(/cifra di controllo del VIN/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /conferma/i }));
     await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(2));
     expect(mockMutateAsync.mock.calls[1][0].forceNonstandardVin).toBe(true);
