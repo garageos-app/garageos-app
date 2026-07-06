@@ -474,9 +474,10 @@ model InterventionChecklistItem {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  interventionType InterventionType                 @relation(fields: [interventionTypeId], references: [id], onDelete: Cascade)
-  selections       InterventionChecklistSelection[]
-  tenantExclusions TenantChecklistItemExclusion[]
+  interventionType  InterventionType                       @relation(fields: [interventionTypeId], references: [id], onDelete: Cascade)
+  selections        InterventionChecklistSelection[]
+  privateSelections PrivateInterventionChecklistSelection[]
+  tenantExclusions  TenantChecklistItemExclusion[]
 
   @@unique([interventionTypeId, code], map: "uq_checklist_item_code_type")
   @@index([interventionTypeId], map: "idx_checklist_items_type")
@@ -618,12 +619,30 @@ model PrivateIntervention {
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
 
-  customer         Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  vehicle          Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  interventionType InterventionType? @relation(fields: [interventionTypeId], references: [id], onDelete: SetNull)
+  customer            Customer                                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  vehicle             Vehicle                                 @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  interventionType    InterventionType?                       @relation(fields: [interventionTypeId], references: [id], onDelete: SetNull)
+  checklistSelections PrivateInterventionChecklistSelection[]
 
   @@index([customerId, vehicleId, interventionDate(sort: Desc)], map: "idx_private_int_customer_vehicle")
   @@map("private_interventions")
+}
+
+model PrivateInterventionChecklistSelection {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  privateInterventionId String   @map("private_intervention_id") @db.Uuid
+  customerId            String   @map("customer_id") @db.Uuid
+  checklistItemId       String?  @map("checklist_item_id") @db.Uuid
+  labelSnapshot         String   @map("label_snapshot") @db.VarChar(150)
+  sortOrderSnapshot     Int?     @map("sort_order_snapshot") @db.SmallInt
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  privateIntervention PrivateIntervention        @relation(fields: [privateInterventionId], references: [id], onDelete: Cascade)
+  checklistItem       InterventionChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+
+  @@unique([privateInterventionId, checklistItemId], map: "uq_priv_selection_intervention_item")
+  @@index([privateInterventionId], map: "idx_priv_selections_intervention")
+  @@map("private_intervention_checklist_selections")
 }
 
 
