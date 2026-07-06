@@ -231,6 +231,44 @@ describe('PrivateInterventionForm', () => {
     expect(body.intervention_type_id).toBe('type-gomme');
   });
 
+  it('blocks submit and shows an error when no type is selected', async () => {
+    const onSubmit = jest.fn();
+    render(<PrivateInterventionForm onSubmit={onSubmit} onCancel={jest.fn()} />);
+    fillDateAndDescription();
+    fireEvent.press(screen.getByRole('button', { name: 'Salva' }));
+    await waitFor(() => {
+      expect(screen.getByText('Seleziona un tipo di intervento')).toBeOnTheScreen();
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('edit: never resubmits a snapshot id absent from the current catalog', async () => {
+    const onSubmit = jest.fn().mockResolvedValue({ ok: true });
+    render(
+      <PrivateInterventionForm
+        onSubmit={onSubmit}
+        onCancel={jest.fn()}
+        submitLabel="Salva modifiche"
+        initial={{
+          selectedKey: 'type-gomme',
+          customType: '',
+          // 'i-ghost' is a snapshot id for a since-deactivated item — it is not
+          // in the current catalog (CATALOG has only i-pneu / i-conv).
+          checklistItemIds: ['i-pneu', 'i-ghost'],
+          interventionDate: '2021-03-03',
+          odometerKm: '90000',
+          description: 'Cambio gomme invernali',
+        }}
+      />,
+    );
+    // Edit the visible checklist (add i-conv) → replace-set is triggered.
+    fireEvent.press(screen.getByTestId('checklist-item-CONV'));
+    fireEvent.press(screen.getByRole('button', { name: 'Salva modifiche' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    // The ghost id is filtered out; only catalog-offered ids are sent.
+    expect(onSubmit.mock.calls[0][0].checklist_item_ids).toEqual(['i-pneu', 'i-conv']);
+  });
+
   it('edit: sends checklist_item_ids when the checklist changed', async () => {
     const onSubmit = jest.fn().mockResolvedValue({ ok: true });
     render(

@@ -131,22 +131,30 @@ export function PrivateInterventionForm({
     if (isAltro) {
       body = { ...base, intervention_type_id: null, custom_type: customType.trim() };
     } else if (selectedKey !== null) {
-      // On edit, only replace the checklist when the type or the selected set
-      // actually changed. Omitting checklist_item_ids leaves the persisted
-      // snapshot untouched server-side — this avoids resubmitting a now-inactive
-      // item id (unfixable 422) or silently dropping a snapshot item whose
-      // catalog row was deleted (BR-303 SetNull). On create (no initial) it is
-      // always sent (BR-300 requires >= 1).
+      // Only ever submit ids offered by the CURRENT catalog for this type. A
+      // snapshot id for a since-deactivated item survives in state (preloaded,
+      // non-null) but renders no checkbox; resubmitting it would be rejected by
+      // the server (validateChecklistSelection is active-only → unfixable 422).
+      // Those ghost ids are not renderable, so the user cannot have intended to
+      // keep them.
+      const renderableIds = new Set((selectedType?.checklist_items ?? []).map((i) => i.id));
+      const submittable = checklistItemIds.filter((id) => renderableIds.has(id));
+      // Compare the VISIBLE selection before/after so a description-only edit
+      // (no checklist interaction) omits checklist_item_ids and leaves the
+      // persisted snapshot — including any inactive item — untouched. Only a
+      // real change to the visible checklist triggers the replace-set.
+      const initialVisible =
+        initial === undefined ? [] : initial.checklistItemIds.filter((id) => renderableIds.has(id));
       const checklistChanged =
         initial === undefined ||
         selectedKey !== initial.selectedKey ||
-        checklistItemIds.length !== initial.checklistItemIds.length ||
-        checklistItemIds.some((id) => !initial.checklistItemIds.includes(id));
+        submittable.length !== initialVisible.length ||
+        submittable.some((id) => !initialVisible.includes(id));
       body = {
         ...base,
         intervention_type_id: selectedKey,
         custom_type: null,
-        ...(checklistChanged ? { checklist_item_ids: checklistItemIds } : {}),
+        ...(checklistChanged ? { checklist_item_ids: submittable } : {}),
       };
     } else {
       return; // unreachable: the validator requires a selection
@@ -215,9 +223,13 @@ export function PrivateInterventionForm({
             <Text style={[styles.chipText, isAltro && styles.chipTextSelected]}>Altro</Text>
           </Pressable>
         </View>
-        {!typesQuery.isLoading && (typesQuery.isError || types.length === 0) ? (
+        {!typesQuery.isLoading && typesQuery.isError ? (
           <Text style={styles.fieldError}>
             Impossibile caricare i tipi dal catalogo. Puoi registrare un tipo libero con Altro.
+          </Text>
+        ) : !typesQuery.isLoading && types.length === 0 ? (
+          <Text style={styles.fieldError}>
+            Nessun tipo disponibile a catalogo. Puoi registrare un tipo libero con Altro.
           </Text>
         ) : null}
         {errors.type ? <Text style={styles.fieldError}>{errors.type}</Text> : null}
