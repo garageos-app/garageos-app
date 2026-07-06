@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { format, parse, isValid } from 'date-fns';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
 import {
+  ALTRO_TYPE_KEY,
   validatePrivateInterventionForm,
   type PrivateInterventionFormErrors,
 } from '@/lib/validators/privateIntervention';
+import { useMeInterventionTypes } from '@/queries/meInterventionTypes';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
 import type { CreatePrivateInterventionBody } from '@/lib/types/private-intervention';
 import { formatDate } from '@/lib/format';
@@ -25,7 +28,9 @@ const SERVER_MESSAGES: Record<string, string> = {
 };
 
 type PrivateInterventionFormInitial = {
+  selectedKey: string | null;
   customType: string;
+  checklistItemIds: string[];
   interventionDate: string;
   odometerKm: string;
   description: string;
@@ -46,6 +51,13 @@ export function PrivateInterventionForm({
   submitLabel = 'Salva',
   onDelete,
 }: Props) {
+  const typesQuery = useMeInterventionTypes();
+  const types = typesQuery.data ?? [];
+
+  const [selectedKey, setSelectedKey] = useState<string | null>(initial?.selectedKey ?? null);
+  const [checklistItemIds, setChecklistItemIds] = useState<string[]>(
+    initial?.checklistItemIds ?? [],
+  );
   const [customType, setCustomType] = useState(initial?.customType ?? '');
   const [interventionDate, setInterventionDate] = useState(
     initial?.interventionDate ?? format(new Date(), 'yyyy-MM-dd'),
@@ -56,6 +68,10 @@ export function PrivateInterventionForm({
   const [errors, setErrors] = useState<PrivateInterventionFormErrors>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+
+  const isAltro = selectedKey === ALTRO_TYPE_KEY;
+  const selectedType =
+    selectedKey !== null && !isAltro ? (types.find((t) => t.id === selectedKey) ?? null) : null;
 
   function parseDateOrToday(value: string): Date {
     const d = parse(value, 'yyyy-MM-dd', new Date());
@@ -69,10 +85,33 @@ export function PrivateInterventionForm({
     }
   }
 
+  // Selecting a different type clears any prior checklist selection (BR-300
+  // parity: the checklist is per-type). Runs only on user tap, so the edit
+  // preload (useState initializer) is never clobbered.
+  function selectType(key: string) {
+    if (key === selectedKey) return;
+    setSelectedKey(key);
+    setChecklistItemIds([]);
+    setErrors((e) => ({
+      ...e,
+      type: undefined,
+      checklistItemIds: undefined,
+      customType: undefined,
+    }));
+  }
+
+  function toggleItem(itemId: string) {
+    setChecklistItemIds((prev) =>
+      prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId],
+    );
+  }
+
   async function handleSubmit() {
     if (submitting) return;
     const v = validatePrivateInterventionForm({
+      selectedKey,
       customType,
+      checklistItemIds,
       interventionDate,
       odometerKm,
       description,
@@ -82,13 +121,44 @@ export function PrivateInterventionForm({
     setBanner(null);
 
     const km = odometerKm.trim();
-    const body: CreatePrivateInterventionBody = {
+    const base = {
       intervention_date: interventionDate.trim(),
       odometer_km: km === '' ? null : Number(km),
-      intervention_type_id: null,
-      custom_type: customType.trim(),
       description: description.trim(),
     };
+
+    let body: CreatePrivateInterventionBody;
+    if (isAltro) {
+      body = { ...base, intervention_type_id: null, custom_type: customType.trim() };
+    } else if (selectedKey !== null) {
+      // Only ever submit ids offered by the CURRENT catalog for this type. A
+      // snapshot id for a since-deactivated item survives in state (preloaded,
+      // non-null) but renders no checkbox; resubmitting it would be rejected by
+      // the server (validateChecklistSelection is active-only → unfixable 422).
+      // Those ghost ids are not renderable, so the user cannot have intended to
+      // keep them.
+      const renderableIds = new Set((selectedType?.checklist_items ?? []).map((i) => i.id));
+      const submittable = checklistItemIds.filter((id) => renderableIds.has(id));
+      // Compare the VISIBLE selection before/after so a description-only edit
+      // (no checklist interaction) omits checklist_item_ids and leaves the
+      // persisted snapshot — including any inactive item — untouched. Only a
+      // real change to the visible checklist triggers the replace-set.
+      const initialVisible =
+        initial === undefined ? [] : initial.checklistItemIds.filter((id) => renderableIds.has(id));
+      const checklistChanged =
+        initial === undefined ||
+        selectedKey !== initial.selectedKey ||
+        submittable.length !== initialVisible.length ||
+        submittable.some((id) => !initialVisible.includes(id));
+      body = {
+        ...base,
+        intervention_type_id: selectedKey,
+        custom_type: null,
+        ...(checklistChanged ? { checklist_item_ids: submittable } : {}),
+      };
+    } else {
+      return; // unreachable: the validator requires a selection
+    }
 
     setSubmitting(true);
     try {
@@ -116,15 +186,100 @@ export function PrivateInterventionForm({
 
       <View style={styles.field}>
         <Text style={styles.label}>Tipo</Text>
-        <TextInput
-          style={styles.input}
-          value={customType}
-          onChangeText={setCustomType}
-          placeholder="Es. Lavaggio, Cambio gomme"
-          editable={!submitting}
-        />
-        {errors.customType ? <Text style={styles.fieldError}>{errors.customType}</Text> : null}
+        <View style={styles.chipRow}>
+          {typesQuery.isLoading ? (
+            <ActivityIndicator testID="type-loading" color={colors.primary} />
+          ) : (
+            types.map((t) => {
+              const selected = t.id === selectedKey;
+              return (
+                <Pressable
+                  key={t.id}
+                  testID={`type-chip-${t.code}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  disabled={submitting}
+                  onPress={() => selectType(t.id)}
+                  style={[styles.chip, selected && styles.chipSelected]}
+                >
+                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                    {t.name_it}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+          {/* "Altro" never depends on the catalog — keep it selectable even while
+              the catalog is loading or after a fetch error, so the free-text
+              create path (which needs no network) is never blocked. */}
+          <Pressable
+            testID="type-chip-altro"
+            accessibilityRole="button"
+            accessibilityState={{ selected: isAltro }}
+            disabled={submitting}
+            onPress={() => selectType(ALTRO_TYPE_KEY)}
+            style={[styles.chip, isAltro && styles.chipSelected]}
+          >
+            <Text style={[styles.chipText, isAltro && styles.chipTextSelected]}>Altro</Text>
+          </Pressable>
+        </View>
+        {!typesQuery.isLoading && typesQuery.isError ? (
+          <Text style={styles.fieldError}>
+            Impossibile caricare i tipi dal catalogo. Puoi registrare un tipo libero con Altro.
+          </Text>
+        ) : !typesQuery.isLoading && types.length === 0 ? (
+          <Text style={styles.fieldError}>
+            Nessun tipo disponibile a catalogo. Puoi registrare un tipo libero con Altro.
+          </Text>
+        ) : null}
+        {errors.type ? <Text style={styles.fieldError}>{errors.type}</Text> : null}
       </View>
+
+      {isAltro ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>Descrizione tipo</Text>
+          <TextInput
+            style={styles.input}
+            value={customType}
+            onChangeText={setCustomType}
+            placeholder="Es. Lavaggio, Cambio gomme"
+            editable={!submitting}
+          />
+          {errors.customType ? <Text style={styles.fieldError}>{errors.customType}</Text> : null}
+        </View>
+      ) : null}
+
+      {selectedType ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>Voci eseguite (almeno una) *</Text>
+          {/* The catalog endpoint already returns items sorted by sort_order asc
+              (me-intervention-types.ts). `?? []` guards a malformed payload. */}
+          {(selectedType.checklist_items ?? []).map((item) => {
+            const checked = checklistItemIds.includes(item.id);
+            return (
+              <Pressable
+                key={item.id}
+                testID={`checklist-item-${item.code}`}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked }}
+                disabled={submitting}
+                onPress={() => toggleItem(item.id)}
+                style={styles.checklistRow}
+              >
+                <Ionicons
+                  name={checked ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={checked ? colors.primary : colors.muted}
+                />
+                <Text style={styles.checklistLabel}>{item.name_it}</Text>
+              </Pressable>
+            );
+          })}
+          {errors.checklistItemIds ? (
+            <Text style={styles.fieldError}>{errors.checklistItemIds}</Text>
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={styles.field}>
         <Text style={styles.label}>Data</Text>
@@ -233,6 +388,25 @@ const styles = StyleSheet.create({
     color: colors.fg,
     backgroundColor: colors.bg,
   },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bg,
+  },
+  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: 14, color: colors.fg },
+  chipTextSelected: { color: colors.primaryFg, fontWeight: '600' },
+  checklistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  checklistLabel: { fontSize: 15, color: colors.fg, flexShrink: 1 },
   dateText: { fontSize: 16, color: colors.fg },
   multiline: { minHeight: 96, textAlignVertical: 'top' },
   fieldError: { fontSize: 12, color: colors.danger },

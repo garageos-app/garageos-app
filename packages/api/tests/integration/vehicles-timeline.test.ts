@@ -452,6 +452,51 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     expect(body.data[1]!.intervention_date).toBe('2026-04-10');
   });
 
+  it('exposes the catalog type on private rows, and null type on free-text rows', async () => {
+    const { tenantId } = await createTenantWithLocation('tl-priv-type');
+    const customerSub = '55555555-5555-4555-8555-eeeeeeeeef01';
+    const { customerId } = await createCustomer({ cognitoSub: customerSub });
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
+    await createOwnership({ vehicleId, customerId });
+    const meccanico = await ensureSystemInterventionType('MECCANICO');
+
+    // Structured private intervention (catalog type, no free-text label).
+    await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-05-01',
+      interventionTypeId: meccanico.id,
+    });
+    // Free-text ("Altro") private intervention.
+    await createPrivateIntervention({
+      customerId,
+      vehicleId,
+      interventionDate: '2026-04-01',
+      customType: 'Lavaggio',
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: customerSub, customerId });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${vehicleId}/timeline`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{
+        kind: string;
+        type: { id: string; name_it: string } | null;
+        custom_type: string | null;
+      }>;
+    };
+    const structured = body.data.find((d) => d.type !== null);
+    expect(structured!.type).toMatchObject({ id: meccanico.id, name_it: 'Intervento Meccanico' });
+    expect(structured!.custom_type).toBeNull();
+    const freeText = body.data.find((d) => d.kind === 'private_intervention' && d.type === null);
+    expect(freeText!.type).toBeNull();
+    expect(freeText!.custom_type).toBe('Lavaggio');
+  });
+
   it('clienti non-owner gets 403 vehicle.timeline.not_owner', async () => {
     const { tenantId } = await createTenantWithLocation('tl-403');
     const ownerSub = '66666666-6666-4666-8666-ffffffffffff';

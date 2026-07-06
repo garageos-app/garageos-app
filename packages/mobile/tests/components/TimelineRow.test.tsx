@@ -21,7 +21,18 @@ const privateItem: TimelineItem = {
   id: 'p1',
   intervention_date: '2026-04-01',
   odometer_km: 120000,
+  type: null,
   custom_type: 'Pulizia interna',
+  description: null,
+};
+
+const structuredPrivateItem: TimelineItem = {
+  kind: 'private_intervention',
+  id: 'p2',
+  intervention_date: '2026-04-02',
+  odometer_km: 121000,
+  type: { id: 'ct1', name_it: 'Intervento Meccanico' },
+  custom_type: null,
   description: null,
 };
 
@@ -47,9 +58,14 @@ describe('TimelineRow', () => {
     expect(screen.getByText('Cambio olio')).toBeOnTheScreen();
   });
 
-  it('renders custom_type for private', () => {
+  it('renders custom_type for a free-text (Altro) private intervention', () => {
     render(<TimelineRow item={privateItem} />);
     expect(screen.getByText('Pulizia interna')).toBeOnTheScreen();
+  });
+
+  it('renders the catalog type name for a structured private intervention', () => {
+    render(<TimelineRow item={structuredPrivateItem} />);
+    expect(screen.getByText('Intervento Meccanico')).toBeOnTheScreen();
   });
 
   it('renders parts count when > 0', () => {
