@@ -13,6 +13,7 @@ import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
 import { ApiError } from '@/lib/api-error';
 import { mapErrorToUserMessage } from '@/lib/error-messages';
+import { ALTRO_TYPE_KEY } from '@/lib/validators/privateIntervention';
 import type { CreatePrivateInterventionBody } from '@/lib/types/private-intervention';
 import { colors } from '@/theme/colors';
 
@@ -67,7 +68,16 @@ export default function EditPrivateInterventionScreen() {
 
   const d = detail.data!;
   const initial = {
-    customType: d.custom_type ?? d.type?.name_it ?? '',
+    // A persisted catalog type wins; else a free-text row maps to "Altro";
+    // else nothing is preselected (new-style rows always have one of the two).
+    selectedKey: d.type ? d.type.id : d.custom_type ? ALTRO_TYPE_KEY : null,
+    customType: d.custom_type ?? '',
+    // Non-null snapshot ids only — a deleted catalog item (id null, BR-303
+    // SetNull) cannot be re-checked and drops on the next save. Defensive
+    // `?? []` guards a stale/partial cache (project memory).
+    checklistItemIds: (d.checklist_items ?? [])
+      .map((i) => i.id)
+      .filter((v): v is string => v !== null),
     interventionDate: d.intervention_date,
     odometerKm: d.odometer_km != null ? String(d.odometer_km) : '',
     description: d.description,
