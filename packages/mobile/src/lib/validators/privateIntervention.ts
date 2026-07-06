@@ -1,32 +1,50 @@
-// Pure validator for the create-private-intervention form. Mirrors the backend
-// rules in routes/v1/me-private-interventions.ts (custom_type 1..150, date
-// YYYY-MM-DD not-future per BR-069, odometer 0..9_999_999, description 1..5000).
-// No Zod in mobile deps; date-fns (already a dep) handles real-date validity.
-// The not-future check uses local midnight; the server's date_future code is
-// authoritative for the rare timezone-boundary case.
+// Pure validator for the create/edit private-intervention form. Conditional on
+// the type selection: a catalog type (UUID selectedKey) requires >= 1 checklist
+// item (BR-300 parity); the free-text "Altro" path requires a customType
+// (1..150). Mirrors the backend rules in routes/v1/me-private-interventions.ts
+// (date YYYY-MM-DD not-future per BR-069, odometer 0..9_999_999, description
+// 1..5000). No Zod in mobile deps; date-fns (already a dep) validates real dates.
 import { isAfter, isValid, parse, startOfToday } from 'date-fns';
+
+// Sentinel selection key for the free-text ("Altro") branch. Stored in the same
+// selectedKey state as catalog UUIDs; 'altro' can never collide with a UUID.
+export const ALTRO_TYPE_KEY = 'altro';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export type PrivateInterventionFormInput = {
+  selectedKey: string | null;
   customType: string;
+  checklistItemIds: string[];
   interventionDate: string;
   odometerKm: string;
   description: string;
 };
 
-export type PrivateInterventionFormErrors = Partial<
-  Record<keyof PrivateInterventionFormInput, string>
->;
+export type PrivateInterventionFormErrors = Partial<{
+  type: string;
+  customType: string;
+  checklistItemIds: string;
+  interventionDate: string;
+  odometerKm: string;
+  description: string;
+}>;
 
 export function validatePrivateInterventionForm(
   input: PrivateInterventionFormInput,
 ): PrivateInterventionFormErrors {
   const errors: PrivateInterventionFormErrors = {};
 
-  const customType = input.customType.trim();
-  if (!customType) errors.customType = 'Tipo obbligatorio';
-  else if (customType.length > 150) errors.customType = 'Massimo 150 caratteri';
+  if (input.selectedKey === null) {
+    errors.type = 'Seleziona un tipo di intervento';
+  } else if (input.selectedKey === ALTRO_TYPE_KEY) {
+    const customType = input.customType.trim();
+    if (!customType) errors.customType = 'Tipo obbligatorio';
+    else if (customType.length > 150) errors.customType = 'Massimo 150 caratteri';
+  } else if (input.checklistItemIds.length < 1) {
+    // Catalog type -> checklist mandatory (BR-300 parity with officina).
+    errors.checklistItemIds = 'Seleziona almeno una voce';
+  }
 
   const date = input.interventionDate.trim();
   if (!date) {
