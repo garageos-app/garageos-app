@@ -21,6 +21,9 @@ const CUSTOMER_ID = '11111111-1111-4111-8111-111111111111';
 const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
 const VEHICLE_ID = '33333333-3333-4333-8333-333333333333';
 const PRIVATE_ID = '44444444-4444-4444-8444-444444444444';
+const TYPE_ID = '00000000-0000-4000-8000-000000000099';
+const CHECKLIST_ITEM_ID_1 = '55555555-5555-4555-8555-555555555501';
+const CHECKLIST_ITEM_ID_2 = '55555555-5555-4555-8555-555555555502';
 
 const PRIVATE_ROW = {
   id: PRIVATE_ID,
@@ -58,6 +61,25 @@ interface FakePrisma {
   interventionType: {
     findFirst: ReturnType<typeof vi.fn>;
   };
+  // Task 5: validateChecklistSelection (called with no tenantId on this
+  // customer path) only ever touches interventionChecklistItem.findMany —
+  // the two tenant-exclusion tables are skipped when tenantId is absent.
+  interventionChecklistItem: {
+    findMany: ReturnType<typeof vi.fn>;
+  };
+  privateInterventionChecklistSelection: {
+    createMany: ReturnType<typeof vi.fn>;
+  };
+}
+
+// Default catalog rows backing interventionChecklistItem.findMany — proof
+// that a fresh id in a test payload can be threaded through
+// mockImplementation rather than hardcoding a fixed response shape
+// (feedback_integration_test_mock_dynamic_input.md).
+function buildChecklistItemRows(
+  ids: string[],
+): { id: string; nameIt: string; sortOrder: number }[] {
+  return ids.map((id, idx) => ({ id, nameIt: `Voce ${idx}`, sortOrder: idx }));
 }
 
 function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
@@ -75,6 +97,16 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
     },
     interventionType: {
       findFirst: vi.fn().mockResolvedValue({ id: 'type-1' }),
+    },
+    interventionChecklistItem: {
+      findMany: vi
+        .fn()
+        .mockImplementation(async (args: { where: { id: { in: string[] } } }) =>
+          buildChecklistItemRows(args.where.id.in),
+        ),
+    },
+    privateInterventionChecklistSelection: {
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     ...overrides,
   };
@@ -278,6 +310,135 @@ describe('mePrivateInterventionRoutes (unit)', () => {
         }),
       }),
     );
+  });
+
+  it('POST catalog type + checklist_item_ids: 201, snapshots via createMany, response echoes checklist_items', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/private-interventions`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: TYPE_ID,
+        custom_type: null,
+        description: 'd',
+        checklist_item_ids: [CHECKLIST_ITEM_ID_1, CHECKLIST_ITEM_ID_2],
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    // interventionChecklistItem.findMany's mockImplementation threads the
+    // requested ids back with dynamically-derived nameIt/sortOrder — proves
+    // the response is built from that lookup, not a hardcoded fixture.
+    expect(prisma.interventionChecklistItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: [CHECKLIST_ITEM_ID_1, CHECKLIST_ITEM_ID_2] },
+          interventionTypeId: TYPE_ID,
+          active: true,
+        }),
+      }),
+    );
+    expect(prisma.privateInterventionChecklistSelection.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          privateInterventionId: PRIVATE_ID,
+          customerId: CUSTOMER_ID,
+          checklistItemId: CHECKLIST_ITEM_ID_1,
+          labelSnapshot: 'Voce 0',
+          sortOrderSnapshot: 0,
+        },
+        {
+          privateInterventionId: PRIVATE_ID,
+          customerId: CUSTOMER_ID,
+          checklistItemId: CHECKLIST_ITEM_ID_2,
+          labelSnapshot: 'Voce 1',
+          sortOrderSnapshot: 1,
+        },
+      ],
+    });
+    const body = res.json() as { checklist_items: { id: string | null; label: string }[] };
+    expect(body.checklist_items).toEqual([
+      { id: CHECKLIST_ITEM_ID_1, label: 'Voce 0' },
+      { id: CHECKLIST_ITEM_ID_2, label: 'Voce 1' },
+    ]);
+  });
+
+  it('POST catalog type + empty checklist_item_ids → 400 intervention.creation.checklist_required (BR-300)', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/private-interventions`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: TYPE_ID,
+        custom_type: null,
+        description: 'd',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_required' });
+    expect(prisma.privateIntervention.create).not.toHaveBeenCalled();
+  });
+
+  it('POST catalog type + checklist item from a different type → 422 checklist_item_invalid (BR-301)', async () => {
+    const prisma = buildFakePrisma({
+      // Catalog lookup returns fewer rows than requested ids — proves the
+      // route surfaces validateChecklistSelection's BR-301 membership check.
+      interventionChecklistItem: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    });
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/private-interventions`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: TYPE_ID,
+        custom_type: null,
+        description: 'd',
+        checklist_item_ids: [CHECKLIST_ITEM_ID_1],
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_item_invalid' });
+    expect(prisma.privateIntervention.create).not.toHaveBeenCalled();
+  });
+
+  it('POST custom_type + non-empty checklist_item_ids → 400 (Zod refine)', async () => {
+    const prisma = buildFakePrisma();
+    app = await buildApp({ prisma });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${VEHICLE_ID}/private-interventions`,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'fai-da-te',
+        description: 'd',
+        checklist_item_ids: [CHECKLIST_ITEM_ID_1],
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(prisma.privateIntervention.create).not.toHaveBeenCalled();
   });
 
   it('PATCH 200 calls update with merged data', async () => {

@@ -23,6 +23,49 @@ import { signTestToken } from '../helpers/jwt.js';
 // distinct IP per test — see feedback_integration_test_rate_limit_isolation.
 const TEST_IP = '10.50.13.1';
 
+function uniqueCode(prefix: string): string {
+  return `${prefix}_${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
+// Task 5 (BR-300/301) checklist fixtures — direct pgAdmin inserts bypass
+// RLS (fixture setup only), mirroring interventions-post.test.ts. A second
+// GLOBAL intervention type distinct from the chosen one backs the
+// BR-301 (wrong-type) case.
+async function seedGlobalType(params: { nameIt?: string } = {}): Promise<{ id: string }> {
+  const code = uniqueCode('ITYP');
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_types
+       (id, tenant_id, code, name_it, active, created_at, updated_at)
+     VALUES (gen_random_uuid(), NULL, $1, $2, true, NOW(), NOW())
+     RETURNING id`,
+    [code, params.nameIt ?? `Test type ${code}`],
+  );
+  return { id: rows[0]!.id };
+}
+
+async function seedChecklistItem(params: {
+  interventionTypeId: string;
+  nameIt?: string;
+  sortOrder?: number;
+  active?: boolean;
+}): Promise<{ id: string; nameIt: string }> {
+  const {
+    interventionTypeId,
+    nameIt = `Test item ${uniqueCode('IITM')}`,
+    sortOrder = 0,
+    active = true,
+  } = params;
+  const code = uniqueCode('IITM');
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_checklist_items
+       (id, intervention_type_id, code, name_it, sort_order, active, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
+     RETURNING id`,
+    [interventionTypeId, code, nameIt, sortOrder, active],
+  );
+  return { id: rows[0]!.id, nameIt };
+}
+
 describe('GET /v1/me/private-interventions/:id (integration)', () => {
   let app: FastifyInstance;
 
@@ -900,6 +943,309 @@ describe('POST /v1/me/vehicles/:id/private-interventions (integration)', () => {
     });
 
     expect(res.statusCode).toBe(201);
+  });
+
+  // Task 5 — BR-300/301/303 checklist snapshot on the customer create path.
+  it('creates a private intervention with catalog type + checklist snapshot (BR-300/303)', async () => {
+    const cognitoSub = 'me-pip-chk-ok-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-chk-ok');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTCHKOK000001',
+      plate: 'PC001AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
+    // Seeded deliberately out of sortOrder order (item2 has the lower
+    // sortOrder) so the response/DB assertions below prove real reordering,
+    // not pass-through of insertion order.
+    const item1 = await seedChecklistItem({
+      interventionTypeId: interventionType.id,
+      nameIt: 'Controllo livelli',
+      sortOrder: 1,
+    });
+    const item2 = await seedChecklistItem({
+      interventionTypeId: interventionType.id,
+      nameIt: 'Sostituzione olio',
+      sortOrder: 0,
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: 43500,
+        intervention_type_id: interventionType.id,
+        custom_type: null,
+        description: 'Tagliando con checklist',
+        checklist_item_ids: [item1.id, item2.id],
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as {
+      id: string;
+      checklist_items: { id: string | null; label: string }[];
+    };
+    expect(body.checklist_items).toEqual([
+      { id: item2.id, label: 'Sostituzione olio' },
+      { id: item1.id, label: 'Controllo livelli' },
+    ]);
+
+    // Task 1 reviewer flag: no DB constraint forces customer_id to match
+    // the parent private_intervention row — assert it directly here.
+    const { rows } = await pgAdmin.query<{
+      checklist_item_id: string;
+      label_snapshot: string;
+      sort_order_snapshot: number;
+      customer_id: string;
+    }>(
+      `SELECT checklist_item_id, label_snapshot, sort_order_snapshot, customer_id
+         FROM private_intervention_checklist_selections
+        WHERE private_intervention_id = $1
+        ORDER BY sort_order_snapshot ASC`,
+      [body.id],
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      checklist_item_id: item2.id,
+      label_snapshot: 'Sostituzione olio',
+      sort_order_snapshot: 0,
+      customer_id: customerId,
+    });
+    expect(rows[1]).toMatchObject({
+      checklist_item_id: item1.id,
+      label_snapshot: 'Controllo livelli',
+      sort_order_snapshot: 1,
+      customer_id: customerId,
+    });
+  });
+
+  it('returns 400 checklist_required for catalog type + empty checklist_item_ids (BR-300)', async () => {
+    const cognitoSub = 'me-pip-chk-req-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-chk-req');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTCHKRQ000001',
+      plate: 'PC002AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: interventionType.id,
+        custom_type: null,
+        description: 'Senza checklist',
+        // checklist_item_ids omitted entirely — also covers the "missing" case.
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_required' });
+    const { rows } = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM private_interventions WHERE vehicle_id = $1`,
+      [vehicleId],
+    );
+    expect(Number(rows[0]!.count)).toBe(0);
+  });
+
+  it('returns 422 checklist_item_invalid for an item belonging to a different type (BR-301)', async () => {
+    const cognitoSub = 'me-pip-chk-301-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-chk-301');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTCHK301000001',
+      plate: 'PC003AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
+    const otherType = await seedGlobalType();
+    const foreignItem = await seedChecklistItem({ interventionTypeId: otherType.id });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        // interventionType.id is the chosen type, but foreignItem belongs
+        // to otherType — BR-301 (ownership) must reject it.
+        intervention_type_id: interventionType.id,
+        custom_type: null,
+        description: 'Voce da altro tipo',
+        checklist_item_ids: [foreignItem.id],
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ code: 'intervention.creation.checklist_item_invalid' });
+    const { rows } = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM private_interventions WHERE vehicle_id = $1`,
+      [vehicleId],
+    );
+    expect(Number(rows[0]!.count)).toBe(0);
+  });
+
+  it('returns 400 VALIDATION_ERROR for custom_type + non-empty checklist_item_ids (Zod refine)', async () => {
+    const cognitoSub = 'me-pip-chk-altro-' + Math.random().toString(36).slice(2, 10);
+    const { customerId } = await createCustomer({ cognitoSub });
+    const { tenantId } = await createTenantWithLocation('me-pip-chk-altro');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTCHKALT00001',
+      plate: 'PC004AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId });
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
+    const item = await seedChecklistItem({ interventionTypeId: interventionType.id });
+
+    const token = await signTestToken({ pool: 'clienti', sub: cognitoSub, customerId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: null,
+        custom_type: 'Altro',
+        description: 'Tipo libero con checklist',
+        checklist_item_ids: [item.id],
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const { rows } = await pgAdmin.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM private_interventions WHERE vehicle_id = $1`,
+      [vehicleId],
+    );
+    expect(Number(rows[0]!.count)).toBe(0);
+  });
+
+  it('RLS: customer B cannot see customer A private_intervention_checklist_selections rows', async () => {
+    const cognitoSubA = 'me-pip-chk-rls-a-' + Math.random().toString(36).slice(2, 10);
+    const cognitoSubB = 'me-pip-chk-rls-b-' + Math.random().toString(36).slice(2, 10);
+    const { customerId: customerIdA } = await createCustomer({ cognitoSub: cognitoSubA });
+    const { customerId: customerIdB } = await createCustomer({ cognitoSub: cognitoSubB });
+    const { tenantId } = await createTenantWithLocation('me-pip-chk-rls');
+    const { vehicleId } = await createVehicle({
+      createdByTenantId: tenantId,
+      vin: 'PIPOSTCHKRLS00001',
+      plate: 'PC005AA',
+      make: 'Fiat',
+      model: 'Panda',
+    });
+    await createOwnership({ vehicleId, customerId: customerIdA });
+    const interventionType = await ensureSystemInterventionType('MECCANICO');
+    const item = await seedChecklistItem({ interventionTypeId: interventionType.id });
+
+    const tokenA = await signTestToken({
+      pool: 'clienti',
+      sub: cognitoSubA,
+      customerId: customerIdA,
+    });
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: `/v1/me/vehicles/${vehicleId}/private-interventions`,
+      headers: {
+        authorization: `Bearer ${tokenA}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': TEST_IP_POST,
+      },
+      payload: {
+        intervention_date: '2026-03-10',
+        odometer_km: null,
+        intervention_type_id: interventionType.id,
+        custom_type: null,
+        description: 'A private, checklist snapshot',
+        checklist_item_ids: [item.id],
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const { id: privateInterventionId } = createRes.json() as { id: string };
+
+    // Existing cross-customer 404 on GET already proves the parent row is
+    // invisible; this direct query proves the selection rows themselves
+    // (not just the parent) are RLS-scoped to the owning customer, per
+    // private_int_checklist_isolation (Task 1) — using app.withContext
+    // directly (no HTTP layer) so the assertion isn't laundered through
+    // any app-layer customerId filter on the query.
+    const rowsUnderB = await app.withContext(
+      { customerId: customerIdB, role: 'user' },
+      async (tx) =>
+        tx.privateInterventionChecklistSelection.findMany({
+          where: { privateInterventionId },
+        }),
+    );
+    expect(rowsUnderB).toHaveLength(0);
+
+    const rowsUnderA = await app.withContext(
+      { customerId: customerIdA, role: 'user' },
+      async (tx) =>
+        tx.privateInterventionChecklistSelection.findMany({
+          where: { privateInterventionId },
+        }),
+    );
+    expect(rowsUnderA).toHaveLength(1);
+
+    // Cross-customer GET detail also 404s (BR-080 parent-row RLS,
+    // pre-existing behavior — reasserted here for completeness).
+    const tokenB = await signTestToken({
+      pool: 'clienti',
+      sub: cognitoSubB,
+      customerId: customerIdB,
+    });
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/v1/me/private-interventions/${privateInterventionId}`,
+      headers: { authorization: `Bearer ${tokenB}`, 'x-forwarded-for': TEST_IP_POST },
+    });
+    expect(getRes.statusCode).toBe(404);
   });
 });
 

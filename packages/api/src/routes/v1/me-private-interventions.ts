@@ -7,6 +7,7 @@ import {
   assertInterventionTypeExists,
   assertNotFutureInterventionDate,
   serializeChecklistItems,
+  validateChecklistSelection,
 } from '../../lib/intervention-shared.js';
 import { clientiContext } from '../../middleware/clienti-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
@@ -41,6 +42,9 @@ const createBodySchema = z
     intervention_type_id: z.uuid().nullable(),
     custom_type: z.string().min(1).max(150).nullable(),
     description: z.string().min(1).max(5000),
+    // BR-300/301: only meaningful with a catalog intervention_type_id — the
+    // second .refine below forbids it on the free-text ("Altro") path.
+    checklist_item_ids: z.array(z.uuid()).optional(),
   })
   .refine(
     (b) =>
@@ -50,7 +54,11 @@ const createBodySchema = z
       message: 'Specifica esattamente uno tra intervention_type_id e custom_type',
       path: ['intervention_type_id'],
     },
-  );
+  )
+  .refine((b) => b.custom_type === null || (b.checklist_item_ids ?? []).length === 0, {
+    message: 'Le voci checklist non sono ammesse con un tipo libero (Altro)',
+    path: ['checklist_item_ids'],
+  });
 
 const patchBodySchema = z
   .object({
@@ -268,6 +276,19 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           await assertInterventionTypeExists(tx, body.intervention_type_id);
         }
 
+        // BR-300/301: catalog-type path validates + resolves the checklist
+        // selection (no tenantId — the customer path sees the full global
+        // catalog, see validateChecklistSelection's comment). Free-text
+        // ("Altro") path never reaches here with a non-empty array — the
+        // second Zod .refine on createBodySchema forbids it.
+        let foundItems: { id: string; nameIt: string; sortOrder: number }[] = [];
+        if (body.intervention_type_id !== null) {
+          foundItems = await validateChecklistSelection(tx, {
+            interventionTypeId: body.intervention_type_id,
+            checklistItemIds: body.checklist_item_ids ?? [],
+          });
+        }
+
         // BR-085: anti-spam 50 / rolling 24h. Counts both alive and soft-
         // deleted rows — the limit is on CREATE rate, not on row count,
         // so soft-delete after the fact does not refresh the budget.
@@ -301,8 +322,31 @@ const mePrivateInterventionRoutes: FastifyPluginAsync = async (app) => {
           select: detailSelect,
         });
 
+        // BR-300/303: snapshot the resolved selection rows. Insert follows
+        // the create (private_intervention_id FK needs `row.id`), so
+        // `row.checklistSelections` from the select above is always `[]`
+        // here — the response below overrides `checklist_items` from
+        // `foundItems` directly instead of re-fetching.
+        if (foundItems.length > 0) {
+          await tx.privateInterventionChecklistSelection.createMany({
+            data: foundItems.map((it) => ({
+              privateInterventionId: row.id,
+              customerId,
+              checklistItemId: it.id,
+              labelSnapshot: it.nameIt,
+              sortOrderSnapshot: it.sortOrder,
+            })),
+          });
+        }
+
+        const selections = foundItems.map((it) => ({
+          checklistItemId: it.id,
+          labelSnapshot: it.nameIt,
+          sortOrderSnapshot: it.sortOrder,
+        }));
+
         reply.code(201);
-        return projectDetail(row);
+        return { ...projectDetail(row), checklist_items: serializeChecklistItems(selections) };
       });
     },
   );
