@@ -1765,8 +1765,8 @@ I parametri CSV (`status`, `typeId`, `checklistItemIds`, `operatorId`) arrivano 
 | `items[].status` | enum | `active \| disputed \| cancelled` |
 | `items[].type.id`, `.nameIt` | object | Tipo intervento |
 | `items[].vehicle.id`, `.plate`, `.make`, `.model` | object | Veicolo |
-| `items[].operator.id` | uuid | `user.id` se l'utente creatore esiste ancora, altrimenti l'`userId` grezzo (FK `SetNull` on delete) |
-| `items[].operator.name` | string | Composto server-side da `firstName + lastName`; fallback `"Operatore"` se l'utente non esiste più o non ha nome valorizzato (stesso pattern di `deriveOperatorName` in `interventions-recent.ts`) |
+| `items[].operator.id` | uuid | `user.id` (la relazione `user` è `onDelete: Restrict` e gli utenti sono solo soft-delete, mai hard-delete: in pratica `user` non è mai `null`). Il fallback a `userId` grezzo è scaffolding difensivo, attualmente dead code a runtime — vedi il commento su `deriveOperatorName` in `interventions-recent.ts` |
+| `items[].operator.name` | string | Composto server-side da `firstName + lastName`; fallback `"Operatore"` per lo stesso scaffolding difensivo (mai raggiunto a runtime oggi), stesso pattern di `deriveOperatorName` in `interventions-recent.ts` |
 | `total` | integer | Conteggio totale delle righe che soddisfano i filtri (non della sola pagina) |
 | `page`, `pageSize` | integer | Echo dei parametri richiesti, dopo default/validazione |
 
