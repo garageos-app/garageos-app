@@ -780,3 +780,44 @@ export async function createRevision(params: {
   );
   return { revisionId: rows[0]!.id };
 }
+
+// Direct pgAdmin insert of an intervention_checklist_items row (bypasses
+// RLS — fixture setup only). Mirrors seedChecklistItem in
+// admin-checklist-items.test.ts: sort_order defaults to 0, active
+// defaults to true — callers of this shared helper don't need either,
+// so they aren't parameterized (add them if a future test needs to
+// exercise ordering/active filtering here).
+export async function createChecklistItem(params: {
+  interventionTypeId: string;
+  code: string;
+  nameIt: string;
+}): Promise<{ checklistItemId: string }> {
+  const { interventionTypeId, code, nameIt } = params;
+  const { rows } = await pgAdmin.query<{ id: string }>(
+    `INSERT INTO intervention_checklist_items
+       (id, intervention_type_id, code, name_it, sort_order, active, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, 0, true, NOW(), NOW())
+     RETURNING id`,
+    [interventionTypeId, code, nameIt],
+  );
+  return { checklistItemId: rows[0]!.id };
+}
+
+// Direct pgAdmin insert of an intervention_checklist_selections row
+// (bypasses RLS — fixture setup only). label_snapshot is NOT NULL
+// (VarChar(150)) — callers must always pass one. Mirrors
+// seedChecklistSelection in admin-checklist-items.test.ts.
+export async function createChecklistSelection(params: {
+  interventionId: string;
+  tenantId: string;
+  checklistItemId: string;
+  labelSnapshot: string;
+}): Promise<void> {
+  const { interventionId, tenantId, checklistItemId, labelSnapshot } = params;
+  await pgAdmin.query(
+    `INSERT INTO intervention_checklist_selections
+       (id, intervention_id, tenant_id, checklist_item_id, label_snapshot, created_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+    [interventionId, tenantId, checklistItemId, labelSnapshot],
+  );
+}
