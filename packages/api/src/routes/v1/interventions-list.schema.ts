@@ -51,7 +51,10 @@ export const interventionsListQuerySchema = z
     // inside csvArray's own pipe, before this transform ever runs.
     status: csvArray(z.enum(STATUS_VALUES))
       .default(DEFAULT_STATUS)
-      .transform((value) => (value.length === 0 ? DEFAULT_STATUS : value)),
+      // Return a fresh copy so the empty-fallback branch never leaks the
+      // shared module-level array into a parsed request object (the
+      // .default() path already clones internally).
+      .transform((value) => (value.length === 0 ? [...DEFAULT_STATUS] : value)),
     typeId: csvArray(z.string().uuid()).optional(),
     checklistItemIds: csvArray(z.string().uuid()).optional(),
     operatorId: csvArray(z.string().uuid()).optional(),
