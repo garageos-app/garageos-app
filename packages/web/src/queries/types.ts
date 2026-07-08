@@ -220,52 +220,6 @@ export interface CustomerListResponse {
   meta: { has_more: boolean; cursor?: string };
 }
 
-// /v1/deadlines (officina-side aggregate, F-OFF-402).
-//
-// `customer` follows the same MaskedCustomer shape used by
-// vehicles/search: when BR-151 redacts PII, the JSON has no
-// firstName/lastName fields (the type allows nullable for runtime
-// truthy-check ergonomics). Mirror VehicleResultCard's pattern:
-// `customer && customer.firstName && customer.lastName ? ... : '—'`.
-export type DeadlineStatus = 'open' | 'completed' | 'overdue' | 'cancelled';
-
-export interface TenantDeadlineCustomer {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-  phone: string | null;
-  isBusiness: boolean | null;
-  businessName: string | null;
-  vatNumber: string | null;
-}
-
-export interface TenantDeadlineVehicle {
-  id: string;
-  plate: string;
-  make: string;
-  model: string;
-  currentOwnership: { customer: TenantDeadlineCustomer | null } | null;
-}
-
-export interface TenantDeadline {
-  id: string;
-  vehicleId: string;
-  interventionTypeId: string;
-  dueDate: string | null;
-  dueOdometerKm: number | null;
-  description: string | null;
-  isRecurring: boolean;
-  status: DeadlineStatus;
-  vehicle: TenantDeadlineVehicle;
-  interventionType: { id: string; code: string; nameIt: string };
-}
-
-export interface DeadlinesListResponse {
-  deadlines: TenantDeadline[];
-  nextCursor: string | null;
-}
-
 // /v1/customers/:id detail (officina-side, BR-151 enforced via 404).
 // Shape mirrors packages/api/src/lib/customer-detail-shared.ts.
 export interface CustomerDetail {

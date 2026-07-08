@@ -10,7 +10,6 @@ import { SearchResults } from '@/pages/SearchResults';
 import { VehicleDetail } from '@/pages/VehicleDetail';
 import { CustomerList } from '@/pages/CustomerList';
 import { CustomerDetail } from '@/pages/CustomerDetail';
-import { DeadlineDashboard } from '@/pages/DeadlineDashboard';
 import { VehicleCreate } from '@/pages/VehicleCreate';
 import { InterventionCreate } from '@/pages/InterventionCreate';
 import { InterventionDetail } from '@/pages/InterventionDetail';
@@ -52,7 +51,6 @@ export function App() {
                   <Route path="/customers" element={<CustomerList />} />
                   <Route path="/customers/:id" element={<CustomerDetail />} />
                   <Route path="/interventions/:id" element={<InterventionDetail />} />
-                  <Route path="/deadlines" element={<DeadlineDashboard />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/settings/users" element={<Settings />} />
                 </Route>

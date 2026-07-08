@@ -12,9 +12,9 @@ export function useCustomerDetail(id: string) {
   });
 }
 
-// PATCH success invalidates 4 caches: the detail itself, plus three
+// PATCH success invalidates 3 caches: the detail itself, plus two
 // surfaces that show customer first/last name (search autocomplete,
-// vehicle-search by-customer branch, officina deadlines list).
+// vehicle-search by-customer branch).
 export function useUpdateCustomer(id: string) {
   const apiFetch = useApiFetch();
   const qc = useQueryClient();
@@ -28,7 +28,6 @@ export function useUpdateCustomer(id: string) {
       qc.invalidateQueries({ queryKey: ['customer-detail', id] });
       qc.invalidateQueries({ queryKey: ['customer-search'] });
       qc.invalidateQueries({ queryKey: ['vehicle-search'] });
-      qc.invalidateQueries({ queryKey: ['deadlines-list-tenant'] });
     },
   });
 }

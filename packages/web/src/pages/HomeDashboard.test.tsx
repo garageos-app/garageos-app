@@ -6,10 +6,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HomeDashboard } from './HomeDashboard';
 import { useDisputesOpen } from '@/queries/disputesOpen';
 
-vi.mock('@/queries/deadlinesUpcoming', () => ({
-  useDeadlinesUpcoming: vi.fn(() => ({ isLoading: false, isError: false, data: [] })),
-}));
-
 vi.mock('@/queries/interventionsRecent', () => ({
   useInterventionsRecent: vi.fn(() => ({ isLoading: false, isError: false, data: [] })),
 }));
@@ -30,7 +26,7 @@ function renderHome() {
 }
 
 describe('<HomeDashboard />', () => {
-  it('renders all 3 card headings: Scadenze, Ultimi interventi, Contestazioni', () => {
+  it('renders the 2 card headings: Ultimi interventi, Contestazioni', () => {
     mockedUseDisputesOpen.mockReturnValue({
       data: {
         pendingResponse: { count: 0, items: [] },
@@ -40,7 +36,6 @@ describe('<HomeDashboard />', () => {
       isError: false,
     } as never);
     renderHome();
-    expect(screen.getByRole('heading', { name: 'Scadenze prossimi 7 giorni' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Ultimi interventi' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Contestazioni' })).toBeInTheDocument();
   });

@@ -105,7 +105,6 @@ describe('useUpdateCustomer', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['customer-detail', 'cust-abc'] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['customer-search'] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['vehicle-search'] });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['deadlines-list-tenant'] });
   });
 
   it('does not invalidate on mutation error', async () => {
