@@ -53,14 +53,15 @@ const SAMPLE: InterventionsListResponse = {
 
 describe('parseInterventionsParams', () => {
   it('parses a fully-populated query string', () => {
+    const typeUuid = '22222222-2222-4222-8222-222222222222';
     const sp = new URLSearchParams(
-      'page=2&q=fiat&status=active,cancelled&typeId=t1&sort=km&order=asc',
+      `page=2&q=fiat&status=active,cancelled&typeId=${typeUuid}&sort=km&order=asc`,
     );
     expect(parseInterventionsParams(sp)).toEqual({
       page: 2,
       q: 'fiat',
       status: ['active', 'cancelled'],
-      typeId: ['t1'],
+      typeId: [typeUuid],
       checklistItemIds: [],
       operatorId: [],
       dateFrom: '',
@@ -79,6 +80,20 @@ describe('parseInterventionsParams', () => {
     const parsed = parseInterventionsParams(sp);
     expect(parsed.sort).toBe('date');
     expect(parsed.order).toBe('desc');
+  });
+
+  it('drops out-of-domain status tokens instead of forwarding them', () => {
+    const parsed = parseInterventionsParams(new URLSearchParams('status=all,active'));
+    expect(parsed.status).toEqual(['active']);
+  });
+
+  it('drops non-uuid tokens from the id filters', () => {
+    const uuid = '11111111-1111-4111-8111-111111111111';
+    const parsed = parseInterventionsParams(
+      new URLSearchParams(`typeId=notauuid,${uuid}&operatorId=xyz`),
+    );
+    expect(parsed.typeId).toEqual([uuid]);
+    expect(parsed.operatorId).toEqual([]);
   });
 });
 

@@ -33,9 +33,12 @@ function SearchField({ value, onChange }: { value: string; onChange: (q: string)
   const [local, setLocal] = useState(value);
   const debounced = useDebouncedValue(local, 300);
 
-  // Keep local input in sync when the URL changes externally (e.g. reset).
+  // Keep local input in sync when the URL changes externally (e.g. "Azzera
+  // filtri"). Skip the echo of our own debounced onChange — value === debounced
+  // there — which would otherwise clobber a character typed right at the
+  // debounce boundary.
   useEffect(() => {
-    setLocal(value);
+    if (value !== debounced) setLocal(value);
   }, [value]);
 
   useEffect(() => {

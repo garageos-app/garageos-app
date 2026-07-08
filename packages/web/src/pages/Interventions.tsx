@@ -50,14 +50,9 @@ export function Interventions() {
 
       <InterventionsFilterBar values={filterValues} onChange={update} />
 
-      {query.isPending && (
-        <div className="space-y-3">
-          <Skeleton className="h-12" />
-          <Skeleton className="h-12" />
-          <Skeleton className="h-12" />
-        </div>
-      )}
-
+      {/* isError is exclusive: with keepPreviousData a failed refetch keeps
+          stale data around, so gate the table/empty branches on !isError to
+          avoid rendering the error alert and a stale table simultaneously. */}
       {query.isError && (
         <Alert variant="destructive">
           <AlertDescription className="flex items-center justify-between gap-4">
@@ -69,14 +64,15 @@ export function Interventions() {
         </Alert>
       )}
 
-      {!query.isPending && query.data && query.data.items.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <SearchX size={48} className="mb-3" />
-          <div className="font-medium text-foreground">Nessun intervento trovato.</div>
+      {!query.isError && query.isPending && (
+        <div className="space-y-3">
+          <Skeleton className="h-12" />
+          <Skeleton className="h-12" />
+          <Skeleton className="h-12" />
         </div>
       )}
 
-      {!query.isPending && query.data && query.data.items.length > 0 && (
+      {!query.isError && query.data && query.data.items.length > 0 && (
         <div className="space-y-3">
           <InterventionsTable
             items={query.data.items}
@@ -94,6 +90,25 @@ export function Interventions() {
             total={query.data.total}
             onPageChange={(page) => update({ page })}
           />
+        </div>
+      )}
+
+      {!query.isError && query.data && query.data.items.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+          <SearchX size={48} className="mb-3" />
+          <div className="font-medium text-foreground">Nessun intervento trovato.</div>
+          {/* A page beyond the last (bookmarked ?page=N or a shrunk result set)
+              yields zero items with no pagination controls — offer a way back. */}
+          {params.page > 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              onClick={() => update({ page: 1 })}
+            >
+              Torna alla prima pagina
+            </Button>
+          )}
         </div>
       )}
     </div>

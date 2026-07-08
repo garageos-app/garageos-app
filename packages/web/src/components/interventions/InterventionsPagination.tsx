@@ -19,7 +19,9 @@ export function InterventionsPagination({
 
   return (
     <div className="flex items-center justify-between gap-4 pt-3 text-sm">
-      <span className="text-muted-foreground">{total} interventi</span>
+      <span className="text-muted-foreground">
+        {total} {total === 1 ? 'intervento' : 'interventi'}
+      </span>
       <div className="flex items-center gap-2">
         <Button
           variant="outline"

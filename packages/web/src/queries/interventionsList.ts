@@ -42,10 +42,11 @@ export interface InterventionsListParams {
 }
 
 export const PAGE_SIZE = 25;
-export const DEFAULT_STATUS: InterventionStatus[] = ['active', 'disputed'];
 
+const STATUS_VALUES: readonly InterventionStatus[] = ['active', 'disputed', 'cancelled'];
 const SORT_VALUES: readonly InterventionSort[] = ['date', 'status', 'type', 'operator', 'km'];
 const ORDER_VALUES: readonly SortOrder[] = ['asc', 'desc'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // CSV param -> trimmed, non-empty tokens (mirrors the backend csvArray split).
 function csv(value: string | null): string[] {
@@ -71,10 +72,15 @@ export function parseInterventionsParams(sp: URLSearchParams): InterventionsList
   return {
     page,
     q: sp.get('q') ?? '',
-    status: csv(sp.get('status')) as InterventionStatus[],
-    typeId: csv(sp.get('typeId')),
-    checklistItemIds: csv(sp.get('checklistItemIds')),
-    operatorId: csv(sp.get('operatorId')),
+    // Drop out-of-domain tokens (hand-edited / stale bookmarked URLs) so they
+    // never reach the backend Zod enum/uuid validators as a 400 — the page
+    // degrades to the valid subset instead of showing a destructive error.
+    status: csv(sp.get('status')).filter((s): s is InterventionStatus =>
+      STATUS_VALUES.includes(s as InterventionStatus),
+    ),
+    typeId: csv(sp.get('typeId')).filter((v) => UUID_RE.test(v)),
+    checklistItemIds: csv(sp.get('checklistItemIds')).filter((v) => UUID_RE.test(v)),
+    operatorId: csv(sp.get('operatorId')).filter((v) => UUID_RE.test(v)),
     dateFrom: sp.get('dateFrom') ?? '',
     dateTo: sp.get('dateTo') ?? '',
     sort,
@@ -82,40 +88,37 @@ export function parseInterventionsParams(sp: URLSearchParams): InterventionsList
   };
 }
 
-export function serializeInterventionsParams(p: InterventionsListParams): URLSearchParams {
-  const sp = new URLSearchParams();
-  if (p.page > 1) sp.set('page', String(p.page));
+// The seven filter params serialize identically for the URL (source of truth)
+// and the API request; keep them in one place so the two never drift.
+// Defensively drops checklistItemIds unless exactly one typeId is selected,
+// mirroring the backend Zod refine (interventions-list.schema.ts).
+function appendFilterParams(sp: URLSearchParams, p: InterventionsListParams): void {
   if (p.q) sp.set('q', p.q);
   if (p.status.length) sp.set('status', p.status.join(','));
   if (p.typeId.length) sp.set('typeId', p.typeId.join(','));
-  // checklistItemIds only meaningful with exactly one type selected.
   if (p.checklistItemIds.length && p.typeId.length === 1) {
     sp.set('checklistItemIds', p.checklistItemIds.join(','));
   }
   if (p.operatorId.length) sp.set('operatorId', p.operatorId.join(','));
   if (p.dateFrom) sp.set('dateFrom', p.dateFrom);
   if (p.dateTo) sp.set('dateTo', p.dateTo);
+}
+
+export function serializeInterventionsParams(p: InterventionsListParams): URLSearchParams {
+  const sp = new URLSearchParams();
+  if (p.page > 1) sp.set('page', String(p.page));
+  appendFilterParams(sp, p);
   if (p.sort !== 'date') sp.set('sort', p.sort);
   if (p.order !== 'desc') sp.set('order', p.order);
   return sp;
 }
 
-// Build the API query string. Always sends pageSize; omits empty filters.
-// Defensively drops checklistItemIds unless exactly one typeId is selected,
-// mirroring the backend Zod refine (interventions-list.schema.ts).
+// Build the API query string. Always sends page/pageSize/sort/order.
 function buildApiQuery(p: InterventionsListParams): string {
   const sp = new URLSearchParams();
   sp.set('page', String(p.page));
   sp.set('pageSize', String(PAGE_SIZE));
-  if (p.q) sp.set('q', p.q);
-  if (p.status.length) sp.set('status', p.status.join(','));
-  if (p.typeId.length) sp.set('typeId', p.typeId.join(','));
-  if (p.checklistItemIds.length && p.typeId.length === 1) {
-    sp.set('checklistItemIds', p.checklistItemIds.join(','));
-  }
-  if (p.operatorId.length) sp.set('operatorId', p.operatorId.join(','));
-  if (p.dateFrom) sp.set('dateFrom', p.dateFrom);
-  if (p.dateTo) sp.set('dateTo', p.dateTo);
+  appendFilterParams(sp, p);
   sp.set('sort', p.sort);
   sp.set('order', p.order);
   return sp.toString();
