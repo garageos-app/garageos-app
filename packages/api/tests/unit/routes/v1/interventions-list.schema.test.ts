@@ -31,6 +31,35 @@ describe('interventionsListQuerySchema', () => {
     expect(() => interventionsListQuerySchema.parse({ status: 'bogus' })).toThrow();
   });
 
+  it('falls back to the default status set when status is an empty string', () => {
+    const result = interventionsListQuerySchema.parse({ status: '' });
+    expect(result.status).toEqual(['active', 'disputed']);
+  });
+
+  it('falls back to the default status set when status is whitespace-only', () => {
+    const result = interventionsListQuerySchema.parse({ status: '   ' });
+    expect(result.status).toEqual(['active', 'disputed']);
+  });
+
+  it('keeps a single valid status value unchanged', () => {
+    const result = interventionsListQuerySchema.parse({ status: 'active' });
+    expect(result.status).toEqual(['active']);
+  });
+
+  it('accepts typeId as a repeated-key array (Fastify default querystring parser)', () => {
+    const result = interventionsListQuerySchema.parse({ typeId: [TYPE_ID, TYPE_ID_2] });
+    expect(result.typeId).toEqual([TYPE_ID, TYPE_ID_2]);
+  });
+
+  it('still accepts typeId as a CSV string', () => {
+    const result = interventionsListQuerySchema.parse({ typeId: `${TYPE_ID},${TYPE_ID_2}` });
+    expect(result.typeId).toEqual([TYPE_ID, TYPE_ID_2]);
+  });
+
+  it('rejects an array typeId containing an invalid UUID', () => {
+    expect(() => interventionsListQuerySchema.parse({ typeId: [TYPE_ID, 'not-a-uuid'] })).toThrow();
+  });
+
   it('rejects a non-UUID token in typeId', () => {
     expect(() => interventionsListQuerySchema.parse({ typeId: 'not-a-uuid' })).toThrow();
   });

@@ -24,6 +24,17 @@ import { interventionsListQuerySchema } from './interventions-list.schema.js';
 
 const OPERATOR_FALLBACK = 'Operatore';
 
+// Prisma's `contains` (with mode: 'insensitive') compiles to a Postgres
+// ILIKE pattern, where `%` and `_` are wildcards and `\` is the default
+// escape character. Without escaping, a user typing e.g. "50%" into the
+// search box would match every vehicle instead of literal text containing
+// a percent sign — silently widening the query to the whole tenant.
+// Escape the backslash FIRST so we don't double-escape the backslashes we
+// just inserted for `%`/`_`.
+function escapeLike(input: string): string {
+  return input.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
 function deriveOperatorName(
   user: { firstName: string | null; lastName: string | null } | null,
 ): string {
@@ -46,11 +57,12 @@ const interventionsListRoutes: FastifyPluginAsync = async (app) => {
       };
 
       if (parsed.q) {
+        const escapedQ = escapeLike(parsed.q);
         where.vehicle = {
           OR: [
-            { plate: { contains: parsed.q, mode: 'insensitive' } },
-            { make: { contains: parsed.q, mode: 'insensitive' } },
-            { model: { contains: parsed.q, mode: 'insensitive' } },
+            { plate: { contains: escapedQ, mode: 'insensitive' } },
+            { make: { contains: escapedQ, mode: 'insensitive' } },
+            { model: { contains: escapedQ, mode: 'insensitive' } },
           ],
         };
       }

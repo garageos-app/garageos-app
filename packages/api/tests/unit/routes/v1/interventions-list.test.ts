@@ -220,6 +220,45 @@ describe('GET /v1/interventions (unit)', () => {
     );
   });
 
+  it('(f) empty status="" falls back to the default set (not match-nothing)', async () => {
+    const prisma = buildFakePrisma([]);
+    app = await buildApp(prisma);
+
+    await app.inject({
+      method: 'GET',
+      url: '/v1/interventions?status=',
+      headers: { authorization: 'Bearer test' },
+    });
+
+    expect(prisma.intervention.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ['active', 'disputed'] },
+        }),
+      }),
+    );
+  });
+
+  it('(g) q value is escaped for LIKE metacharacters before being passed to contains', async () => {
+    const prisma = buildFakePrisma([]);
+    app = await buildApp(prisma);
+
+    await app.inject({
+      method: 'GET',
+      url: `/v1/interventions?${new URLSearchParams({ q: '50%' }).toString()}`,
+      headers: { authorization: 'Bearer test' },
+    });
+
+    const where = prisma.intervention.findMany.mock.calls[0]![0].where as {
+      vehicle: { OR: Array<Record<string, { contains: string; mode: string }>> };
+    };
+    expect(where.vehicle.OR).toEqual([
+      { plate: { contains: '50\\%', mode: 'insensitive' } },
+      { make: { contains: '50\\%', mode: 'insensitive' } },
+      { model: { contains: '50\\%', mode: 'insensitive' } },
+    ]);
+  });
+
   it('400 when checklistItemIds is used without exactly one typeId (Zod refine)', async () => {
     app = await buildApp(buildFakePrisma());
     const res = await app.inject({
