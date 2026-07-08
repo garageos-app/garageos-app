@@ -50,10 +50,12 @@ describe('Sidebar', () => {
     expect(screen.queryByText('Cerca veicolo')).not.toBeInTheDocument();
   });
 
-  it('voci disabilitate non-clickable e mostrano tooltip "Disponibile in v1.1"', () => {
-    renderAt('/');
-    const interventi = screen.getByText('Interventi');
-    expect(interventi.closest('[aria-disabled="true"]')).not.toBeNull();
+  it('"Interventi" linka a /interventions ed è attivo su quel path', () => {
+    const { unmount } = renderAt('/interventions');
+    const link = screen.getByRole('link', { name: /interventi/i });
+    expect(link).toHaveAttribute('href', '/interventions');
+    expect(link).toHaveAttribute('aria-current', 'page');
+    unmount();
   });
 
   it('"Clienti" linka a /customers ed è attivo su quel path', () => {

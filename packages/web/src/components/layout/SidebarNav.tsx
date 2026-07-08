@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 
 const navItems = [
   { id: 'home', label: 'Home', icon: Home, to: '/', enabled: true },
-  { id: 'interventions', label: 'Interventi', icon: Wrench, enabled: false },
+  { id: 'interventions', label: 'Interventi', icon: Wrench, to: '/interventions', enabled: true },
   { id: 'customers', label: 'Clienti', icon: Users, to: '/customers', enabled: true },
   { id: 'settings', label: 'Impostazioni', icon: Settings, to: '/settings', enabled: true },
 ] as const;
@@ -15,6 +15,8 @@ function isActiveFor(itemId: string, pathname: string): boolean {
   if (itemId === 'home') return pathname === '/';
   if (itemId === 'settings') return pathname.startsWith('/settings');
   if (itemId === 'customers') return pathname.startsWith('/customers');
+  // Covers both the register (/interventions) and the detail (/interventions/:id).
+  if (itemId === 'interventions') return pathname.startsWith('/interventions');
   return false;
 }
 
