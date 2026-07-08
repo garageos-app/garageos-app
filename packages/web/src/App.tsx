@@ -12,6 +12,7 @@ import { CustomerList } from '@/pages/CustomerList';
 import { CustomerDetail } from '@/pages/CustomerDetail';
 import { VehicleCreate } from '@/pages/VehicleCreate';
 import { InterventionCreate } from '@/pages/InterventionCreate';
+import { Interventions } from '@/pages/Interventions';
 import { InterventionDetail } from '@/pages/InterventionDetail';
 import { Settings } from '@/pages/Settings';
 import { AcceptInvitation } from '@/pages/AcceptInvitation';
@@ -50,6 +51,7 @@ export function App() {
                   <Route path="/vehicles/:id/interventions/new" element={<InterventionCreate />} />
                   <Route path="/customers" element={<CustomerList />} />
                   <Route path="/customers/:id" element={<CustomerDetail />} />
+                  <Route path="/interventions" element={<Interventions />} />
                   <Route path="/interventions/:id" element={<InterventionDetail />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/settings/users" element={<Settings />} />
