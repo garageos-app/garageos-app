@@ -1695,6 +1695,100 @@ Authorization: Bearer <tenant_user_jwt>
 
 ---
 
+### 2.11a `GET /v1/interventions` — Registro interventi officina
+
+**Feature:** registro v1.1 (nessun F-ID dedicato in Specifiche; vista di lista sul dominio F-OFF-301)
+**Auth:** Tenant User (officina pool — tutti i ruoli: `super_admin`, `admin`, `mechanic`, `receptionist`)
+**Rate limit:** standard utente
+
+#### Descrizione
+
+Restituisce l'elenco paginato, filtrabile e ordinabile degli interventi del tenant chiamante ("Registro Interventi"), per popolare la vista tabellare della web app officina. A differenza di §2.12 (dettaglio singolo intervento, leggibile anche cross-tenant), questo endpoint è **scoped al solo tenant del chiamante** — non esiste una vista cross-tenant per il registro.
+
+#### Request
+
+```http
+GET /v1/interventions?page=1&pageSize=25&status=active,disputed&sort=date&order=desc
+Authorization: Bearer <officina_user_jwt>
+```
+
+**Query parameters:**
+
+| Nome | Tipo | Default | Note |
+| --- | --- | --- | --- |
+| `page` | integer ≥ 1 | `1` | |
+| `pageSize` | integer 1..100 | `25` | |
+| `q` | string | — | Ricerca free-text su targa, marca, modello veicolo (case-insensitive, substring) |
+| `status` | CSV di `active\|disputed\|cancelled` | `active,disputed` | |
+| `typeId` | CSV di uuid | — | Filtra per tipo/i intervento |
+| `checklistItemIds` | CSV di uuid | — | Filtra per voce/i checklist (semantica **AND**, vedi sotto). Richiede esattamente un `typeId` valorizzato. |
+| `operatorId` | CSV di uuid | — | Filtra per operatore/i (utente che ha creato l'intervento) |
+| `dateFrom` | string `YYYY-MM-DD` | — | Filtro inclusivo su `intervention_date` |
+| `dateTo` | string `YYYY-MM-DD` | — | Filtro inclusivo su `intervention_date` |
+| `sort` | enum `date\|status\|type\|operator\|km` | `date` | |
+| `order` | enum `asc\|desc` | `desc` | |
+
+I parametri CSV (`status`, `typeId`, `checklistItemIds`, `operatorId`) arrivano come singola query string comma-separated (es. `status=active,cancelled`): ogni valore viene splittato su `,`, trimmato, i token vuoti scartati, poi ciascun token validato (enum per `status`, uuid v4 per gli altri). Un token non valido produce `400 VALIDATION_ERROR`.
+
+#### Semantica del filtro checklist (AND)
+
+`checklistItemIds` restituisce solo gli interventi che hanno **tutte** le voci checklist richieste nel proprio snapshot congelato (`intervention_checklist_selections`) — semantica **AND**, non "almeno una". Poiché le voci checklist appartengono a un singolo tipo intervento, il filtro richiede **esattamente un** `typeId` valorizzato insieme a `checklistItemIds`. Se `checklistItemIds` è presente senza esattamente un `typeId`, la richiesta fallisce con **`400 VALIDATION_ERROR`** (Zod `.refine`, `path: ["checklistItemIds"]`) — **nessun nuovo codice errore introdotto**, nessuna nuova `BR-XXX`.
+
+#### Response `200 OK`
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "interventionDate": "2026-04-21",
+      "odometerKm": 45000,
+      "status": "active",
+      "type": { "id": "uuid", "nameIt": "Tagliando" },
+      "vehicle": { "id": "uuid", "plate": "AB123CD", "make": "Fiat", "model": "Panda" },
+      "operator": { "id": "uuid", "name": "Giuseppe Ferrari" }
+    }
+  ],
+  "total": 137,
+  "page": 1,
+  "pageSize": 25
+}
+```
+
+**Dettaglio campi:**
+
+| Campo | Tipo | Note |
+| --- | --- | --- |
+| `items[].id` | uuid | |
+| `items[].interventionDate` | string | `YYYY-MM-DD` (date-only) |
+| `items[].odometerKm` | integer | |
+| `items[].status` | enum | `active \| disputed \| cancelled` |
+| `items[].type.id`, `.nameIt` | object | Tipo intervento |
+| `items[].vehicle.id`, `.plate`, `.make`, `.model` | object | Veicolo |
+| `items[].operator.id` | uuid | `user.id` (la relazione `user` è `onDelete: Restrict` e gli utenti sono solo soft-delete, mai hard-delete: in pratica `user` non è mai `null`). Il fallback a `userId` grezzo è scaffolding difensivo, attualmente dead code a runtime — vedi il commento su `deriveOperatorName` in `interventions-recent.ts` |
+| `items[].operator.name` | string | Composto server-side da `firstName + lastName`; fallback `"Operatore"` per lo stesso scaffolding difensivo (mai raggiunto a runtime oggi), stesso pattern di `deriveOperatorName` in `interventions-recent.ts` |
+| `total` | integer | Conteggio totale delle righe che soddisfano i filtri (non della sola pagina) |
+| `page`, `pageSize` | integer | Echo dei parametri richiesti, dopo default/validazione |
+
+**Nota di naming:** questa response usa **camelCase** in tutti i campi (`interventionDate`, non `intervention_date`), a differenza di §2.12 che usa snake_case — mismatch preesistente tra endpoint di generazioni diverse, non introdotto da questo PR (stesso stile di §2.4c `/me/interventions/:id`).
+
+#### Errori
+
+| Status | Codice | Scenario |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | Parametri di query non validi (`page`/`pageSize` fuori range, uuid malformato in un CSV, `dateFrom`/`dateTo` non in formato `YYYY-MM-DD`) oppure guard checklist (`checklistItemIds` valorizzato senza esattamente un `typeId`) |
+| 401 | (auth middleware) | Authorization header mancante o JWT non valido |
+| 403 | `FORBIDDEN` | JWT proviene dal pool `clienti` invece di `officine` |
+
+#### Note
+
+- **Isolamento tenant (app-layer)**: la SELECT su `interventions` è permissiva cross-tenant a livello RLS (migration 0003, split SELECT/WRITE), ma questo endpoint applica esplicitamente `where: { tenantId }` sia sul `count` sia sulla `findMany` — il registro mostra **solo** gli interventi del tenant chiamante, mai cross-tenant (vedi memory `feedback_rls_split_changes_endpoint_semantics.md`).
+- `count` e `findMany` girano in sequenza sulla stessa connessione interattiva (`app.withContext`), non in `Promise.all` su transazione.
+- Mapping `sort` → colonna: `date` → `intervention_date`, `status` → `status`, `type` → `intervention_type.name_it`, `operator` → `user.last_name` poi `user.first_name`, `km` → `odometer_km`; in ogni caso con tie-break secondario su `id desc` per stabilità della paginazione.
+- Nessun nuovo `BR-XXX` e nessun nuovo codice errore introdotti da questo endpoint.
+
+---
+
 ### 2.12 `GET /v1/interventions/:id` — Dettaglio intervento officina
 
 **Feature:** F-OFF-301
@@ -2641,6 +2735,7 @@ Nessun codice 4xx domain-specific nuovo.
 | Metodo | Path | Feature | Auth | Descrizione |
 |---|---|---|---|---|
 | POST | `/vehicles/:id/interventions` | F-OFF-301, F-OFF-308 | Tenant User | **[DETTAGLIATO §2.2]** Crea intervento |
+| GET | `/interventions` | registro v1.1 | Tenant User | **[DETTAGLIATO §2.11a]** Registro interventi paginato, filtrabile e ordinabile (tenant-scoped) |
 | GET | `/interventions/:id` | F-OFF-301 | Tenant User | **[DETTAGLIATO §2.12]** Dettaglio intervento officina (BR-062 wiki_window_open) |
 | PATCH | `/interventions/:id` | F-OFF-304 | Tenant User | **[DETTAGLIATO §2.12a]** Modifica intervento (wiki rules, checklist replace BR-303). |
 | POST | `/interventions/:id/cancel` | F-OFF-307 | Super Admin | Annulla intervento con motivazione |
