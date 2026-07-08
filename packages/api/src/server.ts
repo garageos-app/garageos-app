@@ -33,6 +33,7 @@ import { authResendVerificationRoutes } from './routes/v1/auth-resend-verificati
 import interventionUpdateRoutes from './routes/v1/interventions-update.js';
 import interventionRoutes from './routes/v1/interventions.js';
 import interventionRecentRoutes from './routes/v1/interventions-recent.js';
+import interventionsListRoutes from './routes/v1/interventions-list.js';
 import disputesOpenRoutes from './routes/v1/disputes-open.js';
 import interventionTypesRoutes from './routes/v1/intervention-types.js';
 import meVehicleRoutes from './routes/v1/me-vehicles.js';
@@ -211,6 +212,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await app.register(interventionDetailRoutes);
   await app.register(interventionPdfRoutes);
   await app.register(interventionRecentRoutes);
+  await app.register(interventionsListRoutes);
   await app.register(disputesOpenRoutes);
   await app.register(interventionTypesRoutes);
   await app.register(interventionUpdateRoutes);
