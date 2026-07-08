@@ -1,20 +1,18 @@
 // IT-strings — hardcoded, no i18n in this app
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Wrench, Users, Settings, LogOut, Calendar, Plus } from 'lucide-react';
+import { Home, Wrench, Users, Settings, LogOut, Plus } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { Separator } from '@/components/ui/separator';
 
 const navItems = [
   { id: 'home', label: 'Home', icon: Home, to: '/', enabled: true },
   { id: 'interventions', label: 'Interventi', icon: Wrench, enabled: false },
-  { id: 'deadlines', label: 'Scadenze', icon: Calendar, to: '/deadlines', enabled: true },
   { id: 'customers', label: 'Clienti', icon: Users, to: '/customers', enabled: true },
   { id: 'settings', label: 'Impostazioni', icon: Settings, to: '/settings', enabled: true },
 ] as const;
 
 function isActiveFor(itemId: string, pathname: string): boolean {
   if (itemId === 'home') return pathname === '/';
-  if (itemId === 'deadlines') return pathname.startsWith('/deadlines');
   if (itemId === 'settings') return pathname.startsWith('/settings');
   if (itemId === 'customers') return pathname.startsWith('/customers');
   return false;
