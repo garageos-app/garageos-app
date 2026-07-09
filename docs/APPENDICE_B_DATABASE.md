@@ -1016,7 +1016,7 @@ Voci checklist effettivamente selezionate su un intervento, con etichetta congel
 - `uq_selection_intervention_item` UNIQUE `(intervention_id, checklist_item_id)` — evita doppia selezione della stessa voce sullo stesso intervento; essendo `checklist_item_id` nullable, più righe con valore `NULL` per lo stesso intervento restano ammesse da Postgres (NULL non è confrontabile per uguaglianza in un vincolo UNIQUE), coerente con selezioni storiche orfane dopo eliminazione voce
 - `idx_selections_intervention (intervention_id)`
 
-**RLS:** mirror di `interventions` (pattern §2.x "split" — lezione RLS split). `selections_read USING(true)` — permissiva in lettura. Scrittura granulare: `selections_insert WITH CHECK`, `selections_update USING/WITH CHECK`, `selections_delete USING`, tutte `(is_admin_role() OR tenant_id = current_tenant_id())` — tenant-scoped.
+**RLS:** mirror di `interventions` (pattern §2.x "split" — lezione RLS split). `selections_read FOR SELECT USING (is_admin_role() OR current_tenant_id() IS NULL OR tenant_id = current_tenant_id())` — pool-gated (officina own-only; sessione cliente con `current_tenant_id() IS NULL` e admin restano permissivi), allineata a `interventions_read`/`intervention_revisions_read` dopo l'arco officina own-only (migration `20260709120000`). Scrittura granulare: `selections_insert WITH CHECK`, `selections_update USING/WITH CHECK`, `selections_delete USING`, tutte `(is_admin_role() OR tenant_id = current_tenant_id())` — tenant-scoped.
 
 **Grants:** `garageos_app` ottiene `SELECT, INSERT, UPDATE, DELETE` esplicite su tutte e 4 le tabelle (ruolo `NOBYPASSRLS` — vedi §9, lezione least-privilege).
 
