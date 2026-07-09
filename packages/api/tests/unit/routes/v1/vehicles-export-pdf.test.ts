@@ -116,7 +116,7 @@ describe('GET /v1/vehicles/:id/export.pdf (unit)', () => {
     vi.clearAllMocks();
   });
 
-  it('200 — streams application/pdf; defaults scope=all (no tenant filter) + grouped mode', async () => {
+  it('200 — streams application/pdf; defaults scope=all but still filters to the caller tenant + grouped mode', async () => {
     const prisma = buildFakePrisma({});
     vi.mocked(renderVehicleHistoryPdf).mockResolvedValue(FAKE_PDF);
     app = await buildApp(prisma);
@@ -133,7 +133,8 @@ describe('GET /v1/vehicles/:id/export.pdf (unit)', () => {
     const whereArg = prisma.intervention.findMany.mock.calls[0]![0].where;
     expect(whereArg.vehicleId).toBe(VEHICLE_ID);
     expect(whereArg.status).toEqual({ in: ['active', 'disputed'] });
-    expect(whereArg).not.toHaveProperty('tenantId'); // scope=all default
+    // scope=all is inert now (BR-150/BR-153 deprecated 2026-07-09): always own-tenant.
+    expect(whereArg.tenantId).toBe(TENANT_ID);
 
     const dataArg = vi.mocked(renderVehicleHistoryPdf).mock.calls[0]![0];
     expect(dataArg.mode).toBe('grouped'); // show_names default true
@@ -141,13 +142,26 @@ describe('GET /v1/vehicles/:id/export.pdf (unit)', () => {
     expect(dataArg.interventions[0]!.tenantId).toBeDefined();
   });
 
-  it('scope=own — restricts the query to the caller tenant (isolation)', async () => {
+  it('scope=own — still restricts the query to the caller tenant (isolation)', async () => {
     const prisma = buildFakePrisma({});
     vi.mocked(renderVehicleHistoryPdf).mockResolvedValue(FAKE_PDF);
     app = await buildApp(prisma);
     await app.inject({
       method: 'GET',
       url: `/v1/vehicles/${VEHICLE_ID}/export.pdf?scope=own`,
+      headers: { authorization: 'Bearer test' },
+    });
+    const whereArg = prisma.intervention.findMany.mock.calls[0]![0].where;
+    expect(whereArg.tenantId).toBe(TENANT_ID);
+  });
+
+  it('scope=all — no longer widens the query beyond the caller tenant (BR-150/BR-153 deprecated)', async () => {
+    const prisma = buildFakePrisma({});
+    vi.mocked(renderVehicleHistoryPdf).mockResolvedValue(FAKE_PDF);
+    app = await buildApp(prisma);
+    await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}/export.pdf?scope=all`,
       headers: { authorization: 'Bearer test' },
     });
     const whereArg = prisma.intervention.findMany.mock.calls[0]![0].where;
