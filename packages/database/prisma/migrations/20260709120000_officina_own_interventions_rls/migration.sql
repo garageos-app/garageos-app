@@ -1,7 +1,9 @@
 -- =====================================================
 -- GarageOS — migration: officina own-interventions RLS
--- Stringe SELECT su interventions e intervention_revisions in modo
--- pool-gated: sessione officina (current_tenant_id() valorizzato) vede
+-- Stringe SELECT su interventions, intervention_revisions e
+-- intervention_checklist_selections (il corpo itemizzato
+-- dell'intervento, sibling di parts_replaced, con tenant_id NOT NULL) in
+-- modo pool-gated: sessione officina (current_tenant_id() valorizzato) vede
 -- solo i propri interventi; sessione cliente (current_tenant_id() IS NULL,
 -- solo customer_id settato) resta permissiva (privacy app-layer invariata);
 -- admin (is_admin_role()) permissivo per le metriche cross-tenant.
@@ -30,4 +32,12 @@ FOR SELECT USING (
         WHERE i.id = intervention_revisions.intervention_id
           AND i.tenant_id = current_tenant_id()
     )
+);
+
+DROP POLICY IF EXISTS selections_read ON intervention_checklist_selections;
+CREATE POLICY selections_read ON intervention_checklist_selections
+FOR SELECT USING (
+    is_admin_role()
+    OR current_tenant_id() IS NULL
+    OR tenant_id = current_tenant_id()
 );

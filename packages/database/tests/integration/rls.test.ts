@@ -110,6 +110,7 @@ describe('RLS — interventions split (post-migration 0003)', () => {
     vehicleId: string;
     interventionId: string;
     interventionTypeId: string;
+    selectionId: string;
   }> {
     const { rows: tA } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
@@ -183,6 +184,21 @@ describe('RLS — interventions split (post-migration 0003)', () => {
     );
     const interventionId = iv[0]!.id;
 
+    // Itemized body of the intervention (sibling of parts_replaced). Free-text
+    // selection: checklist_item_id NULL (no catalog dependency). tenant_id is
+    // NOT NULL and carries the owner tenant, which is what selections_read
+    // now pool-gates on.
+    const { rows: sel } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO intervention_checklist_selections
+         (id, intervention_id, tenant_id, checklist_item_id,
+          label_snapshot, sort_order_snapshot, created_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, NULL, 'Controllo freni', 0, NOW())
+       RETURNING id`,
+      [interventionId, tenantAId],
+    );
+    const selectionId = sel[0]!.id;
+
     return {
       tenantAId,
       tenantBId,
@@ -191,6 +207,7 @@ describe('RLS — interventions split (post-migration 0003)', () => {
       vehicleId,
       interventionId,
       interventionTypeId,
+      selectionId,
     };
   }
 
@@ -228,6 +245,44 @@ describe('RLS — interventions split (post-migration 0003)', () => {
       tx.intervention.findUnique({ where: { id: interventionId } }),
     );
     expect(seenByCustomer?.id).toBe(interventionId);
+  });
+
+  it('cross-tenant SELECT on checklist selections is blocked for officina (own-only)', async () => {
+    // intervention_checklist_selections is the itemized body of an
+    // intervention (sibling of parts_replaced) with its own NOT NULL
+    // tenant_id. Migration 20260709120000 pool-gates selections_read in
+    // lockstep with interventions/intervention_revisions: officina B
+    // (current_tenant_id() = tenantBId) no longer sees tenant A's rows.
+    const { tenantBId, selectionId } = await seedInterventionForTenantA();
+
+    const seenByB = await withContext({ tenantId: tenantBId }, (tx) =>
+      tx.interventionChecklistSelection.findMany(),
+    );
+    expect(seenByB.map((s) => s.id)).not.toContain(selectionId);
+  });
+
+  it('officina A sees its own checklist selection (own-only positive path)', async () => {
+    // Complement: tenant A (owner) still reads its own selection through the
+    // tenant_id = current_tenant_id() branch of the pool-gated policy.
+    const { tenantAId, selectionId } = await seedInterventionForTenantA();
+
+    const seenByA = await withContext({ tenantId: tenantAId }, (tx) =>
+      tx.interventionChecklistSelection.findMany(),
+    );
+    expect(seenByA.map((s) => s.id)).toContain(selectionId);
+  });
+
+  it('customer-pool SELECT on checklist selections works (permissive NULL branch)', async () => {
+    // LOAD-BEARING cliente-preservation check: a customer session sets no
+    // tenantId, so current_tenant_id() IS NULL and selections_read takes its
+    // permissive branch → the itemized body stays visible in the customer
+    // vehicle history. App-layer ownership is the actual privacy boundary.
+    const { customerId, selectionId } = await seedInterventionForTenantA();
+
+    const seenByCustomer = await withContext({ customerId }, (tx) =>
+      tx.interventionChecklistSelection.findUnique({ where: { id: selectionId } }),
+    );
+    expect(seenByCustomer?.id).toBe(selectionId);
   });
 
   it('cross-tenant INSERT on interventions is blocked', async () => {
