@@ -2649,6 +2649,7 @@ Body vuoto `{}` valido: ripristina il role originale.
 | POST | `/vehicles/:id/tag-reprint` | F-OFF-109 | Tenant User | **[DETTAGLIATO §2.14]** Ristampa tag PDF veicolo (richiede audit precedente + reason) |
 | GET | `/vehicles/:id/access-log` | F-OFF-601, F-CLI-304 | Any User | Log accessi al veicolo |
 | GET | `/vehicles/:id/timeline` | F-OFF-105, F-CLI-201 | Any User | **[DETTAGLIATO §2.5]** Timeline interventi |
+| GET | `/vehicles/:id/export.pdf` | registro v1.1 | Tenant User | **[DETTAGLIATO §3.5c]** Export PDF storico interventi (scope own/all, nomi officina opzionali) |
 | POST | `/me/vehicles/claim` | F-CLI-101, F-CLI-102, F-CLI-103 | Customer | **[DETTAGLIATO §2.4]** Aggancia veicolo tramite codice |
 | GET | `/me` | F-CLI-004 | Customer | Profilo del cliente autenticato |
 | PATCH | `/me/profile` | F-CLI-004 | Customer | Modifica nome/cognome/telefono (email immutabile) |
@@ -2698,11 +2699,13 @@ Genera un PDF professionale con lo **storico completo degli interventi officina*
 del veicolo posseduto dal cliente autenticato, da mostrare a un potenziale
 acquirente. Solo pool clienti.
 
-> **Divergenza dal path storico.** La specifica originale citava
-> `GET /vehicles/:id/export.pdf`; l'endpoint vive sulla superficie cliente
-> `/me/...` per coerenza con il resto dell'app cliente (stessa scelta di
-> `POST /me/vehicles/claim`, F-CLI-101). Riusa la meccanica PDF di F-OFF-309
-> (`pdf-lib` render server-side → streaming diretto dei byte, nessun S3).
+> **Path.** Questo è l'export **lato cliente**, sulla superficie `/me/...` per
+> coerenza con il resto dell'app cliente (stessa scelta di
+> `POST /me/vehicles/claim`, F-CLI-101). Il path "storico"
+> `GET /vehicles/:id/export.pdf` è invece l'export **lato officina** (v1.1,
+> vedi §3.5c): stesso renderer, scoping tenant. Entrambi riusano la meccanica
+> PDF di F-OFF-309 (`pdf-lib` render server-side → streaming diretto dei byte,
+> nessun S3).
 
 Comportamento:
 
@@ -2729,6 +2732,45 @@ Body: i byte del PDF streammati direttamente.
 
 Errori: `401`, `404 me.vehicle.not_found`, `429`, `502 vehicle_history_pdf.render_failed`.
 Nessun codice 4xx domain-specific nuovo.
+
+#### GET /v1/vehicles/:id/export.pdf (officina, registro v1.1)
+
+Controparte **lato officina** di §3.5b: genera il PDF dello storico interventi di
+un veicolo dalla scheda veicolo dell'officina. Solo pool officine
+(`requireAuth` + `requireOfficinaPool` + `tenantContext`). Riusa lo stesso
+renderer di F-CLI-501 (`vehicle-history-pdf-renderer`) e la stessa meccanica di
+streaming diretto (nessun persist S3).
+
+Query params (entrambi opzionali):
+
+- `scope=all|own` (default `all`): `all` include gli interventi di **tutte** le
+  officine sul veicolo (cross-tenant, BR-150); `own` restringe al solo tenant
+  chiamante. Il filtro `own` è la frontiera di sicurezza (mai solo RLS): aggiunge
+  `tenant_id` alla query.
+- `show_names=true|false` (default `true`): `true` raggruppa gli interventi per
+  officina (intestazioni di sezione, ordinate per attività più recente);
+  `false` produce una lista piatta anonima senza nomi officina.
+
+Comportamento:
+
+- **Accesso**: come la timeline (§2.5), le officine hanno lettura cross-tenant
+  sugli interventi (BR-150/BR-153), quindi l'accesso è gated solo dall'esistenza
+  del veicolo → `404 vehicle.not_found`. Nessun gate di proprietà.
+- **Contenuto**: interventi con stato `active` e `disputed`; i `cancelled` sono
+  **esclusi**. `internal_notes` e nome proprietario **mai** inclusi
+  (documento consegnabile al cliente). Header neutro GarageOS.
+- Storico vuoto (0 interventi) → `200` con PDF "Nessun intervento officina
+  registrato".
+
+Risposta `200`:
+
+- `Content-Type: application/pdf`
+- `Content-Disposition: inline; filename="storico-<vehicleId>.pdf"`
+
+Body: i byte del PDF streammati direttamente.
+
+Errori: `400` (UUID/param non validi), `401`, `404 vehicle.not_found`, `429`,
+`502 vehicle_history_pdf.render_failed`. Nessun codice 4xx domain-specific nuovo.
 
 ### 3.6 Interventions
 

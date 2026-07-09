@@ -18,6 +18,7 @@ import { TimelineOfficinaFilter } from '@/components/TimelineOfficinaFilter';
 import { CertifyVehicleDialog } from '@/components/CertifyVehicleDialog';
 import { OwnershipTransferDialog } from '@/components/OwnershipTransferDialog';
 import { VehicleTagPrintButton } from '@/components/VehicleTagPrintButton';
+import { VehicleHistoryExportButton } from '@/components/VehicleHistoryExportButton';
 
 const statusMeta: Record<string, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
   certified: {
@@ -132,6 +133,7 @@ export function VehicleDetail() {
               tagFirstPrintedAt={v.tag_first_printed_at}
               status={v.status}
             />
+            <VehicleHistoryExportButton vehicleId={v.id} />
             <Button
               onClick={() => navigate(`/vehicles/${id}/interventions/new`)}
               disabled={v.status === 'archived'}

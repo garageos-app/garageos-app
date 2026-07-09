@@ -126,4 +126,64 @@ describe('renderVehicleHistoryPdf', () => {
     // checklist still present even when the description is empty
     expect(extractPdfText(buf)).toMatch(/Voci eseguite/);
   });
+
+  it('grouped mode: officina headers ordered by most-recent activity', async () => {
+    const recent = {
+      ...intervention(0),
+      interventionDate: '2026-06-15',
+      tenantName: 'Officina Recente',
+    };
+    const older = {
+      ...intervention(1),
+      interventionDate: '2026-01-15',
+      tenantName: 'Officina Vecchia',
+    };
+    const text = extractPdfText(
+      await renderVehicleHistoryPdf({ ...BASE, interventions: [recent, older], mode: 'grouped' }),
+    );
+    expect(text).toMatch(/Officina Recente/);
+    expect(text).toMatch(/Officina Vecchia/);
+    expect(text.indexOf('Officina Recente')).toBeLessThan(text.indexOf('Officina Vecchia'));
+  });
+
+  it('grouped mode: multiple interventions of one officina share a single header', async () => {
+    const a1 = { ...intervention(0), interventionDate: '2026-06-15', tenantName: 'Officina A' };
+    const a2 = { ...intervention(1), interventionDate: '2026-02-15', tenantName: 'Officina A' };
+    const text = extractPdfText(
+      await renderVehicleHistoryPdf({ ...BASE, interventions: [a1, a2], mode: 'grouped' }),
+    );
+    expect(text.match(/Officina A/g)?.length).toBe(1);
+  });
+
+  it('grouped mode: groups by tenantId, not by (non-unique) tenantName', async () => {
+    // Two distinct officine sharing the same business_name (BR schema does not
+    // enforce uniqueness) must NOT collapse under one header.
+    const a1 = {
+      ...intervention(0),
+      interventionDate: '2026-06-15',
+      tenantName: 'Officina Duplicata',
+      tenantId: '11111111-1111-4111-8111-111111111111',
+    };
+    const a2 = {
+      ...intervention(1),
+      interventionDate: '2026-02-15',
+      tenantName: 'Officina Duplicata',
+      tenantId: '22222222-2222-4222-8222-222222222222',
+    };
+    const text = extractPdfText(
+      await renderVehicleHistoryPdf({ ...BASE, interventions: [a1, a2], mode: 'grouped' }),
+    );
+    expect(text.match(/Officina Duplicata/g)?.length).toBe(2);
+  });
+
+  it('anonymous mode: omits every officina name but keeps intervention type', async () => {
+    const text = extractPdfText(await renderVehicleHistoryPdf({ ...BASE, mode: 'anonymous' }));
+    expect(text).not.toMatch(/Officina Bianchi Srl/);
+    expect(text).toMatch(/Tagliando/);
+  });
+
+  it('inline mode (explicit) still labels each row with its officina', async () => {
+    const text = extractPdfText(await renderVehicleHistoryPdf({ ...BASE, mode: 'inline' }));
+    expect(text).toMatch(/Officina Bianchi Srl/);
+  });
 });
