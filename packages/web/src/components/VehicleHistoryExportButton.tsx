@@ -31,13 +31,13 @@ function mapPdfError(err: ApiError): string {
 }
 
 /**
- * Officina history export: a button that opens a small options dialog (scope +
- * show-officina-names) and streams the vehicle-history PDF into a new tab. The
- * two switches default to the richest document: all officine, names shown.
+ * Officina history export: a button that opens a small options dialog
+ * (show-officina-name) and streams the vehicle-history PDF into a new tab.
+ * The PDF is always scoped to the caller's own tenant; the switch only
+ * controls whether the officina's own name is printed on it.
  */
 export function VehicleHistoryExportButton({ vehicleId }: Props) {
   const [open, setOpen] = useState(false);
-  const [includeAllOfficine, setIncludeAllOfficine] = useState(true);
   const [showNames, setShowNames] = useState(true);
   const mutation = useVehicleHistoryPdfDownload(vehicleId);
 
@@ -49,10 +49,7 @@ export function VehicleHistoryExportButton({ vehicleId }: Props) {
         : null;
 
   const handleGenerate = () => {
-    mutation.mutate(
-      { scope: includeAllOfficine ? 'all' : 'own', showNames },
-      { onSuccess: () => setOpen(false) },
-    );
+    mutation.mutate({ showNames }, { onSuccess: () => setOpen(false) });
   };
 
   return (
@@ -79,18 +76,8 @@ export function VehicleHistoryExportButton({ vehicleId }: Props) {
 
         <div className="space-y-4 py-2">
           <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="pdf-include-all" className="cursor-pointer">
-              Includi anche le altre officine
-            </Label>
-            <Switch
-              id="pdf-include-all"
-              checked={includeAllOfficine}
-              onCheckedChange={setIncludeAllOfficine}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-4">
             <Label htmlFor="pdf-show-names" className="cursor-pointer">
-              Mostra nomi officine
+              Mostra nome officina
             </Label>
             <Switch id="pdf-show-names" checked={showNames} onCheckedChange={setShowNames} />
           </div>

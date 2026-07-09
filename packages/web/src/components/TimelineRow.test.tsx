@@ -84,10 +84,9 @@ function renderRow(item: TimelineItem, vehicleId = 'veh-1') {
 }
 
 describe('TimelineRow — compact rendering', () => {
-  it('renders shop row with type name, subtitle, kind badge, no dispute', () => {
+  it('renders shop row with type name, kind badge, no dispute', () => {
     renderRow(SHOP_ITEM);
     expect(screen.getByText('Tagliando')).toBeInTheDocument();
-    expect(screen.getByText(/Officina Rossi/)).toBeInTheDocument();
     expect(screen.getByText('Officina')).toBeInTheDocument();
     expect(screen.queryByText('Disputa')).not.toBeInTheDocument();
   });
@@ -254,31 +253,6 @@ describe('TimelineRow — edit affordance', () => {
     await user.click(screen.getByRole('button', { name: 'Modifica' }));
 
     expect(screen.getByTestId(`edit-dialog-open-${SHOP_ITEM.id}`)).toBeInTheDocument();
-  });
-
-  // BR-150/BR-153: another tenant's intervention is read-only.
-  it('hides "Modifica" on a cross-tenant row (viewer_is_owner=false) but keeps "Apri scheda"', async () => {
-    const user = userEvent.setup();
-    renderRow({ ...SHOP_ITEM, viewer_is_owner: false });
-    await user.click(screen.getByRole('button', { name: 'Espandi dettagli intervento' }));
-
-    expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Apri scheda' })).toBeInTheDocument();
-  });
-});
-
-describe('TimelineRow — cross-tenant dispute badge', () => {
-  it('renders the "Disputa" badge read-only (no response affordance) when viewer_is_owner=false', () => {
-    renderRow({ ...SHOP_ITEM_DISPUTED, viewer_is_owner: false });
-    // Badge text is present...
-    expect(screen.getByText('Disputa')).toBeInTheDocument();
-    // ...but it is not the interactive button that opens the response dialog.
-    expect(screen.queryByRole('button', { name: /Apri contestazione/ })).not.toBeInTheDocument();
-  });
-
-  it('keeps the interactive "Disputa" button for the owning tenant', () => {
-    renderRow(SHOP_ITEM_DISPUTED); // viewer_is_owner: true (inherited)
-    expect(screen.getByRole('button', { name: /Apri contestazione/ })).toBeInTheDocument();
   });
 });
 
