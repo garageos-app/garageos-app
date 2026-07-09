@@ -89,4 +89,25 @@ describe('VehicleHistoryExportButton', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/Veicolo non trovato/i),
     );
   });
+
+  it('clears the stale error banner when the dialog is closed and reopened', async () => {
+    const user = userEvent.setup();
+    mockApiBlob.mockRejectedValueOnce(new ApiError('vehicle.not_found', 404, 'not found'));
+
+    renderButton();
+    await user.click(screen.getByRole('button', { name: /Esporta storico PDF/i }));
+    await user.click(screen.getByRole('button', { name: /Genera PDF/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/Veicolo non trovato/i),
+    );
+
+    // Close the dialog manually (Escape) without retrying.
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    // Reopen — the stale error banner must be gone.
+    await user.click(screen.getByRole('button', { name: /Esporta storico PDF/i }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

@@ -56,7 +56,13 @@ export function VehicleHistoryExportButton({ vehicleId }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) mutation.reset();
+      }}
+    >
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <FileDown className="mr-2 h-4 w-4" />

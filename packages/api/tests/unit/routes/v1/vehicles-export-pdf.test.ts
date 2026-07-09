@@ -52,6 +52,7 @@ function interventionRow(overrides: Record<string, unknown> = {}) {
     ],
     interventionType: { nameIt: 'Tagliando' },
     tenant: { businessName: 'Officina X' },
+    tenantId: '11111111-1111-4111-8111-111111111111',
     ...overrides,
   };
 }
@@ -137,6 +138,7 @@ describe('GET /v1/vehicles/:id/export.pdf (unit)', () => {
     const dataArg = vi.mocked(renderVehicleHistoryPdf).mock.calls[0]![0];
     expect(dataArg.mode).toBe('grouped'); // show_names default true
     expect(dataArg.interventions[0]!.tenantName).toBe('Officina X');
+    expect(dataArg.interventions[0]!.tenantId).toBeDefined();
   });
 
   it('scope=own — restricts the query to the caller tenant (isolation)', async () => {

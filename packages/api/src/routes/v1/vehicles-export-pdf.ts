@@ -74,6 +74,7 @@ const vehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
             odometerKm: true,
             description: true,
             partsReplaced: true,
+            tenantId: true,
             checklistSelections: {
               select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
               orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
@@ -92,6 +93,7 @@ const vehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
             odometerKm: it.odometerKm,
             typeName: it.interventionType.nameIt,
             tenantName: it.tenant.businessName,
+            tenantId: it.tenantId,
             // BR-303/308: frozen snapshot labels, sorted by the shared serializer.
             checklistItems: serializeChecklistItems(it.checklistSelections).map((c) => c.label),
             description: it.description,

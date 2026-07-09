@@ -19,6 +19,10 @@ export interface VehicleHistoryInterventionData {
   odometerKm: number;
   typeName: string;
   tenantName: string;
+  // Stable grouping key for grouped mode — tenant.businessName is NOT unique,
+  // so two distinct officine could share a name. Optional: the customer 'inline'
+  // path doesn't group and doesn't set it. Falls back to tenantName when absent.
+  tenantId?: string;
 
   // BR-300/303/308: frozen checklist labels, already sorted by the caller.
   checklistItems: string[];
@@ -204,12 +208,13 @@ export async function renderVehicleHistoryPdf(data: VehicleHistoryPdfData): Prom
       // date-desc, so a tenant's first appearance is its most recent intervention →
       // group order == most-recent-activity order.
       const groups: { name: string; items: VehicleHistoryInterventionData[] }[] = [];
-      const indexByName = new Map<string, number>();
+      const indexByKey = new Map<string, number>();
       for (const it of data.interventions) {
-        let gi = indexByName.get(it.tenantName);
+        const key = it.tenantId ?? it.tenantName;
+        let gi = indexByKey.get(key);
         if (gi === undefined) {
           gi = groups.length;
-          indexByName.set(it.tenantName, gi);
+          indexByKey.set(key, gi);
           groups.push({ name: it.tenantName, items: [] });
         }
         groups[gi]!.items.push(it);
