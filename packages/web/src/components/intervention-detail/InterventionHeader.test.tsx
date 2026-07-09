@@ -172,19 +172,6 @@ describe('InterventionHeader', () => {
     expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
   });
 
-  it('cross-tenant viewer (viewer_is_owner=false) sees "Sola lettura" badge and NO action buttons', () => {
-    // super_admin role, active intervention — only the cross-tenant gate
-    // suppresses the buttons (BR-150/BR-153 read-only).
-    mockedUseHasRole.mockReturnValue(true);
-    renderHeader(makeIntervention({ viewer_is_owner: false }));
-
-    expect(screen.getByText('Sola lettura')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
-    // PDF export is owner-only (endpoint is tenant-scoped), so it's hidden too.
-    expect(screen.queryByTestId('export-pdf-stub')).not.toBeInTheDocument();
-  });
-
   it('shows the export PDF button even when the intervention is cancelled', () => {
     const cancelled = makeIntervention({
       status: 'cancelled',

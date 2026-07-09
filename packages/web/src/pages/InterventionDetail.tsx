@@ -95,9 +95,6 @@ export function InterventionDetail() {
   const detail = useInterventionDetail(id);
   // Preloaded on mount (not lazy) — detail page shows disputes inline,
   // unlike the timeline row which loads them only when the dialog opens.
-  // Both are owner-only surfaces (BR-151/BR-153) and are gated out of the
-  // render tree below when viewer_is_owner is false; the server also redacts
-  // revisions and tenant-scopes disputes, so a cross-tenant fetch is harmless.
   const disputes = useInterventionDisputes(id);
   const revisions = useInterventionRevisions(id);
 
@@ -148,19 +145,6 @@ export function InterventionDetail() {
 
   return (
     <div className="p-4 md:p-8 space-y-6">
-      {/* BR-150/BR-153: cross-tenant read-only notice. Shown when the
-          intervention belongs to another officina — note interne e identità
-          operatore sono nascoste, e le azioni di modifica non disponibili. */}
-      {!i.viewer_is_owner && (
-        <Alert>
-          <AlertDescription>
-            <strong>Sola lettura</strong> · questo intervento è stato registrato da{' '}
-            {i.tenant.business_name}. Note interne e dati operatore non sono visibili e non è
-            possibile modificarlo.
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Header: back link, heading (intervention type name), date/km,
           badges, action buttons (Modifica + Annulla are gated to
           status==='active' inside InterventionHeader — BR-066/BR-128). */}
@@ -186,7 +170,6 @@ export function InterventionDetail() {
           first-seen + explicit lock). Lesson: never re-derive this
           client-side (feedback_compute_composite_br_predicates_server_side.md). */}
       {i.status === 'active' &&
-        i.viewer_is_owner &&
         (i.wiki_window_open ? (
           <Alert>
             <AlertDescription>
@@ -272,22 +255,15 @@ export function InterventionDetail() {
         </Card>
       )}
 
-      {/* Contestazione thread + cronologia modifiche — owner-only surfaces
-          (BR-151/BR-153). Hidden in the cross-tenant read-only view: the
-          dispute response is an owner mutation and the revision audit trail
-          carries operator identity + internalNotes diffs. */}
-      {i.viewer_is_owner && (
-        <>
-          {/* DisputeThreadSection / RevisionHistorySection return null when empty */}
-          <DisputeThreadSection
-            interventionId={i.id}
-            vehicleId={i.vehicle.id}
-            interventionTitle={i.type.name_it}
-            disputes={disputeList}
-          />
-          <RevisionHistorySection revisions={revisionList} />
-        </>
-      )}
+      {/* Contestazione thread + cronologia modifiche.
+          DisputeThreadSection / RevisionHistorySection return null when empty. */}
+      <DisputeThreadSection
+        interventionId={i.id}
+        vehicleId={i.vehicle.id}
+        interventionTitle={i.type.name_it}
+        disputes={disputeList}
+      />
+      <RevisionHistorySection revisions={revisionList} />
 
       {/* Annullamento card — shown only when intervention is cancelled */}
       {i.status === 'cancelled' && (

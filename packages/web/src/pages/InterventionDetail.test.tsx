@@ -389,41 +389,4 @@ describe('InterventionDetail', () => {
 
     expect(screen.queryByText('Voci eseguite')).not.toBeInTheDocument();
   });
-
-  // Cross-tenant read-only view (viewer_is_owner=false): owner-only surfaces
-  // are gated out of the render tree even when their data is present.
-  // BR-150/BR-151/BR-153.
-  it('renders read-only view without owner surfaces when viewer_is_owner is false', async () => {
-    const crossTenant: InterventionDetailDto = {
-      ...BASE_DETAIL,
-      viewer_is_owner: false,
-      internal_notes: null,
-      created_by: null,
-    };
-    // Disputes + revisions data is deliberately present: the assertion is
-    // that the gating hides the sections regardless of fetched data.
-    setupApiFetch({
-      detail: crossTenant,
-      disputes: [DISPUTE_FIXTURE],
-      revisions: [REVISION_FIXTURE],
-    });
-
-    render(wrap({ children: <InterventionDetail /> }));
-
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /^Tagliando$/i })).toBeInTheDocument(),
-    );
-
-    // Read-only notice present (banner + header badge → at least one match)
-    expect(screen.getAllByText(/Sola lettura/).length).toBeGreaterThan(0);
-    // Owner-only mutation affordances absent
-    expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
-    // Wiki banner (owner-only) is gone
-    expect(screen.queryByText(/Modifiche libere/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Audit attivo/)).not.toBeInTheDocument();
-    // Owner-only sections not rendered despite data being present
-    expect(screen.queryByText(/Cronologia modifiche/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Contestazione/)).not.toBeInTheDocument();
-  });
 });
