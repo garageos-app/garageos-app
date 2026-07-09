@@ -92,7 +92,6 @@ export interface ShopTimelineItem {
    * just closed).
    */
   wiki_window_open: boolean;
-  // `id` keys the per-officina color in the timeline (and the filter).
   tenant: { id: string; business_name: string };
   /**
    * false when the caller's tenant did not create this intervention. The
@@ -101,19 +100,6 @@ export interface ShopTimelineItem {
    * hidden on other tenants' rows. Always false for the clienti pool.
    */
   viewer_is_owner: boolean;
-}
-
-// GET /v1/vehicles/:id/timeline/officine — distinct officine with ≥1 shop
-// intervention on the vehicle. Drives the timeline officina filter + the
-// stable per-officina color assignment.
-export interface TimelineOfficina {
-  tenant_id: string;
-  business_name: string;
-  viewer_is_owner: boolean;
-}
-
-export interface TimelineOfficineResponse {
-  data: TimelineOfficina[];
 }
 
 export interface PrivateTimelineItem {
