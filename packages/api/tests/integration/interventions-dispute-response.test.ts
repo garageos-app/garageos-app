@@ -324,12 +324,16 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
     expect(rows[0]!.action).toBe('respond');
   });
 
-  it('cross-tenant isolation: officina B cannot respond to officina A dispute (disputes RLS blocks, returns 409)', async () => {
-    // interventions_read is permissive (FOR SELECT USING (true)), so
-    // findUniqueOrThrow succeeds for tenant B. The isolation is enforced
-    // by intervention_disputes_access, which hides tenant A's disputes
-    // from tenant B's context. findMany returns [] → 409 no_active_dispute.
-    // The DB assertion confirms tenant A's dispute is untouched (still open).
+  it('cross-tenant isolation: officina B cannot respond to officina A dispute (own-only, RLS-as-404)', async () => {
+    // interventions_read is pool-gated as of migration 20260709120000
+    // (own-tenant only for an officina session), so the handler's
+    // findUniqueOrThrow({ where: { id } }) on tenant A's intervention throws
+    // P2025 for tenant B → 404 (RLS-as-404), before it ever reaches the
+    // dispute lookup. This matches the handler's documented intent and mirrors
+    // interventions-cancel.ts's cross-tenant 404. (Pre-migration the read was
+    // permissive and the 409 came incidentally from the tenant-gated disputes
+    // RLS returning [] open disputes.) The DB assertion confirms tenant A's
+    // dispute is untouched (still open).
     const a = await createTenantWithLocation('rls-a');
     const aSub = `office-a-${randomUUID().slice(0, 8)}`;
     const { userId: aUserId } = await createUser({
@@ -372,11 +376,9 @@ describe('POST /v1/interventions/:id/dispute-response (F-OFF-602)', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: { tenantResponse: VALID_RESPONSE },
     });
-    // Disputes are invisible to tenant B → findMany returns [] → 409.
-    // (interventions_read is permissive; isolation lives on disputes RLS.)
-    expect(res.statusCode).toBe(409);
-    const body = res.json() as { code: string };
-    expect(body.code).toBe('intervention.dispute.response.no_active_dispute');
+    // Tenant B cannot see tenant A's intervention (pool-gated interventions_read)
+    // → findUniqueOrThrow P2025 → 404 (RLS-as-404). Mirrors interventions-cancel.ts.
+    expect(res.statusCode).toBe(404);
 
     // Sanity: tenant A's dispute is still open (not mutated by tenant B).
     const { rows } = await pgAdmin.query<{ status: string }>(
