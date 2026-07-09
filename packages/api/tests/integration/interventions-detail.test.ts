@@ -213,18 +213,15 @@ describe('GET /v1/interventions/:id (officina)', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Scenario 2: cross-tenant read is permitted but redacted (BR-150/BR-153)
+  // Scenario 2: own-only — a foreign-tenant intervention is a 404
   //
-  // A different officina may open another tenant's intervention in read-only
-  // mode (shared maintenance logbook). Reserved fields are redacted:
-  //   - internal_notes → null  (BR-153 "note riservate di altri tenant")
-  //   - created_by     → null  (mechanic identity gated by BR-151)
-  //   - viewer_is_owner → false (drives read-only UI on the client)
-  // Public shop-record fields (description, parts, checklist_items, type,
-  // tenant, vehicle) stay visible — checklist items are part of the shared
-  // logbook, like parts_replaced, so BR-153 redaction does NOT apply to them.
+  // The shop intervention history is no longer readable cross-tenant (the
+  // shared logbook is now customer-facing only; BR-150/BR-153 cross-tenant
+  // read is deprecated as of 2026-07-09). A different officina must get the
+  // same 404 it would get for a truly non-existent id — indistinguishable
+  // from non-existence.
   // -----------------------------------------------------------------------
-  it('allows cross-tenant read but redacts internal_notes and created_by (BR-153); checklist_items stay visible', async () => {
+  it('returns 404 for an intervention owned by another tenant (own-only)', async () => {
     const { tenantId: tenantA, userId: userA } = await setupCaller('det-xA');
     const { interventionId, typeId } = await setupIntervention({
       tenantId: tenantA,
@@ -249,22 +246,8 @@ describe('GET /v1/interventions/:id (officina)', () => {
       headers: { authorization: `Bearer ${tokenB}`, 'x-forwarded-for': TEST_IP },
     });
 
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as Record<string, unknown>;
-
-    // Redacted reserved fields
-    expect(body.internal_notes).toBeNull();
-    expect(body.created_by).toBeNull();
-    expect(body.viewer_is_owner).toBe(false);
-
-    // Public shop-record fields remain visible
-    expect(body.id).toBe(interventionId);
-    expect(body).not.toHaveProperty('title');
-    expect(body.description).toBe('Cambio olio e filtri completi');
-    expect(body.parts_replaced).toHaveLength(1);
-    expect(body.checklist_items).toEqual([{ id: item.id, label: item.nameIt }]);
-    expect((body.tenant as Record<string, unknown>).id).toBe(tenantA);
-    expect(typeof (body.vehicle as Record<string, unknown>).plate).toBe('string');
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('intervention.not_found');
   });
 
   // -----------------------------------------------------------------------
