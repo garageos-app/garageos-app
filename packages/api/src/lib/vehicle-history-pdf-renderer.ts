@@ -26,6 +26,8 @@ export interface VehicleHistoryInterventionData {
   partsReplaced: { name: string; code: string | null; quantity: number; notes: string | null }[];
 }
 
+export type VehicleHistoryPdfMode = 'inline' | 'grouped' | 'anonymous';
+
 export interface VehicleHistoryPdfData {
   vehicle: {
     plate: string;
@@ -39,6 +41,11 @@ export interface VehicleHistoryPdfData {
   };
   generatedAt: string; // ISO yyyy-MM-dd
   interventions: VehicleHistoryInterventionData[];
+  // Officina labelling. Default 'inline' preserves the customer PDF (F-CLI-501):
+  // officina appended to each intervention row. 'grouped' (officina export, show
+  // names) buckets interventions under per-officina headers ordered by most-recent
+  // activity. 'anonymous' (officina export, hide names) omits every officina label.
+  mode?: VehicleHistoryPdfMode;
 }
 
 export async function renderVehicleHistoryPdf(data: VehicleHistoryPdfData): Promise<Buffer> {
@@ -108,6 +115,82 @@ export async function renderVehicleHistoryPdf(data: VehicleHistoryPdfData): Prom
   y -= LINE;
 
   // --- Count line / empty-state ---
+  const mode: VehicleHistoryPdfMode = data.mode ?? 'inline';
+
+  // Draw one intervention block. `showInlineOfficina` appends " · officina" to the
+  // type row (customer 'inline' mode); grouped/anonymous suppress the inline label.
+  const drawIntervention = (
+    it: VehicleHistoryInterventionData,
+    showInlineOfficina: boolean,
+  ): void => {
+    const hasDesc = it.description.trim() !== '';
+    const descLines = hasDesc ? wrapText(it.description, font, 10, contentWidth - 12) : [];
+    const checkLines = it.checklistItems.length;
+    const partLines = it.partsReplaced.length;
+    const blockLines =
+      2 +
+      (checkLines > 0 ? 1 + checkLines : 0) +
+      descLines.length +
+      (partLines > 0 ? 1 + partLines : 0);
+    const blockHeight = blockLines * (LINE - 2) + 16;
+    ensureSpace(blockHeight);
+
+    page.drawLine({
+      start: { x: MARGIN, y: y + 6 },
+      end: { x: A4_WIDTH_PT - MARGIN, y: y + 6 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+    page.drawText(`${formatDateIt(it.interventionDate)} ${DOT} ${formatKm(it.odometerKm)} km`, {
+      x: MARGIN,
+      y,
+      size: 11,
+      font: bold,
+    });
+    y -= LINE;
+
+    const typeRow = showInlineOfficina ? `${it.typeName} ${DOT} ${it.tenantName}` : it.typeName;
+    page.drawText(typeRow, { x: MARGIN, y, size: 10, font, color: rgb(0.2, 0.2, 0.2) });
+    y -= LINE;
+
+    if (checkLines > 0) {
+      page.drawText('Voci eseguite:', { x: MARGIN, y, size: 10, font: bold });
+      y -= LINE - 2;
+      for (const label of it.checklistItems) {
+        page.drawText(`${DOT} ${label}`, { x: MARGIN + 12, y, size: 10, font });
+        y -= LINE - 2;
+      }
+    }
+    for (const dl of descLines) {
+      page.drawText(dl, { x: MARGIN + 12, y, size: 10, font });
+      y -= LINE - 2;
+    }
+    if (partLines > 0) {
+      page.drawText('Ricambi:', { x: MARGIN, y, size: 10, font: bold });
+      y -= LINE - 2;
+      for (const p of it.partsReplaced) {
+        const code = p.code ? ` (cod. ${p.code})` : '';
+        const notes = p.notes ? ` - ${p.notes}` : '';
+        page.drawText(`${DOT} ${p.name}${code} ${TIMES}${p.quantity}${notes}`, {
+          x: MARGIN + 12,
+          y,
+          size: 10,
+          font,
+        });
+        y -= LINE - 2;
+      }
+    }
+    y -= 10; // spacing between interventions
+  };
+
+  // Per-officina section header (grouped mode only).
+  const drawGroupHeader = (officinaName: string): void => {
+    ensureSpace(LINE + 12);
+    y -= 4;
+    page.drawText(officinaName, { x: MARGIN, y, size: 12, font: bold });
+    y -= LINE + 2;
+  };
+
   const n = data.interventions.length;
   if (n === 0) {
     page.drawText('Nessun intervento officina registrato', { x: MARGIN, y, size: 11, font });
@@ -116,72 +199,28 @@ export async function renderVehicleHistoryPdf(data: VehicleHistoryPdfData): Prom
     page.drawText(`${n} ${label}`, { x: MARGIN, y, size: 11, font: bold });
     y -= LINE + 4;
 
-    // --- Interventions ---
-    for (const it of data.interventions) {
-      const hasDesc = it.description.trim() !== '';
-      const descLines = hasDesc ? wrapText(it.description, font, 10, contentWidth - 12) : [];
-      const checkLines = it.checklistItems.length;
-      const partLines = it.partsReplaced.length;
-      const blockLines =
-        2 + // date+km row, type+officina row
-        (checkLines > 0 ? 1 + checkLines : 0) + // "Voci eseguite:" + one line each
-        descLines.length +
-        (partLines > 0 ? 1 + partLines : 0);
-      const blockHeight = blockLines * (LINE - 2) + 16;
-      ensureSpace(blockHeight);
-
-      page.drawLine({
-        start: { x: MARGIN, y: y + 6 },
-        end: { x: A4_WIDTH_PT - MARGIN, y: y + 6 },
-        thickness: 0.5,
-        color: rgb(0.85, 0.85, 0.85),
-      });
-      page.drawText(`${formatDateIt(it.interventionDate)} ${DOT} ${formatKm(it.odometerKm)} km`, {
-        x: MARGIN,
-        y,
-        size: 11,
-        font: bold,
-      });
-      y -= LINE;
-
-      const officina = it.tenantName;
-      page.drawText(`${it.typeName} ${DOT} ${officina}`, {
-        x: MARGIN,
-        y,
-        size: 10,
-        font,
-        color: rgb(0.2, 0.2, 0.2),
-      });
-      y -= LINE;
-
-      if (checkLines > 0) {
-        page.drawText('Voci eseguite:', { x: MARGIN, y, size: 10, font: bold });
-        y -= LINE - 2;
-        for (const label of it.checklistItems) {
-          page.drawText(`${DOT} ${label}`, { x: MARGIN + 12, y, size: 10, font });
-          y -= LINE - 2;
+    if (mode === 'grouped') {
+      // Bucket by officina preserving first-seen order. Interventions arrive sorted
+      // date-desc, so a tenant's first appearance is its most recent intervention →
+      // group order == most-recent-activity order.
+      const groups: { name: string; items: VehicleHistoryInterventionData[] }[] = [];
+      const indexByName = new Map<string, number>();
+      for (const it of data.interventions) {
+        let gi = indexByName.get(it.tenantName);
+        if (gi === undefined) {
+          gi = groups.length;
+          indexByName.set(it.tenantName, gi);
+          groups.push({ name: it.tenantName, items: [] });
         }
+        groups[gi]!.items.push(it);
       }
-      for (const dl of descLines) {
-        page.drawText(dl, { x: MARGIN + 12, y, size: 10, font });
-        y -= LINE - 2;
+      for (const g of groups) {
+        drawGroupHeader(g.name);
+        for (const it of g.items) drawIntervention(it, false);
       }
-      if (partLines > 0) {
-        page.drawText('Ricambi:', { x: MARGIN, y, size: 10, font: bold });
-        y -= LINE - 2;
-        for (const p of it.partsReplaced) {
-          const code = p.code ? ` (cod. ${p.code})` : '';
-          const notes = p.notes ? ` - ${p.notes}` : '';
-          page.drawText(`${DOT} ${p.name}${code} ${TIMES}${p.quantity}${notes}`, {
-            x: MARGIN + 12,
-            y,
-            size: 10,
-            font,
-          });
-          y -= LINE - 2;
-        }
-      }
-      y -= 10; // spacing between interventions
+    } else {
+      // 'inline' (customer default) keeps the per-row officina label; 'anonymous' drops it.
+      for (const it of data.interventions) drawIntervention(it, mode === 'inline');
     }
   }
 
