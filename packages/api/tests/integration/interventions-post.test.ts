@@ -498,6 +498,85 @@ describe('POST /v1/vehicles/:id/interventions (integration)', () => {
     expect(res.statusCode).toBe(201);
   });
 
+  it('BR-068/BR-083: officina B sees officina A cross-tenant km (regression: pool-gated interventions_read)', async () => {
+    // Regression coverage for the pool-gated `interventions_read` RLS
+    // (migration 20260709120000). The km-non-decreasing guard must read the
+    // max odometer across ALL workshops on the vehicle: a car serviced by
+    // workshop A at 120_000 km must not have its km silently rewound when
+    // workshop B registers a lower-km intervention. The guard aggregate now
+    // runs under an admin (cross-tenant) context — without it, B's session
+    // would only see its own (empty) history and accept 80_000 with no
+    // warning, silently masking cross-shop odometer tampering.
+    const { tenantId: tenantAId } = await createTenantWithLocation('xtenant-a');
+    const { userId: userAId } = await createUser({
+      tenantId: tenantAId,
+      cognitoSub: '11111111-1111-4111-8111-000000000068',
+    });
+    const { customerId } = await createCustomer({});
+    // Vehicle is created by tenant A; vehicles_read is permissive (USING true)
+    // so tenant B can still resolve it to attach its own intervention.
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantAId });
+    await createOwnership({ vehicleId, customerId });
+
+    // Tenant A's ACTIVE intervention at 120_000 km (direct DB insert, bypasses
+    // the route so no cross-tenant coupling in setup).
+    await pgAdmin.query(
+      `INSERT INTO interventions
+         (id, tenant_id, user_id, vehicle_id, intervention_type_id,
+          intervention_date, odometer_km, description, status, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4,
+         '2026-02-01'::date, 120000, 'Officina A intervention at 120000',
+         'active'::"InterventionStatus", NOW(), NOW())`,
+      [tenantAId, userAId, vehicleId, taglianodoTypeId],
+    );
+
+    // Tenant B — a different workshop, its own user/token.
+    const { tenantId: tenantBId } = await createTenantWithLocation('xtenant-b');
+    const cognitoSubB = '22222222-2222-4222-8222-000000000068';
+    await createUser({ tenantId: tenantBId, cognitoSub: cognitoSubB });
+    const tokenB = await signTestToken({
+      pool: 'officine',
+      sub: cognitoSubB,
+      tenantId: tenantBId,
+      role: 'mechanic',
+    });
+
+    // B posts at 80_000 (< A's 120_000) WITHOUT force → 409: proves B sees
+    // A's cross-tenant km via the admin aggregate.
+    const resWarn = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${vehicleId}/interventions`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: buildBody(taglianodoTypeId, [itemAId, itemBId], { odometerKm: 80000 }),
+    });
+    expect(resWarn.statusCode).toBe(409);
+    expect(resWarn.json()).toMatchObject({
+      code: 'intervention.creation.odometer_decrease_warning',
+    });
+
+    // Same post WITH forceKmDecrease=true → 201, kmAnomaly recorded.
+    const resForce = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${vehicleId}/interventions`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: buildBody(taglianodoTypeId, [itemAId, itemBId], {
+        odometerKm: 80000,
+        forceKmDecrease: true,
+      }),
+    });
+    expect(resForce.statusCode).toBe(201);
+    const json = resForce.json() as { intervention: { id: string; kmAnomaly: boolean } };
+    expect(json.intervention.kmAnomaly).toBe(true);
+
+    const { rows } = await pgAdmin.query<{ km_anomaly: boolean; tenant_id: string }>(
+      `SELECT km_anomaly, tenant_id FROM interventions WHERE id = $1`,
+      [json.intervention.id],
+    );
+    // The created row belongs to tenant B (own write) but was gated by A's km.
+    expect(rows[0]!.km_anomaly).toBe(true);
+    expect(rows[0]!.tenant_id).toBe(tenantBId);
+  });
+
   describe('BR-157 — creation notification dispatch', () => {
     async function setupCreationScenario(
       opts: { customerPrefs?: object; withOwnership?: boolean } = {},

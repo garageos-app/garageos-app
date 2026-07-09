@@ -225,11 +225,17 @@ function buildFakePrisma(overrides: Partial<FakePrisma> = {}): FakePrisma {
 interface AppDeps {
   verifier?: JwtVerifier;
   prisma?: FakePrisma;
+  // The handler now calls app.withContext TWICE per create: first an admin
+  // (cross-tenant) read for the BR-068/BR-083 km aggregate, then the tenant
+  // write tx. The default spy is context-agnostic (runs `fn` against the same
+  // fake prisma regardless of ctx) so both invocations resolve — tests that
+  // need to assert the ctx argument pass their own spy.
+  withContext?: ReturnType<typeof vi.fn>;
 }
 
 async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   const prisma = deps.prisma ?? buildFakePrisma();
-  const fakeWithContext = vi.fn(async (_ctx, fn) => fn(prisma));
+  const fakeWithContext = deps.withContext ?? vi.fn(async (_ctx, fn) => fn(prisma));
   const verifier: JwtVerifier = deps.verifier ?? {
     verify: async (): Promise<VerifyResult> => ({
       pool: 'officine',
@@ -518,6 +524,43 @@ describe('POST /v1/vehicles/:id/interventions — BR-068 km validation', () => {
         data: expect.objectContaining({ kmAnomaly: false }),
       }),
     );
+  });
+
+  it('BR-083: runs the km aggregate in an admin (cross-tenant) context before the tenant write tx', async () => {
+    // Regression guard for the pool-gated interventions_read RLS
+    // (migration 20260709120000): the km-non-decreasing guard must read the
+    // max odometer across ALL workshops, so the aggregate has to run under an
+    // admin (cross-tenant) context — not the caller's tenant context, which
+    // RLS would now scope to own-tenant rows and defeat BR-083. The aggregate
+    // is threaded via mockImplementation so we can also prove the where clause
+    // carries the vehicleId and NO tenantId filter (cross-tenant by design).
+    const seenAggregateWhere: unknown[] = [];
+    prisma.intervention.aggregate.mockImplementation(async (args: { where: unknown }) => {
+      seenAggregateWhere.push(args.where);
+      return { _max: { odometerKm: 120000 } };
+    });
+    const spy = vi.fn(async (_ctx: unknown, fn: (tx: FakePrisma) => unknown) => fn(prisma));
+    app = await buildApp({ prisma, withContext: spy });
+
+    // km below the cross-tenant max, without force → 409 proves the admin read
+    // surfaced the other workshop's higher km.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/vehicles/${VEHICLE_ID}/interventions`,
+      headers: { authorization: 'Bearer x' },
+      payload: { ...validBody, odometerKm: 80000 },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      code: 'intervention.creation.odometer_decrease_warning',
+    });
+
+    // First withContext call = admin (cross-tenant) km read; second = tenant tx.
+    expect(spy.mock.calls[0]?.[0]).toEqual({ role: 'admin' });
+    expect(spy.mock.calls[1]?.[0]).toEqual({ tenantId: TENANT_ID });
+    // The aggregate must not scope by tenant (BR-083 cross-tenant).
+    expect(seenAggregateWhere[0]).toMatchObject({ vehicleId: VEHICLE_ID });
+    expect(seenAggregateWhere[0]).not.toHaveProperty('tenantId');
   });
 
   it('accepts km equal to the previous max (BR-068 is non-decreasing, not strictly increasing)', async () => {
