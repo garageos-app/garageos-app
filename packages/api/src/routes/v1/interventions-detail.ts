@@ -13,19 +13,24 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 
 // GET /v1/interventions/:id — officina-pool detail endpoint (F-OFF-301).
 //
-// Visibility (BR-150 / BR-153): the shop intervention history is readable
-// cross-tenant — any officina can open another tenant's intervention in
-// read-only mode (shared maintenance logbook). RLS `interventions_read` is
-// permissive cross-tenant since migration 0003, so the lookup is a plain
-// findFirst({id}) + null check → 404 only when the row truly does not exist.
+// Visibility: the endpoint is scoped to the calling tenant. The lookup is
+// findFirst({ id, tenantId }) — a foreign-tenant intervention is
+// indistinguishable from a non-existent one and returns 404
+// (intervention.not_found). RLS `interventions_read` is permissive
+// cross-tenant (see migration 0003), so this app-layer `{ id, tenantId }`
+// filter is the real security frontier here, not the RLS policy — never
+// rely on RLS alone.
 //
-// Reserved fields are redacted when the requesting tenant is NOT the owner:
-//   - internal_notes → null  (BR-153 "note riservate di altri tenant")
-//   - created_by     → null  (mechanic identity gated by BR-151; the
-//                             timeline never exposes it cross-tenant either)
-// `viewer_is_owner` is surfaced so the web client can hide edit/dispute
-// affordances (those mutations remain owner-only) and show a read-only
-// banner. This aligns §2.12 of APPENDICE_A with BR-153.
+// No cross-tenant redaction is needed because the caller is always the
+// owner: internal_notes and created_by are always populated from the row.
+// `viewer_is_owner` is kept in the response, hardcoded to `true`, purely for
+// shape compatibility with the currently-deployed web app that still reads
+// this field; it is dropped in a later PR once the client no longer needs it.
+//
+// NOTE (2026-07-09): BR-150 / BR-153 (shared cross-tenant logbook with
+// redaction) are being deprecated — the shared logbook is now
+// customer-facing only, not shop-facing. This endpoint no longer implements
+// them.
 //
 // wiki_window_open is server-computed (BR-062 composite predicate with
 // time component — see feedback_compute_composite_br_predicates_server_side.md).
@@ -79,17 +84,13 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
 
       return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
         const row = await tx.intervention.findFirst({
-          where: { id },
+          where: { id, tenantId },
           select: interventionDetailSelect,
         });
 
         if (!row) {
           throw businessError('intervention.not_found', 404, 'Intervento non trovato.');
         }
-
-        // BR-150 / BR-153: an officina that did not create the intervention
-        // gets a read-only, redacted view. Drives the redaction below.
-        const isOwner = row.tenantId === tenantId;
 
         return {
           id: row.id,
@@ -107,14 +108,16 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
           cancelled_at: row.cancelledAt?.toISOString() ?? null,
           cancelled_reason: row.cancelledReason,
           description: row.description,
-          // BR-153: reserved notes are hidden from non-owning tenants.
-          internal_notes: isOwner ? row.internalNotes : null,
-          viewer_is_owner: isOwner,
+          internal_notes: row.internalNotes,
+          // Hardcoded true: the lookup above already scopes to the calling
+          // tenant, so the caller is always the owner. Kept for response
+          // shape compatibility with the deployed web app (removed in a
+          // later PR).
+          viewer_is_owner: true,
           parts_replaced: normalizePartsReplaced(row.partsReplaced),
-          // BR-308 / BR-303: checklist items are part of the shared
-          // maintenance logbook (like parts_replaced) — visible cross-tenant,
-          // NOT gated by isOwner. Read from the frozen snapshot, not the
-          // live catalog (see comment on interventionDetailSelect above).
+          // BR-308 / BR-303: checklist items are read from the frozen
+          // snapshot, not the live catalog (see comment on
+          // interventionDetailSelect above).
           checklist_items: serializeChecklistItems(row.checklistSelections),
           type: {
             id: row.interventionType.id,
@@ -129,16 +132,13 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
             make: row.vehicle.make,
             model: row.vehicle.model,
           },
-          // BR-151: mechanic identity is gated by the tenant relation, so
-          // non-owning tenants never see who created the record.
-          created_by:
-            isOwner && row.user
-              ? {
-                  id: row.user.id,
-                  first_name: row.user.firstName,
-                  last_name: row.user.lastName,
-                }
-              : null,
+          created_by: row.user
+            ? {
+                id: row.user.id,
+                first_name: row.user.firstName,
+                last_name: row.user.lastName,
+              }
+            : null,
         };
       });
     },

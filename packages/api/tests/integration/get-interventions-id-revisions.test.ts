@@ -157,7 +157,12 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
     expect(body.meta.has_more).toBe(false);
   });
 
-  it('200 officina cross-tenant: REDACTED — internalNotes stripped, operator identity hidden (BR-153/BR-151)', async () => {
+  it('404 officina cross-tenant: a foreign-tenant intervention is indistinguishable from non-existent (own-only)', async () => {
+    // Own-only semantics (2026-07-09): the officina branch scopes the
+    // existence check to findFirst({ id, tenantId }). A revision that
+    // belongs to tenantB is invisible to tenantA — no cross-tenant read,
+    // no redacted 200 — it returns 404 exactly like a bogus id would.
+    // (BR-150/BR-153 cross-tenant audit-chain read + redaction deprecated.)
     const { tenantId: tenantA } = await createTenantWithLocation('rev-off-A');
     const { tenantId: tenantB } = await createTenantWithLocation('rev-off-B');
     const subA = `office-${randomUUID().slice(0, 8)}`;
@@ -188,7 +193,7 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
         title: { from: 'A', to: 'B' },
         internalNotes: { from: 'priv old', to: 'priv new' },
       },
-      reason: 'cross-tenant visible',
+      reason: 'cross-tenant not visible',
     });
 
     const tokenA = await signTestToken({
@@ -203,26 +208,12 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       url: `/v1/interventions/${interventionId}/revisions`,
       headers: { authorization: `Bearer ${tokenA}` },
     });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as {
-      data: Array<{
-        reason: string | null;
-        changes: Record<string, unknown>;
-        user?: unknown;
-        tenant?: { business_name: string };
-      }>;
-    };
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]!.reason).toBe('cross-tenant visible');
-    // Public field survives; reserved internalNotes is stripped (BR-153).
-    expect(body.data[0]!.changes).toEqual({ title: { from: 'A', to: 'B' } });
-    expect('internalNotes' in body.data[0]!.changes).toBe(false);
-    // Operator identity hidden cross-tenant (BR-151): tenant shape, no user.
-    expect(body.data[0]!.user).toBeUndefined();
-    expect(body.data[0]!.tenant?.business_name).toBeTruthy();
+    expect(res.statusCode).toBe(404);
+    const body = res.json() as { code?: string; type?: string };
+    expect(body.code ?? body.type).toContain('intervention.not_found');
   });
 
-  it('200 officina cross-tenant: revision with ONLY internalNotes is dropped (BR-153)', async () => {
+  it('404 officina cross-tenant: foreign intervention with only internalNotes revisions still 404 (own-only)', async () => {
     const { tenantId: tenantA } = await createTenantWithLocation('rev-offx-A');
     const { tenantId: tenantB } = await createTenantWithLocation('rev-offx-B');
     const subA = `office-${randomUUID().slice(0, 8)}`;
@@ -269,11 +260,11 @@ describe('GET /v1/interventions/:id/revisions (integration)', () => {
       url: `/v1/interventions/${interventionId}/revisions`,
       headers: { authorization: `Bearer ${tokenA}` },
     });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as { data: Array<{ reason: string | null }> };
-    // The internalNotes-only revision is dropped; only the public one remains.
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]!.reason).toBe('title-only');
+    // Own-only: the whole intervention is invisible to tenantA — 404 before
+    // any revision filtering happens.
+    expect(res.statusCode).toBe(404);
+    const body = res.json() as { code?: string; type?: string };
+    expect(body.code ?? body.type).toContain('intervention.not_found');
   });
 
   it('200 officina OWNER: full audit trail with user identity (not redacted)', async () => {

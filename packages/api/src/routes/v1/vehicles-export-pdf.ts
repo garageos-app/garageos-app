@@ -14,14 +14,18 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 
 // GET /v1/vehicles/:id/export.pdf — officina full vehicle-history PDF (v1.1).
 // APPENDICE_A reserved this path for the workshop surface; the customer variant
-// lives at /me/vehicles/:id/export.pdf. Renders in-Lambda and streams the bytes
-// directly — no S3 persist, no presigned URL.
+// lives at /me/vehicles/:id/export.pdf (stays cross-officina — do not touch it).
+// Renders in-Lambda and streams the bytes directly — no S3 persist, no presigned URL.
 //
-// Auth/scoping mirror vehicles-timeline.ts: officine have cross-tenant SELECT on
-// interventions (BR-150/BR-153 shared logbook), so access is gated only by vehicle
-// existence (404 vehicle.not_found). Two query controls:
-//   scope=all|own   — all officine (cross-tenant) vs only the caller tenant.
-//   show_names      — grouped-by-officina headers (true) vs anonymous flat list (false).
+// BR-150/BR-153 (the shared cross-tenant logbook) is deprecated for the officina
+// surface as of 2026-07-09: the shared logbook is now customer-facing only. This
+// route is therefore ALWAYS scoped to the caller's own tenant, regardless of the
+// `scope` query value — access is gated by vehicle existence (404 vehicle.not_found)
+// plus the app-layer tenantId filter below (the security frontier, never RLS alone).
+//   scope        — retained for wire compatibility with the deployed web; no longer
+//                  widens the query (removed entirely in a later PR).
+//   show_names   — grouped-by-officina headers (true) vs anonymous flat list (false),
+//                  now rendered over own-tenant data only.
 // Only active+disputed are included (cancelled excluded, BR-150). internal_notes and
 // owner PII are never selected — customer-deliverable document, neutral header.
 
@@ -60,13 +64,13 @@ const vehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
           throw businessError('vehicle.not_found', 404, 'Veicolo non trovato.');
         }
 
-        // scope=own adds the tenantId filter (the security frontier, never RLS
-        // alone). scope=all leaves the cross-tenant read (BR-150).
+        // Always scoped to the caller's own tenant (BR-150/BR-153 deprecated
+        // 2026-07-09) — `scope` no longer widens this query, see header comment.
         const interventions = await tx.intervention.findMany({
           where: {
             vehicleId,
             status: { in: ['active', 'disputed'] },
-            ...(scope === 'own' ? { tenantId } : {}),
+            tenantId,
           },
           orderBy: [{ interventionDate: 'desc' }, { id: 'desc' }],
           select: {

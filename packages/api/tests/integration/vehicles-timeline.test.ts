@@ -16,9 +16,11 @@ import {
 import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
-// GET /v1/vehicles/:id/timeline — APPENDICE_A §2.5 visibility:
-// officine cross-tenant shop only, customer-owner shop + own private,
-// non-owner 403, past-owner privates always hidden.
+// GET /v1/vehicles/:id/timeline — APPENDICE_A §2.5 visibility, as of
+// 2026-07-09: officine shop-only, scoped to its OWN tenant (BR-150/BR-153
+// cross-tenant officina visibility deprecated); customer-owner shop + own
+// private ACROSS ALL officine (unchanged, product value proposition);
+// non-owner 403; past-owner privates always hidden.
 
 describe('GET /v1/vehicles/:id/timeline (integration)', () => {
   let app: FastifyInstance;
@@ -36,7 +38,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     await ensureSystemInterventionType('MECCANICO');
   });
 
-  it('returns shop_interventions cross-tenant for officine pool (BR-150)', async () => {
+  it('officina sees only its OWN shop_interventions (BR-150/BR-153 cross-tenant deprecated)', async () => {
     const { tenantId: tenantA } = await createTenantWithLocation('tl-cross-A');
     const { tenantId: tenantB } = await createTenantWithLocation('tl-cross-B');
 
@@ -74,12 +76,12 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       odometerKm: 42000,
     });
 
-    // Tenant A token reads timeline → must see BOTH tenant A and B
-    // shop_interventions (BR-150 cross-tenant shop history).
+    // Tenant B token reads timeline → must see ONLY tenant B's own
+    // shop_interventions (own-tenant scoping, none of tenant A's rows).
     const token = await signTestToken({
       pool: 'officine',
-      sub: subA,
-      tenantId: tenantA,
+      sub: subB,
+      tenantId: tenantB,
       role: 'mechanic',
     });
 
@@ -100,26 +102,80 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       }>;
       meta: { shop_count: number; private_count: number };
     };
-    expect(body.meta.shop_count).toBe(2);
+    expect(body.meta.shop_count).toBe(1);
     expect(body.meta.private_count).toBe(0);
     expect(body.data.every((d) => d.kind === 'shop_intervention')).toBe(true);
     const oks = body.data.map((d) => d.odometer_km);
-    expect(oks).toContain(45000);
-    expect(oks).toContain(42000);
-    const rowA = body.data.find((d) => d.odometer_km === 45000)!; // tenant A
-    const rowB = body.data.find((d) => d.odometer_km === 42000)!; // tenant B
-    // BR-150/BR-153: caller is tenant A → own row owner, tenant B row read-only.
-    expect(rowA.viewer_is_owner).toBe(true);
-    expect(rowB.viewer_is_owner).toBe(false);
+    expect(oks).toEqual([42000]); // tenant B's own row only, none of A's
     const row = body.data[0]!;
     expect(row.kind).toBe('shop_intervention');
+    // Own-tenant rows are always viewer_is_owner=true (field kept for shape
+    // compat with the deployed web client; removal deferred to PR-2).
+    expect(row.viewer_is_owner).toBe(true);
     // Interventions created in this test are < 48h old, never seen,
     // and have no wikiLockedAt → wiki window must be open.
     expect(row.wiki_window_open).toBe(true);
     expect(row.type!.id).toBe(tagliando.id);
   });
 
-  it('GET /timeline/officine returns distinct officine with viewer_is_owner', async () => {
+  it('REGRESSION: cliente still sees shop interventions across ALL officine (cross-officina unchanged)', async () => {
+    const { tenantId: tenantA } = await createTenantWithLocation('tl-cli-cross-A');
+    const { tenantId: tenantB } = await createTenantWithLocation('tl-cli-cross-B');
+
+    const subA = '11111111-2222-4111-8111-aaaaaaaaaaaa';
+    const subB = '22222222-3333-4222-8222-bbbbbbbbbbbb';
+    const { userId: userA } = await createUser({ tenantId: tenantA, cognitoSub: subA });
+    const { userId: userB } = await createUser({ tenantId: tenantB, cognitoSub: subB });
+
+    const customerSub = '99999999-1111-4999-8999-eeeeeeeeeeee';
+    const { customerId } = await createCustomer({ cognitoSub: customerSub });
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
+    await createOwnership({ vehicleId, customerId });
+
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
+
+    await createIntervention({
+      tenantId: tenantA,
+      userId: userA,
+      vehicleId,
+      interventionTypeId: tagliando.id,
+      interventionDate: '2026-04-15',
+      odometerKm: 45000,
+    });
+    await createIntervention({
+      tenantId: tenantB,
+      userId: userB,
+      vehicleId,
+      interventionTypeId: tagliando.id,
+      interventionDate: '2026-03-10',
+      odometerKm: 42000,
+    });
+
+    // Active-owner customer reads timeline → must see BOTH tenant A and B
+    // shop_interventions (cross-officina history is the customer-facing
+    // product value proposition; unaffected by the officina-side change).
+    const token = await signTestToken({ pool: 'clienti', sub: customerSub, customerId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${vehicleId}/timeline`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{ kind: string; odometer_km: number; viewer_is_owner?: boolean }>;
+      meta: { shop_count: number; private_count: number };
+    };
+    expect(body.meta.shop_count).toBe(2);
+    expect(body.meta.private_count).toBe(0);
+    const oks = body.data.map((d) => d.odometer_km);
+    expect(oks).toContain(45000);
+    expect(oks).toContain(42000);
+    // Clienti has no owning tenant — viewer_is_owner is always false.
+    expect(body.data.every((d) => d.viewer_is_owner === false)).toBe(true);
+  });
+
+  it('GET /timeline/officine returns only the caller own officina (own-only, 2026-07-09)', async () => {
     const { tenantId: tenantA } = await createTenantWithLocation('tl-off-A');
     const { tenantId: tenantB } = await createTenantWithLocation('tl-off-B');
     const subA = '31111111-1111-4111-8111-aaaaaaaaaaaa';
@@ -171,14 +227,14 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const body = res.json() as {
       data: Array<{ tenant_id: string; business_name: string; viewer_is_owner: boolean }>;
     };
-    // DISTINCT on tenantId → A appears once despite 2 interventions.
-    expect(body.data).toHaveLength(2);
-    const byId = new Map(body.data.map((o) => [o.tenant_id, o]));
-    expect(byId.get(tenantA)!.viewer_is_owner).toBe(true);
-    expect(byId.get(tenantB)!.viewer_is_owner).toBe(false);
+    // Own-only: only tenant A (the caller) is listed, tenant B is filtered
+    // out app-layer (`tenantId` added to the findMany where clause).
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.tenant_id).toBe(tenantA);
+    expect(body.data[0]!.viewer_is_owner).toBe(true);
   });
 
-  it('filters shop interventions by tenant_ids', async () => {
+  it('officina: tenant_ids query param is accepted but IGNORED — own-tenant scoping always wins', async () => {
     const { tenantId: tenantA } = await createTenantWithLocation('tl-filt-A');
     const { tenantId: tenantB } = await createTenantWithLocation('tl-filt-B');
     const subA = '41111111-1111-4111-8111-aaaaaaaaaaaa';
@@ -218,6 +274,52 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
       tenantId: tenantA,
       role: 'mechanic',
     });
+    // Caller is tenant A but asks to filter to tenant B — tenant_ids is
+    // ignored for officina, so the result must still be tenant A's own row.
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${vehicleId}/timeline?tenant_ids=${tenantB}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{ odometer_km: number }>;
+      meta: { shop_count: number };
+    };
+    expect(body.meta.shop_count).toBe(1);
+    expect(body.data.map((d) => d.odometer_km)).toEqual([45000]);
+  });
+
+  it('REGRESSION: cliente tenant_ids filter still works unchanged (cross-officina "in" filter)', async () => {
+    const { tenantId: tenantA } = await createTenantWithLocation('tl-cli-filt-A');
+    const { tenantId: tenantB } = await createTenantWithLocation('tl-cli-filt-B');
+    const subA = '41111111-2222-4111-8111-aaaaaaaaaaaa';
+    const subB = '42222222-3333-4222-8222-bbbbbbbbbbbb';
+    const { userId: userA } = await createUser({ tenantId: tenantA, cognitoSub: subA });
+    const { userId: userB } = await createUser({ tenantId: tenantB, cognitoSub: subB });
+    const customerSub = '98888888-8888-4888-8888-cccccccccccc';
+    const { customerId } = await createCustomer({ cognitoSub: customerSub });
+    const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
+    await createOwnership({ vehicleId, customerId });
+    const tagliando = await ensureSystemInterventionType('MECCANICO');
+    await createIntervention({
+      tenantId: tenantA,
+      userId: userA,
+      vehicleId,
+      interventionTypeId: tagliando.id,
+      interventionDate: '2026-04-15',
+      odometerKm: 45000,
+    });
+    await createIntervention({
+      tenantId: tenantB,
+      userId: userB,
+      vehicleId,
+      interventionTypeId: tagliando.id,
+      interventionDate: '2026-03-10',
+      odometerKm: 42000,
+    });
+
+    const token = await signTestToken({ pool: 'clienti', sub: customerSub, customerId });
     const res = await app.inject({
       method: 'GET',
       url: `/v1/vehicles/${vehicleId}/timeline?tenant_ids=${tenantB}`,

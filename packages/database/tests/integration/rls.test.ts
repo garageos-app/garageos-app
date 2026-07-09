@@ -81,11 +81,15 @@ describe('RLS — tenant isolation (smoke)', () => {
 });
 
 // Migration 0003 splits SELECT/WRITE policies on interventions,
-// tenants, locations, intervention_types so cross-tenant SELECT
-// (BR-150 / BR-153 timeline view) is permissive while WRITE stays
-// tenant/owner-scoped. These tests pin down the new contract: any
-// future regression that re-tightens SELECT or relaxes WRITE will
-// surface here.
+// tenants, locations, intervention_types so WRITE stays
+// tenant/owner-scoped. Migration 20260709120000 (officina own-only)
+// then pool-gates the interventions SELECT: an officina session sees
+// only its own tenant's rows, while the cliente pool
+// (current_tenant_id() IS NULL) and admin stay permissive so the
+// cross-officina customer timeline (BR-150/BR-153, now cliente-only)
+// keeps working. These tests pin down the current contract: any
+// regression that re-shares interventions across officine, or relaxes
+// WRITE, will surface here.
 describe('RLS — interventions split (post-migration 0003)', () => {
   beforeEach(async () => {
     await resetDb();
@@ -106,6 +110,7 @@ describe('RLS — interventions split (post-migration 0003)', () => {
     vehicleId: string;
     interventionId: string;
     interventionTypeId: string;
+    selectionId: string;
   }> {
     const { rows: tA } = await pgAdmin.query<{ id: string }>(
       `INSERT INTO tenants (id, business_name, vat_number, email, created_at, updated_at)
@@ -179,6 +184,21 @@ describe('RLS — interventions split (post-migration 0003)', () => {
     );
     const interventionId = iv[0]!.id;
 
+    // Itemized body of the intervention (sibling of parts_replaced). Free-text
+    // selection: checklist_item_id NULL (no catalog dependency). tenant_id is
+    // NOT NULL and carries the owner tenant, which is what selections_read
+    // now pool-gates on.
+    const { rows: sel } = await pgAdmin.query<{ id: string }>(
+      `INSERT INTO intervention_checklist_selections
+         (id, intervention_id, tenant_id, checklist_item_id,
+          label_snapshot, sort_order_snapshot, created_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, NULL, 'Controllo freni', 0, NOW())
+       RETURNING id`,
+      [interventionId, tenantAId],
+    );
+    const selectionId = sel[0]!.id;
+
     return {
       tenantAId,
       tenantBId,
@@ -187,23 +207,82 @@ describe('RLS — interventions split (post-migration 0003)', () => {
       vehicleId,
       interventionId,
       interventionTypeId,
+      selectionId,
     };
   }
 
-  it('cross-tenant SELECT on interventions is permissive (BR-150/BR-153)', async () => {
+  it('cross-tenant SELECT on interventions is blocked for officina (own-only)', async () => {
+    // BR-150/BR-153 "libretto condiviso tra officine" deprecated 2026-07-09:
+    // the officina surface now shows only its OWN interventions. Pool-gated
+    // migration 20260709120000 tightens interventions_read so a session with
+    // a non-null current_tenant_id() (officina B) sees only its own tenant's
+    // rows. Cross-officina sharing survives only toward the CLIENTE (see the
+    // customer-pool test below) and ADMIN.
     const { tenantBId, interventionId } = await seedInterventionForTenantA();
 
     const seenByB = await withContext({ tenantId: tenantBId }, (tx) => tx.intervention.findMany());
-    expect(seenByB.map((i) => i.id)).toContain(interventionId);
+    expect(seenByB.map((i) => i.id)).not.toContain(interventionId);
+  });
+
+  it('officina A sees its own intervention (own-only positive path)', async () => {
+    // The complement of the own-only block: tenant A (owner) still reads its
+    // own intervention through the pool-gated interventions_read policy.
+    const { tenantAId, interventionId } = await seedInterventionForTenantA();
+
+    const seenByA = await withContext({ tenantId: tenantAId }, (tx) => tx.intervention.findMany());
+    expect(seenByA.map((i) => i.id)).toContain(interventionId);
   });
 
   it('customer-pool SELECT on intervention parent works without admin (dispute path)', async () => {
+    // LOAD-BEARING cliente-preservation check: a customer session runs
+    // withContext({ customerId }) with NO tenantId, so current_tenant_id()
+    // IS NULL and the pool-gated interventions_read policy takes its
+    // permissive branch. The cross-officina customer timeline (product core
+    // value prop) must keep working after the officina own-only tightening.
     const { customerId, interventionId } = await seedInterventionForTenantA();
 
     const seenByCustomer = await withContext({ customerId }, (tx) =>
       tx.intervention.findUnique({ where: { id: interventionId } }),
     );
     expect(seenByCustomer?.id).toBe(interventionId);
+  });
+
+  it('cross-tenant SELECT on checklist selections is blocked for officina (own-only)', async () => {
+    // intervention_checklist_selections is the itemized body of an
+    // intervention (sibling of parts_replaced) with its own NOT NULL
+    // tenant_id. Migration 20260709120000 pool-gates selections_read in
+    // lockstep with interventions/intervention_revisions: officina B
+    // (current_tenant_id() = tenantBId) no longer sees tenant A's rows.
+    const { tenantBId, selectionId } = await seedInterventionForTenantA();
+
+    const seenByB = await withContext({ tenantId: tenantBId }, (tx) =>
+      tx.interventionChecklistSelection.findMany(),
+    );
+    expect(seenByB.map((s) => s.id)).not.toContain(selectionId);
+  });
+
+  it('officina A sees its own checklist selection (own-only positive path)', async () => {
+    // Complement: tenant A (owner) still reads its own selection through the
+    // tenant_id = current_tenant_id() branch of the pool-gated policy.
+    const { tenantAId, selectionId } = await seedInterventionForTenantA();
+
+    const seenByA = await withContext({ tenantId: tenantAId }, (tx) =>
+      tx.interventionChecklistSelection.findMany(),
+    );
+    expect(seenByA.map((s) => s.id)).toContain(selectionId);
+  });
+
+  it('customer-pool SELECT on checklist selections works (permissive NULL branch)', async () => {
+    // LOAD-BEARING cliente-preservation check: a customer session sets no
+    // tenantId, so current_tenant_id() IS NULL and selections_read takes its
+    // permissive branch → the itemized body stays visible in the customer
+    // vehicle history. App-layer ownership is the actual privacy boundary.
+    const { customerId, selectionId } = await seedInterventionForTenantA();
+
+    const seenByCustomer = await withContext({ customerId }, (tx) =>
+      tx.interventionChecklistSelection.findUnique({ where: { id: selectionId } }),
+    );
+    expect(seenByCustomer?.id).toBe(selectionId);
   });
 
   it('cross-tenant INSERT on interventions is blocked', async () => {
@@ -391,11 +470,16 @@ describe('RLS — users split (post-migration 0004)', () => {
 });
 
 // Migration 0004 enables RLS on intervention_revisions (absent
-// pre-0004): SELECT permissive (BR-150 audit chain), INSERT
-// append-only enforced via EXISTS join to parent intervention,
-// no UPDATE/DELETE policies → default deny. Cascade DELETE from
-// the parent intervention bypasses RLS via FK CASCADE (mirrors
-// intervention_disputes pattern from migration 0002).
+// pre-0004): INSERT append-only enforced via EXISTS join to parent
+// intervention, no UPDATE/DELETE policies → default deny. Cascade
+// DELETE from the parent intervention bypasses RLS via FK CASCADE
+// (mirrors intervention_disputes pattern from migration 0002).
+//
+// Migration 20260709120000 (officina own-only) tightens the SELECT
+// side: intervention_revisions_read is now pool-gated — permissive
+// only for admin (is_admin_role()) or the cliente pool
+// (current_tenant_id() IS NULL); an officina session sees only
+// revisions of its own tenant's interventions via an EXISTS join.
 describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)', () => {
   beforeEach(async () => {
     await resetDb();
@@ -505,27 +589,46 @@ describe('RLS — intervention_revisions defense-in-depth (post-migration 0004)'
     };
   }
 
-  it('cross-tenant SELECT on intervention_revisions is permissive (audit chain)', async () => {
+  it('cross-tenant SELECT on intervention_revisions is blocked for officina (own-only)', async () => {
+    // BR-150 audit-chain "cross-officina revision visibility" deprecated
+    // 2026-07-09: pool-gated migration 20260709120000 tightens
+    // intervention_revisions_read to an EXISTS join on the parent
+    // intervention's tenant_id. Tenant B (current_tenant_id() = tenantBId,
+    // non-null) no longer sees tenant A's revision. The permissive branch
+    // now fires only when current_tenant_id() IS NULL (cliente pool) or
+    // is_admin_role() (admin metrics).
     const { tenantBId, revisionId } = await seedInterventionWithRevision();
 
-    // Tenant B reads a revision belonging to tenant A's intervention.
-    // _read FOR SELECT USING (true) → row visible cross-tenant.
     const seenByB = await withContext({ tenantId: tenantBId }, (tx) =>
       tx.interventionRevision.findUnique({ where: { id: revisionId } }),
     );
-    expect(seenByB?.id).toBe(revisionId);
+    expect(seenByB?.id).toBeUndefined();
   });
 
   it('customer-pool SELECT on intervention_revisions works (app-layer guards privacy)', async () => {
+    // LOAD-BEARING cliente-preservation check after the officina own-only
+    // tightening: the customer pool sets current_customer_id but NOT
+    // current_tenant_id, so current_tenant_id() IS NULL and
+    // intervention_revisions_read takes its permissive branch → row visible.
+    // App-layer ownership pre-check is the actual privacy boundary.
     const { customerId, revisionId } = await seedInterventionWithRevision();
 
-    // Customer pool has current_customer_id set, no current_tenant_id.
-    // _read FOR SELECT USING (true) is unconditional → row visible.
-    // App-layer ownership pre-check is the actual privacy boundary.
     const seenByCustomer = await withContext({ customerId }, (tx) =>
       tx.interventionRevision.findUnique({ where: { id: revisionId } }),
     );
     expect(seenByCustomer?.id).toBe(revisionId);
+  });
+
+  it('officina A sees revisions of its own intervention (own-only positive path)', async () => {
+    // Complement of the own-only block: tenant A (owner of the parent
+    // intervention) still reads its own revision through the EXISTS join
+    // branch of the pool-gated intervention_revisions_read policy.
+    const { tenantAId, revisionId } = await seedInterventionWithRevision();
+
+    const seenByA = await withContext({ tenantId: tenantAId }, (tx) =>
+      tx.interventionRevision.findMany(),
+    );
+    expect(seenByA.map((r) => r.id)).toContain(revisionId);
   });
 
   it('cross-tenant INSERT on intervention_revisions is blocked', async () => {

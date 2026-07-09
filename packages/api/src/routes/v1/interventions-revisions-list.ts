@@ -9,20 +9,33 @@ import { dualPoolContext } from '../../middleware/dual-pool-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 
 // GET /v1/interventions/:id/revisions — APPENDICE_A §3.6 (F-OFF-304
-// lato lettura). Visibilità Any User: officina cross-tenant
-// (BR-150), cliente owner-only (mirror timeline §2.5).
+// lato lettura).
 //
-// Reserved-field redaction (BR-153 / BR-151): the customer AND any
-// non-owning officina see `changes` with `internalNotes` stripped
-// (revisioni `internalNotes`-only droppate) and the operator identity
-// hidden (response carries `tenant` instead of `user`). Only the owning
-// tenant sees the full audit trail with mechanic identity. This mirrors
-// the cross-tenant redaction on the detail endpoint (§2.12) — without it
-// the revision history would re-leak the internal notes the detail DTO
-// redacts.
+// Officina: own-only. An app-layer pre-check —
+// `findFirst({ id, tenantId })` — is the real security frontier here
+// (RLS on `intervention_revisions` remains permissive cross-tenant, see
+// below — never rely on RLS alone). A foreign-tenant (or non-existent)
+// intervention is indistinguishable and returns 404
+// (`intervention.not_found`); the owning tenant always sees the full,
+// unredacted audit trail with mechanic identity.
+//
+// Cliente: unchanged. Existence check via `findUniqueOrThrow({ id })`
+// (P2025 → 404 via the error handler) followed by the active-ownership
+// pre-check on `vehicle_ownerships` (403
+// `intervention.revisions.not_owner`, mirror timeline §2.5). The
+// reserved `internalNotes` field is stripped from `changes` (BR-065;
+// revisions whose only change was `internalNotes` are dropped
+// entirely), and the response carries a `tenant` shape instead of
+// `user` (operator identity not exposed to customers).
+//
+// NOTE (2026-07-09): BR-150 / BR-153 (shared cross-tenant logbook with
+// redaction for non-owning officine) are being deprecated — the shared
+// logbook is now customer-facing only, not shop-facing. This endpoint no
+// longer implements cross-tenant officina reads or officina-side
+// redaction.
 //
 // `intervention_revisions` ha RLS dal migration 0004:
-// SELECT cross-tenant permissive (BR-150 audit chain), INSERT
+// SELECT cross-tenant permissive (legacy BR-150 audit chain), INSERT
 // append-only enforced via EXISTS join al parent. La privacy del
 // cliente resta application-layer (ownership pre-check su
 // vehicle_ownerships) perche RLS non e pool-aware.
@@ -82,7 +95,6 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
       const cursor = decodeDateCompoundCursor('ra', cursorRaw, 'timestamp');
 
       const isOfficine = request.authPool === 'officine';
-      const isClienti = request.authPool === 'clienti';
 
       // Officina: pool-bound user role. Migration 0004 ha splittato users
       // SELECT/WRITE -> il join cross-tenant a users.firstName/lastName
@@ -94,15 +106,28 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
         : { customerId: request.customerId!, role: 'user' as const };
 
       return app.withContext(ctx, async (tx) => {
-        // 1. Intervention existence — 404 P2025 cross-pool consistente.
-        // tenantId drives the owner-vs-redacted decision for officine.
-        const intervention = await tx.intervention.findUniqueOrThrow({
-          where: { id: interventionId },
-          select: { id: true, vehicleId: true, tenantId: true },
-        });
+        // 1. Existence + authorization, branched by pool.
+        if (isOfficine) {
+          // Officina: own-only app-layer pre-check. A foreign-tenant (or
+          // non-existent) intervention is indistinguishable and 404s —
+          // see the header comment above for the BR-150/BR-153
+          // deprecation this replaces.
+          const owned = await tx.intervention.findFirst({
+            where: { id: interventionId, tenantId: request.tenantId! },
+            select: { id: true },
+          });
+          if (!owned) {
+            throw businessError('intervention.not_found', 404, 'Intervento non trovato.');
+          }
+        } else {
+          // Cliente: existence check (P2025 → 404 via the error handler)
+          // followed by the active-ownership pre-check on the vehicle
+          // (mirror timeline 403). Unchanged from before this task.
+          const intervention = await tx.intervention.findUniqueOrThrow({
+            where: { id: interventionId },
+            select: { id: true, vehicleId: true },
+          });
 
-        // 2. Cliente: ownership attiva sul vehicle (mirror timeline 403).
-        if (isClienti) {
           const ownership = await tx.vehicleOwnership.findFirst({
             where: {
               vehicleId: intervention.vehicleId,
@@ -152,13 +177,14 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
             ? encodeCompoundCursor('ra', lastFetched.revisedAt.toISOString(), lastFetched.id)
             : undefined;
 
-        // 5. Redaction + map response shape. The full audit trail (with
-        // `user` identity and unredacted `changes`) goes ONLY to the owning
-        // tenant. Customers and cross-tenant officine get internalNotes
-        // stripped (BR-153) and the `tenant` shape instead of `user`
-        // (BR-151 operator identity hidden).
-        const isOwnerOfficine = isOfficine && intervention.tenantId === request.tenantId;
-        const visible = isOwnerOfficine ? fetched : filterRevisionsForCustomer(fetched);
+        // 5. Redaction + map response shape. Officina always reaches this
+        // point as the owner (a foreign tenant already 404s in step 1
+        // above), so it always gets the full, unredacted audit trail
+        // with `user` identity. Cliente always gets internalNotes
+        // stripped (BR-065) and the `tenant` shape instead of `user`
+        // (operator identity not exposed to customers) — unchanged.
+        const showFullTrail = isOfficine;
+        const visible = showFullTrail ? fetched : filterRevisionsForCustomer(fetched);
 
         const data = visible.map((row) => {
           const base = {
@@ -167,7 +193,7 @@ const interventionRevisionsListRoutes: FastifyPluginAsync = async (app) => {
             reason: row.reason,
             changes: row.changes,
           };
-          if (isOwnerOfficine) {
+          if (showFullTrail) {
             return {
               ...base,
               user: {

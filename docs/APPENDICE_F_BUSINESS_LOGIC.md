@@ -380,8 +380,18 @@ Variante officina-mediated del passaggio di proprietà (F-OFF-110): il cedente �
 
 ## 4. Regole sugli interventi
 
-### BR-060 — Visibilità cross-tenant degli interventi officina
-Tutti gli interventi officina (`interventions`) sono **visibili in lettura a qualsiasi tenant** del sistema, a condizione che il tenant stia consultando la scheda di un veicolo (non ricerca libera).
+### BR-060 — Visibilità degli interventi officina
+
+> **Emendata (2026-07-09):** la lettura cross-tenant degli interventi officina è stata rimossa
+> (coerente con BR-150/BR-153). Un'officina vede in lettura **solo i propri** interventi
+> (isolamento applicativo su `tenantId` + RLS pool-gated, migration
+> `20260709120000_officina_own_interventions_rls`). Il libretto interventi completo cross-officina
+> resta visibile **solo al cliente proprietario** (app mobile) e all'admin. La clausola sulla
+> scrittura è invariata.
+
+Ogni intervento officina (`interventions`) è **visibile in lettura al solo tenant che lo ha creato**
+(consultando la scheda di un veicolo). Il cliente proprietario vede invece l'intero storico
+cross-officina nella propria app.
 
 Gli interventi **non sono cross-tenant in scrittura**: solo il tenant che li ha creati può modificarli.
 
@@ -686,10 +696,20 @@ Se l'officina riconosce l'errore, può annullare l'intervento (BR-066). Questa a
 ## 8. Regole sugli accessi e privacy
 
 ### BR-150 — Accesso ai dati tecnici del veicolo
-Qualsiasi `Tenant User` può accedere (in lettura) ai dati tecnici e allo storico interventi officina di qualsiasi veicolo, tramite:
+
+> **Emendata (2026-07-09):** la lettura cross-tenant NON include più lo storico interventi
+> officina di altri tenant. Un'officina visualizza e stampa **solo i propri** interventi
+> (isolamento applicativo su `tenantId` + RLS pool-gated, migration
+> `20260709120000_officina_own_interventions_rls`). Il libretto interventi condiviso resta
+> esposto **solo al cliente proprietario** (app mobile) e all'admin. Restano cross-tenant i
+> **dati tecnici del veicolo** e la ricerca sotto.
+
+Qualsiasi `Tenant User` può accedere (in lettura) ai **dati tecnici** di qualsiasi veicolo, tramite:
 - Ricerca per `garage_code`
 - Ricerca per `plate`
 - Ricerca per `vin`
+
+Lo **storico interventi officina** è invece limitato agli interventi del proprio tenant.
 
 Ogni accesso registra una entry in `access_logs`.
 
@@ -716,15 +736,21 @@ Quando un tenant registra un intervento su un veicolo di un customer con cui **n
 **Attenzione:** il tenant vede i dati personali **solo dopo** questa prima registrazione, quindi il primo intervento deve essere registrato con dati acquisiti "in presenza" dal cliente (vedi flusso 4.3).
 
 ### BR-153 — Scheda veicolo cross-tenant
+
+> **Emendata (2026-07-09):** lo "Storico interventi officina di tutti i tenant" NON è più visibile
+> cross-tenant. Un'officina vede in scheda **solo i propri** interventi. I dati tecnici del veicolo,
+> le scadenze aperte e lo status restano cross-tenant (veicolo condiviso). Il libretto completo resta
+> visibile solo al cliente proprietario.
+
 Quando un tenant accede alla scheda di un veicolo di cui NON è nella `customer_tenant_relation`, vede:
 
 **VISIBILE:**
 - Dati tecnici veicolo (marca, modello, VIN, targa, anno, ecc.)
-- Storico interventi officina di tutti i tenant
 - Scadenze aperte
 - Status certificato/pending/archived
 
 **NASCOSTO:**
+- Storico interventi officina di altri tenant (visibili solo i propri)
 - Dati personali proprietario (sostituiti con placeholder "Proprietario non in anagrafica")
 - Email e telefono per contatto
 - Indirizzo

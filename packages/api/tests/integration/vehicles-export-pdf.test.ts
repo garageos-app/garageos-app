@@ -15,6 +15,19 @@ import {
 import { pgAdmin } from './setup.js';
 import { signTestToken } from '../helpers/jwt.js';
 
+// Wrap the real renderer in a spy (default passthrough) so most scenarios keep
+// asserting on real PDF text via extractPdfText, while the tenant-isolation
+// scenario below can inspect the exact data handed to the renderer instead of
+// parsing bytes.
+vi.mock('../../src/lib/vehicle-history-pdf-renderer.js', async () => {
+  const real = await vi.importActual<
+    typeof import('../../src/lib/vehicle-history-pdf-renderer.js')
+  >('../../src/lib/vehicle-history-pdf-renderer.js');
+  return { ...real, renderVehicleHistoryPdf: vi.fn(real.renderVehicleHistoryPdf) };
+});
+
+import { renderVehicleHistoryPdf } from '../../src/lib/vehicle-history-pdf-renderer.js';
+
 // Inflate FlateDecode streams and decode <hex> Tj glyph runs back to Latin-1
 // (same approach as vehicle-history-pdf-renderer.test.ts) so we can assert which
 // officina names appear in the rendered document.
@@ -89,7 +102,7 @@ describe('GET /v1/vehicles/:id/export.pdf (integration)', () => {
     });
   }
 
-  it('scope=own excludes other tenants; scope=all includes them (BR-150)', async () => {
+  it('scope=own and scope=all both restrict to the caller tenant only (BR-150/BR-153 deprecated 2026-07-09)', async () => {
     const a = await createTenantWithLocation('off-pdf-A');
     const b = await createTenantWithLocation('off-pdf-B');
     const userA = await createUser({ tenantId: a.tenantId, cognitoSub: 'off-pdf-mechA' });
@@ -127,6 +140,9 @@ describe('GET /v1/vehicles/:id/export.pdf (integration)', () => {
     expect(ownText).toContain(nameA);
     expect(ownText).not.toContain(nameB);
 
+    // scope=all no longer widens the query (BR-150/BR-153 deprecated): still
+    // caller-tenant-only. Assert on the exact data handed to the renderer
+    // rather than re-parsing bytes, since both calls now render identical text.
     const all = await app.inject({
       method: 'GET',
       url: `/v1/vehicles/${vehicleId}/export.pdf?scope=all&show_names=true`,
@@ -135,7 +151,16 @@ describe('GET /v1/vehicles/:id/export.pdf (integration)', () => {
     expect(all.statusCode).toBe(200);
     const allText = extractPdfText(all.rawPayload);
     expect(allText).toContain(nameA);
-    expect(allText).toContain(nameB);
+    expect(allText).not.toContain(nameB);
+
+    expect(renderVehicleHistoryPdf).toHaveBeenCalledTimes(2);
+    const calls = vi.mocked(renderVehicleHistoryPdf).mock.calls;
+    const ownData = calls[0]![0];
+    const allData = calls[1]![0];
+    for (const data of [ownData, allData]) {
+      expect(data.interventions.length).toBeGreaterThan(0);
+      expect(data.interventions.every((it) => it.tenantId === a.tenantId)).toBe(true);
+    }
   });
 
   it('show_names=false omits officina names (anonymous flat list)', async () => {

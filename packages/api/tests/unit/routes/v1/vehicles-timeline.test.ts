@@ -178,6 +178,39 @@ describe('GET /v1/vehicles/:id/timeline (officine pool)', () => {
       expect.any(Function),
     );
   });
+
+  it('scopes shopWhere to the caller own tenantId (BR-150/BR-153 deprecated for officina)', async () => {
+    const shopFindMany = vi.fn().mockResolvedValue([]);
+    const prisma = buildFakePrisma({ intervention: { findMany: shopFindMany } });
+    app = await buildApp({ verifier: officineVerifier, prisma });
+
+    await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}/timeline`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+
+    const call = shopFindMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    expect(call.where.tenantId).toBe(TENANT_ID);
+  });
+
+  it('ignores tenant_ids for officina — own-tenant scoping wins, no duplicate tenantId key', async () => {
+    const OTHER_TENANT_ID = '55555555-5555-4555-8555-555555555555';
+    const shopFindMany = vi.fn().mockResolvedValue([]);
+    const prisma = buildFakePrisma({ intervention: { findMany: shopFindMany } });
+    app = await buildApp({ verifier: officineVerifier, prisma });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}/timeline?tenant_ids=${OTHER_TENANT_ID}`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const call = shopFindMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    // Scoped to the caller's own tenant, not the requested tenant_ids value.
+    expect(call.where.tenantId).toBe(TENANT_ID);
+  });
 });
 
 describe('GET /v1/vehicles/:id/timeline (clienti pool)', () => {
@@ -286,6 +319,36 @@ describe('GET /v1/vehicles/:id/timeline (clienti pool)', () => {
     expect(shopFindMany).not.toHaveBeenCalled();
     const body = res.json() as { meta: { shop_count: number } };
     expect(body.meta.shop_count).toBe(0);
+  });
+
+  it('regression: cliente tenant_ids filter is unchanged — cross-officina "in" filter still applies', async () => {
+    const shopFindMany = vi.fn().mockResolvedValue([]);
+    const prisma = buildFakePrisma({ intervention: { findMany: shopFindMany } });
+    app = await buildApp({ verifier: clientiVerifier, prisma });
+
+    await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}/timeline?tenant_ids=${TENANT_ID}`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+
+    const call = shopFindMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    expect(call.where.tenantId).toEqual({ in: [TENANT_ID] });
+  });
+
+  it('regression: cliente with no tenant_ids has no tenantId key at all (cross-officina, unfiltered)', async () => {
+    const shopFindMany = vi.fn().mockResolvedValue([]);
+    const prisma = buildFakePrisma({ intervention: { findMany: shopFindMany } });
+    app = await buildApp({ verifier: clientiVerifier, prisma });
+
+    await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}/timeline`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+
+    const call = shopFindMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    expect(call.where.tenantId).toBeUndefined();
   });
 });
 
@@ -397,5 +460,48 @@ describe('GET /v1/vehicles/:id/timeline (filters and pagination)', () => {
       url: `/v1/vehicles/${VEHICLE_ID}/timeline`,
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('GET /v1/vehicles/:id/timeline/officine', () => {
+  let app: FastifyInstance | undefined;
+  beforeEach(() => {
+    app = undefined;
+  });
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it('filters the distinct-officine query to the caller own tenantId', async () => {
+    const officineFindMany = vi
+      .fn()
+      .mockResolvedValue([{ tenantId: TENANT_ID, tenant: { businessName: 'Officina Rossi' } }]);
+    const prisma = buildFakePrisma({ intervention: { findMany: officineFindMany } });
+    app = await buildApp({ verifier: officineVerifier, prisma });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}/timeline/officine`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const call = officineFindMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    expect(call.where).toEqual({ vehicleId: VEHICLE_ID, tenantId: TENANT_ID });
+
+    const body = res.json() as { data: Array<{ tenant_id: string; viewer_is_owner: boolean }> };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.tenant_id).toBe(TENANT_ID);
+    expect(body.data[0]!.viewer_is_owner).toBe(true);
+  });
+
+  it('returns 403 for the clienti pool (officine-only route)', async () => {
+    app = await buildApp({ verifier: clientiVerifier });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/vehicles/${VEHICLE_ID}/timeline/officine`,
+      headers: { authorization: 'Bearer valid.jwt' },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });

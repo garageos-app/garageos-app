@@ -250,7 +250,7 @@ describe('RLS — checklist foundation (post-migration checklist_foundation)', (
     ).rejects.toThrow(/row-level security|new row violates/i);
   });
 
-  it('selections: SELECT is permissive (cross-tenant timeline read)', async () => {
+  it('selections: SELECT is pool-gated — an unrelated officina sees nothing (own-only)', async () => {
     const { tenantAId, tenantBId, interventionId, checklistItemId } =
       await seedChecklistFoundation();
 
@@ -263,12 +263,16 @@ describe('RLS — checklist foundation (post-migration checklist_foundation)', (
     );
     const selectionId = sel[0]!.id;
 
-    // selections_read: FOR SELECT USING (true) — tenant B (unrelated)
-    // can still read tenant A's selection for the shared timeline view.
+    // selections_read is pool-gated as of migration 20260709120000
+    // (is_admin_role() OR current_tenant_id() IS NULL OR tenant_id =
+    // current_tenant_id()): an unrelated tenant B does NOT see tenant A's
+    // selection (officina own-only). The cross-officina shared view of the
+    // itemized body is exposed only to the customer (tenant NULL) and admin —
+    // see the pool-gated read trio in rls.test.ts. BR-150/BR-153 amended 2026-07-09.
     const seenByB = await withContext({ tenantId: tenantBId }, (tx) =>
       tx.interventionChecklistSelection.findUnique({ where: { id: selectionId } }),
     );
-    expect(seenByB?.id).toBe(selectionId);
+    expect(seenByB).toBeNull();
   });
 
   it('snapshot survives catalog item deletion (onDelete SetNull)', async () => {

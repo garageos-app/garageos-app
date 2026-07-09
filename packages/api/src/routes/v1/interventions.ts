@@ -44,6 +44,14 @@ function businessError(code: string, status: number, detail: string): FastifyErr
 // check. Conversely — APPENDICE_F:416 — a private intervention may carry
 // any km without warning. Cancelled officina rows are excluded — they
 // do not bind future km.
+//
+// The aggregate is DELIBERATELY cross-tenant: the max odometer across ALL
+// workshops on this vehicle binds future km (a car serviced by shop A then
+// shop B must not have its km silently rewound). Since migration
+// 20260709120000 pool-gated `interventions_read` to own-tenant, this helper
+// MUST run under an admin (cross-tenant) context — see the call site — or
+// the RLS would scope it to the caller tenant and defeat BR-083. It returns
+// only an aggregate number (max km), never row data.
 async function previousMaxOdometerKm(
   tx: import('@garageos/database').PrismaClient,
   vehicleId: string,
@@ -83,6 +91,19 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
 
       const tenantId = request.tenantId!;
       const cognitoSub = request.userId!;
+
+      // BR-068/BR-083: the km-non-decreasing guard compares against the max
+      // odometer across ALL workshops on this vehicle (cross-tenant,
+      // intentional). Since `interventions_read` RLS is pool-gated to
+      // own-tenant as of migration 20260709120000, this aggregate must run in
+      // an elevated (admin) cross-tenant context — it returns only an
+      // aggregate number (max km), never row data. It runs BEFORE the tenant
+      // write tx because nested withContext/$transaction is not supported. A
+      // non-existent vehicleId simply yields null (harmless) — the 404 is
+      // still raised inside the tenant tx below.
+      const prevMaxKm = await app.withContext({ role: 'admin' as const }, (tx) =>
+        previousMaxOdometerKm(tx, vehicleId),
+      );
 
       const result = await app.withContext({ tenantId }, async (tx) => {
         // User lookup mirrors vehicles.ts: JWT sub → DB user row. The
@@ -180,8 +201,9 @@ const interventionRoutes: FastifyPluginAsync = async (app) => {
         // vehicle (BR-083 excludes customer-side records). A decrease is a
         // *warning*, not a hard failure: the workshop can confirm with
         // `forceKmDecrease=true`, and the resulting row is flagged `kmAnomaly=true`
-        // so downstream analytics can surface the override.
-        const prevMaxKm = await previousMaxOdometerKm(tx, vehicleId);
+        // so downstream analytics can surface the override. `prevMaxKm` was
+        // computed above in an admin (cross-tenant) context so it reflects all
+        // workshops, not just the caller's own tenant (BR-083).
         let kmAnomaly = false;
         if (prevMaxKm !== null && body.odometerKm < prevMaxKm) {
           if (!body.forceKmDecrease) {

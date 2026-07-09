@@ -1016,7 +1016,7 @@ Voci checklist effettivamente selezionate su un intervento, con etichetta congel
 - `uq_selection_intervention_item` UNIQUE `(intervention_id, checklist_item_id)` — evita doppia selezione della stessa voce sullo stesso intervento; essendo `checklist_item_id` nullable, più righe con valore `NULL` per lo stesso intervento restano ammesse da Postgres (NULL non è confrontabile per uguaglianza in un vincolo UNIQUE), coerente con selezioni storiche orfane dopo eliminazione voce
 - `idx_selections_intervention (intervention_id)`
 
-**RLS:** mirror di `interventions` (pattern §2.x "split" — lezione RLS split). `selections_read USING(true)` — permissiva in lettura. Scrittura granulare: `selections_insert WITH CHECK`, `selections_update USING/WITH CHECK`, `selections_delete USING`, tutte `(is_admin_role() OR tenant_id = current_tenant_id())` — tenant-scoped.
+**RLS:** mirror di `interventions` (pattern §2.x "split" — lezione RLS split). `selections_read FOR SELECT USING (is_admin_role() OR current_tenant_id() IS NULL OR tenant_id = current_tenant_id())` — pool-gated (officina own-only; sessione cliente con `current_tenant_id() IS NULL` e admin restano permissivi), allineata a `interventions_read`/`intervention_revisions_read` dopo l'arco officina own-only (migration `20260709120000`). Scrittura granulare: `selections_insert WITH CHECK`, `selections_update USING/WITH CHECK`, `selections_delete USING`, tutte `(is_admin_role() OR tenant_id = current_tenant_id())` — tenant-scoped.
 
 **Grants:** `garageos_app` ottiene `SELECT, INSERT, UPDATE, DELETE` esplicite su tutte e 4 le tabelle (ruolo `NOBYPASSRLS` — vedi §9, lezione least-privilege).
 
@@ -1032,7 +1032,7 @@ Voci checklist effettivamente selezionate su un intervento, con etichetta congel
 >
 > I contenuti SQL sono quelli mostrati nelle sottosezioni qui sotto, più i CHECK constraint e i partial unique index. Usa il file di migration come fonte autorevole per la forma esatta applicata in produzione.
 
-> **Nota di implementazione (migration 0003, 2026-04-27).** Le RLS su `interventions`, `attachments`, `tenants`, `locations`, `intervention_types` sono passate da una single-policy `_isolation`/`_access` a coppie `_read FOR SELECT USING (true)` + `_write FOR ALL` tenant/owner-scoped — mirror di `vehicles`/`customers`. Motivazione: BR-150/BR-153 richiedono SELECT cross-tenant per la timeline veicolo (`shopRowSelect` joina tenant.business_name, location.city, intervention_type.code/name_it). Il pattern è espansivo (no drop di colonne). Riferimento: `prisma/migrations/20260427120000_split_interventions_attachments_rls/migration.sql`.
+> **Nota di implementazione (migration 0003, 2026-04-27).** Le RLS su `interventions`, `attachments`, `tenants`, `locations`, `intervention_types` sono passate da una single-policy `_isolation`/`_access` a coppie `_read FOR SELECT USING (true)` + `_write FOR ALL` tenant/owner-scoped — mirror di `vehicles`/`customers`. Motivazione: BR-150/BR-153 richiedono SELECT cross-tenant per la timeline veicolo (`shopRowSelect` joina tenant.business_name, location.city, intervention_type.code/name_it). Il pattern è espansivo (no drop di colonne). Riferimento: `prisma/migrations/20260427120000_split_interventions_attachments_rls/migration.sql`. **Superseded (2026-07-09):** la migration `20260709120000_officina_own_interventions_rls` ha ristretto `interventions_read` e `intervention_revisions_read` da `USING(true)` a pool-gated own-only per il pool officine (BR-060/BR-150/BR-153 emendate). La lettura cross-tenant per la timeline resta valida **solo** per la sessione cliente (`current_tenant_id() IS NULL`); le altre `_read` (`attachments`, `tenants`, `intervention_types`) restano permissive perché servono al path cliente cross-officina.
 
 ### 3.1 File `sql/triggers.sql`
 
@@ -1207,11 +1207,14 @@ DO $$
 DECLARE
     t text;
     tenant_tables text[] := ARRAY[
-        -- 'locations', 'interventions' splittate in `_read FOR SELECT
-        -- USING (true)` + `_write FOR ALL` dalla migration 0003;
+        -- 'locations', 'interventions' splittate in `_read FOR SELECT`
+        -- + `_write FOR ALL` dalla migration 0003;
         -- 'users' splittato con lo stesso pattern dalla migration 0004.
-        -- Vedi i blocchi dedicati più sotto. Tutti per supportare
-        -- BR-150/BR-153 (timeline + audit-chain cross-tenant).
+        -- Vedi i blocchi dedicati più sotto. NB: `interventions_read` e
+        -- `intervention_revisions_read` non sono più `USING(true)`
+        -- cross-tenant: la migration 20260709120000 le ha rese pool-gated
+        -- own-only per il pool officine (BR-060/BR-150/BR-153); la lettura
+        -- cross-officina resta solo per il pool clienti (libretto).
         'customer_tenant_relations',
         'intervention_disputes',
         'deadlines', 'deadline_notifications',
@@ -1286,18 +1289,29 @@ WITH CHECK (is_admin_role() OR tenant_id = current_tenant_id());
 
 -- =====================================================
 -- INTERVENTION_REVISIONS (post migration 0004): RLS abilitata
--- ex-novo. SELECT permissive (audit chain BR-150 cross-tenant),
--- INSERT append-only enforced via EXISTS join al parent
+-- ex-novo. INSERT append-only enforced via EXISTS join al parent
 -- intervention. Nessuna policy UPDATE/DELETE -> default deny.
 -- Cascade DELETE dal parent intervention bypassa RLS via FK
 -- CASCADE (mirror intervention_disputes pre-esistente).
+-- SELECT emendata 2026-07-09 (BR-060/BR-150/BR-153, migration
+-- 20260709120000): non più `USING(true)` cross-tenant; ora pool-gated
+-- via il tenant del parent intervention (officina = solo i propri;
+-- sessione cliente permissiva; admin permissivo).
 -- =====================================================
 ALTER TABLE intervention_revisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE intervention_revisions FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS intervention_revisions_read ON intervention_revisions;
 CREATE POLICY intervention_revisions_read ON intervention_revisions
-FOR SELECT USING (true);
+FOR SELECT USING (
+    is_admin_role()
+    OR current_tenant_id() IS NULL
+    OR EXISTS (
+        SELECT 1 FROM interventions i
+        WHERE i.id = intervention_revisions.intervention_id
+          AND i.tenant_id = current_tenant_id()
+    )
+);
 
 DROP POLICY IF EXISTS intervention_revisions_insert ON intervention_revisions;
 CREATE POLICY intervention_revisions_insert ON intervention_revisions
@@ -1384,17 +1398,26 @@ CREATE POLICY transfers_access ON vehicle_transfers
 USING (true);  -- Gestito a livello applicativo
 
 -- =====================================================
--- INTERVENTIONS (post migration 0003): SELECT cross-pool, WRITE
--- tenant-scoped. Customer-side UPDATE per il flip BR-127 status
--- è concesso via app-layer `role: 'admin'` short-lived (vedi
--- packages/api/src/routes/v1/interventions-dispute.ts).
+-- INTERVENTIONS: SELECT pool-gated (post migration 20260709120000,
+-- che stringe la precedente SELECT cross-pool `USING(true)` della
+-- migration 0003), WRITE tenant-scoped. Customer-side UPDATE per il
+-- flip BR-127 status è concesso via app-layer `role: 'admin'`
+-- short-lived (vedi packages/api/src/routes/v1/interventions-dispute.ts).
+-- Emendato 2026-07-09 (BR-060/BR-150/BR-153): sessione officina
+-- (current_tenant_id() valorizzato) vede solo i propri interventi;
+-- sessione cliente (current_tenant_id() IS NULL) resta permissiva
+-- per il libretto cross-officina; admin permissivo per le metriche.
 -- =====================================================
 
 ALTER TABLE interventions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS interventions_read ON interventions;
 CREATE POLICY interventions_read ON interventions
-FOR SELECT USING (true);
+FOR SELECT USING (
+    is_admin_role()
+    OR current_tenant_id() IS NULL
+    OR tenant_id = current_tenant_id()
+);
 
 DROP POLICY IF EXISTS interventions_insert ON interventions;
 CREATE POLICY interventions_insert ON interventions

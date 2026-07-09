@@ -11,11 +11,14 @@ import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 
 // GET /v1/vehicles/:id/timeline — APPENDICE_A §2.5 (F-OFF-105 /
-// F-CLI-201 / F-CLI-205). Visibility per spec §2.5:
-// officine sees shop cross-tenant (BR-150/BR-153), customer-owner
-// sees shop + own private, customer non-owner 403, private of past
-// owners always hidden. Cursor merges both sources by
-// (interventionDate DESC, id DESC).
+// F-CLI-201 / F-CLI-205). Visibility per spec §2.5, as of 2026-07-09:
+// officine sees only its OWN shop interventions on the vehicle
+// (tenantId filter baked into shopWhere below — BR-150/BR-153
+// cross-tenant shop visibility is deprecated for the officina surface;
+// the shared logbook is now customer-facing only). Customer-owner still
+// sees shop + own private across ALL officine (unchanged), customer
+// non-owner 403, private of past owners always hidden. Cursor merges
+// both sources by (interventionDate DESC, id DESC).
 // BR-308: shop rows expose type.name_it as heading; free-text title removed.
 
 const timelineQuerySchema = z.object({
@@ -191,15 +194,24 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         // "client.query() … already executing" warning — see PR #95. The
         // two findMany calls cost ~250 ms each at Supabase; sequential
         // execution adds ~250 ms vs the (illusory) parallel plan.
-        // Shop where: date/cursor window + optional officina filter
-        // (tenant_ids). Identical for both pools — built once.
+        // Shop where: date/cursor window + tenant scoping, which now
+        // diverges per pool. Officina: only one officina is ever visible
+        // (its own), so it is pinned to request.tenantId and the
+        // `tenant_ids` cross-officina filter is IGNORED — applying both
+        // would also create a duplicate `tenantId` key. Cliente: unchanged,
+        // `tenant_ids` remains a legitimate per-officina filter over their
+        // cross-workshop history.
         const shopWhere = {
           ...buildVehicleDateCursorWhere(vehicleId, {
             ...(fromDateUtc ? { fromDateUtc } : {}),
             ...(toDateUtc ? { toDateUtc } : {}),
             ...(cursor ? { cursor } : {}),
           }),
-          ...(query.tenant_ids.length > 0 ? { tenantId: { in: query.tenant_ids } } : {}),
+          ...(isOfficine
+            ? { tenantId: request.tenantId! }
+            : query.tenant_ids.length > 0
+              ? { tenantId: { in: query.tenant_ids } }
+              : {}),
         };
 
         const shopRows =
@@ -253,11 +265,13 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         // wiki_window_open in the same response.
         const now = new Date();
 
-        // BR-150/BR-153: the timeline is cross-tenant for officine, but edit
-        // and dispute-response are owner-only mutations. Surface per-row
-        // ownership so the web client renders other tenants' interventions
-        // read-only. For clienti there is no owning tenant (editing is
-        // officina-only), so it is always false.
+        // BR-150/BR-153 (deprecated 2026-07-09): officina rows are now
+        // always own-tenant (shopWhere pins tenantId above), so this
+        // naturally evaluates to true for every officina row. Left in place
+        // as-is (not special-cased) for shape compatibility with the
+        // deployed web client; removal is deferred to PR-2. For clienti
+        // there is no owning tenant (editing is officina-only), so it is
+        // always false.
         const callerTenantId = isOfficine ? request.tenantId! : null;
 
         const data = page.map((item) => {
@@ -336,9 +350,13 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
   // timeline officina filter + stable per-officina color assignment (the
   // list is independent of pagination, so colors don't shift as pages load).
   //
-  // Officine-only: the filter UI lives in the workshop web app. RLS
-  // `interventions_read` is permissive cross-tenant, so the distinct query
-  // sees every tenant's interventions on the vehicle (BR-150).
+  // Officine-only: the filter UI lives in the workshop web app. As of
+  // 2026-07-09 (BR-150/BR-153 deprecated for the officina surface), this
+  // is scoped app-layer to the caller's own tenantId — it now always
+  // returns at most one entry (the caller itself). RLS `interventions_read`
+  // is still permissive cross-tenant, so the app-layer filter below is the
+  // security frontier. Route is not removed (deferred to PR-2 with the web
+  // filter UI).
   app.get(
     '/v1/vehicles/:id/timeline/officine',
     {
@@ -356,7 +374,7 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         });
 
         const rows = await tx.intervention.findMany({
-          where: { vehicleId },
+          where: { vehicleId, tenantId },
           distinct: ['tenantId'],
           select: { tenantId: true, tenant: { select: { businessName: true } } },
         });
