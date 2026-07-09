@@ -1412,7 +1412,7 @@ Si adotta il pattern **shared database, shared schema con tenant_id**:
 Alcune entità sono **cross-tenant** per design:
 
 - **Veicoli** (`vehicles`): un veicolo è visibile a tutte le officine tramite codice/targa/VIN. Non ha `tenant_id`
-- **Interventi officina** (`interventions`): hanno `tenant_id` (chi li ha registrati) ma sono visibili a tutti gli altri tenant del circuito tramite il veicolo
+- **Interventi officina** (`interventions`): hanno `tenant_id` (chi li ha registrati). **Emendato 2026-07-09 (BR-060/BR-150/BR-153):** in lettura un'officina vede **solo i propri** interventi; il libretto completo cross-officina resta visibile **solo al cliente proprietario** del veicolo (app mobile) e all'admin. La condivisione cross-tenant tramite il veicolo vale quindi per la scheda tecnica del veicolo, non più per lo storico interventi tra officine
 - **Clienti finali** (`customers`): hanno associazioni N:N con tenant tramite `customer_tenants` (un cliente può aver avuto interventi presso più officine)
 - **Dati personali cliente** (`customer_personal_data`): visibili solo ai tenant con cui il cliente ha una relazione commerciale storicizzata
 
