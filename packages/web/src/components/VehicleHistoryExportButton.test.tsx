@@ -38,7 +38,7 @@ beforeEach(() => {
 });
 
 describe('VehicleHistoryExportButton', () => {
-  it('generates with defaults (scope=all, show_names=true) and opens the PDF', async () => {
+  it('generates with the default (show_names=true) and opens the PDF', async () => {
     const user = userEvent.setup();
     mockApiBlob.mockResolvedValueOnce(pdfBlob());
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
@@ -49,7 +49,7 @@ describe('VehicleHistoryExportButton', () => {
 
     await waitFor(() =>
       expect(mockApiBlob).toHaveBeenCalledWith(
-        `/v1/vehicles/${VEHICLE_ID}/export.pdf?scope=all&show_names=true`,
+        `/v1/vehicles/${VEHICLE_ID}/export.pdf?show_names=true`,
         { method: 'GET' },
       ),
     );
@@ -57,21 +57,19 @@ describe('VehicleHistoryExportButton', () => {
     openSpy.mockRestore();
   });
 
-  it('reflects the toggles in the request (own scope, names hidden)', async () => {
+  it('reflects the toggle in the request when "Mostra nome officina" is turned off', async () => {
     const user = userEvent.setup();
     mockApiBlob.mockResolvedValueOnce(pdfBlob());
     vi.spyOn(window, 'open').mockReturnValue(null);
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Esporta storico PDF/i }));
-    // Turn OFF "include other officine" (→ scope=own) and "show names" (→ show_names=false).
-    await user.click(screen.getByLabelText(/Includi anche le altre officine/i));
-    await user.click(screen.getByLabelText(/Mostra nomi officine/i));
+    await user.click(screen.getByLabelText(/Mostra nome officina/i));
     await user.click(screen.getByRole('button', { name: /Genera PDF/i }));
 
     await waitFor(() =>
       expect(mockApiBlob).toHaveBeenCalledWith(
-        `/v1/vehicles/${VEHICLE_ID}/export.pdf?scope=own&show_names=false`,
+        `/v1/vehicles/${VEHICLE_ID}/export.pdf?show_names=false`,
         { method: 'GET' },
       ),
     );

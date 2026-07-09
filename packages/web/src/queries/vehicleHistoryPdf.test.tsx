@@ -43,16 +43,16 @@ function pdfBlob(): Blob {
 }
 
 describe('useVehicleHistoryPdfDownload', () => {
-  it('calls GET /v1/vehicles/:id/export.pdf with scope and show_names on mutate', async () => {
+  it('calls GET /v1/vehicles/:id/export.pdf with show_names on mutate (no scope param)', async () => {
     mockApiBlob.mockResolvedValueOnce(pdfBlob());
     const { result } = renderHook(() => useVehicleHistoryPdfDownload(VEHICLE_ID), {
       wrapper: wrap,
     });
     await act(async () => {
-      await result.current.mutateAsync({ scope: 'own', showNames: false });
+      await result.current.mutateAsync({ showNames: false });
     });
     expect(mockApiBlob).toHaveBeenCalledWith(
-      `/v1/vehicles/${VEHICLE_ID}/export.pdf?scope=own&show_names=false`,
+      `/v1/vehicles/${VEHICLE_ID}/export.pdf?show_names=false`,
       { method: 'GET' },
     );
   });
@@ -63,7 +63,7 @@ describe('useVehicleHistoryPdfDownload', () => {
       wrapper: wrap,
     });
     await act(async () => {
-      await result.current.mutateAsync({ scope: 'all', showNames: true });
+      await result.current.mutateAsync({ showNames: true });
     });
     expect(createObjectURL).toHaveBeenCalled();
     expect(openSpy).toHaveBeenCalledWith('blob:mock', '_blank');
