@@ -1,55 +1,66 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import {
-  renderInterventionPdf,
-  type InterventionPdfData,
-} from '../../lib/intervention-pdf-renderer.js';
 import { normalizePartsReplaced, serializeChecklistItems } from '../../lib/intervention-shared.js';
-import { resolvePiiVisibility } from '../../lib/pii-filter.js';
+import {
+  renderVehicleHistoryPdf,
+  type VehicleHistoryPdfData,
+} from '../../lib/vehicle-history-pdf-renderer.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
 import { tenantContext } from '../../middleware/tenant-context.js';
 
 // GET /v1/interventions/:id/pdf — F-OFF-309.
-// Renders a single-intervention PDF (officina header + vehicle + owner +
-// details) in-Lambda and streams the bytes back directly — no S3 persist,
-// no presigned URL, no tenant logo (dropped in this slice).
+// Renders a single-intervention PDF and streams the bytes back directly — no S3
+// persist, no presigned URL.
+//
+// The document is the SAME as the bulk vehicle-history export
+// (`renderVehicleHistoryPdf`), the only difference being it contains just the
+// one referenced intervention (decided 2026-07-10). It therefore shares the
+// bulk layout: neutral "STORICO MANUTENZIONE VEICOLO" / GarageOS header, no
+// officina letterhead, no customer PII, no operator — a customer-deliverable
+// document. `internal_notes` are never selected.
+//   show_names=true  → grouped mode: the officina name is printed as a group header.
+//   show_names=false → anonymous mode: no officina label anywhere.
 //
 // Scoping mirrors interventions-detail.ts: findFirst {id, tenantId} + null→404
-// (interventions SELECT is permissive cross-tenant since migration 0003).
-//
-// BR-151: owner customerName is PII relation-gated; BR-213: operator fallback
-// "Operatore"; BR-040: active owner is the VehicleOwnership with endedAt=null.
-// internal_notes are intentionally NOT selected — customer-facing document.
+// (interventions SELECT is permissive cross-tenant since migration 0003, so this
+// app-layer {id, tenantId} filter is the real security frontier — never RLS alone).
 
-const REDACTED_OWNER = 'Proprietario non in anagrafica'; // BR-153 literal
+const querySchema = z.object({
+  show_names: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+});
 
 const interventionPdfSelect = {
-  id: true,
   status: true,
   interventionDate: true,
   odometerKm: true,
   description: true,
   partsReplaced: true,
-  cancelledReason: true,
+  tenantId: true,
   checklistSelections: {
     select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
     orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
   },
   interventionType: { select: { nameIt: true } },
-  tenant: {
+  tenant: { select: { businessName: true } },
+  vehicle: {
     select: {
-      businessName: true,
-      addressLine: true,
-      city: true,
-      vatNumber: true,
-      phone: true,
+      plate: true,
+      make: true,
+      model: true,
+      version: true,
+      garageCode: true,
+      vin: true,
+      year: true,
+      fuelType: true,
     },
   },
-  vehicle: { select: { id: true, plate: true, make: true, model: true, garageCode: true } },
-  user: { select: { firstName: true, lastName: true } },
 };
 
 const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
@@ -58,6 +69,7 @@ const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: [requireAuth, requireOfficinaPool, tenantContext] },
     async (request, reply) => {
       const { id } = idParamSchema.parse(request.params);
+      const { show_names: showNames } = querySchema.parse(request.query);
       const tenantId = request.tenantId!;
 
       const pdfData = await app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
@@ -74,78 +86,44 @@ const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        // BR-040: active owner = ownership with endedAt null.
-        const ownership = await tx.vehicleOwnership.findFirst({
-          where: { vehicleId: row.vehicle.id, endedAt: null },
-          select: {
-            customer: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                isBusiness: true,
-                businessName: true,
-              },
-            },
-          },
-        });
-
-        // BR-151: PII relation-gated. Visible → name; not visible → placeholder.
-        let customerName: string | null = null;
-        const owner = ownership?.customer ?? null;
-        if (owner) {
-          const visible = await resolvePiiVisibility({ tx, tenantId, customerIds: [owner.id] });
-          if (visible.has(owner.id)) {
-            customerName =
-              owner.isBusiness && owner.businessName
-                ? owner.businessName
-                : `${owner.firstName} ${owner.lastName}`.trim();
-          } else {
-            customerName = REDACTED_OWNER;
-          }
+        // A cancelled intervention must not be exported: the history renderer
+        // has no annulment concept, so it would produce a clean maintenance
+        // record with no cancellation notice (misleading customer document).
+        // The bulk export excludes cancelled rows entirely; mirror that by
+        // refusing here. The web UI hides the button for cancelled — this is
+        // the app-layer backstop.
+        if (row.status === 'cancelled') {
+          throw businessError(
+            'intervention.export.cancelled',
+            409,
+            'Un intervento annullato non può essere esportato in PDF.',
+          );
         }
 
-        // BR-213: operator fallback when the user record is absent (deleted user).
-        const operatorName = row.user
-          ? `${row.user.firstName} ${row.user.lastName}`.trim() || 'Operatore'
-          : 'Operatore';
-
-        // Prisma's InterventionStatus enum is an opaque cross-package brand; the
-        // renderer intentionally stays DB-decoupled with a plain string union, so
-        // we narrow here at the boundary. KEEP IN SYNC: if InterventionStatus gains
-        // a member, update the renderer's InterventionPdfData.status union too.
-        const data: InterventionPdfData = {
-          tenant: {
-            businessName: row.tenant.businessName,
-            addressLine: row.tenant.addressLine,
-            city: row.tenant.city,
-            vatNumber: row.tenant.vatNumber,
-            phone: row.tenant.phone,
-          },
-          customerName,
-          vehicle: {
-            plate: row.vehicle.plate,
-            make: row.vehicle.make,
-            model: row.vehicle.model,
-            garageCode: row.vehicle.garageCode,
-          },
-          interventionDate: row.interventionDate.toISOString().slice(0, 10),
-          odometerKm: row.odometerKm,
-          typeName: row.interventionType.nameIt,
-          // BR-303/308: frozen snapshot labels, sorted by the shared serializer.
-          checklistItems: serializeChecklistItems(row.checklistSelections).map((c) => c.label),
-          description: row.description,
-          partsReplaced: normalizePartsReplaced(row.partsReplaced),
-          operatorName,
-          status: row.status as 'active' | 'disputed' | 'cancelled',
-          cancelledReason: row.cancelledReason,
+        const data: VehicleHistoryPdfData = {
+          vehicle: row.vehicle,
+          generatedAt: new Date().toISOString().slice(0, 10),
+          mode: showNames ? 'grouped' : 'anonymous',
+          interventions: [
+            {
+              interventionDate: row.interventionDate.toISOString().slice(0, 10),
+              odometerKm: row.odometerKm,
+              typeName: row.interventionType.nameIt,
+              tenantName: row.tenant.businessName,
+              tenantId: row.tenantId,
+              // BR-303/308: frozen snapshot labels, sorted by the shared serializer.
+              checklistItems: serializeChecklistItems(row.checklistSelections).map((c) => c.label),
+              description: row.description,
+              partsReplaced: normalizePartsReplaced(row.partsReplaced),
+            },
+          ],
         };
         return data;
       });
 
       let pdfBuffer: Buffer;
       try {
-        pdfBuffer = await renderInterventionPdf(pdfData, null);
+        pdfBuffer = await renderVehicleHistoryPdf(pdfData);
       } catch (err) {
         request.log.error({ err }, 'intervention_pdf.render_failed');
         throw businessError(
@@ -155,7 +133,7 @@ const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
         );
       }
 
-      request.log.info({ interventionId: id, tenantId }, 'intervention_pdf.generated');
+      request.log.info({ interventionId: id, tenantId, showNames }, 'intervention_pdf.generated');
 
       return reply
         .header('Content-Type', 'application/pdf')

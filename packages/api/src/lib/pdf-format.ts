@@ -1,9 +1,9 @@
 import type { PDFFont } from 'pdf-lib';
 
 // Shared PDF formatting helpers. All formatting is manual (no Intl/ICU) to stay
-// independent of the Lambda runtime locale. Extracted from
-// intervention-pdf-renderer.ts (F-OFF-309) so the vehicle-history renderer
-// (F-CLI-501) can reuse them without duplication.
+// independent of the Lambda runtime locale. Used by the vehicle-history
+// renderer (F-CLI-501), which also backs the single-intervention export
+// (F-OFF-309) since 2026-07-10.
 
 // U+00B7 MIDDLE DOT — valid WinAnsi (0xB7). Field separator.
 export const DOT = '·';

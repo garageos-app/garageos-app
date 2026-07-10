@@ -1,14 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { inflateSync } from 'node:zlib';
 
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildTestServer } from './fixtures.js';
 import {
-  createCustomer,
-  createCustomerTenantRelation,
   createIntervention,
-  createOwnership,
   createTenantWithLocation,
   createUser,
   createVehicle,
@@ -25,6 +23,43 @@ const TEST_IP = '10.20.42.1';
 
 function uniqueCode(prefix: string): string {
   return `${prefix}_${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
+// Inflate FlateDecode streams and decode <hex> Tj glyph runs back to Latin-1
+// (same approach as vehicles-export-pdf.test.ts) so we can assert whether the
+// officina name appears in the rendered document.
+function extractPdfText(buf: Buffer): string {
+  const hexPattern = /<([0-9A-Fa-f]+)>/g;
+  let text = '';
+  let pos = 0;
+  const startMarker = Buffer.from('stream\n');
+  const endMarker = Buffer.from('endstream');
+  while (pos < buf.length) {
+    const start = buf.indexOf(startMarker, pos);
+    if (start === -1) break;
+    const dataStart = start + startMarker.length;
+    const dataEnd = buf.indexOf(endMarker, dataStart);
+    if (dataEnd === -1) break;
+    const chunk = buf.slice(dataStart, dataEnd);
+    try {
+      const inflated = inflateSync(chunk).toString('latin1');
+      for (const m of inflated.matchAll(hexPattern)) {
+        if (m[1]) text += Buffer.from(m[1], 'hex').toString('latin1');
+      }
+    } catch {
+      // Non-deflate stream — skip.
+    }
+    pos = dataEnd + endMarker.length;
+  }
+  return text;
+}
+
+async function businessNameOf(tenantId: string): Promise<string> {
+  const { rows } = await pgAdmin.query<{ business_name: string }>(
+    'SELECT business_name FROM tenants WHERE id = $1',
+    [tenantId],
+  );
+  return rows[0]!.business_name;
 }
 
 // Direct pgAdmin insert for a checklist item fixture — bypasses RLS
@@ -46,11 +81,6 @@ async function seedChecklistItem(params: {
   return { id: rows[0]!.id, nameIt };
 }
 
-// Direct pgAdmin insert of an intervention_checklist_selections row —
-// bypasses the create/patch routes entirely so this test can seed a
-// selection with a controlled label_snapshot/sort_order_snapshot regardless
-// of the checklist item's own current catalog values (BR-303 snapshot
-// semantics — mirrors interventions-detail.test.ts `seedSelection`).
 async function seedChecklistSelection(params: {
   interventionId: string;
   tenantId: string;
@@ -75,6 +105,10 @@ async function seedChecklistSelection(params: {
   return { id: rows[0]!.id };
 }
 
+// The single-intervention PDF renders via the SAME renderer as the bulk
+// vehicle-history export (decided 2026-07-10), scoped to one intervention:
+// neutral header, no officina letterhead / customer PII / operator. The
+// `show_names` param toggles grouped (officina name printed) vs anonymous.
 describe('GET /v1/interventions/:id/pdf (integration)', () => {
   let app: FastifyInstance;
 
@@ -94,9 +128,6 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     vi.clearAllMocks();
   });
 
-  // -----------------------------------------------------------------------
-  // Helper: create a tenant + location + mechanic user + signed token.
-  // -----------------------------------------------------------------------
   async function setupCaller(suffix: string) {
     const { tenantId } = await createTenantWithLocation(suffix);
     const cognitoSub = `pdf-caller-${suffix.slice(0, 18)}`;
@@ -110,9 +141,6 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     return { tenantId, userId, token };
   }
 
-  // -----------------------------------------------------------------------
-  // Helper: seed a minimal intervention + vehicle for a given tenant.
-  // -----------------------------------------------------------------------
   async function setupIntervention(args: {
     tenantId: string;
     userId: string;
@@ -131,37 +159,16 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
       partsReplaced: [{ name: 'Olio motore', code: 'OIL-5W40', quantity: 5, notes: null }],
       status: args.status ?? 'active',
     });
-    return { interventionId, vehicleId };
+    return { interventionId, vehicleId, typeId: type.id };
   }
 
   // -----------------------------------------------------------------------
-  // Case 1 — 200 owner visible (BR-040 + BR-151 relation gated).
-  // Customer has a CustomerTenantRelation for tenant A → PII visible.
-  // Assert: 200, binary PDF response.
+  // Case 1 — 200 grouped (default): officina name printed + checklist label.
   // -----------------------------------------------------------------------
-  it('200 — owner with CustomerTenantRelation: PII visible, streams application/pdf', async () => {
-    const { tenantId, userId, token } = await setupCaller('pdf-owner-vis');
-    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
-    const { customerId } = await createCustomer({ firstName: 'Mario', lastName: 'Rossi' });
-    // BR-040: active owner = endedAt null.
-    await createOwnership({ vehicleId, customerId });
-    // BR-151: CTR row makes PII visible.
-    await createCustomerTenantRelation({ tenantId, customerId });
-
-    const type = await ensureSystemInterventionType('MECCANICO');
-    const { interventionId } = await createIntervention({
-      tenantId,
-      userId,
-      vehicleId,
-      interventionTypeId: type.id,
-      interventionDate: '2026-05-20',
-      odometerKm: 55000,
-      description: 'Cambio olio',
-      partsReplaced: [],
-      status: 'active',
-    });
-
-    const item = await seedChecklistItem({ interventionTypeId: type.id, sortOrder: 0 });
+  it('200 — default (show_names=true): prints the officina name (grouped)', async () => {
+    const { tenantId, userId, token } = await setupCaller('pdf-grouped');
+    const { interventionId, typeId } = await setupIntervention({ tenantId, userId });
+    const item = await seedChecklistItem({ interventionTypeId: typeId, sortOrder: 0 });
     await seedChecklistSelection({
       interventionId,
       tenantId,
@@ -169,6 +176,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
       labelSnapshot: item.nameIt,
       sortOrderSnapshot: 0,
     });
+    const name = await businessNameOf(tenantId);
 
     const res = await app.inject({
       method: 'GET',
@@ -179,20 +187,40 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('application/pdf');
     expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    const text = extractPdfText(res.rawPayload);
+    expect(text).toContain(name);
+    expect(text).toContain('1 intervento officina registrato');
+    expect(text).toContain(item.nameIt);
   });
 
   // -----------------------------------------------------------------------
-  // Case 2 — 404 cross-tenant: intervention belongs to tenant A; caller is
+  // Case 2 — 200 anonymous: officina name absent.
+  // -----------------------------------------------------------------------
+  it('200 — show_names=false: omits the officina name (anonymous)', async () => {
+    const { tenantId, userId, token } = await setupCaller('pdf-anon');
+    const { interventionId } = await setupIntervention({ tenantId, userId });
+    const name = await businessNameOf(tenantId);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${interventionId}/pdf?show_names=false`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const text = extractPdfText(res.rawPayload);
+    expect(text).not.toContain(name);
+    expect(text).toMatch(/STORICO MANUTENZIONE VEICOLO/);
+  });
+
+  // -----------------------------------------------------------------------
+  // Case 3 — 404 cross-tenant: intervention belongs to tenant A; caller is
   // tenant B. Route scopes findFirst {id, tenantId} → invisible → 404.
   // -----------------------------------------------------------------------
   it('404 — cross-tenant: intervention.not_found', async () => {
     const { tenantId: tenantA, userId: userA } = await setupCaller('pdf-xtA');
-    const { interventionId } = await setupIntervention({
-      tenantId: tenantA,
-      userId: userA,
-    });
+    const { interventionId } = await setupIntervention({ tenantId: tenantA, userId: userA });
 
-    // Caller is tenant B.
     const { token: tokenB } = await setupCaller('pdf-xtB');
 
     const res = await app.inject({
@@ -206,53 +234,13 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Case 3 — 200 owner WITHOUT CustomerTenantRelation (BR-151 placeholder).
-  // Customer owns the vehicle (BR-040 endedAt=null) but has no CTR for this
-  // tenant → PII not visible → route still generates PDF with redacted name.
+  // Case 4 — 409 cancelled intervention is NOT exportable: the history
+  // renderer has no annulment concept, so a cancelled service must not be
+  // handed to the customer as a clean record.
   // -----------------------------------------------------------------------
-  it('200 — owner without CustomerTenantRelation: BR-151 placeholder, still generates PDF', async () => {
-    const { tenantId, userId, token } = await setupCaller('pdf-no-rel');
-    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
-    const { customerId } = await createCustomer({});
-    // Active ownership exists (BR-040).
-    await createOwnership({ vehicleId, customerId });
-    // Intentionally NO CustomerTenantRelation → PII not visible → placeholder.
-
-    const type = await ensureSystemInterventionType('MECCANICO');
-    const { interventionId } = await createIntervention({
-      tenantId,
-      userId,
-      vehicleId,
-      interventionTypeId: type.id,
-      interventionDate: '2026-05-21',
-      odometerKm: 30000,
-      description: 'Revisione freni',
-      partsReplaced: [],
-      status: 'active',
-    });
-
-    const res = await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/${interventionId}/pdf`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.headers['content-type']).toContain('application/pdf');
-    expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
-  });
-
-  // -----------------------------------------------------------------------
-  // Case 4 — 200 cancelled intervention exportable.
-  // status='cancelled' must not block PDF generation.
-  // -----------------------------------------------------------------------
-  it('200 — cancelled intervention: PDF still exportable', async () => {
+  it('409 — cancelled intervention: intervention.export.cancelled', async () => {
     const { tenantId, userId, token } = await setupCaller('pdf-cancel');
-    const { interventionId } = await setupIntervention({
-      tenantId,
-      userId,
-      status: 'cancelled',
-    });
+    const { interventionId } = await setupIntervention({ tenantId, userId, status: 'cancelled' });
 
     const res = await app.inject({
       method: 'GET',
@@ -260,46 +248,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
     });
 
-    expect(res.statusCode).toBe(200);
-    expect(res.headers['content-type']).toContain('application/pdf');
-  });
-
-  // -----------------------------------------------------------------------
-  // Case 5 — 200 vehicle with NO active ownership.
-  // VehicleOwnership.endedAt is set (or no ownership row exists) → BR-040
-  // resolves to null → customerName=null. Route must still return 200 + PDF.
-  // -----------------------------------------------------------------------
-  it('200 — no active ownership (endedAt set): still generates PDF', async () => {
-    const { tenantId, userId, token } = await setupCaller('pdf-no-own');
-    const { vehicleId } = await createVehicle({ createdByTenantId: tenantId });
-    const { customerId } = await createCustomer({});
-    // Ownership row exists but has endedAt set → not active by BR-040.
-    await createOwnership({
-      vehicleId,
-      customerId,
-      endedAt: new Date('2025-01-01T00:00:00.000Z'),
-    });
-
-    const type = await ensureSystemInterventionType('MECCANICO');
-    const { interventionId } = await createIntervention({
-      tenantId,
-      userId,
-      vehicleId,
-      interventionTypeId: type.id,
-      interventionDate: '2026-05-22',
-      odometerKm: 40000,
-      description: 'Montaggio pneumatici invernali',
-      partsReplaced: [],
-      status: 'active',
-    });
-
-    const res = await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/${interventionId}/pdf`,
-      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.statusCode).toBe(409);
+    expect(res.json<{ code: string }>().code).toBe('intervention.export.cancelled');
   });
 });

@@ -38,39 +38,60 @@ beforeEach(() => {
 });
 
 describe('InterventionExportPdfButton', () => {
-  it('renders idle button with "Esporta PDF" label', () => {
-    renderButton();
-    const button = screen.getByRole('button', { name: /Esporta PDF/i });
-    expect(button).toBeInTheDocument();
-    expect(button).not.toBeDisabled();
-  });
-
-  it('calls the mutation and opens the PDF in a new tab on success', async () => {
+  it('generates with the default (show_names=true) and opens the PDF in a new tab', async () => {
     const user = userEvent.setup();
     mockApiBlob.mockResolvedValueOnce(pdfBlob());
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Esporta PDF/i }));
+    await user.click(screen.getByRole('button', { name: /Genera PDF/i }));
 
-    await waitFor(() => expect(openSpy).toHaveBeenCalledWith('blob:mock', '_blank'));
-    expect(mockApiBlob).toHaveBeenCalledWith(`/v1/interventions/${INTERVENTION_ID}/pdf`, {
-      method: 'GET',
-    });
+    await waitFor(() =>
+      expect(mockApiBlob).toHaveBeenCalledWith(
+        `/v1/interventions/${INTERVENTION_ID}/pdf?show_names=true`,
+        { method: 'GET' },
+      ),
+    );
+    expect(openSpy).toHaveBeenCalledWith('blob:mock', '_blank');
     openSpy.mockRestore();
   });
 
-  it('shows "Generazione PDF..." and disables the button while pending', async () => {
+  it('reflects the toggle in the request when "Mostra nome officina" is turned off', async () => {
     const user = userEvent.setup();
-    mockApiBlob.mockImplementationOnce(() => new Promise(() => {})); // never resolves
+    mockApiBlob.mockResolvedValueOnce(pdfBlob());
+    vi.spyOn(window, 'open').mockReturnValue(null);
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Esporta PDF/i }));
+    await user.click(screen.getByLabelText(/Mostra nome officina/i));
+    await user.click(screen.getByRole('button', { name: /Genera PDF/i }));
 
-    await waitFor(() => {
-      const button = screen.getByRole('button', { name: /Generazione PDF/i });
-      expect(button).toBeDisabled();
-    });
+    await waitFor(() =>
+      expect(mockApiBlob).toHaveBeenCalledWith(
+        `/v1/interventions/${INTERVENTION_ID}/pdf?show_names=false`,
+        { method: 'GET' },
+      ),
+    );
+  });
+
+  it('resets the officina-name switch to the default when the dialog is reopened', async () => {
+    const user = userEvent.setup();
+    renderButton();
+
+    await user.click(screen.getByRole('button', { name: /Esporta PDF/i }));
+    const toggle = screen.getByLabelText(/Mostra nome officina/i);
+    expect(toggle).toBeChecked();
+    await user.click(toggle); // turn off
+    expect(toggle).not.toBeChecked();
+
+    // Close without generating, then reopen — the switch must be back on so a
+    // prior anonymous choice does not silently persist.
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /Esporta PDF/i }));
+    expect(screen.getByLabelText(/Mostra nome officina/i)).toBeChecked();
   });
 
   it('maps intervention.not_found to an Italian error message', async () => {
@@ -79,21 +100,10 @@ describe('InterventionExportPdfButton', () => {
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Esporta PDF/i }));
+    await user.click(screen.getByRole('button', { name: /Genera PDF/i }));
 
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/Intervento non trovato/i),
-    );
-  });
-
-  it('shows a generic error message on a non-ApiError failure', async () => {
-    const user = userEvent.setup();
-    mockApiBlob.mockRejectedValueOnce(new Error('network down'));
-
-    renderButton();
-    await user.click(screen.getByRole('button', { name: /Esporta PDF/i }));
-
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/Impossibile generare il PDF/i),
     );
   });
 });

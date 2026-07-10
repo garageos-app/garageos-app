@@ -171,7 +171,7 @@ describe('InterventionHeader', () => {
     expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
   });
 
-  it('shows the export PDF button even when the intervention is cancelled', () => {
+  it('hides the export PDF button when the intervention is cancelled', () => {
     const cancelled = makeIntervention({
       status: 'cancelled',
       cancelled_at: '2025-06-02T10:00:00Z',
@@ -179,11 +179,9 @@ describe('InterventionHeader', () => {
     });
     renderHeader(cancelled);
 
-    expect(screen.getByTestId('export-pdf-stub')).toBeInTheDocument();
-    expect(screen.getByTestId('export-pdf-stub')).toHaveAttribute(
-      'data-intervention-id',
-      '11111111-1111-1111-1111-111111111111',
-    );
+    // A cancelled intervention is not exportable (it would render as a clean
+    // record with no annulment notice) — the button is hidden.
+    expect(screen.queryByTestId('export-pdf-stub')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
   });
 });

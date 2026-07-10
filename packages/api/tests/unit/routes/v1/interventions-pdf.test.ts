@@ -8,32 +8,32 @@ import { registerErrorHandler } from '../../../../src/plugins/error-handler.js';
 import type { JwtVerifier, VerifyResult } from '../../../../src/plugins/auth.js';
 import interventionPdfRoutes from '../../../../src/routes/v1/interventions-pdf.js';
 
-// Mock the pure renderer so no pdf-lib work and no logo lookup happen.
-vi.mock('../../../../src/lib/intervention-pdf-renderer.js', async () => {
+// Mock the shared history renderer so no pdf-lib work happens. The single
+// intervention PDF renders via the SAME renderer as the bulk vehicle-history
+// export (decided 2026-07-10) — scoped to one intervention.
+vi.mock('../../../../src/lib/vehicle-history-pdf-renderer.js', async () => {
   const real = await vi.importActual<
-    typeof import('../../../../src/lib/intervention-pdf-renderer.js')
-  >('../../../../src/lib/intervention-pdf-renderer.js');
-  return { ...real, renderInterventionPdf: vi.fn() };
+    typeof import('../../../../src/lib/vehicle-history-pdf-renderer.js')
+  >('../../../../src/lib/vehicle-history-pdf-renderer.js');
+  return { ...real, renderVehicleHistoryPdf: vi.fn() };
 });
 
-import { renderInterventionPdf } from '../../../../src/lib/intervention-pdf-renderer.js';
+import { renderVehicleHistoryPdf } from '../../../../src/lib/vehicle-history-pdf-renderer.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const COGNITO_SUB = '22222222-2222-4222-8222-222222222222';
-const VEHICLE_ID = '55555555-5555-4555-8555-555555555555';
 const INTERVENTION_ID = '99999999-9999-4999-8999-999999999999';
-const CUSTOMER_ID = '88888888-8888-4888-8888-888888888888';
 
 const FAKE_PDF = Buffer.from('%PDF-1.4 fake-intervention');
 
 function interventionRow(overrides: Record<string, unknown> = {}) {
   return {
-    id: INTERVENTION_ID,
     status: 'active',
     interventionDate: new Date('2026-05-23T00:00:00.000Z'),
     odometerKm: 60000,
     description: 'desc',
     partsReplaced: [],
+    tenantId: TENANT_ID,
     checklistSelections: [
       {
         checklistItemId: 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1',
@@ -41,40 +41,21 @@ function interventionRow(overrides: Record<string, unknown> = {}) {
         sortOrderSnapshot: 0,
       },
     ],
-    cancelledReason: null,
     interventionType: { nameIt: 'Tagliando' },
-    tenant: {
-      businessName: 'Officina X',
-      addressLine: 'Via 1',
-      city: 'Roma',
-      vatNumber: '0000',
-      phone: null,
-    },
+    tenant: { businessName: 'Officina X' },
     vehicle: {
-      id: VEHICLE_ID,
       plate: 'AB123CD',
       make: 'Fiat',
       model: 'Panda',
+      version: null,
       garageCode: 'GA0001',
+      vin: 'ZFA00000000000001',
+      year: 2020,
+      fuelType: 'benzina',
     },
-    user: { firstName: 'Giuseppe', lastName: 'Rossi' },
     ...overrides,
   };
 }
-
-const customerRow: {
-  id: string;
-  firstName: string;
-  lastName: string;
-  isBusiness: boolean;
-  businessName: string | null;
-} = {
-  id: CUSTOMER_ID,
-  firstName: 'Mario',
-  lastName: 'Rossi',
-  isBusiness: false,
-  businessName: null,
-};
 
 interface FakePrisma {
   // tenantContext middleware calls request.server.prisma.user.findFirst to
@@ -82,27 +63,15 @@ interface FakePrisma {
   // route itself never queries users directly.
   user: { findFirst: ReturnType<typeof vi.fn> };
   intervention: { findFirst: ReturnType<typeof vi.fn> };
-  vehicleOwnership: { findFirst: ReturnType<typeof vi.fn> };
-  customerTenantRelation: { findMany: ReturnType<typeof vi.fn> };
 }
 
 function buildFakePrisma(opts: {
   intervention?: ReturnType<typeof interventionRow> | null;
-  owner?: { customer: typeof customerRow } | null;
-  relationVisible?: boolean;
 }): FakePrisma {
   const intervention = opts.intervention === undefined ? interventionRow() : opts.intervention;
-  const owner = opts.owner === undefined ? { customer: customerRow } : opts.owner;
-  const relationVisible = opts.relationVisible ?? true;
   return {
-    // tenantContext middleware calls prisma.user.findFirst (select id) to
-    // confirm the user is active; any truthy row satisfies its null-check.
     user: { findFirst: vi.fn().mockResolvedValue({ id: COGNITO_SUB }) },
     intervention: { findFirst: vi.fn().mockResolvedValue(intervention) },
-    vehicleOwnership: { findFirst: vi.fn().mockResolvedValue(owner) },
-    customerTenantRelation: {
-      findMany: vi.fn().mockResolvedValue(relationVisible ? [{ customerId: CUSTOMER_ID }] : []),
-    },
   };
 }
 
@@ -145,9 +114,9 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     vi.clearAllMocks();
   });
 
-  it('200 — streams application/pdf; passes masked customer name to renderer', async () => {
+  it('200 — streams application/pdf; grouped mode + single intervention by default', async () => {
     const prisma = buildFakePrisma({});
-    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
+    vi.mocked(renderVehicleHistoryPdf).mockResolvedValue(FAKE_PDF);
 
     app = await buildApp(prisma);
     const res = await app.inject({
@@ -161,12 +130,48 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     expect(res.headers['content-disposition']).toContain(`intervento-${INTERVENTION_ID}.pdf`);
     expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
 
-    const dataArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
-    expect(dataArg.customerName).toBe('Mario Rossi');
-    expect(dataArg.operatorName).toBe('Giuseppe Rossi');
-    expect(dataArg.interventionDate).toBe('2026-05-23');
-    expect(dataArg.checklistItems).toEqual(['Cambio olio']);
-    expect(dataArg).not.toHaveProperty('title');
+    // Own-only scoping frontier: findFirst is keyed on { id, tenantId }.
+    const where = prisma.intervention.findFirst.mock.calls[0]![0].where;
+    expect(where).toEqual({ id: INTERVENTION_ID, tenantId: TENANT_ID });
+
+    const dataArg = vi.mocked(renderVehicleHistoryPdf).mock.calls[0]![0];
+    expect(dataArg.mode).toBe('grouped'); // show_names default true
+    expect(dataArg.interventions).toHaveLength(1);
+    const it0 = dataArg.interventions[0]!;
+    expect(it0.tenantName).toBe('Officina X');
+    expect(it0.tenantId).toBe(TENANT_ID);
+    expect(it0.interventionDate).toBe('2026-05-23');
+    expect(it0.typeName).toBe('Tagliando');
+    expect(it0.checklistItems).toEqual(['Cambio olio']);
+    expect(dataArg.vehicle.vin).toBe('ZFA00000000000001');
+    // No PII / operator on the customer-deliverable document.
+    expect(dataArg).not.toHaveProperty('customerName');
+  });
+
+  it('show_names=false — anonymous mode (no officina label)', async () => {
+    const prisma = buildFakePrisma({});
+    vi.mocked(renderVehicleHistoryPdf).mockResolvedValue(FAKE_PDF);
+    app = await buildApp(prisma);
+    await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${INTERVENTION_ID}/pdf?show_names=false`,
+      headers: { authorization: 'Bearer test' },
+    });
+    const dataArg = vi.mocked(renderVehicleHistoryPdf).mock.calls[0]![0];
+    expect(dataArg.mode).toBe('anonymous');
+  });
+
+  it('409 — intervention.export.cancelled for a cancelled intervention; renderer not called', async () => {
+    const prisma = buildFakePrisma({ intervention: interventionRow({ status: 'cancelled' }) });
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json<{ code: string }>().code).toBe('intervention.export.cancelled');
+    expect(renderVehicleHistoryPdf).not.toHaveBeenCalled();
   });
 
   it('404 — intervention.not_found when findFirst returns null; renderer not called', async () => {
@@ -179,84 +184,12 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     });
     expect(res.statusCode).toBe(404);
     expect(res.json<{ code: string }>().code).toBe('intervention.not_found');
-    expect(renderInterventionPdf).not.toHaveBeenCalled();
-  });
-
-  it('BR-151 — customerName is placeholder when relation not visible', async () => {
-    const prisma = buildFakePrisma({ relationVisible: false });
-    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
-    app = await buildApp(prisma);
-    await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
-      headers: { authorization: 'Bearer test' },
-    });
-    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
-    expect(callArg.customerName).toBe('Proprietario non in anagrafica');
-  });
-
-  it('owner null — customerName null, still 200', async () => {
-    const prisma = buildFakePrisma({ owner: null });
-    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
-    app = await buildApp(prisma);
-    const res = await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
-      headers: { authorization: 'Bearer test' },
-    });
-    expect(res.statusCode).toBe(200);
-    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
-    expect(callArg.customerName).toBeNull();
-  });
-
-  it('BR-213 — operatorName fallback "Operatore" when user is null', async () => {
-    const prisma = buildFakePrisma({ intervention: interventionRow({ user: null }) });
-    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
-    app = await buildApp(prisma);
-    await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
-      headers: { authorization: 'Bearer test' },
-    });
-    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
-    expect(callArg.operatorName).toBe('Operatore');
-  });
-
-  it('isBusiness — uses businessName for the customer name', async () => {
-    const bizCustomer = {
-      customer: { ...customerRow, isBusiness: true, businessName: 'Trasporti SRL' },
-    };
-    const prisma = buildFakePrisma({ owner: bizCustomer });
-    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
-    app = await buildApp(prisma);
-    await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
-      headers: { authorization: 'Bearer test' },
-    });
-    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
-    expect(callArg.customerName).toBe('Trasporti SRL');
-  });
-
-  it('isBusiness true but businessName null — falls back to first+last name', async () => {
-    const bizNoName = {
-      customer: { ...customerRow, isBusiness: true, businessName: null },
-    };
-    const prisma = buildFakePrisma({ owner: bizNoName });
-    vi.mocked(renderInterventionPdf).mockResolvedValue(FAKE_PDF);
-    app = await buildApp(prisma);
-    await app.inject({
-      method: 'GET',
-      url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
-      headers: { authorization: 'Bearer test' },
-    });
-    const callArg = vi.mocked(renderInterventionPdf).mock.calls[0]![0];
-    expect(callArg.customerName).toBe('Mario Rossi');
+    expect(renderVehicleHistoryPdf).not.toHaveBeenCalled();
   });
 
   it('502 — intervention_pdf.render_failed when renderer throws', async () => {
     const prisma = buildFakePrisma({});
-    vi.mocked(renderInterventionPdf).mockRejectedValue(new Error('render boom'));
+    vi.mocked(renderVehicleHistoryPdf).mockRejectedValue(new Error('render boom'));
     app = await buildApp(prisma);
     const res = await app.inject({
       method: 'GET',

@@ -69,7 +69,10 @@ export function InterventionHeader({ intervention: i, onEditClick, onCancelClick
               )}
             </>
           )}
-          <InterventionExportPdfButton interventionId={i.id} />
+          {/* Cancelled interventions are not exportable (they would render as a
+              clean maintenance record with no annulment notice — see the route
+              guard). The button is hidden; the route 409s as defense in depth. */}
+          {i.status !== 'cancelled' && <InterventionExportPdfButton interventionId={i.id} />}
         </div>
       </div>
     </div>
