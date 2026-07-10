@@ -1132,7 +1132,7 @@ Authorization: Bearer <any_user_jwt>
 | `type` | enum | `all` | `all` \| `shop_only` \| `private_only` |
 | `from_date` | date | - | Filtra da data |
 | `to_date` | date | - | Filtra fino a data |
-| `tenant_ids` | string | - | UUID officine separati da virgola; filtra gli interventi officina a quelle officine (assente ⇒ tutte). UUID malformato ⇒ `400`. La lista delle officine presenti è in `GET …/timeline/officine`. |
+| `tenant_ids` | string | - | UUID officine separati da virgola; filtra gli interventi officina a quelle officine (assente ⇒ tutte). Ignorato per il pool `officine` (own-only dal 2026-07-09); resta un filtro cross-officina per il pool clienti. UUID malformato ⇒ `400`. |
 
 #### Response `200 OK`
 
@@ -1150,7 +1150,6 @@ Authorization: Bearer <any_user_jwt>
       "status": "active",
       "is_disputed": false,
       "wiki_window_open": true,
-      "viewer_is_owner": true,
       "tenant": {
         "id": "01HKXL0...",
         "business_name": "Officina Rossi S.r.l."
@@ -1185,8 +1184,7 @@ Authorization: Bearer <any_user_jwt>
 | `type.name_it` | string | Nome localizzato italiano. |
 | ~~`title`~~ | - | Rimosso (BR-308): l'intestazione della card è `type.name_it`, non più un titolo libero. |
 | `wiki_window_open` | boolean | Server-computed BR-062 predicate. `true` = free edits, no revision row created. `false` = audit active; subsequent PATCH requires `reason` ≥10 chars per BR-064. Computed from `wikiLockedAt IS NULL AND firstSeenByCustomerAt IS NULL AND now() - createdAt < 48h`. |
-| `tenant.id` | string (uuid) | UUID dell'officina autrice. Chiave per il colore per-officina e il filtro `tenant_ids` lato client. |
-| `viewer_is_owner` | boolean | Emendato 2026-07-09 (BR-150/BR-153): per il pool `officine` è ora sempre `true` — l'officina vede **solo i propri** interventi (le righe di altri tenant non vengono più restituite). Sempre `false` per il pool clienti. Campo mantenuto per compatibilità wire (rimozione pianificata in una PR web successiva). |
+| `tenant.id` | string (uuid) | UUID dell'officina autrice. Chiave per il filtro `tenant_ids` lato client (pool clienti). |
 
 #### Campi `private_intervention` (selezione)
 
@@ -1194,20 +1192,6 @@ Authorization: Bearer <any_user_jwt>
 |---|---|---|
 | `type` | `{ id, name_it }` \| `null` | BR-086: valorizzato quando l'intervento privato usa un tipo dal catalogo; l'intestazione della card è `type.name_it`. `null` per il testo libero ("Altro"). |
 | `custom_type` | string \| `null` | Testo libero ("Altro"). Valorizzato solo quando `type` è `null`; è l'intestazione in quel caso. |
-
-#### `GET /v1/vehicles/:id/timeline/officine` — Officine presenti nella timeline
-
-**Auth:** Tenant User (pool `officine`). **Emendato 2026-07-09 (BR-150/BR-153, own-only):** restituisce la lista **distinta** delle sole officine del **tenant chiamante** con ≥1 intervento sul veicolo (le officine di altri tenant non sono più incluse), ordinata per `business_name`. In pratica contiene al massimo il solo tenant chiamante. Alimenta il filtro multiselect e l'assegnazione colori stabile (indipendente dalla paginazione); la struttura wire è mantenuta per compat (rimozione/semplificazione pianificata in una PR web successiva).
-
-```json
-{
-  "data": [
-    { "tenant_id": "01HKXL0...", "business_name": "Officina Matula", "viewer_is_owner": true }
-  ]
-}
-```
-
-Errori: `400` UUID veicolo malformato · `404` veicolo inesistente · `403` pool clienti.
 
 #### Regole di visibilità
 
@@ -1829,7 +1813,6 @@ Authorization: Bearer <officina_user_jwt>
   "cancelled_reason": null,                // string | null (BR-130)
   "description": "Sostituzione olio motore...",
   "internal_notes": "Cliente segnala rumore...",  // string | null — endpoint own-only (2026-07-09): il chiamante è sempre proprietario, sempre valorizzato se presente
-  "viewer_is_owner": true,                 // sempre true (own-only, 2026-07-09); mantenuto per compat wire
   "parts_replaced": [                      // array; empty array if none
     { "name": "Olio motore Selenia 5W30", "code": "SEL-5W30-4L", "quantity": 4, "notes": "Litri" }
   ],
@@ -1876,7 +1859,6 @@ Authorization: Bearer <officina_user_jwt>
 | `cancelled_reason` | string | sì | Motivazione annullamento (BR-130) |
 | `description` | string | sì | |
 | `internal_notes` | string | sì | Emendato 2026-07-09: endpoint own-only, il chiamante è sempre proprietario → sempre valorizzato se presente (`null` solo se il campo è vuoto). |
-| `viewer_is_owner` | boolean | no | Emendato 2026-07-09: sempre `true` (endpoint own-only; un intervento di altro tenant → `404 intervention.not_found`). Campo mantenuto per compat wire. |
 | `parts_replaced` | array | no | Array vuoto se nessun ricambio |
 | `checklist_items` | array di `{ id, label }` | no | Array vuoto se nessuna voce (non dovrebbe accadere in pratica — BR-300 impone ≥1 voce in creazione). Letto dallo snapshot congelato (`label_snapshot`/`sort_order_snapshot`, BR-303), **non** da un join live sul catalogo — sopravvive a rinomina/eliminazione della voce (BR-303/D8). `id` (`checklist_item_id`) è `null` quando la voce catalogo è stata eliminata nel frattempo (FK `onDelete: SetNull`); `label` resta sempre valorizzato. Ordinato per `sort_order_snapshot asc` (null in coda), poi `label asc`. |
 | `type` | object | no | Tipo intervento (`id`, `code`, `name_it`) |
@@ -1896,7 +1878,7 @@ Authorization: Bearer <officina_user_jwt>
 #### Note
 
 - **Own-only (emendato 2026-07-09, BR-150 / BR-153)**: l'endpoint restituisce **solo** interventi del tenant chiamante. Il lookup applica il filtro `{ id, tenantId }` (isolamento app-layer + RLS pool-gated, migration `20260709120000_officina_own_interventions_rls`) → un intervento di un altro tenant restituisce `404 intervention.not_found` (RLS-as-404), esattamente come una riga inesistente. Il chiamante è quindi sempre proprietario.
-- ~~**Redazione per non proprietari**~~ (rimossa 2026-07-09): non esiste più una vista cross-tenant in sola lettura, quindi non c'è redazione. `internal_notes` e `created_by` sono sempre valorizzati (salvo campo vuoto / utente cancellato). `viewer_is_owner` è sempre `true` (mantenuto per compat wire).
+- ~~**Redazione per non proprietari**~~ (rimossa 2026-07-09): non esiste più una vista cross-tenant in sola lettura, quindi non c'è redazione. `internal_notes` e `created_by` sono sempre valorizzati (salvo campo vuoto / utente cancellato).
 - **`internal_notes` visibility**: esposto al solo Tenant User proprietario (BR-153); essendo l'endpoint own-only, il chiamante è sempre tale. Il pool clienti non ha accesso a questo endpoint (403).
 - **`created_by` null**: solo quando l'utente che ha creato l'intervento è stato rimosso (soft-delete con `SetNull` sulla FK `userId`). Il client deve gestire il caso null nella UI.
 - **BR-308 — `title` rimosso**: l'intervento non ha più un titolo libero; questa response non lo espone (correzione di una precedente inconsistenza di questa sezione, che documentava ancora `title`). L'intestazione mostrata all'utente è `type.name_it`. La colonna DB `title` resta (lettori residui: PDF PR-6, mobile PR-7) ma non è più letta da questo endpoint.
@@ -2648,7 +2630,7 @@ Body vuoto `{}` valido: ripristina il role originale.
 | POST | `/vehicles/:id/tag-reprint` | F-OFF-109 | Tenant User | **[DETTAGLIATO §2.14]** Ristampa tag PDF veicolo (richiede audit precedente + reason) |
 | GET | `/vehicles/:id/access-log` | F-OFF-601, F-CLI-304 | Any User | Log accessi al veicolo |
 | GET | `/vehicles/:id/timeline` | F-OFF-105, F-CLI-201 | Any User | **[DETTAGLIATO §2.5]** Timeline interventi |
-| GET | `/vehicles/:id/export.pdf` | registro v1.1 | Tenant User | **[DETTAGLIATO §3.5c]** Export PDF storico interventi (scope own/all, nomi officina opzionali) |
+| GET | `/vehicles/:id/export.pdf` | registro v1.1 | Tenant User | **[DETTAGLIATO §3.5c]** Export PDF storico interventi own-tenant (nomi officina opzionali) |
 | POST | `/me/vehicles/claim` | F-CLI-101, F-CLI-102, F-CLI-103 | Customer | **[DETTAGLIATO §2.4]** Aggancia veicolo tramite codice |
 | GET | `/me` | F-CLI-004 | Customer | Profilo del cliente autenticato |
 | PATCH | `/me/profile` | F-CLI-004 | Customer | Modifica nome/cognome/telefono (email immutabile) |
@@ -2740,14 +2722,8 @@ un veicolo dalla scheda veicolo dell'officina. Solo pool officine
 renderer di F-CLI-501 (`vehicle-history-pdf-renderer`) e la stessa meccanica di
 streaming diretto (nessun persist S3).
 
-Query params (entrambi opzionali):
+Query param (opzionale):
 
-- `scope=all|own` (default `all`): **emendato 2026-07-09** — il PDF officina
-  include ora **sempre e solo** gli interventi del tenant chiamante (own-only,
-  BR-150/BR-153). Il param è mantenuto per compatibilità wire ma non allarga più
-  la query: entrambi i valori restituiscono i soli interventi del chiamante (la
-  rimozione del param è pianificata in una PR web successiva). Il filtro
-  `tenant_id` è sempre applicato (frontiera di sicurezza app-layer, mai solo RLS).
 - `show_names=true|false` (default `true`): `true` raggruppa gli interventi per
   officina (intestazioni di sezione, ordinate per attività più recente);
   `false` produce una lista piatta anonima senza nomi officina.

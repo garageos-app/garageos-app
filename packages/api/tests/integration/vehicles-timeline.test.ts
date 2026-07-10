@@ -97,7 +97,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
         odometer_km: number;
         tenant?: { business_name: string };
         wiki_window_open?: boolean;
-        viewer_is_owner?: boolean;
         type?: { id: string; code: string; name_it: string };
       }>;
       meta: { shop_count: number; private_count: number };
@@ -109,9 +108,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     expect(oks).toEqual([42000]); // tenant B's own row only, none of A's
     const row = body.data[0]!;
     expect(row.kind).toBe('shop_intervention');
-    // Own-tenant rows are always viewer_is_owner=true (field kept for shape
-    // compat with the deployed web client; removal deferred to PR-2).
-    expect(row.viewer_is_owner).toBe(true);
     // Interventions created in this test are < 48h old, never seen,
     // and have no wikiLockedAt → wiki window must be open.
     expect(row.wiki_window_open).toBe(true);
@@ -163,7 +159,7 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
-      data: Array<{ kind: string; odometer_km: number; viewer_is_owner?: boolean }>;
+      data: Array<{ kind: string; odometer_km: number }>;
       meta: { shop_count: number; private_count: number };
     };
     expect(body.meta.shop_count).toBe(2);
@@ -171,67 +167,6 @@ describe('GET /v1/vehicles/:id/timeline (integration)', () => {
     const oks = body.data.map((d) => d.odometer_km);
     expect(oks).toContain(45000);
     expect(oks).toContain(42000);
-    // Clienti has no owning tenant — viewer_is_owner is always false.
-    expect(body.data.every((d) => d.viewer_is_owner === false)).toBe(true);
-  });
-
-  it('GET /timeline/officine returns only the caller own officina (own-only, 2026-07-09)', async () => {
-    const { tenantId: tenantA } = await createTenantWithLocation('tl-off-A');
-    const { tenantId: tenantB } = await createTenantWithLocation('tl-off-B');
-    const subA = '31111111-1111-4111-8111-aaaaaaaaaaaa';
-    const subB = '32222222-2222-4222-8222-bbbbbbbbbbbb';
-    const { userId: userA } = await createUser({
-      tenantId: tenantA,
-      cognitoSub: subA,
-    });
-    const { userId: userB } = await createUser({
-      tenantId: tenantB,
-      cognitoSub: subB,
-    });
-    const { customerId } = await createCustomer({});
-    const { vehicleId } = await createVehicle({ createdByTenantId: tenantA });
-    await createOwnership({ vehicleId, customerId });
-    const tagliando = await ensureSystemInterventionType('MECCANICO');
-    // Two interventions by A (must be DISTINCT-collapsed to one officina) + one by B.
-    for (const date of ['2026-04-15', '2026-02-01']) {
-      await createIntervention({
-        tenantId: tenantA,
-        userId: userA,
-        vehicleId,
-        interventionTypeId: tagliando.id,
-        interventionDate: date,
-        odometerKm: 45000,
-      });
-    }
-    await createIntervention({
-      tenantId: tenantB,
-      userId: userB,
-      vehicleId,
-      interventionTypeId: tagliando.id,
-      interventionDate: '2026-03-10',
-      odometerKm: 42000,
-    });
-
-    const token = await signTestToken({
-      pool: 'officine',
-      sub: subA,
-      tenantId: tenantA,
-      role: 'mechanic',
-    });
-    const res = await app.inject({
-      method: 'GET',
-      url: `/v1/vehicles/${vehicleId}/timeline/officine`,
-      headers: { authorization: `Bearer ${token}` },
-    });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as {
-      data: Array<{ tenant_id: string; business_name: string; viewer_is_owner: boolean }>;
-    };
-    // Own-only: only tenant A (the caller) is listed, tenant B is filtered
-    // out app-layer (`tenantId` added to the findMany where clause).
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]!.tenant_id).toBe(tenantA);
-    expect(body.data[0]!.viewer_is_owner).toBe(true);
   });
 
   it('officina: tenant_ids query param is accepted but IGNORED — own-tenant scoping always wins', async () => {

@@ -89,7 +89,6 @@ const BASE_DETAIL: InterventionDetailDto = {
   description: 'Cambio olio e filtri.',
   internal_notes: null,
   checklist_items: [{ id: 'checklist-1', label: 'Cambio olio' }],
-  viewer_is_owner: true,
   parts_replaced: [],
   type: { id: 'type-tagliando', code: 'TAGLIANDO', name_it: 'Tagliando' },
   tenant: { id: TENANT_ID, business_name: 'Officina Rossi' },

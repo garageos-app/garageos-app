@@ -43,7 +43,6 @@ const SHOP_ITEM: ShopTimelineItem = {
   is_disputed: false,
   wiki_window_open: true,
   tenant: { id: 'tenant-rossi', business_name: 'Officina Rossi' },
-  viewer_is_owner: true,
 };
 
 const SHOP_ITEM_DISPUTED: ShopTimelineItem = {

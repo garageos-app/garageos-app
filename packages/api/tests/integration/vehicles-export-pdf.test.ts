@@ -102,7 +102,7 @@ describe('GET /v1/vehicles/:id/export.pdf (integration)', () => {
     });
   }
 
-  it('scope=own and scope=all both restrict to the caller tenant only (BR-150/BR-153 deprecated 2026-07-09)', async () => {
+  it('restricts the PDF to the caller tenant only (BR-150/BR-153 deprecated 2026-07-09)', async () => {
     const a = await createTenantWithLocation('off-pdf-A');
     const b = await createTenantWithLocation('off-pdf-B');
     const userA = await createUser({ tenantId: a.tenantId, cognitoSub: 'off-pdf-mechA' });
@@ -130,37 +130,20 @@ describe('GET /v1/vehicles/:id/export.pdf (integration)', () => {
       role: 'mechanic',
     });
 
-    const own = await app.inject({
+    const res = await app.inject({
       method: 'GET',
-      url: `/v1/vehicles/${vehicleId}/export.pdf?scope=own&show_names=true`,
+      url: `/v1/vehicles/${vehicleId}/export.pdf?show_names=true`,
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(own.statusCode).toBe(200);
-    const ownText = extractPdfText(own.rawPayload);
-    expect(ownText).toContain(nameA);
-    expect(ownText).not.toContain(nameB);
+    expect(res.statusCode).toBe(200);
+    const text = extractPdfText(res.rawPayload);
+    expect(text).toContain(nameA);
+    expect(text).not.toContain(nameB);
 
-    // scope=all no longer widens the query (BR-150/BR-153 deprecated): still
-    // caller-tenant-only. Assert on the exact data handed to the renderer
-    // rather than re-parsing bytes, since both calls now render identical text.
-    const all = await app.inject({
-      method: 'GET',
-      url: `/v1/vehicles/${vehicleId}/export.pdf?scope=all&show_names=true`,
-      headers: { authorization: `Bearer ${token}` },
-    });
-    expect(all.statusCode).toBe(200);
-    const allText = extractPdfText(all.rawPayload);
-    expect(allText).toContain(nameA);
-    expect(allText).not.toContain(nameB);
-
-    expect(renderVehicleHistoryPdf).toHaveBeenCalledTimes(2);
-    const calls = vi.mocked(renderVehicleHistoryPdf).mock.calls;
-    const ownData = calls[0]![0];
-    const allData = calls[1]![0];
-    for (const data of [ownData, allData]) {
-      expect(data.interventions.length).toBeGreaterThan(0);
-      expect(data.interventions.every((it) => it.tenantId === a.tenantId)).toBe(true);
-    }
+    // Cross-tenant intervention (tenant B) never reaches the renderer.
+    const data = vi.mocked(renderVehicleHistoryPdf).mock.calls[0]![0];
+    expect(data.interventions.length).toBeGreaterThan(0);
+    expect(data.interventions.every((it) => it.tenantId === a.tenantId)).toBe(true);
   });
 
   it('show_names=false omits officina names (anonymous flat list)', async () => {
@@ -178,7 +161,7 @@ describe('GET /v1/vehicles/:id/export.pdf (integration)', () => {
     });
     const res = await app.inject({
       method: 'GET',
-      url: `/v1/vehicles/${vehicleId}/export.pdf?scope=all&show_names=false`,
+      url: `/v1/vehicles/${vehicleId}/export.pdf?show_names=false`,
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(200);
@@ -213,7 +196,7 @@ describe('GET /v1/vehicles/:id/export.pdf (integration)', () => {
     });
     const res = await app.inject({
       method: 'GET',
-      url: `/v1/vehicles/${vehicleId}/export.pdf?scope=all&show_names=true`,
+      url: `/v1/vehicles/${vehicleId}/export.pdf?show_names=true`,
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(200);

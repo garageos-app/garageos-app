@@ -77,7 +77,6 @@ const TIMELINE_FIXTURE: TimelineResponse = {
       is_disputed: false,
       wiki_window_open: true,
       tenant: { id: 'tenant-rossi', business_name: 'Officina Rossi' },
-      viewer_is_owner: true,
     },
     {
       kind: 'private_intervention',

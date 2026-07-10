@@ -93,13 +93,6 @@ export interface ShopTimelineItem {
    */
   wiki_window_open: boolean;
   tenant: { id: string; business_name: string };
-  /**
-   * false when the caller's tenant did not create this intervention. The
-   * timeline is cross-tenant for officine (BR-150/BR-153), but edit and
-   * dispute-response are owner-only mutations, so those affordances are
-   * hidden on other tenants' rows. Always false for the clienti pool.
-   */
-  viewer_is_owner: boolean;
 }
 
 export interface PrivateTimelineItem {
@@ -357,13 +350,6 @@ export interface InterventionDetail {
   // BR-303 — checklist selections snapshot (label survives catalog-item
   // deletion; `id` is null when the underlying catalog row was deleted).
   checklist_items: { id: string | null; label: string }[];
-  /**
-   * false when the caller's tenant did not create this intervention: the
-   * detail is a cross-tenant read-only view (shared logbook, BR-150/BR-153).
-   * The page hides edit/cancel/upload affordances; `internal_notes` and
-   * `created_by` are also null in that case (BR-153 / BR-151).
-   */
-  viewer_is_owner: boolean;
   parts_replaced: InterventionPartReplaced[];
   type: { id: string; code: string; name_it: string };
   tenant: { id: string; business_name: string };

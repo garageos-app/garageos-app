@@ -120,7 +120,6 @@ function makeShopItem(overrides: Partial<ShopTimelineItem> = {}): ShopTimelineIt
     is_disputed: false,
     wiki_window_open: true,
     tenant: { id: 'tenant-acme', business_name: 'Garage Acme' },
-    viewer_is_owner: true,
     ...overrides,
   };
 }
@@ -145,7 +144,6 @@ function makeDetail(overrides: Partial<InterventionDetail> = {}): InterventionDe
       { id: ITEM_ID_OLIO, label: 'Cambio olio' },
       { id: ITEM_ID_FILTRO, label: 'Cambio filtro' },
     ],
-    viewer_is_owner: true,
     parts_replaced: [],
     type: { id: TYPE_ID_TAGLIANDO, code: 'tagliando', name_it: 'Tagliando' },
     tenant: { id: 't-1', business_name: 'Garage Acme' },

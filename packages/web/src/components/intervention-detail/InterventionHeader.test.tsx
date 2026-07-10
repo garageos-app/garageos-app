@@ -42,7 +42,6 @@ function makeIntervention(overrides: Partial<InterventionDetail> = {}): Interven
     description: 'Cambio olio e filtri.',
     internal_notes: null,
     checklist_items: [{ id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', label: 'Cambio olio' }],
-    viewer_is_owner: true,
     parts_replaced: [],
     type: {
       id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
