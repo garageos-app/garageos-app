@@ -49,7 +49,6 @@ function toTimelineItemSlice(d: InterventionDetailDto): ShopTimelineItem {
       id: d.tenant.id,
       business_name: d.tenant.business_name,
     },
-    viewer_is_owner: d.viewer_is_owner,
   };
 }
 

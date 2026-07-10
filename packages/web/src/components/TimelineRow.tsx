@@ -34,9 +34,8 @@ export function TimelineRow({ item, vehicleId }: Props) {
   const panelId = useId();
 
   const isShop = item.kind === 'shop_intervention';
-  // The officina web app now shows only its own interventions (API is
-  // own-only), so viewer_is_owner is always true here — gating drops it and
-  // keeps only the real conditions.
+  // The officina web app shows only its own interventions (API is own-only),
+  // so a shop row is editable whenever it is still active.
   const isEditable = isShop && item.status === 'active';
   const title = isShop ? item.type.name_it : (item.custom_type ?? 'Intervento privato');
   // Officina name subtitle dropped for shop rows: with a single (own)

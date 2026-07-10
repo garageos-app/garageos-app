@@ -19,18 +19,15 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 //
 // BR-150/BR-153 (the shared cross-tenant logbook) is deprecated for the officina
 // surface as of 2026-07-09: the shared logbook is now customer-facing only. This
-// route is therefore ALWAYS scoped to the caller's own tenant, regardless of the
-// `scope` query value — access is gated by vehicle existence (404 vehicle.not_found)
-// plus the app-layer tenantId filter below (the security frontier, never RLS alone).
-//   scope        — retained for wire compatibility with the deployed web; no longer
-//                  widens the query (removed entirely in a later PR).
+// route is therefore ALWAYS scoped to the caller's own tenant — access is gated by
+// vehicle existence (404 vehicle.not_found) plus the app-layer tenantId filter below
+// (the security frontier, never RLS alone).
 //   show_names   — grouped-by-officina headers (true) vs anonymous flat list (false),
-//                  now rendered over own-tenant data only.
+//                  rendered over own-tenant data only.
 // Only active+disputed are included (cancelled excluded, BR-150). internal_notes and
 // owner PII are never selected — customer-deliverable document, neutral header.
 
 const querySchema = z.object({
-  scope: z.enum(['all', 'own']).default('all'),
   show_names: z
     .enum(['true', 'false'])
     .default('true')
@@ -43,7 +40,7 @@ const vehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: [requireAuth, requireOfficinaPool, tenantContext] },
     async (request, reply) => {
       const { id: vehicleId } = idParamSchema.parse(request.params);
-      const { scope, show_names: showNames } = querySchema.parse(request.query);
+      const { show_names: showNames } = querySchema.parse(request.query);
       const tenantId = request.tenantId!;
 
       const pdfData = await app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
@@ -65,7 +62,7 @@ const vehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
         }
 
         // Always scoped to the caller's own tenant (BR-150/BR-153 deprecated
-        // 2026-07-09) — `scope` no longer widens this query, see header comment.
+        // 2026-07-09), see header comment.
         const interventions = await tx.intervention.findMany({
           where: {
             vehicleId,
@@ -120,7 +117,7 @@ const vehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
       }
 
       request.log.info(
-        { vehicleId, tenantId, scope, showNames },
+        { vehicleId, tenantId, showNames },
         'vehicle_history_pdf.officina_generated',
       );
 

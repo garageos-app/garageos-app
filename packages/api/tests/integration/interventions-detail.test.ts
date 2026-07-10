@@ -207,9 +207,6 @@ describe('GET /v1/interventions/:id (officina)', () => {
     expect(typeof createdBy.id).toBe('string');
     expect(createdBy.first_name).toBe('Giuseppe');
     expect(createdBy.last_name).toBe('Verdi');
-
-    // The owning tenant is the viewer → full visibility flag
-    expect(body.viewer_is_owner).toBe(true);
   });
 
   // -----------------------------------------------------------------------

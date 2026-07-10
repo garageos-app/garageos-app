@@ -7,8 +7,6 @@ import { isWikiWindowOpen } from '../../lib/intervention-shared.js';
 import { idParamSchema } from '../../lib/vehicle-shared.js';
 import { dualPoolContext } from '../../middleware/dual-pool-context.js';
 import { requireAuth } from '../../middleware/require-auth.js';
-import { requireOfficinaPool } from '../../middleware/require-officina-pool.js';
-import { tenantContext } from '../../middleware/tenant-context.js';
 
 // GET /v1/vehicles/:id/timeline — APPENDICE_A §2.5 (F-OFF-105 /
 // F-CLI-201 / F-CLI-205). Visibility per spec §2.5, as of 2026-07-09:
@@ -265,15 +263,6 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
         // wiki_window_open in the same response.
         const now = new Date();
 
-        // BR-150/BR-153 (deprecated 2026-07-09): officina rows are now
-        // always own-tenant (shopWhere pins tenantId above), so this
-        // naturally evaluates to true for every officina row. Left in place
-        // as-is (not special-cased) for shape compatibility with the
-        // deployed web client; removal is deferred to PR-2. For clienti
-        // there is no owning tenant (editing is officina-only), so it is
-        // always false.
-        const callerTenantId = isOfficine ? request.tenantId! : null;
-
         const data = page.map((item) => {
           if (item.kind === 'shop') {
             const r = item.row;
@@ -301,7 +290,6 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
                 id: r.tenantId,
                 business_name: r.tenant.businessName,
               },
-              viewer_is_owner: r.tenantId === callerTenantId,
             };
           }
           const r = item.row;
@@ -341,53 +329,6 @@ const vehicleTimelineRoutes: FastifyPluginAsync = async (app) => {
             private_count: privateCount,
           },
         };
-      });
-    },
-  );
-
-  // GET /v1/vehicles/:id/timeline/officine — distinct list of officine that
-  // have at least one shop intervention on this vehicle. Feeds the web
-  // timeline officina filter + stable per-officina color assignment (the
-  // list is independent of pagination, so colors don't shift as pages load).
-  //
-  // Officine-only: the filter UI lives in the workshop web app. As of
-  // 2026-07-09 (BR-150/BR-153 deprecated for the officina surface), this
-  // is scoped app-layer to the caller's own tenantId — it now always
-  // returns at most one entry (the caller itself). RLS `interventions_read`
-  // is still permissive cross-tenant, so the app-layer filter below is the
-  // security frontier. Route is not removed (deferred to PR-2 with the web
-  // filter UI).
-  app.get(
-    '/v1/vehicles/:id/timeline/officine',
-    {
-      preHandler: [requireAuth, requireOfficinaPool, tenantContext],
-    },
-    async (request) => {
-      const { id: vehicleId } = idParamSchema.parse(request.params);
-      const tenantId = request.tenantId!;
-
-      return app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
-        // Vehicle existence first — 404 mirrors the timeline endpoint.
-        await tx.vehicle.findUniqueOrThrow({
-          where: { id: vehicleId },
-          select: { id: true },
-        });
-
-        const rows = await tx.intervention.findMany({
-          where: { vehicleId, tenantId },
-          distinct: ['tenantId'],
-          select: { tenantId: true, tenant: { select: { businessName: true } } },
-        });
-
-        const officine = rows
-          .map((r) => ({
-            tenant_id: r.tenantId,
-            business_name: r.tenant.businessName,
-            viewer_is_owner: r.tenantId === tenantId,
-          }))
-          .sort((a, b) => a.business_name.localeCompare(b.business_name, 'it'));
-
-        return { data: officine };
       });
     },
   );

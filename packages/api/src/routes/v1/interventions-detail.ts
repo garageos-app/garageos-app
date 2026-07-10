@@ -23,9 +23,6 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 //
 // No cross-tenant redaction is needed because the caller is always the
 // owner: internal_notes and created_by are always populated from the row.
-// `viewer_is_owner` is kept in the response, hardcoded to `true`, purely for
-// shape compatibility with the currently-deployed web app that still reads
-// this field; it is dropped in a later PR once the client no longer needs it.
 //
 // NOTE (2026-07-09): BR-150 / BR-153 (shared cross-tenant logbook with
 // redaction) are being deprecated — the shared logbook is now
@@ -109,11 +106,6 @@ const interventionDetailRoutes: FastifyPluginAsync = async (app) => {
           cancelled_reason: row.cancelledReason,
           description: row.description,
           internal_notes: row.internalNotes,
-          // Hardcoded true: the lookup above already scopes to the calling
-          // tenant, so the caller is always the owner. Kept for response
-          // shape compatibility with the deployed web app (removed in a
-          // later PR).
-          viewer_is_owner: true,
           parts_replaced: normalizePartsReplaced(row.partsReplaced),
           // BR-308 / BR-303: checklist items are read from the frozen
           // snapshot, not the live catalog (see comment on
