@@ -17,7 +17,7 @@ let revokeObjectURL: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   mockApiBlob.mockReset();
-  openSpy = vi.fn();
+  openSpy = vi.fn(() => ({}) as Window);
   createObjectURL = vi.fn(() => 'blob:mock');
   revokeObjectURL = vi.fn();
   vi.stubGlobal('open', openSpy);

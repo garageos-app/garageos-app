@@ -41,7 +41,7 @@ describe('VehicleHistoryExportButton', () => {
   it('generates with the default (show_names=true) and opens the PDF', async () => {
     const user = userEvent.setup();
     mockApiBlob.mockResolvedValueOnce(pdfBlob());
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Esporta storico PDF/i }));
@@ -60,7 +60,7 @@ describe('VehicleHistoryExportButton', () => {
   it('reflects the toggle in the request when "Mostra nome officina" is turned off', async () => {
     const user = userEvent.setup();
     mockApiBlob.mockResolvedValueOnce(pdfBlob());
-    vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.spyOn(window, 'open').mockReturnValue({} as Window);
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Esporta storico PDF/i }));

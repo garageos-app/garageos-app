@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 
 import { ApiError, useApiBlob } from '@/lib/api-client';
+import { openBlobInNewTab } from '@/lib/openBlob';
 
 // Officina full vehicle-history PDF (GET /v1/vehicles/:id/export.pdf). Always
 // scoped to the caller's own tenant by the API (the old cross-tenant `scope`
@@ -30,10 +31,7 @@ export function useVehicleHistoryPdfDownload(vehicleId: string) {
       const blob = await apiBlob(`/v1/vehicles/${vehicleId}/export.pdf?${qs.toString()}`, {
         method: 'GET',
       });
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, '_blank');
-      // Revoke after a delay so the new tab has time to load the object URL.
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      openBlobInNewTab(blob);
     },
   });
 }

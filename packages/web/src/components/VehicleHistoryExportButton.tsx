@@ -25,6 +25,8 @@ function mapPdfError(err: ApiError): string {
   switch (err.code) {
     case 'vehicle.not_found':
       return 'Veicolo non trovato';
+    case 'client.popup_blocked':
+      return err.message;
     default:
       return 'Impossibile generare il PDF. Riprova.';
   }

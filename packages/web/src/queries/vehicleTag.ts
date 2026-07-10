@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 
 import { ApiError, useApiBlob } from '@/lib/api-client';
+import { openBlobInNewTab } from '@/lib/openBlob';
 
 // F-OFF-104 — vehicle tag (QR-code PDF) is now streamed as application/pdf
 // bytes (no S3 presigned URL). GET /v1/vehicles/:id/tag returns the
@@ -21,10 +22,7 @@ export function useVehicleTagDownload() {
   return useMutation<void, ApiError, string>({
     mutationFn: async (vehicleId: string) => {
       const blob = await apiBlob(`/v1/vehicles/${vehicleId}/tag`, { method: 'GET' });
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, '_blank');
-      // Revoke after a delay so the new tab has time to load the object URL.
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      openBlobInNewTab(blob);
     },
   });
 }
@@ -58,10 +56,7 @@ export function useVehicleTagReprint(vehicleId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, '_blank');
-      // Revoke after a delay so the new tab has time to load the object URL.
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      openBlobInNewTab(blob);
     },
   });
 }
