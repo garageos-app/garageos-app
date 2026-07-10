@@ -1965,25 +1965,31 @@ Authorization: Bearer <officina_user_jwt>
 **Feature:** F-OFF-309
 **Auth:** Tenant User (pool officine — tutti i ruoli).
 **Rate limit:** standard utente.
-**Business rules:** BR-040, BR-151, BR-213
+**Business rules:** BR-150/BR-153 (own-only), BR-303/BR-308 (checklist snapshot)
 
 #### Descrizione
 
 Renderizza il PDF dell'intervento in-Lambda e ne streamma i byte direttamente
 (`Content-Type: application/pdf`) — nessun persist S3, nessun presigned URL.
-Auth operatore (pool officine). RLS tenant-scoped (404 cross-tenant).
+Auth operatore (pool officine). Own-only: `findFirst {id, tenantId}` → `404`
+cross-tenant (RLS-as-404).
 
-Il PDF contiene: intestazione officina (solo `businessName` + indirizzo/P.IVA —
-la feature logo è stata rimossa), intestatario (BR-151 PII-gated, fallback
-"Proprietario non in anagrafica"), veicolo, data/km/tipo, titolo/descrizione,
-ricambi (senza costi), operatore (BR-213 fallback "Operatore"). Banner
-"INTERVENTO ANNULLATO" se `status=cancelled`. `internal_notes` mai incluse.
-Il PDF è rigenerato a ogni chiamata (documento mutabile, nessuna cache).
+**Emendato 2026-07-10:** il documento è lo **stesso dell'export massivo storico
+veicolo** (`renderVehicleHistoryPdf`, §3.5c), con l'unica differenza che contiene
+il solo intervento di riferimento. Condivide quindi il layout del massivo: header
+neutro "STORICO MANUTENZIONE VEICOLO" / GarageOS + dati veicolo, blocco intervento
+(data/km, tipo, voci eseguite, descrizione, ricambi). **Non** stampa più la carta
+intestata officina, l'intestatario (nome cliente), l'operatore, né il banner
+"INTERVENTO ANNULLATO". `internal_notes` mai incluse. Rigenerato a ogni chiamata.
+
+Il parametro `show_names` controlla il nome officina (parità con l'export massivo):
+- `show_names=true` (default) → il nome officina è stampato come intestazione di gruppo.
+- `show_names=false` → nessun nome officina (documento anonimo).
 
 #### Request
 
 ```http
-GET /v1/interventions/{id}/pdf
+GET /v1/interventions/{id}/pdf?show_names=true
 Authorization: Bearer <officine_user_jwt>
 ```
 
@@ -1992,6 +1998,12 @@ Authorization: Bearer <officine_user_jwt>
 | Nome | Tipo | Note |
 | --- | --- | --- |
 | `id` | uuid v4 | UUID dell'intervento. UUID malformato → `400 VALIDATION_ERROR`. |
+
+**Query parameters:**
+
+| Nome | Tipo | Default | Note |
+| --- | --- | --- | --- |
+| `show_names` | `true` \| `false` | `true` | `true` stampa il nome officina (modalità grouped); `false` lo omette (anonima). |
 
 #### Response `200 OK`
 
@@ -2011,9 +2023,8 @@ Body: i byte del PDF renderizzato in-Lambda e streammati direttamente (nessun pe
 
 #### Note
 
-- **PII gating (BR-151)**: il nome del proprietario è visibile solo se il tenant ha una relazione attiva con il customer (`customer_tenant_relations`). Altrimenti il PDF mostra "Proprietario non in anagrafica".
-- **Operator fallback (BR-213)**: se il record utente dell'operatore è stato rimosso (`created_by` null), il PDF mostra "Operatore".
-- **Active owner (BR-040)**: il proprietario è il `VehicleOwnership` con `endedAt=null`.
+- **Documento = export massivo con 1 intervento (2026-07-10)**: riusa `renderVehicleHistoryPdf` (§3.5c). Niente carta intestata officina, niente intestatario/PII, niente operatore, niente banner ANNULLATO — il layout del massivo non li prevede. Un intervento `cancelled` è comunque esportabile (nessun filtro per stato), ma senza indicazione di annullamento.
+- **`show_names`**: `true` → nome officina come intestazione di gruppo; `false` → anonimo. Stessa semantica di `GET /vehicles/:id/export.pdf`.
 - **Streaming diretto, nessuna cache**: il PDF è renderizzato in-Lambda e i byte sono streammati direttamente nella response (`Content-Type: application/pdf`). Nessun persist S3, nessun presigned URL. Rigenerato a ogni chiamata (i dati dell'intervento sono mutabili nella wiki window).
 - **Nessun logo officina**: l'intestazione riporta solo `businessName` + indirizzo/P.IVA (la feature logo è stata rimossa insieme agli upload).
 
