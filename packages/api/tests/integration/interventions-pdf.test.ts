@@ -234,9 +234,11 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Case 4 — 200 cancelled intervention still exportable (no status filter).
+  // Case 4 — 409 cancelled intervention is NOT exportable: the history
+  // renderer has no annulment concept, so a cancelled service must not be
+  // handed to the customer as a clean record.
   // -----------------------------------------------------------------------
-  it('200 — cancelled intervention: PDF still exportable', async () => {
+  it('409 — cancelled intervention: intervention.export.cancelled', async () => {
     const { tenantId, userId, token } = await setupCaller('pdf-cancel');
     const { interventionId } = await setupIntervention({ tenantId, userId, status: 'cancelled' });
 
@@ -246,7 +248,7 @@ describe('GET /v1/interventions/:id/pdf (integration)', () => {
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': TEST_IP },
     });
 
-    expect(res.statusCode).toBe(200);
-    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.statusCode).toBe(409);
+    expect(res.json<{ code: string }>().code).toBe('intervention.export.cancelled');
   });
 });

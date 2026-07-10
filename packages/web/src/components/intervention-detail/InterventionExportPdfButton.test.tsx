@@ -75,6 +75,25 @@ describe('InterventionExportPdfButton', () => {
     );
   });
 
+  it('resets the officina-name switch to the default when the dialog is reopened', async () => {
+    const user = userEvent.setup();
+    renderButton();
+
+    await user.click(screen.getByRole('button', { name: /Esporta PDF/i }));
+    const toggle = screen.getByLabelText(/Mostra nome officina/i);
+    expect(toggle).toBeChecked();
+    await user.click(toggle); // turn off
+    expect(toggle).not.toBeChecked();
+
+    // Close without generating, then reopen — the switch must be back on so a
+    // prior anonymous choice does not silently persist.
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /Esporta PDF/i }));
+    expect(screen.getByLabelText(/Mostra nome officina/i)).toBeChecked();
+  });
+
   it('maps intervention.not_found to an Italian error message', async () => {
     const user = userEvent.setup();
     mockApiBlob.mockRejectedValueOnce(new ApiError('intervention.not_found', 404, 'not found'));

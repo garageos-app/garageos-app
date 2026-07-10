@@ -2018,12 +2018,14 @@ Body: i byte del PDF renderizzato in-Lambda e streammati direttamente (nessun pe
 | --- | --- | --- |
 | 401 | (auth middleware) | Authorization header mancante o JWT non valido |
 | 404 | `intervention.not_found` | Intervento non trovato o non accessibile da questa officina (RLS-as-404) |
+| 409 | `intervention.export.cancelled` | Intervento annullato: non esportabile (la UI nasconde il bottone) |
 | 429 | (rate limit) | Troppe richieste |
 | 502 | `intervention_pdf.render_failed` | Render del PDF fallito (streaming diretto, nessun upload S3) |
 
 #### Note
 
-- **Documento = export massivo con 1 intervento (2026-07-10)**: riusa `renderVehicleHistoryPdf` (§3.5c). Niente carta intestata officina, niente intestatario/PII, niente operatore, niente banner ANNULLATO — il layout del massivo non li prevede. Un intervento `cancelled` è comunque esportabile (nessun filtro per stato), ma senza indicazione di annullamento.
+- **Documento = export massivo con 1 intervento (2026-07-10)**: riusa `renderVehicleHistoryPdf` (§3.5c). Niente carta intestata officina, niente intestatario/PII, niente operatore, niente banner ANNULLATO — il layout del massivo non li prevede.
+- **Intervento annullato non esportabile**: un intervento `cancelled` → `409 intervention.export.cancelled` (il renderer non ha un concetto di annullamento, esporterebbe un documento pulito fuorviante). La UI nasconde il bottone "Esporta PDF" sugli annullati; la route è il backstop app-layer.
 - **`show_names`**: `true` → nome officina come intestazione di gruppo; `false` → anonimo. Stessa semantica di `GET /vehicles/:id/export.pdf`.
 - **Streaming diretto, nessuna cache**: il PDF è renderizzato in-Lambda e i byte sono streammati direttamente nella response (`Content-Type: application/pdf`). Nessun persist S3, nessun presigned URL. Rigenerato a ogni chiamata (i dati dell'intervento sono mutabili nella wiki window).
 - **Nessun logo officina**: l'intestazione riporta solo `businessName` + indirizzo/P.IVA (la feature logo è stata rimossa insieme agli upload).

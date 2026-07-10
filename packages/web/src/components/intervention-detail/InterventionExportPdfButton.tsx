@@ -25,6 +25,8 @@ function mapPdfError(err: ApiError): string {
   switch (err.code) {
     case 'intervention.not_found':
       return 'Intervento non trovato';
+    case 'intervention.export.cancelled':
+      return 'Un intervento annullato non può essere esportato.';
     default:
       return 'Impossibile generare il PDF. Riprova.';
   }
@@ -58,7 +60,13 @@ export function InterventionExportPdfButton({ interventionId }: Props) {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) mutation.reset();
+        // Reset to the documented default (show_names=true) and clear any stale
+        // error on close, so a prior "anonymous" choice never silently carries
+        // into the next export.
+        if (!next) {
+          mutation.reset();
+          setShowNames(true);
+        }
       }}
     >
       <DialogTrigger asChild>

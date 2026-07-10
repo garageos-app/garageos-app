@@ -28,6 +28,7 @@ const FAKE_PDF = Buffer.from('%PDF-1.4 fake-intervention');
 
 function interventionRow(overrides: Record<string, unknown> = {}) {
   return {
+    status: 'active',
     interventionDate: new Date('2026-05-23T00:00:00.000Z'),
     odometerKm: 60000,
     description: 'desc',
@@ -158,6 +159,19 @@ describe('GET /v1/interventions/:id/pdf (unit)', () => {
     });
     const dataArg = vi.mocked(renderVehicleHistoryPdf).mock.calls[0]![0];
     expect(dataArg.mode).toBe('anonymous');
+  });
+
+  it('409 — intervention.export.cancelled for a cancelled intervention; renderer not called', async () => {
+    const prisma = buildFakePrisma({ intervention: interventionRow({ status: 'cancelled' }) });
+    app = await buildApp(prisma);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/interventions/${INTERVENTION_ID}/pdf`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json<{ code: string }>().code).toBe('intervention.export.cancelled');
+    expect(renderVehicleHistoryPdf).not.toHaveBeenCalled();
   });
 
   it('404 — intervention.not_found when findFirst returns null; renderer not called', async () => {

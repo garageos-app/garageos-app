@@ -9,7 +9,7 @@ import {
 } from '../../../src/lib/vehicle-history-pdf-renderer.js';
 
 // Inflate FlateDecode content streams and decode <hex> Tj glyph runs back to
-// Latin-1 text (same approach as intervention-pdf-renderer.test.ts).
+// Latin-1 text (same approach as vehicles-export-pdf.test.ts).
 function extractPdfText(buf: Buffer): string {
   const hexPattern = /<([0-9A-Fa-f]+)>/g;
   let text = '';

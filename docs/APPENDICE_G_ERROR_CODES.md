@@ -297,6 +297,7 @@ Per fornire dati utili al client per gestire l'errore:
 | `intervention.cancellation.already_cancelled` | 409 | info | Intervento già annullato | | BR-066 |
 | `intervention.cancellation.reason_too_short` | 400 | info | Motivazione troppo breve | <20 caratteri | BR-066 |
 | `intervention.cancellation.permission_denied` | 403 | warning | Solo super_admin può annullare | | BR-066 |
+| `intervention.export.cancelled` | 409 | info | Un intervento annullato non può essere esportato in PDF | `GET /v1/interventions/:id/pdf` su intervento `cancelled` — il renderer non ha un concetto di annullamento, esporterebbe un documento pulito fuorviante (UI nasconde il bottone) | F-OFF-309 |
 | `intervention.dispute.already_exists` | 409 | info | Contestazione già aperta | Una per customer per intervention | BR-122 |
 | `intervention.dispute.not_owner` | 403 | warning | Solo il proprietario può contestare | | BR-120 |
 | `intervention.dispute.description_too_short` | 400 | info | Descrizione contestazione troppo breve | <20 caratteri | BR-124 |
@@ -930,6 +931,7 @@ intervention.dispute.response.description_too_short
 intervention.dispute.response.no_active_dispute
 intervention.dispute.response.not_your_intervention
 intervention.dispute.response.permission_denied
+intervention.export.cancelled
 intervention.modification.cancelled
 intervention.modification.disputed
 intervention.modification.locked

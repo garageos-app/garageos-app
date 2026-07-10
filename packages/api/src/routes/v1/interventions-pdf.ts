@@ -37,6 +37,7 @@ const querySchema = z.object({
 });
 
 const interventionPdfSelect = {
+  status: true,
   interventionDate: true,
   odometerKm: true,
   description: true,
@@ -82,6 +83,20 @@ const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
             'intervention.not_found',
             404,
             'Intervento non trovato o non accessibile da questa officina.',
+          );
+        }
+
+        // A cancelled intervention must not be exported: the history renderer
+        // has no annulment concept, so it would produce a clean maintenance
+        // record with no cancellation notice (misleading customer document).
+        // The bulk export excludes cancelled rows entirely; mirror that by
+        // refusing here. The web UI hides the button for cancelled — this is
+        // the app-layer backstop.
+        if (row.status === 'cancelled') {
+          throw businessError(
+            'intervention.export.cancelled',
+            409,
+            'Un intervento annullato non può essere esportato in PDF.',
           );
         }
 
