@@ -22,7 +22,10 @@ export function useVehicleTagDownload() {
   return useMutation<void, ApiError, string>({
     mutationFn: async (vehicleId: string) => {
       const blob = await apiBlob(`/v1/vehicles/${vehicleId}/tag`, { method: 'GET' });
-      openBlobInNewTab(blob);
+      // throwOnBlock:false — this route inserts a VehicleTagPrint audit row on
+      // every successful call, so a blocked popup must NOT become a retryable
+      // error (a retry would duplicate the audit row).
+      openBlobInNewTab(blob, { throwOnBlock: false });
     },
   });
 }
@@ -56,7 +59,10 @@ export function useVehicleTagReprint(vehicleId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      openBlobInNewTab(blob);
+      // throwOnBlock:false — this route inserts a VehicleTagPrint audit row on
+      // every successful call, so a blocked popup must NOT become a retryable
+      // error (a retry would duplicate the audit row).
+      openBlobInNewTab(blob, { throwOnBlock: false });
     },
   });
 }

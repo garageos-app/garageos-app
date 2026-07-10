@@ -33,5 +33,13 @@ describe('openBlobInNewTab', () => {
     }
     expect(caught).toBeInstanceOf(ApiError);
     expect((caught as ApiError).code).toBe('client.popup_blocked');
+    // Blocked path revokes the object URL immediately (no 60s leak).
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock');
+  });
+
+  it('does NOT throw on a blocked popup when throwOnBlock is false', () => {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    expect(() => openBlobInNewTab(pdfBlob(), { throwOnBlock: false })).not.toThrow();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock');
   });
 });
