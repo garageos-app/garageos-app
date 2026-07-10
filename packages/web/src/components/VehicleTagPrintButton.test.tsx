@@ -74,7 +74,7 @@ describe('VehicleTagPrintButton', () => {
   it('calls mutation and opens window on success', async () => {
     const user = userEvent.setup();
     mockApiBlob.mockResolvedValueOnce(pdfBlob());
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
 
     renderButton();
     await user.click(screen.getByRole('button', { name: /Stampa tag/i }));

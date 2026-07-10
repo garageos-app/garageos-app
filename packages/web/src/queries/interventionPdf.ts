@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 
 import { ApiError, useApiBlob } from '@/lib/api-client';
+import { openBlobInNewTab } from '@/lib/openBlob';
 
 // F-OFF-309 — intervention PDF is streamed as application/pdf bytes (no S3
 // presigned URL). Fetch with auth, wrap in an object URL, open it. The PDF is
@@ -30,10 +31,7 @@ export function useInterventionPdfDownload() {
       const blob = await apiBlob(`/v1/interventions/${interventionId}/pdf?${qs.toString()}`, {
         method: 'GET',
       });
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, '_blank');
-      // Revoke after a delay so the new tab has time to load the object URL.
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      openBlobInNewTab(blob);
     },
   });
 }

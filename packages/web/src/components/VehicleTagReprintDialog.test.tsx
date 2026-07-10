@@ -91,7 +91,7 @@ function pdfBlob(): Blob {
 describe('VehicleTagReprintDialog', () => {
   beforeEach(() => {
     mockApiBlob.mockReset();
-    vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.spyOn(window, 'open').mockReturnValue({} as Window);
     URL.createObjectURL = vi.fn(() => 'blob:mock');
     URL.revokeObjectURL = vi.fn();
   });

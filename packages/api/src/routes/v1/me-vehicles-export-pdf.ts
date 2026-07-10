@@ -2,7 +2,11 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import { normalizePartsReplaced, serializeChecklistItems } from '../../lib/intervention-shared.js';
+import { todayInRome } from '../../lib/pdf-format.js';
+import {
+  buildVehicleHistoryInterventionDto,
+  historyInterventionSelect,
+} from '../../lib/vehicle-history-pdf-data.js';
 import {
   renderVehicleHistoryPdf,
   type VehicleHistoryPdfData,
@@ -66,18 +70,7 @@ const meVehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
         const interventions = await tx.intervention.findMany({
           where: { vehicleId, status: { in: ['active', 'disputed'] } },
           orderBy: [{ interventionDate: 'desc' }, { id: 'desc' }],
-          select: {
-            interventionDate: true,
-            odometerKm: true,
-            description: true,
-            partsReplaced: true,
-            checklistSelections: {
-              select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
-              orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
-            },
-            interventionType: { select: { nameIt: true } },
-            tenant: { select: { businessName: true } },
-          },
+          select: historyInterventionSelect,
         });
 
         const v = ownership.vehicle;
@@ -92,17 +85,9 @@ const meVehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
             year: v.year,
             fuelType: v.fuelType,
           },
-          generatedAt: new Date().toISOString().slice(0, 10),
-          interventions: interventions.map((it) => ({
-            interventionDate: it.interventionDate.toISOString().slice(0, 10),
-            odometerKm: it.odometerKm,
-            typeName: it.interventionType.nameIt,
-            tenantName: it.tenant.businessName,
-            // BR-303/308: frozen snapshot labels, sorted by the shared serializer.
-            checklistItems: serializeChecklistItems(it.checklistSelections).map((c) => c.label),
-            description: it.description,
-            partsReplaced: normalizePartsReplaced(it.partsReplaced),
-          })),
+          generatedAt: todayInRome(),
+          // mode omitted → 'inline' (customer default): officina appended per row.
+          interventions: interventions.map(buildVehicleHistoryInterventionDto),
         };
         return data;
       });

@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 
 import { ApiError, useApiBlob } from '@/lib/api-client';
+import { openBlobInNewTab } from '@/lib/openBlob';
 
 // F-OFF-104 — vehicle tag (QR-code PDF) is now streamed as application/pdf
 // bytes (no S3 presigned URL). GET /v1/vehicles/:id/tag returns the
@@ -21,10 +22,10 @@ export function useVehicleTagDownload() {
   return useMutation<void, ApiError, string>({
     mutationFn: async (vehicleId: string) => {
       const blob = await apiBlob(`/v1/vehicles/${vehicleId}/tag`, { method: 'GET' });
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, '_blank');
-      // Revoke after a delay so the new tab has time to load the object URL.
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      // throwOnBlock:false — this route inserts a VehicleTagPrint audit row on
+      // every successful call, so a blocked popup must NOT become a retryable
+      // error (a retry would duplicate the audit row).
+      openBlobInNewTab(blob, { throwOnBlock: false });
     },
   });
 }
@@ -58,10 +59,10 @@ export function useVehicleTagReprint(vehicleId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, '_blank');
-      // Revoke after a delay so the new tab has time to load the object URL.
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      // throwOnBlock:false — this route inserts a VehicleTagPrint audit row on
+      // every successful call, so a blocked popup must NOT become a retryable
+      // error (a retry would duplicate the audit row).
+      openBlobInNewTab(blob, { throwOnBlock: false });
     },
   });
 }

@@ -27,6 +27,8 @@ function mapPdfError(err: ApiError): string {
       return 'Intervento non trovato';
     case 'intervention.export.cancelled':
       return 'Un intervento annullato non può essere esportato.';
+    case 'client.popup_blocked':
+      return 'Consenti i popup del browser per aprire il PDF.';
     default:
       return 'Impossibile generare il PDF. Riprova.';
   }

@@ -1,8 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import { normalizePartsReplaced, serializeChecklistItems } from '../../lib/intervention-shared.js';
+import { todayInRome } from '../../lib/pdf-format.js';
+import {
+  buildVehicleHistoryInterventionDto,
+  historyInterventionSelect,
+  pdfShowNamesQuerySchema,
+} from '../../lib/vehicle-history-pdf-data.js';
 import {
   renderVehicleHistoryPdf,
   type VehicleHistoryPdfData,
@@ -27,20 +31,13 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 // Only active+disputed are included (cancelled excluded, BR-150). internal_notes and
 // owner PII are never selected — customer-deliverable document, neutral header.
 
-const querySchema = z.object({
-  show_names: z
-    .enum(['true', 'false'])
-    .default('true')
-    .transform((v) => v === 'true'),
-});
-
 const vehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/v1/vehicles/:id/export.pdf',
     { preHandler: [requireAuth, requireOfficinaPool, tenantContext] },
     async (request, reply) => {
       const { id: vehicleId } = idParamSchema.parse(request.params);
-      const { show_names: showNames } = querySchema.parse(request.query);
+      const { show_names: showNames } = pdfShowNamesQuerySchema.parse(request.query);
       const tenantId = request.tenantId!;
 
       const pdfData = await app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
@@ -70,36 +67,14 @@ const vehicleExportPdfRoutes: FastifyPluginAsync = async (app) => {
             tenantId,
           },
           orderBy: [{ interventionDate: 'desc' }, { id: 'desc' }],
-          select: {
-            interventionDate: true,
-            odometerKm: true,
-            description: true,
-            partsReplaced: true,
-            tenantId: true,
-            checklistSelections: {
-              select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
-              orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
-            },
-            interventionType: { select: { nameIt: true } },
-            tenant: { select: { businessName: true } },
-          },
+          select: historyInterventionSelect,
         });
 
         const data: VehicleHistoryPdfData = {
           vehicle,
-          generatedAt: new Date().toISOString().slice(0, 10),
+          generatedAt: todayInRome(),
           mode: showNames ? 'grouped' : 'anonymous',
-          interventions: interventions.map((it) => ({
-            interventionDate: it.interventionDate.toISOString().slice(0, 10),
-            odometerKm: it.odometerKm,
-            typeName: it.interventionType.nameIt,
-            tenantName: it.tenant.businessName,
-            tenantId: it.tenantId,
-            // BR-303/308: frozen snapshot labels, sorted by the shared serializer.
-            checklistItems: serializeChecklistItems(it.checklistSelections).map((c) => c.label),
-            description: it.description,
-            partsReplaced: normalizePartsReplaced(it.partsReplaced),
-          })),
+          interventions: interventions.map(buildVehicleHistoryInterventionDto),
         };
         return data;
       });

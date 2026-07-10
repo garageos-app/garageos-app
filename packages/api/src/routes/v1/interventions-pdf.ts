@@ -1,8 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { z } from 'zod';
 
 import { businessError } from '../../lib/business-error.js';
-import { normalizePartsReplaced, serializeChecklistItems } from '../../lib/intervention-shared.js';
+import { todayInRome } from '../../lib/pdf-format.js';
+import {
+  buildVehicleHistoryInterventionDto,
+  historyInterventionSelect,
+  pdfShowNamesQuerySchema,
+} from '../../lib/vehicle-history-pdf-data.js';
 import {
   renderVehicleHistoryPdf,
   type VehicleHistoryPdfData,
@@ -29,26 +33,8 @@ import { tenantContext } from '../../middleware/tenant-context.js';
 // (interventions SELECT is permissive cross-tenant since migration 0003, so this
 // app-layer {id, tenantId} filter is the real security frontier — never RLS alone).
 
-const querySchema = z.object({
-  show_names: z
-    .enum(['true', 'false'])
-    .default('true')
-    .transform((v) => v === 'true'),
-});
-
 const interventionPdfSelect = {
   status: true,
-  interventionDate: true,
-  odometerKm: true,
-  description: true,
-  partsReplaced: true,
-  tenantId: true,
-  checklistSelections: {
-    select: { checklistItemId: true, labelSnapshot: true, sortOrderSnapshot: true },
-    orderBy: [{ sortOrderSnapshot: 'asc' as const }, { labelSnapshot: 'asc' as const }],
-  },
-  interventionType: { select: { nameIt: true } },
-  tenant: { select: { businessName: true } },
   vehicle: {
     select: {
       plate: true,
@@ -61,6 +47,7 @@ const interventionPdfSelect = {
       fuelType: true,
     },
   },
+  ...historyInterventionSelect,
 };
 
 const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
@@ -69,7 +56,7 @@ const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: [requireAuth, requireOfficinaPool, tenantContext] },
     async (request, reply) => {
       const { id } = idParamSchema.parse(request.params);
-      const { show_names: showNames } = querySchema.parse(request.query);
+      const { show_names: showNames } = pdfShowNamesQuerySchema.parse(request.query);
       const tenantId = request.tenantId!;
 
       const pdfData = await app.withContext({ tenantId, role: 'user' as const }, async (tx) => {
@@ -102,21 +89,9 @@ const interventionPdfRoutes: FastifyPluginAsync = async (app) => {
 
         const data: VehicleHistoryPdfData = {
           vehicle: row.vehicle,
-          generatedAt: new Date().toISOString().slice(0, 10),
+          generatedAt: todayInRome(),
           mode: showNames ? 'grouped' : 'anonymous',
-          interventions: [
-            {
-              interventionDate: row.interventionDate.toISOString().slice(0, 10),
-              odometerKm: row.odometerKm,
-              typeName: row.interventionType.nameIt,
-              tenantName: row.tenant.businessName,
-              tenantId: row.tenantId,
-              // BR-303/308: frozen snapshot labels, sorted by the shared serializer.
-              checklistItems: serializeChecklistItems(row.checklistSelections).map((c) => c.label),
-              description: row.description,
-              partsReplaced: normalizePartsReplaced(row.partsReplaced),
-            },
-          ],
+          interventions: [buildVehicleHistoryInterventionDto(row)],
         };
         return data;
       });
